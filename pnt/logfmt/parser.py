@@ -1,0 +1,396 @@
+"""Event stream -> hands.
+
+Two rules in here are the difference between a correct tracker and one that looks
+correct:
+
+**1. Bet amounts are cumulative per street.** ``bets N``, ``raises to N`` *and*
+``calls N`` all state the player's total commitment for that street, not the
+chips they just pushed. Incremental = ``N - already_committed_this_street``.
+Verified by reconstructing pot totals: hand #180 preflop is 60, not 75; hand #92
+final pot is 480; hand #44's uncalled return is 605-50=555. Read ``calls N`` as
+incremental and every pot, every net-won figure and every bb/100 is wrong while
+still looking plausible. `tests/test_amounts.py` asserts this across every hand.
+
+**2. The roster is the dealt-in roster.** It comes from the ``Player stacks:``
+line, never from join/quit events and never from who happens to act. A player
+sitting out is still at the table; getting this wrong is invisible, because every
+rate is then quietly too low for exactly the players who sit out most.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
+
+from ..ingest.csv_source import RawEntry
+from . import events as E
+from .grammar import classify
+
+#: Posts that go straight to the pot without counting as the player's bet for the
+#: street. A dead small blind and an ante do not entitle you to call for less.
+DEAD_POSTS = frozenset({E.POST_ANTE, E.POST_MISSING_SB})
+
+
+@dataclass(slots=True)
+class HandPlayer:
+    pn_id: str
+    name: str
+    seat: int
+    starting_stack: int
+    seats_from_button: int | None = None
+    hole_cards: tuple[str, ...] = ()
+    committed: int = 0  # gross chips put in, including forced posts
+    uncalled: int = 0  # returned to them when nobody called
+    collected: int = 0
+    folded: bool = False
+
+    @property
+    def contributed(self) -> int:
+        """Net chips this player actually risked into the pot."""
+        return self.committed - self.uncalled
+
+    @property
+    def net(self) -> int:
+        return self.collected - self.contributed
+
+
+@dataclass(slots=True)
+class ParsedAction:
+    pn_id: str
+    street: str
+    seq: int
+    kind: str  # fold | check | call | bet | raise | post
+    amount: int  # INCREMENTAL chips committed by this action
+    amount_to: int | None  # raw cumulative figure from the log, kept for audit
+    is_forced: bool
+    all_in: bool
+    post_kind: str | None = None
+
+
+@dataclass(slots=True)
+class ParsedHand:
+    game_id: str
+    hand_number: int
+    table_hand_id: str
+    ts: str
+    ord: int
+    variant: str
+    dealer_seat: int | None
+    dead_button: bool
+    n_dealt_in: int
+    #: True when a blind position was dead, leaving a position slot no player
+    #: occupies. Positions on these hands are best-effort -- exclude from splits.
+    blinds_irregular: bool = False
+    bb: int | None = None  # from this hand's actual BB post, not the game's config
+    players: dict[str, HandPlayer] = field(default_factory=dict)
+    actions: list[ParsedAction] = field(default_factory=list)
+    board_runs: list[list[str]] = field(default_factory=list)
+    hero_cards: tuple[str, ...] = ()
+    run_count: int = 1
+
+    @property
+    def went_to_showdown(self) -> bool:
+        """Two or more players still live when the hand ended.
+
+        Deliberately *not* inferred from ``shows`` lines: players voluntarily show
+        cards after winning uncontested, and rabbit-hunt shows appear between hands.
+        """
+        return sum(1 for p in self.players.values() if not p.folded) >= 2
+
+    @property
+    def total_contributed(self) -> int:
+        return sum(p.contributed for p in self.players.values())
+
+    @property
+    def total_collected(self) -> int:
+        return sum(p.collected for p in self.players.values())
+
+    def saw_street(self, street: str) -> bool:
+        return len(self.board_runs) > 0 and len(self.board_runs[0]) >= {
+            E.FLOP: 3,
+            E.TURN: 4,
+            E.RIVER: 5,
+        }.get(street, 0)
+
+
+@dataclass(slots=True)
+class ParseResult:
+    game_id: str
+    hands: list[ParsedHand] = field(default_factory=list)
+    misses: list[tuple[int, str, str]] = field(default_factory=list)  # (ord, entry, reason)
+    blinds: dict[str, int] = field(default_factory=dict)  # latest sb/bb/ante seen
+    hero_cards_by_hand: dict[int, tuple[str, ...]] = field(default_factory=dict)
+
+
+def assign_positions(
+    seats: list[int], dealer_seat: int | None, bb_seat: int | None
+) -> tuple[dict[int, int], bool]:
+    """Map seat number -> seats_from_button. Returns ``(positions, irregular)``.
+
+    Seat numbers are physical table indices (1-10) and are frequently
+    non-contiguous -- a real hand in these fixtures is seated ``#1 #2 #3 #10``. So
+    positions are counted over *dealt-in players in seat order*, never over raw
+    seat numbers.
+
+    Anchoring, in order of preference:
+
+    1. **The dealer** named in the hand-start line, reconciled against the big
+       blind (below).
+    2. **The big blind** alone, when the hand says ``(dead button)`` or the named
+       dealer is not dealt in. The BB always posts, and sits at
+       ``seats_from_button`` 1 heads-up, 2 otherwise.
+
+    The reconciliation matters. When a player leaves, PokerNow can leave the small
+    blind *dead* -- a position slot no dealt-in player occupies. Hand #25 of
+    `pgl1UViJ4` is seated #1/#2/#10 with the button on seat 2 and a ``Dead Small
+    Blind`` line, so seat 10 posts the *big* blind while sitting only one slot from
+    the button. A plain 0..n-1 rotation cannot express that gap and mislabels every
+    player after it. Detecting the offset from the BB and shifting is what keeps
+    those hands honest; `irregular` is True whenever such a gap was found, so
+    positional reports can exclude them.
+    """
+    seats = sorted(seats)
+    n = len(seats)
+    if n == 0:
+        return {}, False
+    expected_bb = 1 if n == 2 else 2
+
+    if dealer_seat is not None and dealer_seat in seats:
+        start = seats.index(dealer_seat)
+        rotation = [seats[(start + k) % n] for k in range(n)]
+        positions = {seat: k for k, seat in enumerate(rotation)}
+        if bb_seat is not None and bb_seat in positions:
+            offset = expected_bb - positions[bb_seat]
+            if offset > 0:
+                # A dead blind sits between the button and the big blind; everyone
+                # from the button's left onward is one or more slots further round
+                # than a naive rotation suggests.
+                for seat in rotation[1:]:
+                    positions[seat] += offset
+                return positions, True
+        return positions, False
+
+    if bb_seat is not None and bb_seat in seats:
+        start = seats.index(bb_seat)
+        return (
+            {seats[(start + k) % n]: (expected_bb + k) % n for k in range(n)},
+            False,
+        )
+
+    return {}, False
+
+
+# Standard position names by table size. Written out rather than computed because
+# the convention is not arithmetic: 6-max is BTN/SB/BB/UTG/HJ/CO with no lojack,
+# while 7-handed inserts LJ and keeps a single UTG.
+_POSITION_TABLES: dict[int, tuple[str, ...]] = {
+    2: ("BTN/SB", "BB"),
+    3: ("BTN", "SB", "BB"),
+    4: ("BTN", "SB", "BB", "CO"),
+    5: ("BTN", "SB", "BB", "HJ", "CO"),
+    6: ("BTN", "SB", "BB", "UTG", "HJ", "CO"),
+    7: ("BTN", "SB", "BB", "UTG", "LJ", "HJ", "CO"),
+    8: ("BTN", "SB", "BB", "UTG", "UTG+1", "LJ", "HJ", "CO"),
+    9: ("BTN", "SB", "BB", "UTG", "UTG+1", "UTG+2", "LJ", "HJ", "CO"),
+    10: ("BTN", "SB", "BB", "UTG", "UTG+1", "UTG+2", "UTG+3", "LJ", "HJ", "CO"),
+}
+
+
+def position_name(seats_from_button: int, n_dealt_in: int) -> str:
+    """Label a position at *query* time.
+
+    Never stored: seat 4 is UTG on one hand and the cutoff on the next once two
+    players leave.
+    """
+    table = _POSITION_TABLES.get(max(2, min(n_dealt_in, 10)), _POSITION_TABLES[10])
+    if 0 <= seats_from_button < len(table):
+        return table[seats_from_button]
+    # Only reachable on irregular-blind hands, where a dead slot pushes the last
+    # player past the final seat. They act first preflop, so: UTG.
+    return "UTG"
+
+
+class _HandBuilder:
+    """Accumulates one hand's worth of events."""
+
+    def __init__(self, game_id: str, start: E.HandStart, ts: str):
+        self.hand = ParsedHand(
+            game_id=game_id,
+            hand_number=start.hand_number,
+            table_hand_id=start.table_hand_id,
+            ts=ts,
+            ord=start.ord,
+            variant=start.variant,
+            dealer_seat=None,
+            dead_button=start.dead_button,
+            n_dealt_in=0,
+        )
+        self._dealer_ref = start.dealer
+        self.street = E.PREFLOP
+        self._committed: dict[str, int] = {}  # this street only
+        self._seq = 0
+        self._bb_seat: int | None = None
+
+    # -- event handlers ----------------------------------------------------
+    def roster(self, ev: E.PlayerStacks) -> None:
+        for seat, ref, stack in ev.seats:
+            self.hand.players[ref.pn_id] = HandPlayer(
+                pn_id=ref.pn_id, name=ref.name, seat=seat, starting_stack=stack
+            )
+            if self._dealer_ref is not None and ref.pn_id == self._dealer_ref.pn_id:
+                self.hand.dealer_seat = seat
+        self.hand.n_dealt_in = len(self.hand.players)
+
+    def post(self, ev: E.Post) -> None:
+        p = self.hand.players.get(ev.player.pn_id)
+        if p is None:
+            return
+        if ev.kind == E.POST_BB:
+            self._bb_seat = p.seat
+            # Blind levels change mid-game, so the big blind is a property of the
+            # hand, not of the game. Take the largest BB post in case someone also
+            # posts a missed blind.
+            self.hand.bb = max(self.hand.bb or 0, ev.amount)
+        p.committed += ev.amount
+        if ev.kind not in DEAD_POSTS:
+            self._committed[p.pn_id] = self._committed.get(p.pn_id, 0) + ev.amount
+        self._seq += 1
+        self.hand.actions.append(
+            ParsedAction(
+                pn_id=p.pn_id,
+                street=self.street,
+                seq=self._seq,
+                kind="post",
+                amount=ev.amount,
+                amount_to=None,
+                is_forced=True,
+                all_in=False,
+                post_kind=ev.kind,
+            )
+        )
+
+    def action(self, ev: E.Action) -> None:
+        p = self.hand.players.get(ev.player.pn_id)
+        if p is None:
+            return
+        incremental = 0
+        if ev.amount_to is not None:
+            # THE RULE: amount_to is cumulative for this street.
+            incremental = ev.amount_to - self._committed.get(p.pn_id, 0)
+            self._committed[p.pn_id] = ev.amount_to
+            p.committed += incremental
+        if ev.kind == "fold":
+            p.folded = True
+        self._seq += 1
+        self.hand.actions.append(
+            ParsedAction(
+                pn_id=p.pn_id,
+                street=self.street,
+                seq=self._seq,
+                kind=ev.kind,
+                amount=incremental,
+                amount_to=ev.amount_to,
+                is_forced=False,
+                all_in=ev.all_in,
+            )
+        )
+
+    def street_dealt(self, ev: E.StreetDealt) -> None:
+        while len(self.hand.board_runs) <= ev.run:
+            self.hand.board_runs.append([])
+        self.hand.board_runs[ev.run] = list(ev.board)
+        self.hand.run_count = len(self.hand.board_runs)
+        if ev.run == 0:
+            # Only the first run advances the betting street; by the time a second
+            # run is dealt all action is already complete.
+            self.street = ev.street
+            self._committed.clear()
+
+    def uncalled(self, ev: E.UncalledReturn) -> None:
+        p = self.hand.players.get(ev.player.pn_id)
+        if p is not None:
+            p.uncalled += ev.amount
+
+    def collected(self, ev: E.Collected) -> None:
+        p = self.hand.players.get(ev.player.pn_id)
+        if p is not None:
+            p.collected += ev.amount
+
+    def shows(self, ev: E.Shows) -> None:
+        p = self.hand.players.get(ev.player.pn_id)
+        if p is not None and len(ev.cards) == 2:
+            p.hole_cards = ev.cards
+
+    def finish(self) -> ParsedHand:
+        positions, irregular = assign_positions(
+            [p.seat for p in self.hand.players.values()],
+            self.hand.dealer_seat,
+            self._bb_seat,
+        )
+        self.hand.blinds_irregular = irregular
+        for p in self.hand.players.values():
+            p.seats_from_button = positions.get(p.seat)
+        return self.hand
+
+
+def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
+    """Parse `order`-ascending raw entries into hands.
+
+    Events occurring outside hand boundaries (voluntary shows between hands, seat
+    changes, blind-level changes) are handled at game level rather than assumed to
+    belong to a hand.
+    """
+    result = ParseResult(game_id=game_id)
+    builder: _HandBuilder | None = None
+
+    for raw in entries:
+        ev = classify(raw.entry, raw.ord)
+
+        if isinstance(ev, E.Unknown):
+            result.misses.append((raw.ord, raw.entry, ev.reason))
+            continue
+
+        if isinstance(ev, E.HandStart):
+            if builder is not None:  # log truncated mid-hand; keep what we have
+                result.hands.append(builder.finish())
+            builder = _HandBuilder(game_id, ev, raw.at)
+            continue
+
+        if isinstance(ev, E.BlindChange):
+            result.blinds[ev.which] = ev.to_amount
+            continue
+
+        if builder is None:
+            # Pre-game config, or between-hand chatter. Nothing to attach it to.
+            continue
+
+        if isinstance(ev, E.HandEnd):
+            result.hands.append(builder.finish())
+            builder = None
+        elif isinstance(ev, E.PlayerStacks):
+            builder.roster(ev)
+        elif isinstance(ev, E.HeroCards):
+            builder.hand.hero_cards = ev.cards
+            result.hero_cards_by_hand[builder.hand.hand_number] = ev.cards
+        elif isinstance(ev, E.Post):
+            builder.post(ev)
+        elif isinstance(ev, E.Action):
+            builder.action(ev)
+        elif isinstance(ev, E.StreetDealt):
+            builder.street_dealt(ev)
+        elif isinstance(ev, E.UncalledReturn):
+            builder.uncalled(ev)
+        elif isinstance(ev, E.Collected):
+            builder.collected(ev)
+        elif isinstance(ev, E.Shows):
+            builder.shows(ev)
+        # SeatChange / AdminStackChange / Noise: recognized, no effect on hand math.
+
+    if builder is not None:
+        result.hands.append(builder.finish())
+
+    return result
+
+
+def iter_hands(entries: Iterable[RawEntry], game_id: str) -> Iterator[ParsedHand]:
+    yield from parse(entries, game_id).hands

@@ -1,0 +1,202 @@
+# PokerNow log format — findings
+
+Derived from three real log exports (549 hands, 9,206 entries) plus the
+`PokerNowGrabber` and `PokerNow-HUD` source. Everything below is verified against
+data in `tests/fixtures/`, not inferred from documentation.
+
+---
+
+## 1. Identity
+
+### The token
+
+Players appear as `"Name @ ID"`. The ID charset is base64url-ish — `[A-Za-z0-9_-]`
+— confirmed by `d-4X_F_SSU`, which contains both a dash and underscores. Anything
+matching only `[A-Za-z0-9]` will silently mis-parse those players.
+
+### IDs are stable; names are not
+
+| Evidence | Consequence |
+|---|---|
+| `Chris @ 5NARaPRkSp` quits with stack 0 at 08:27:06, requests a seat at 08:28:38, is re-approved — **same ID** | The ID survives quit/rejoin *within* a game |
+| `gpP9uUffpu` is **`genericpoker`** in `pgl41zM3` and **`500`** in `pglSdQty` | The ID survives renames *across* games. Keying on name would split one person's 421 hands into two |
+| `d-4X_F_SSU` is **`getting even`** then **`1500`** | Same |
+| `hsj @ PEMYRVPxOS` and `HSJ @ FJqZyN7BjN` | One human, two IDs — the cross-device case. Only an alias table can join these |
+
+**The ID is the key. The display name is decoration.**
+
+### Hero
+
+`Your hand is 5♦, 8♣` carries no player name, so a downloaded log does not say
+whose it is. Hero can be recovered by matching those cards against showdown
+`shows` lines: hand #188 shows `genericpoker` holding exactly `5♦, 8♣`.
+
+Done as elimination plus voting, this is self-validating — a player who ever shows
+cards that are *not* hero's cards for that hand cannot be hero. On all three
+fixtures the inference is unanimous: every other player at the table is
+contradicted, and hero collects 24–59 confirming votes.
+
+It matters more than it looks. Hero's cards are printed on *every* hand, not just
+showdowns, so identifying hero lifts hole-card coverage from ~15% to ~58%.
+
+**The user's own identity is not constant.** Hero is `gpP9uUffpu` in two logs and
+`MBFczOlpuA` in the third — a second device. The alias table is needed on day one,
+for you, before any opponent is considered.
+
+---
+
+## 2. Ordering and dedupe
+
+`order` = `epoch_ms × 100 + sequence`. Verified: the entry at
+`2026-08-10T08:30:37.861Z` has order `178635063786100`, and `1786350637861` is that
+instant in epoch milliseconds.
+
+It is globally unique and monotonic, which makes it both the sort key and the
+dedupe key — overlapping fetches become free.
+
+**`at` alone is not sufficient.** Six entries in the sample log share the
+millisecond `2026-08-10T08:29:52.078Z`. Sorting by timestamp scrambles the order of
+actions within a hand.
+
+The CSV is written **newest-first**. Sort ascending by `order` before parsing.
+
+The sub-index is not positionally stable: the `Player stacks:` line sits at `+03`
+in hand #1 and `+01` in hand #188, because join events consume slots in between.
+Never address entries by sub-index.
+
+---
+
+## 3. Bet amounts are cumulative per street
+
+**The single highest-value finding.**
+
+`bets N`, `raises to N` **and `calls N`** all state the player's *total commitment
+for that street* — not the chips just pushed forward.
+
+```
+incremental = N − already_committed_this_street
+```
+
+Verified by reconstructing pot totals:
+
+| Hand | Sequence | Pot |
+|---|---|---|
+| #180 | `raises to 30` / `calls 30` → preflop **60**, not 75; then 20/20, 50/50, 150 folded | 200 ✓ |
+| #92 | flop `bets 10`, `raises to 40`, `calls 40` → flop total 80 (the call is incrementally 30) | 480 ✓ |
+| #44 | `raises to 605 and go all in` vs 50 committed → `Uncalled bet of 555 returned` (605−50) | 100 ✓ |
+
+Read `calls N` as incremental and every pot, every net-won figure and every bb/100
+is wrong — while still looking entirely plausible. This is guarded by a
+conservation law over all 549 hands: `Σ contributed == Σ collected`, per hand.
+
+Uncalled returns are **not** contributed, because those chips were never at risk.
+Hand #187: Chris posts SB 5, raises to 30, opponent folds, 20 is returned, he
+collects 20 → net **+10**, exactly the opponent's big blind.
+
+---
+
+## 4. The roster
+
+The dealt-in roster is the `Player stacks:` line, and only that line.
+
+`The player "X" joined the game` events appear at order `…52441502` — *between* the
+hand-start line at `…500` and `Player stacks:` at `…503`. They are inside the
+hand-start block, and building a roster from them produces a different (wrong)
+answer.
+
+Seat numbers are physical table indices 1–10 and are **not contiguous**: a real
+hand is seated `#1 | #2 | #3 | #10`. Positions must be counted over dealt-in
+players in seat order, never over raw seat numbers.
+
+---
+
+## 5. Positions
+
+- **Heads-up: the button is the small blind.** Verified on 300+ hands.
+- **`(dead button)` exists.** One hand reads
+  `-- starting hand #26 (id: ndddmwtmyhzo)  No Limit Texas Hold'em (dead button) --`
+  with no dealer named at all. A parser that assumes a dealer token crashes or,
+  worse, mis-positions everyone silently.
+- **Dead blinds leave gaps.** Hand #25 of `pgl1UViJ4`: a player quits, a
+  `Dead Small Blind` line appears, the button is on seat 2, and seat 10 posts the
+  **big** blind while sitting one slot from the button. A plain 0..n−1 rotation
+  calls seat 10 the small blind and mislabels the rest of the table.
+
+The fix is to treat the big blind as authoritative and shift past the gap. The
+invariant that catches all of this: **whoever posts the big blind must land on
+`seats_from_button` 2 (or 1 heads-up), on every hand** — asserted across all 549.
+
+---
+
+## 6. Complete line vocabulary
+
+Obtained by normalizing all 9,206 entries into distinct shapes, so this is
+exhaustive for the corpus rather than a guess. Grammar coverage is **0 unknowns**.
+
+**Structure**: `-- starting hand #N (id: X)  <variant> (dealer: "P"|dead button) --`,
+`-- ending hand #N --`, `Player stacks: #N "P" (S) | …`, `Your hand is C, C`
+
+**Forced posts**: `posts a small blind of N`, `posts a big blind of N`,
+`posts a missed big blind of N`, `posts a missing small blind of N`, `Dead Small Blind`
+
+> Note the inconsistent wording: PokerNow writes **missed** big blind but
+> **missing** small blind.
+
+**Actions**: `folds`, `checks`, `calls N`, `bets N`, `raises to N`, each of the last
+three optionally suffixed ` and go all in`
+
+**Board**: `Flop:  [C, C, C]` (two spaces), `Turn: … [C]`, `River: … [C]`, and
+`Flop|Turn|River (second run): …`
+
+**Pot**: `Uncalled bet of N returned to "P"`, `"P" collected N from pot`,
+`"P" collected N from pot with <ranking> (combination: …)`
+
+**Showdown**: `"P" shows a C, C.` and `"P" shows a C.` (single-card voluntary show)
+
+**Seating**: `joined the game with a stack of N`, `quits the game with a stack of N`,
+`requested a seat`, `stand up with the stack of N`, `sit back with the stack of N`,
+`The admin approved the player "P" participation with a stack of N`,
+`The admin updated the player "P" stack from N to N`
+
+**Config**: `The game's small|big blind|ante was changed from N to N`,
+`Game Config Changes` (multi-line), `Undealt cards: …` (rabbit hunt),
+run-it-twice prompts
+
+---
+
+## 7. Traps
+
+| Trap | Why it bites |
+|---|---|
+| **Hostile player names** | Real players are named `all in`, `500`, `1500`. Loose pattern matching on `and go all in` or on digits will mis-parse them. Anchor on the quoted token |
+| **Multi-line CSV fields** | `Game Config Changes` contains newlines *inside* one field. Splitting the file on `\n` corrupts it — use a real CSV reader |
+| **Showdown ≠ `shows`** | Players voluntarily show after winning uncontested, and rabbit-hunt shows appear *between* hands. Detect showdown by counting players who never folded |
+| **Blind levels move** | `The game's big blind was changed from 20 to 10` occurs mid-log. bb/100 must normalize each hand by *its own* big blind |
+| **Run it twice** | Produces two `collected` lines and `(second run)` streets. Only the first run advances the betting street — by the time a second run is dealt, all action is complete |
+| **Encoding** | Real exports are clean UTF-8 (`♠♥♦♣`). If you see `Aâ¦`, the file was decoded as latin-1 — fix it at the file-open boundary, not in the parser |
+
+---
+
+## 8. Live capture — no captcha on the log endpoint
+
+The captcha gates the **"download full log" UI flow** at game end. It does not gate
+the endpoint `PokerNowGrabber` uses mid-game:
+
+```
+GET https://www.pokernow.club/games/{gameId}/log?after_at={ms}&before_at={ms}
+Cookie: npt=…        (dpt for Discord games)
+```
+
+The websocket is used only as a *trigger*: socket.io to `www.pokernow.club` with
+`{gameID}`; on a `gC` message where `gT == "gameResult"`, a hand has ended, so
+fetch that slice of the log.
+
+This is the architecture to copy, because it means **one parser** serves both
+backfill and live capture, and the success criterion holds by construction rather
+than by diligence. An extension content script running on `pokernow.club` sends the
+`npt` cookie automatically (same-origin, `credentials: 'include'`), so it never
+needs the manual cookie extraction Grabber requires.
+
+**Still unverified**: the exact JSON envelope of `/log` (bare array vs
+`{logs: […]}`) and whether `after_at` is inclusive. Five minutes in DevTools on a
+live table settles both. Nothing in Phases 0–2 depends on it.
