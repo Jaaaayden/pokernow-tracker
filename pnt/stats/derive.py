@@ -43,6 +43,8 @@ class HandPlayerRow:
     collected: int
     folded: bool
     hole_cards: str | None = None
+    #: Signed 7-2 side-bet result. Part of `net`, but never of the pot.
+    bounty: int = 0
 
 
 @dataclass(slots=True)
@@ -199,7 +201,7 @@ def derive(hand: HandRow) -> list[Facts]:
             seats_from_button=p.seats_from_button,
             dead_button=hand.dead_button,
             blinds_irregular=hand.blinds_irregular,
-            net=p.collected - p.contributed,
+            net=p.collected - p.contributed + p.bounty,
             bb_size=hand.bb,
         )
         for pid, p in hand.players.items()

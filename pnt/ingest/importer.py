@@ -157,8 +157,8 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
 
     conn.executemany(
         "INSERT INTO hand_players (hand_id, pn_id, seat, seats_from_button,"
-        " starting_stack, hole_cards, contributed, collected, folded)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " starting_stack, hole_cards, contributed, collected, bounty, folded)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 hand_id,
@@ -169,6 +169,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
                 "".join(p.hole_cards) or None,
                 p.contributed,
                 p.collected,
+                p.bounty,
                 int(p.folded),
             )
             for p in hand.players.values()

@@ -53,6 +53,13 @@ class HandPlayer:
     committed: int = 0  # gross chips put in, including forced posts
     uncalled: int = 0  # returned to them when nobody called
     collected: int = 0
+    #: Signed 7-2 side-bet result for this hand: positive when paid to this
+    #: player, negative when paid out. Deliberately NOT folded into `collected`:
+    #: this money never enters the pot, and the conservation law
+    #: (total_contributed == total_collected) is the strongest correctness check
+    #: this parser has. Mixing side-bet chips into it would break that check for
+    #: every bounty hand and cost more than the stat is worth.
+    bounty: int = 0
     folded: bool = False
 
     @property
@@ -62,7 +69,8 @@ class HandPlayer:
 
     @property
     def net(self) -> int:
-        return self.collected - self.contributed
+        """Everything this player won or lost on the hand, side bets included."""
+        return self.collected - self.contributed + self.bounty
 
 
 @dataclass(slots=True)
@@ -360,6 +368,22 @@ class _HandBuilder:
         return self.hand
 
 
+def _apply_bounty(hand: ParsedHand, ev: E.BountyPaid) -> None:
+    """Book a side-bet transfer against a hand.
+
+    Takes a `ParsedHand` rather than a builder because these lines arrive *after*
+    ``-- ending hand #N --``: by then the hand is finished and the builder is gone.
+    Players not dealt into the hand are ignored, the same way every other handler
+    treats an unknown pn_id.
+    """
+    payer = hand.players.get(ev.payer.pn_id)
+    payee = hand.players.get(ev.payee.pn_id)
+    if payer is not None:
+        payer.bounty -= ev.amount
+    if payee is not None:
+        payee.bounty += ev.amount
+
+
 def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     """Parse `order`-ascending raw entries into hands.
 
@@ -369,6 +393,9 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     """
     result = ParseResult(game_id=game_id)
     builder: _HandBuilder | None = None
+    #: The most recently finished hand. The 7-2 bounty is settled *between* hands,
+    #: after the hand-end line, so those lines have no open builder to attach to.
+    last: ParsedHand | None = None
 
     for raw in entries:
         ev = classify(raw.entry, raw.ord)
@@ -379,7 +406,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
 
         if isinstance(ev, E.HandStart):
             if builder is not None:  # log truncated mid-hand; keep what we have
-                result.hands.append(builder.finish(complete=False))
+                last = builder.finish(complete=False)
+                result.hands.append(last)
             builder = _HandBuilder(game_id, ev, raw.at)
             continue
 
@@ -387,12 +415,21 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             result.blinds[ev.which] = ev.to_amount
             continue
 
+        if isinstance(ev, E.BountyPaid):
+            # Settled after the hand it belongs to, so `last` is the usual target;
+            # `builder.hand` covers a layout that settles before the hand ends.
+            target = builder.hand if builder is not None else last
+            if target is not None:
+                _apply_bounty(target, ev)
+            continue
+
         if builder is None:
             # Pre-game config, or between-hand chatter. Nothing to attach it to.
             continue
 
         if isinstance(ev, E.HandEnd):
-            result.hands.append(builder.finish())
+            last = builder.finish()
+            result.hands.append(last)
             builder = None
         elif isinstance(ev, E.PlayerStacks):
             builder.roster(ev)

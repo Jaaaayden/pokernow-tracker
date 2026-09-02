@@ -67,6 +67,7 @@ def load_hands(
                 seats_from_button=r["seats_from_button"],
                 contributed=r["contributed"],
                 collected=r["collected"],
+                bounty=r["bounty"],
                 folded=bool(r["folded"]),
                 hole_cards=r["hole_cards"],
             )

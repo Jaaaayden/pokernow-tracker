@@ -109,6 +109,21 @@ class Collected(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class BountyPaid(Event):
+    """A side-bet transfer between two players, outside the pot.
+
+    Emitted only by the ``paid N ... to X`` line. The matching ``collected N from
+    the 7-2 bounty`` line is a *summary* of those payments -- crediting both would
+    pay the winner twice -- so it is classified as `Noise`.
+    """
+
+    payer: PlayerRef
+    payee: PlayerRef
+    amount: int
+    kind: str = "7-2"
+
+
+@dataclass(frozen=True, slots=True)
 class Shows(Event):
     player: PlayerRef
     cards: tuple[str, ...]  # may be a single card (voluntary partial show)

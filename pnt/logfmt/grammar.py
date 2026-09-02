@@ -191,6 +191,27 @@ RULES: list[Rule] = [
             ranking=m.group("rank"),
         ),
     ),
+    # -- 7-2 bounty: a side bet settled between players, outside the pot.
+    # The payment lines carry the money. The winner's "collected N from the 7-2
+    # bounty" line that follows is the SUM of those payments, so it is recognized
+    # as noise -- counting both would credit the winner twice.
+    (
+        re.compile(
+            rf"^{_P} paid (?P<amt>\d+) for the (?P<kind>.+?) bounty to \"(?P<p2>[^\"]*)\"$"
+        ),
+        lambda m, o, r: E.BountyPaid(
+            ord=o,
+            raw=r,
+            payer=_player(m),
+            payee=split_player_token(m.group("p2")),
+            amount=int(m.group("amt")),
+            kind=m.group("kind"),
+        ),
+    ),
+    (
+        re.compile(rf"^{_P} collected (?P<amt>\d+) from the (?P<kind>.+?) bounty$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="bounty_summary"),
+    ),
     (
         re.compile(rf"^{_P} shows a (?P<cards>.+)\.$"),
         lambda m, o, r: E.Shows(

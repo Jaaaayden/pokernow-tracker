@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS hand_players (
     hole_cards        TEXT,      -- known at showdown, or for hero on every hand
     contributed       INTEGER NOT NULL DEFAULT 0,
     collected         INTEGER NOT NULL DEFAULT 0,
+    -- Signed 7-2 side-bet result. Kept OUT of collected/contributed so those two
+    -- continue to describe the pot alone and keep balancing against each other.
+    bounty            INTEGER NOT NULL DEFAULT 0,
     folded            INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (hand_id, pn_id)
 ) WITHOUT ROWID;
