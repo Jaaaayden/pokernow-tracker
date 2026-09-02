@@ -8,7 +8,7 @@ the point, and IndexedDB would have trapped it in one profile.
 `POST /ingest` is deliberately built now, before any extension exists, so the
 capture contract is fixed and testable ahead of the browser work.
 
-Run with:  pnt serve      (or: uvicorn server.app:app --port 8000)
+Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 8000)
 """
 
 from __future__ import annotations

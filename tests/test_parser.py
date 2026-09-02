@@ -15,15 +15,46 @@ EXPECTED_HANDS = {
 }
 
 
-def test_no_parse_misses(parsed_all):
+def test_no_parse_misses(parsed_every):
     """Every line in every fixture is recognized.
 
     An empty `misses` list is the claim that the parse was total. When it is not
     empty the entries are recorded rather than dropped, which is what makes a gap
     detectable and repairable by re-import.
     """
-    for gid, res in parsed_all.items():
+    for gid, res in parsed_every.items():
         assert res.misses == [], f"{gid}: {res.misses[:3]}"
+
+
+def test_only_a_truncated_final_hand_is_marked_incomplete(parsed_every):
+    """`complete` is False exactly when the log stops before `-- ending hand #N --`.
+
+    The export can be taken mid-hand, and that hand's chips are then only half
+    recorded. Flagging it keeps it out of the conservation law without hiding it:
+    an incomplete hand anywhere other than the end of a log would mean the parser
+    lost a hand boundary, so the position is asserted too.
+    """
+    from tests.conftest import TRUNCATED_GAME
+
+    for gid, res in parsed_every.items():
+        incomplete = [h.hand_number for h in res.hands if not h.complete]
+        last = max(h.hand_number for h in res.hands)
+        if gid == TRUNCATED_GAME:
+            assert incomplete == [last] == [35]
+        else:
+            assert incomplete == [], f"{gid}: unexpected mid-log truncation"
+
+
+def test_the_truncated_hand_is_the_only_unbalanced_one(parsed_every):
+    """The excluded hand is excluded for the stated reason, not to hide a bug."""
+    from tests.conftest import TRUNCATED_GAME
+
+    h = next(
+        x for x in parsed_every[TRUNCATED_GAME].hands if not x.complete
+    )
+    assert h.total_contributed == 15 and h.total_collected == 0, (
+        "blinds are in, nobody has been paid: the log stops mid-hand"
+    )
 
 
 def test_hand_counts_and_no_gaps(parsed_all):

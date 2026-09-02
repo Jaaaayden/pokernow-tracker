@@ -20,6 +20,17 @@ from .tokens import PlayerRef, parse_cards, split_player_token
 
 _P = r'"(?P<p>.+)"'
 
+#: A second quoted name in the same line. `_P` cannot be reused -- two identically
+#: named groups in one pattern is a regex error -- and its greedy `.+` would
+#: otherwise swallow everything between the first and last quote.
+_P2 = r'"[^"]*"'
+
+
+def _num(text: str) -> float:
+    """Blind amounts are ints in chip games and decimals in currency-configured ones."""
+    value = float(text)
+    return int(value) if value.is_integer() else value
+
 
 def _player(m: re.Match, group: str = "p") -> PlayerRef:
     return split_player_token(m.group(group))
@@ -226,14 +237,14 @@ RULES: list[Rule] = [
     (
         re.compile(
             r"^The game's (?P<which>small blind|big blind|ante) was changed "
-            r"from (?P<a>\d+) to (?P<b>\d+)\.$"
+            r"from (?P<a>\d+(?:\.\d+)?) to (?P<b>\d+(?:\.\d+)?)\.$"
         ),
         lambda m, o, r: E.BlindChange(
             ord=o,
             raw=r,
             which={"small blind": "sb", "big blind": "bb", "ante": "ante"}[m.group("which")],
-            from_amount=int(m.group("a")),
-            to_amount=int(m.group("b")),
+            from_amount=_num(m.group("a")),
+            to_amount=_num(m.group("b")),
         ),
     ),
     # -- recognized noise (no effect on stats, but explicitly accounted for)
@@ -242,7 +253,7 @@ RULES: list[Rule] = [
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="rabbit_hunt"),
     ),
     (
-        re.compile(rf"^{_P} chooses to\s+run it twice\.$"),
+        re.compile(rf"^{_P} chooses to\s+(?:not\s+)?run it twice\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="rit_choice"),
     ),
     (
@@ -264,6 +275,51 @@ RULES: list[Rule] = [
     (
         re.compile(r"^Dead Small Blind$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="dead_small_blind"),
+    ),
+    (
+        re.compile(r"^Some players choose to not run it twice\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="rit_declined"),
+    ),
+    # -- table administration. None of it moves chips inside a hand: a rebuy shows
+    # -- up as a larger stack on the next `Player stacks:` line, and net is
+    # -- collected-minus-contributed per hand, so none of these touch a stat.
+    (
+        re.compile(rf"^The admin {_P} (?:enqueued|canceled) the game stop on next hand\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="admin_game_stop"),
+    ),
+    (
+        re.compile(rf"^The admin {_P} enqueued the removal of the player {_P2}\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="admin_remove_player"),
+    ),
+    (
+        re.compile(rf"^The admin {_P} rejected the seat request from the player {_P2}\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="admin_reject_seat"),
+    ),
+    (
+        re.compile(rf"^The player {_P} passed the room ownership to {_P2}\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="ownership_passed"),
+    ),
+    (
+        re.compile(rf"^The player {_P} canceled the seat request\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="seat_request_canceled"),
+    ),
+    (
+        re.compile(rf"^The player {_P} requested a rebuy of \d+\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_requested"),
+    ),
+    (
+        re.compile(rf"^The player {_P} rebought\. New stack \d+\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_completed"),
+    ),
+    (
+        re.compile(r"^Asking to busted players the rebuy decision\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_prompt"),
+    ),
+    (
+        re.compile(
+            r"^Waiting for the game owner to approve or reject pending rebuy requests\.$"
+        ),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_waiting"),
     ),
 ]
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob as globlib
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -18,6 +19,12 @@ alias_app = typer.Typer(help="Manage player identities.")
 app.add_typer(alias_app, name="alias")
 
 DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
+
+#: Where PokerNow exports are kept. One folder, so `pnt import` with no argument
+#: is the whole history. Override with the PNT_LOG_DIR environment variable.
+LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or Path.home() / "Downloads" / "pokernow-logs")
+
+LOG_GLOB = "poker_now_log_*.csv"
 
 _COLUMNS = [
     ("hands", "Hands", 6),
@@ -53,14 +60,35 @@ def _print_table(rows: list[dict], key: str, key_width: int = 22) -> None:
         typer.echo(line)
 
 
+def _logs_in(directory: Path) -> list[str]:
+    return sorted(str(p) for p in directory.glob(LOG_GLOB))
+
+
 @app.command("import")
 def import_cmd(
-    paths: list[str] = typer.Argument(..., help="CSV export path(s); globs allowed."),
+    paths: list[str] | None = typer.Argument(
+        None, help="CSV export path(s), directories or globs. Default: the log folder."
+    ),
     db: Path = DbOpt,
 ) -> None:
-    """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored."""
+    """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored.
+
+    With no argument, imports every log in the log folder (PNT_LOG_DIR, default
+    ~/Downloads/pokernow-logs).
+    """
     conn = connect(db)
-    expanded = [p for pat in paths for p in (globlib.glob(pat) or [pat])]
+    if paths:
+        expanded = []
+        for pat in paths:
+            for p in globlib.glob(pat) or [pat]:
+                expanded.extend(_logs_in(Path(p)) if Path(p).is_dir() else [p])
+    else:
+        expanded = _logs_in(LOG_DIR)
+        if not expanded:
+            raise typer.BadParameter(
+                f"no {LOG_GLOB} in {LOG_DIR} -- put your exports there, "
+                "pass paths explicitly, or set PNT_LOG_DIR"
+            )
     if not expanded:
         raise typer.BadParameter("no files matched")
     for path in expanded:
@@ -151,7 +179,7 @@ def serve(
         raise typer.BadParameter(
             "server extras not installed. Run: pip install -e '.[server]'"
         ) from exc
-    uvicorn.run("server.app:app", host=host, port=port)
+    uvicorn.run("pnt.server.app:app", host=host, port=port)
 
 
 @alias_app.command("list")

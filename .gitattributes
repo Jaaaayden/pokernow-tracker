@@ -1,0 +1,9 @@
+# PokerNow exports are captured bytes, not source.
+#
+# Git for Windows defaults to core.autocrlf=true, which rewrites every LF to
+# CRLF on checkout. For these logs that is corruption: the multi-line
+# "Game Config Changes" entry carries its newlines *inside* a quoted CSV field,
+# so the rewrite changes the field's contents and the grammar stops matching it.
+# The parser is correct; the checked-out file was not. Keep these byte-identical
+# to what PokerNow serves.
+*.csv -text

@@ -16,7 +16,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
     import importlib
 
-    from server import app as app_module
+    from pnt.server import app as app_module
 
     importlib.reload(app_module)
 

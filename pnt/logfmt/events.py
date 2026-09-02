@@ -133,8 +133,11 @@ class AdminStackChange(Event):
 @dataclass(frozen=True, slots=True)
 class BlindChange(Event):
     which: str  # sb | bb | ante
-    from_amount: int
-    to_amount: int
+    #: int for chip-denominated games, float when the table is configured in a
+    #: decimal currency (e.g. "changed from 0.10 to 0.05"). Only ever a game-level
+    #: fallback: a hand's big blind comes from that hand's actual BB post.
+    from_amount: float
+    to_amount: float
 
 
 @dataclass(frozen=True, slots=True)

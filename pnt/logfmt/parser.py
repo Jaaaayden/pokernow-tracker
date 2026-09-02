@@ -3,9 +3,11 @@
 Two rules in here are the difference between a correct tracker and one that looks
 correct:
 
-**1. Bet amounts are cumulative per street.** ``bets N``, ``raises to N`` *and*
-``calls N`` all state the player's total commitment for that street, not the
-chips they just pushed. Incremental = ``N - already_committed_this_street``.
+**1. Bet amounts are cumulative per street.** ``bets N``, ``raises to N``,
+``calls N`` *and the live forced posts* (``posts a straddle of N``, ``posts a
+missed big blind of N``) all state the player's total commitment for that street,
+not the chips they just pushed. Incremental =
+``N - already_committed_this_street``.
 Verified by reconstructing pot totals: hand #180 preflop is 60, not 75; hand #92
 final pot is 480; hand #44's uncalled return is 605-50=555. Read ``calls N`` as
 incremental and every pot, every net-won figure and every bb/100 is wrong while
@@ -29,6 +31,15 @@ from .grammar import classify
 #: Posts that go straight to the pot without counting as the player's bet for the
 #: street. A dead small blind and an ante do not entitle you to call for less.
 DEAD_POSTS = frozenset({E.POST_ANTE, E.POST_MISSING_SB})
+
+#: Live posts that state a street TOTAL rather than fresh chips, exactly like
+#: ``raises to N``. A straddle posted by the small blind is a raise to N with the
+#: blind already inside it, and a returning player's missed big blind absorbs the
+#: small blind they posted the same street. Adding either one on top of the blind
+#: over-counts the pot by the blind -- silently, because the next cumulative
+#: action re-derives from the street total and cancels the error. It only survives
+#: when the player never acts again, which is why it hid in fold-around hands.
+CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 
 
 @dataclass(slots=True)
@@ -81,6 +92,12 @@ class ParsedHand:
     #: True when a blind position was dead, leaving a position slot no player
     #: occupies. Positions on these hands are best-effort -- exclude from splits.
     blinds_irregular: bool = False
+    #: False when the log stops before ``-- ending hand #N --``. The export was
+    #: taken mid-hand, so the chips are genuinely only half-recorded: contributed
+    #: will not equal collected and no rate derived from it is trustworthy.
+    #: Excluded from the conservation law rather than "fixed" -- the data is
+    #: partial, not wrong, and a later re-import of the finished log repairs it.
+    complete: bool = True
     bb: int | None = None  # from this hand's actual BB post, not the game's config
     players: dict[str, HandPlayer] = field(default_factory=dict)
     actions: list[ParsedAction] = field(default_factory=list)
@@ -251,9 +268,18 @@ class _HandBuilder:
             # hand, not of the game. Take the largest BB post in case someone also
             # posts a missed blind.
             self.hand.bb = max(self.hand.bb or 0, ev.amount)
-        p.committed += ev.amount
-        if ev.kind not in DEAD_POSTS:
-            self._committed[p.pn_id] = self._committed.get(p.pn_id, 0) + ev.amount
+        already = self._committed.get(p.pn_id, 0)
+        if ev.kind in DEAD_POSTS:
+            # Real chips into the pot, but they buy no part of the street's bet.
+            incremental, amount_to = ev.amount, None
+        elif ev.kind in CUMULATIVE_POSTS:
+            incremental = max(0, ev.amount - already)
+            self._committed[p.pn_id] = max(already, ev.amount)
+            amount_to = ev.amount
+        else:
+            incremental, amount_to = ev.amount, None
+            self._committed[p.pn_id] = already + ev.amount
+        p.committed += incremental
         self._seq += 1
         self.hand.actions.append(
             ParsedAction(
@@ -261,8 +287,8 @@ class _HandBuilder:
                 street=self.street,
                 seq=self._seq,
                 kind="post",
-                amount=ev.amount,
-                amount_to=None,
+                amount=incremental,
+                amount_to=amount_to,
                 is_forced=True,
                 all_in=False,
                 post_kind=ev.kind,
@@ -321,7 +347,8 @@ class _HandBuilder:
         if p is not None and len(ev.cards) == 2:
             p.hole_cards = ev.cards
 
-    def finish(self) -> ParsedHand:
+    def finish(self, *, complete: bool = True) -> ParsedHand:
+        self.hand.complete = complete
         positions, irregular = assign_positions(
             [p.seat for p in self.hand.players.values()],
             self.hand.dealer_seat,
@@ -352,7 +379,7 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
 
         if isinstance(ev, E.HandStart):
             if builder is not None:  # log truncated mid-hand; keep what we have
-                result.hands.append(builder.finish())
+                result.hands.append(builder.finish(complete=False))
             builder = _HandBuilder(game_id, ev, raw.at)
             continue
 
@@ -386,8 +413,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             builder.shows(ev)
         # SeatChange / AdminStackChange / Noise: recognized, no effect on hand math.
 
-    if builder is not None:
-        result.hands.append(builder.finish())
+    if builder is not None:  # the export was taken while this hand was still live
+        result.hands.append(builder.finish(complete=False))
 
     return result
 
