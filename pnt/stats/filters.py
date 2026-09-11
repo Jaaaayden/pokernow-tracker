@@ -10,9 +10,9 @@ works because actions are stored raw with street and sequence -- a pre-aggregate
 schema cannot answer "hands that reached this point" at all.
 
 A *line* is just a longer filter. "Opened 4bb+ in a single-raised pot, c-bet the
-flop and turn, overbet the river" is::
+flop half pot, c-bet the turn, overbet the river" is::
 
-    opener,open_bb>=4,srp,cbet_flop,cbet_turn,bet_river>=1
+    opener,open_bb>=4,srp,cbet_flop=medium,cbet_turn,bet_river=overbet
 """
 
 from __future__ import annotations
@@ -21,9 +21,11 @@ from collections.abc import Callable
 
 from ..logfmt.parser import position_name
 from .cards import TEXTURE_TAGS, board_texture
-from .derive import Facts
+from .derive import SIZE_BUCKETS, Facts
 
 Predicate = Callable[[Facts], bool]
+
+STREETS = ("flop", "turn", "river")
 
 #: name -> predicate. Flags only; parameterised filters are handled in `parse_filter`.
 FLAGS: dict[str, Predicate] = {
@@ -38,7 +40,6 @@ FLAGS: dict[str, Predicate] = {
     "saw_flop": lambda f: f.saw_flop,
     "cbet_flop": lambda f: bool(f.cbet.get("flop")),
     "cbet_flop_opp": lambda f: bool(f.cbet_opp.get("flop")),
-    "faced_cbet_flop": lambda f: bool(f.fold_to_cbet_opp.get("flop")),
     "cbet_turn": lambda f: bool(f.cbet.get("turn")),
     "cbet_river": lambda f: bool(f.cbet.get("river")),
     "wtsd": lambda f: f.wtsd,
@@ -59,6 +60,14 @@ FLAGS: dict[str, Predicate] = {
     "cards_known": lambda f: f.hole_cards is not None,
 }
 
+# Responses to a c-bet, and leads into the previous street's aggressor, per street.
+for _s in STREETS:
+    FLAGS[f"faced_cbet_{_s}"] = lambda f, s=_s: bool(f.fold_to_cbet_opp.get(s))
+    FLAGS[f"folded_to_cbet_{_s}"] = lambda f, s=_s: bool(f.fold_to_cbet.get(s))
+    FLAGS[f"raised_cbet_{_s}"] = lambda f, s=_s: bool(f.raise_cbet.get(s))
+    FLAGS[f"donk_{_s}"] = lambda f, s=_s: bool(f.donk.get(s))
+    FLAGS[f"donk_{_s}_opp"] = lambda f, s=_s: bool(f.donk_opp.get(s))
+
 #: name -> getter for the comparison terms (`open_bb>=4`, `bet_river>=1`).
 #: A getter returning None means "not applicable on this hand", and every
 #: comparison against None is False -- a hand with no open has no open size.
@@ -70,6 +79,14 @@ NUMERIC: dict[str, Callable[[Facts], float | None]] = {
     "bet_turn": lambda f: f.bet_pot.get("turn"),
     "bet_river": lambda f: f.bet_pot.get("river"),
 }
+
+#: name -> getter for the size-bucket terms (`cbet_flop=medium`, `bet_river=overbet`,
+#: `faced_cbet_turn=large`). The buckets are SIZE_BUCKETS; see SPEC.md.
+SIZED: dict[str, Callable[[Facts], str | None]] = {}
+for _s in STREETS:
+    SIZED[f"cbet_{_s}"] = lambda f, s=_s: f.bet_size.get(s) if f.cbet.get(s) else None
+    SIZED[f"bet_{_s}"] = lambda f, s=_s: f.bet_size.get(s)
+    SIZED[f"faced_cbet_{_s}"] = lambda f, s=_s: f.faced_cbet_size.get(s)
 
 #: Board texture terms: `flop=ace_high`, `turn=paired`, `river!=flush_possible`.
 #: `board` is the whole board as dealt (three to five cards). Each street needs
@@ -100,6 +117,21 @@ def _texture_term(term: str) -> Predicate | None:
     return None
 
 
+def _size_term(term: str) -> Predicate | None:
+    name, sep, bucket = term.partition("=")
+    if not sep or name not in SIZED:
+        return None
+    if bucket not in SIZE_BUCKETS:
+        try:
+            float(bucket)
+        except ValueError:
+            raise ValueError(
+                f"unknown bet size {bucket!r}. Known: {', '.join(SIZE_BUCKETS)}"
+            ) from None
+        return None  # `bet_river=1` is a numeric comparison
+    return lambda f, g=SIZED[name], b=bucket: g(f) == b
+
+
 _OPS: dict[str, Callable[[float, float], bool]] = {
     ">=": lambda a, b: a >= b,
     "<=": lambda a, b: a <= b,
@@ -116,7 +148,10 @@ def _numeric_term(term: str) -> Predicate | None:
         rest = term[len(name):]
         for op in (">=", "<=", "=", ">", "<"):  # two-char ops first
             if rest.startswith(op):
-                n = float(rest[len(op):])
+                try:
+                    n = float(rest[len(op):])
+                except ValueError:
+                    return None
                 cmp = _OPS[op]
 
                 def pred(f: Facts, g=getter, n=n, cmp=cmp) -> bool:
@@ -138,6 +173,8 @@ def parse_filter(expr: str) -> Predicate:
       ``open_bb>=4``         the hand's open raise was at least 4bb
       ``raise_bb<=2.5``      this player's own preflop raise-to
       ``bet_river>=1``       this player's first river bet, as a fraction of the pot
+      ``cbet_flop=medium``   a flop c-bet in that size bucket; also bet_<street>= and
+                             faced_cbet_<street>=, with small/medium/large/overbet
       ``flop=ace_high``      board texture on the flop; also turn=, river=, board=, and !=
     """
     terms = [t.strip() for t in expr.split(",") if t.strip()]
@@ -157,6 +194,11 @@ def parse_filter(expr: str) -> Predicate:
             )
             continue
 
+        sized = _size_term(term)
+        if sized is not None:
+            preds.append(sized)
+            continue
+
         numeric = _numeric_term(term)
         if numeric is not None:
             preds.append(numeric)
@@ -171,6 +213,7 @@ def parse_filter(expr: str) -> Predicate:
             f"unknown filter term: {term!r}. "
             f"Known flags: {', '.join(sorted(FLAGS))}; "
             f"position=<POS>; a comparison on {', '.join(NUMERIC)}; "
+            f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
             f"or flop=/turn=/river=/board= with a texture tag"
         )
 

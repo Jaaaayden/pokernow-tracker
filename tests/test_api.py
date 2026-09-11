@@ -140,3 +140,40 @@ def test_chart_page_is_served(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert "/range" in r.text, "the page must read from the range endpoint"
+    assert "/sizing" in r.text and "/hands" in r.text
+
+
+def test_sizing_endpoint(client):
+    body = client.get("/players/genericpoker/sizing", params={"street": "flop"}).json()
+    assert body["kind"] == "cbet"
+    assert [b["size"] for b in body["blocks"]] == ["small", "medium", "large", "overbet", "check"]
+    assert sum(b["n"] for b in body["blocks"]) == body["spot"]
+    faced = client.get(
+        "/players/genericpoker/sizing", params={"street": "turn", "kind": "faced_cbet"}
+    ).json()
+    assert all({"fold", "call", "raise", "continued"} <= set(b) for b in faced["blocks"])
+
+
+def test_sizing_endpoint_validates_input(client):
+    url = "/players/genericpoker/sizing"
+    assert client.get(url, params={"street": "preflop"}).status_code == 422
+    assert client.get(url, params={"kind": "limp"}).status_code == 422
+    assert client.get(url, params={"filter": "cbet_flop=huge"}).status_code == 400
+    assert client.get("/players/ghost/sizing").status_code == 404
+
+
+def test_hands_endpoint_lists_the_spot(client):
+    rows = client.get("/players/genericpoker/hands", params={"filter": "wtsd"}).json()["hands"]
+    grid = client.get("/players/genericpoker/range", params={"filter": "wtsd"}).json()
+    assert len(rows) == grid["hands"]
+    assert all(r["wtsd"] for r in rows)
+    ids = {r["hand_id"] for r in rows}
+    for cell in grid["cells"].values():
+        assert len(cell["hand_ids"]) == cell["n"]
+        assert set(cell["hand_ids"]) <= ids
+
+
+def test_hand_replay_names_every_player(client):
+    body = client.get("/hands/1").json()
+    assert set(body["names"]) == {p["pn_id"] for p in body["players"]}
+    assert body["hand"]["bb_effective"]

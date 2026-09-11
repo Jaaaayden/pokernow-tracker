@@ -12,6 +12,7 @@ question about when the opportunity flag gets set.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
@@ -21,6 +22,27 @@ PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
 
 VOLUNTARY_COMMIT = {"call", "bet", "raise"}
 AGGRESSIVE = {"bet", "raise"}
+
+#: Bet-size buckets, smallest first: under half pot, half to three-quarters,
+#: three-quarters to pot, over pot. See SPEC.md, "Bet size buckets".
+SIZE_BUCKETS = ("small", "medium", "large", "overbet")
+
+
+def size_bucket(amount: int, pot: int) -> str:
+    """The size bucket of a bet of `amount` chips into a pot of `pot` chips.
+
+    PokerNow's 1/2, 3/4 and pot buttons each *start* a bucket, and they are most
+    of the bets in real logs. Bets are whole chips, so a 3/4 click into a pot of
+    30 comes out as 22 or 23: a bet reaches an edge when it is at least the edge
+    rounded down to a chip. Overbet is strictly more than the pot.
+    """
+    if amount > pot:
+        return "overbet"
+    if amount >= math.floor(0.75 * pot):
+        return "large"
+    if amount >= math.floor(0.5 * pot):
+        return "medium"
+    return "small"
 
 
 @dataclass(slots=True)
@@ -78,6 +100,9 @@ class Facts:
     seats_from_button: int | None
     dead_button: bool
     blinds_irregular: bool = False
+    game_id: str = ""
+    hand_number: int = 0
+    ts: str | None = None
 
     vpip_opp: bool = False
     vpip: bool = False
@@ -90,8 +115,13 @@ class Facts:
 
     cbet_opp: dict[str, bool] = field(default_factory=dict)
     cbet: dict[str, bool] = field(default_factory=dict)
+    #: Facing a c-bet before anyone raises it. Also the opportunity for `raise_cbet`.
     fold_to_cbet_opp: dict[str, bool] = field(default_factory=dict)
     fold_to_cbet: dict[str, bool] = field(default_factory=dict)
+    raise_cbet: dict[str, bool] = field(default_factory=dict)
+    #: Leading into the previous street's aggressor before they act.
+    donk_opp: dict[str, bool] = field(default_factory=dict)
+    donk: dict[str, bool] = field(default_factory=dict)
 
     aggressive: dict[str, int] = field(default_factory=dict)
     agg_denom: dict[str, int] = field(default_factory=dict)
@@ -119,6 +149,10 @@ class Facts:
     #: This player's first `bet` on each postflop street as a fraction of the pot
     #: it was made into. 1.0 is a pot-sized bet; above it is an overbet.
     bet_pot: dict[str, float] = field(default_factory=dict)
+    #: The SIZE_BUCKETS bucket of that same first bet.
+    bet_size: dict[str, str] = field(default_factory=dict)
+    #: The bucket of the c-bet this player faced, on streets where they faced one.
+    faced_cbet_size: dict[str, str] = field(default_factory=dict)
 
     hole_cards: str | None = None
     board: tuple[str, ...] = ()
@@ -180,10 +214,15 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
     # Pot size *before* each action, forced posts included, so a bet can be
     # expressed as a fraction of what it was made into.
     pot_before: dict[int, int] = {}
+    # When each player first went all-in: nobody can lead into a player who has
+    # no chips left to act with.
+    all_in_at: dict[str, int] = {}
     running = 0
     for a in hand.actions:
         pot_before[a.seq] = running
         running += a.amount
+        if a.all_in:
+            all_in_at.setdefault(a.pn_id, a.seq)
 
     for street in POSTFLOP_STREETS:
         street_actions = [a for a in hand.actions if a.street == street and not a.is_forced]
@@ -193,12 +232,15 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
 
         bet_made = False
         cbet_by: str | None = None
+        cbet_size: str | None = None
         cbet_raised = False
         street_aggressor: str | None = None
+        acted: set[str] = set()
 
         for a in street_actions:
             f = facts.get(a.pn_id)
             if f is None:
+                acted.add(a.pn_id)
                 continue
 
             # c-bet opportunity: previous street's aggressor, first-in on this one
@@ -207,11 +249,28 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 if a.kind == "bet":
                     f.cbet[street] = True
 
+            # donk opportunity: first-in ahead of the previous street's aggressor,
+            # who has yet to act on this street and still has chips to act with
+            if (
+                not bet_made
+                and prev_aggressor is not None
+                and a.pn_id != prev_aggressor
+                and prev_aggressor not in acted
+                and all_in_at.get(prev_aggressor, a.seq) >= a.seq
+            ):
+                f.donk_opp[street] = True
+                if a.kind == "bet":
+                    f.donk[street] = True
+
             # facing a c-bet, before anyone raises over it
             if cbet_by is not None and not cbet_raised and a.pn_id != cbet_by:
                 f.fold_to_cbet_opp[street] = True
+                if cbet_size is not None:
+                    f.faced_cbet_size[street] = cbet_size
                 if a.kind == "fold":
                     f.fold_to_cbet[street] = True
+                elif a.kind == "raise":
+                    f.raise_cbet[street] = True
 
             # aggression frequency: checks excluded from both sides
             if a.kind in AGGRESSIVE:
@@ -221,10 +280,14 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 f.agg_denom[street] = f.agg_denom.get(street, 0) + 1
 
             if a.kind == "bet":
+                pot = pot_before[a.seq]
+                size = size_bucket(a.amount, pot) if pot > 0 else None
                 if not bet_made and a.pn_id == prev_aggressor:
                     cbet_by = a.pn_id
-                if street not in f.bet_pot and pot_before[a.seq] > 0:
-                    f.bet_pot[street] = round(a.amount / pot_before[a.seq], 3)
+                    cbet_size = size
+                if street not in f.bet_pot and pot > 0:
+                    f.bet_pot[street] = round(a.amount / pot, 3)
+                    f.bet_size[street] = size
                 bet_made = True
                 street_aggressor = a.pn_id
             elif a.kind == "raise":
@@ -232,6 +295,8 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                     cbet_raised = True
                 bet_made = True
                 street_aggressor = a.pn_id
+
+            acted.add(a.pn_id)
 
         prev_aggressor = street_aggressor
 
@@ -246,6 +311,9 @@ def derive(hand: HandRow) -> list[Facts]:
             seats_from_button=p.seats_from_button,
             dead_button=hand.dead_button,
             blinds_irregular=hand.blinds_irregular,
+            game_id=hand.game_id,
+            hand_number=hand.hand_number,
+            ts=hand.ts,
             net=p.collected - p.contributed + p.bounty,
             bb_size=hand.bb,
             hole_cards=p.hole_cards,

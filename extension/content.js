@@ -188,7 +188,8 @@
               <option value="opener,open_bb>=4,srp">opened 4bb+</option>
               <option value="3bet">3-bet</option>
               <option value="faced_3bet">faced a 3-bet</option>
-              <option value="pfa,cbet_flop">c-bet flop</option>
+              <option value="cbet_flop">c-bet flop</option>
+              <option value="cbet_turn">c-bet turn</option>
               <option value="">all hands</option>
             </select>
             <select id="board">

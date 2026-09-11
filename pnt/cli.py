@@ -15,7 +15,7 @@ from .db.conn import DEFAULT_DB, connect
 from .ingest.importer import import_csv, merge_players, rebuild_game
 from .stats.filters import parse_filter
 from .stats.queries import facts_for, positional_report, report
-from .stats.ranges import composition, range_grid
+from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
 
 app = typer.Typer(add_completion=False, help=__doc__)
 alias_app = typer.Typer(help="Manage player identities.")
@@ -230,6 +230,55 @@ def range_cmd(
         _print_grid(out)
     else:
         _print_composition(out)
+
+
+@app.command()
+def sizing(
+    alias: str,
+    db: Path = DbOpt,
+    street: str = typer.Option("flop", "--street", help="flop, turn or river."),
+    kind: str = typer.Option(
+        "cbet",
+        "--kind",
+        help="'cbet' their c-bets, 'bet' every first bet, 'faced_cbet' the c-bets they faced.",
+    ),
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,flop=ace_high'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """What a player had at each bet size: what they bet small with, what they overbet with.
+
+    Each size lists the made hands that were shown, so read coverage first: the
+    bluffs at any size are the hands that folded out before showdown.
+    """
+    if kind not in SIZING_KINDS:
+        raise typer.BadParameter(f"--kind must be one of: {', '.join(SIZING_KINDS)}")
+    conn = connect(db)
+    try:
+        facts = facts_for(conn, alias, game)
+        if filter_:
+            pred = parse_filter(filter_)
+            facts = [f for f in facts if pred(f)]
+        out = sizing_tells(facts, street, kind)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+
+    spot = {"cbet": "c-bet chances", "bet": "bets", "faced_cbet": "c-bets faced"}[kind]
+    typer.echo(f"{alias}  {street} {kind}  filter: {filter_ or '(none)'}")
+    typer.echo(f"hands in this spot: {out['hands']}   {spot}: {out['spot']}\n")
+    for b in out["blocks"]:
+        line = f"{b['size']:<8}{b['n']:>5}x  {_fmt(b['pct']):>5}% of {spot}"
+        if kind == "faced_cbet" and b["n"]:
+            line += f"   fold {_fmt(b['fold'])}%  call {_fmt(b['call'])}%  raise {_fmt(b['raise'])}%"
+        if b["n"]:
+            line += f"   shown {b['known']} ({_fmt(b['coverage'])}%)"
+        typer.echo(line)
+        if b["classes"]:
+            _print_composition(b)
+        typer.echo("")
 
 
 @app.command()

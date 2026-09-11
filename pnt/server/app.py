@@ -25,9 +25,10 @@ from pydantic import BaseModel, Field
 from pnt.db.conn import connect
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import ingest_entries, merge_players, rebuild_game
+from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import facts_for, positional_report, report
-from pnt.stats.ranges import composition, range_grid
+from pnt.stats.queries import facts_for, hand_list, positional_report, report
+from pnt.stats.ranges import composition, range_grid, sizing_tells
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
@@ -163,6 +164,19 @@ def positions(alias: str, split_by_size: bool = False) -> list[dict]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _spot_facts(alias: str, filter: str | None, game: str | None) -> list[Facts]:
+    """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
+    try:
+        pred = parse_filter(filter) if filter else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        facts = facts_for(db(), alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [f for f in facts if pred(f)] if pred is not None else facts
+
+
 @app.get("/players/{alias}/range")
 def player_range(
     alias: str,
@@ -175,25 +189,44 @@ def player_range(
     This is what the chart page renders. Every cell of the 169-grid is present,
     in chart order, so the client needs no card logic of its own.
     """
-    try:
-        pred = parse_filter(filter) if filter else None
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        facts = facts_for(db(), alias, game)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if pred is not None:
-        facts = [f for f in facts if pred(f)]
+    facts = _spot_facts(alias, filter, game)
     out = range_grid(facts) if by == "preflop" else composition(facts)
     return {"player": alias, "filter": filter, "by": by, **out}
+
+
+@app.get("/players/{alias}/sizing")
+def player_sizing(
+    alias: str,
+    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
+    kind: Annotated[str, Query(pattern="^(cbet|bet|faced_cbet)$")] = "cbet",
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """What a player had at each bet size on one street, within a spot."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, **sizing_tells(facts, street, kind)}
+
+
+@app.get("/players/{alias}/hands")
+def player_hands(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'cbet_flop=overbet'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Every hand in a spot as a compact row, newest first. Replay one with /hands/{id}."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, "hands": hand_list(facts)}
 
 
 @app.get("/hands/{hand_id}")
 def hand(hand_id: int) -> dict:
     """Full replay of one hand -- for spot-checking a stat you do not believe."""
     conn = db()
-    h = conn.execute("SELECT * FROM hands WHERE hand_id = ?", (hand_id,)).fetchone()
+    h = conn.execute(
+        "SELECT h.*, COALESCE(h.bb, g.bb) AS bb_effective"
+        " FROM hands h LEFT JOIN games g ON g.game_id = h.game_id WHERE h.hand_id = ?",
+        (hand_id,),
+    ).fetchone()
     if h is None:
         raise HTTPException(status_code=404, detail="no such hand")
     return {
@@ -205,6 +238,18 @@ def hand(hand_id: int) -> dict:
                 (hand_id,),
             )
         ],
+        # pn_id -> the name a replay should print: the canonical alias when there
+        # is one, otherwise the last name PokerNow showed for that ID.
+        "names": {
+            r["pn_id"]: r["alias"] or r["last_seen_name"] or r["pn_id"]
+            for r in conn.execute(
+                "SELECT hp.pn_id, p.alias, pi.last_seen_name FROM hand_players hp"
+                " LEFT JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+                " LEFT JOIN players p ON p.player_id = pi.player_id"
+                " WHERE hp.hand_id = ?",
+                (hand_id,),
+            )
+        },
         "actions": [
             dict(r)
             for r in conn.execute(
