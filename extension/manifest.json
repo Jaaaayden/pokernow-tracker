@@ -8,8 +8,13 @@
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
-      "matches": ["https://www.pokernow.club/games/*", "https://pokernow.club/games/*"],
-      "js": ["normalize.js", "content.js"],
+      "matches": [
+        "https://www.pokernow.com/games/*",
+        "https://pokernow.com/games/*",
+        "https://www.pokernow.club/games/*",
+        "https://pokernow.club/games/*"
+      ],
+      "js": ["normalize.js", "pager.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

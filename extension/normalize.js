@@ -1,13 +1,15 @@
 /* Turn whatever `GET /games/{id}/log` returns into the entries `/ingest` takes.
  *
- * The exact JSON envelope of that endpoint is the one assumption in this project
- * not yet confirmed against a live table (docs/findings.md §8). So this file is
- * deliberately the only place that knows about it, it accepts every shape seen
- * in PokerNowGrabber-style tools, and it reports what it saw so the popup can say
- * "recognized" or "unrecognized" instead of silently ingesting nothing.
+ * Confirmed against pokernow.com on 2026-09-11: the endpoint returns
+ * `{logs: [{at, created_at, msg}], infos: {min, max}}`, newest first, 50 per page,
+ * and `created_at` is a digit string equal to the CSV export's `order`. This file
+ * is still the only place that knows the envelope, still accepts the other shapes
+ * PokerNowGrabber-style tools use, and still reports what it saw so the popup can
+ * say "recognized" or "unrecognized" instead of silently ingesting nothing.
  *
  * Output entries match the CSV export exactly: {entry, at, order}. That is the
- * whole point -- live capture and backfill feed one parser with identical input.
+ * whole point -- live capture and backfill feed one parser with identical input,
+ * and the same line from either source lands on the same (game_id, order) row.
  *
  * Plain script (no modules): loaded before content.js on the page, and required
  * by the node test.
@@ -21,7 +23,7 @@
 
   const ENTRY_KEYS = ["entry", "msg", "message", "text", "line"];
   const AT_KEYS = ["at", "createdAt", "created_at", "time", "ts", "timestamp"];
-  const ORDER_KEYS = ["order", "ord", "index", "seq", "id"];
+  const ORDER_KEYS = ["order", "ord", "created_at", "index", "seq", "id"];
 
   function pick(obj, keys) {
     for (const k of keys) if (obj[k] !== undefined && obj[k] !== null) return [k, obj[k]];
@@ -61,32 +63,49 @@
     if (!first || typeof first !== "object") return { entries: [], shape, sample: first, ok: false };
     shape.entry = pick(first, ENTRY_KEYS)[0];
     shape.at = pick(first, AT_KEYS)[0];
-    shape.order = pick(first, ORDER_KEYS)[0];
     if (!shape.entry || !shape.at) return { entries: [], shape, sample: first, ok: false };
 
-    // Without a native `order`, rebuild the CSV's own formula: epoch ms * 100 +
-    // sequence within the millisecond, in the order the server returned them.
-    // Stable as long as the server returns same-ms lines in a fixed order.
-    shape.synthesized_order = !shape.order || typeof first[shape.order] === "string" && !/^\d+$/.test(first[shape.order]);
-    const out = [];
-    let lastMs = null, seq = 0;
+    let rows = [];
     for (const item of list) {
       const entry = item[shape.entry];
       const at = toIso(item[shape.at]);
-      if (typeof entry !== "string" || !at) continue;
-      let order;
-      if (!shape.synthesized_order) {
-        order = Number(item[shape.order]);
-      } else {
-        const ms = Date.parse(at);
+      if (typeof entry === "string" && at) rows.push({ entry, at, item });
+    }
+
+    // Trust a native order only if it IS the CSV's formula, epoch ms * 100 +
+    // sequence. Anything else -- a row id, an index -- would give a line a
+    // different key from the same line in a CSV import, and every hand captured
+    // live and later imported would be counted twice.
+    const orderKey = pick(first, ORDER_KEYS)[0];
+    const nativeOrder = (row) => {
+      const v = row.item[orderKey];
+      if (!/^\d+$/.test(String(v))) return null;
+      const n = Number(v);
+      return Math.floor(n / 100) === Date.parse(row.at) ? n : null;
+    };
+
+    if (orderKey && rows.every((r) => nativeOrder(r) !== null)) {
+      shape.order = orderKey;
+      rows = rows.map((r) => ({ entry: r.entry, at: r.at, order: nativeOrder(r) }));
+    } else {
+      // Rebuild the formula, numbering lines that share a millisecond in true log
+      // order. A newest-first page lists those lines newest first, so it is walked
+      // backwards; numbering in the order received would reverse them.
+      shape.synthesized_order = true;
+      if (rows.length > 1 && Date.parse(rows[0].at) > Date.parse(rows[rows.length - 1].at)) rows.reverse();
+      rows.sort((a, b) => Date.parse(a.at) - Date.parse(b.at)); // stable: keeps same-ms order
+      let lastMs = null;
+      let seq = 0;
+      rows = rows.map((r) => {
+        const ms = Date.parse(r.at);
         seq = ms === lastMs ? seq + 1 : 0;
         lastMs = ms;
-        order = ms * 100 + seq;
-      }
-      out.push({ entry, at, order });
+        return { entry: r.entry, at: r.at, order: ms * 100 + seq };
+      });
     }
-    out.sort((a, b) => a.order - b.order);
-    return { entries: out, shape, sample: null, ok: true };
+
+    rows.sort((a, b) => a.order - b.order);
+    return { entries: rows, shape, sample: null, ok: true };
   }
 
   const api = { normalize, unwrap };

@@ -6,11 +6,11 @@ of that database, not the product.
 
 **Status**: Phases 0–4 built — parser, schema, importer, CLI, stat engine, local
 API, range charts, and a browser extension for live capture with an overlay HUD.
-The extension has not yet been run against a live table (see
-[Live capture](#live-capture-phase-3)).
+PokerNow's log endpoint has been checked against a live table; end-to-end live
+capture has not yet been confirmed (see [Live capture](#live-capture-phase-3)).
 
 ```
-2,761 hands · 50,202 log entries · 0 parse misses · 0 pot mismatches · 88 tests passing
+2,761 hands · 50,202 log entries · 0 parse misses · 0 pot mismatches · 210 tests passing
 ```
 
 ---
@@ -30,7 +30,7 @@ Three layers, each rebuildable from the one above:
 | Layer | Contents | Rebuildable? |
 |---|---|---|
 | `raw_entries` | Every log line, exactly as PokerNow emitted it | Immutable truth |
-| `hands` / `hand_players` / `actions` | Parsed structure | Yes — `pnt rebuild` |
+| `hands` / `hand_players` / `actions` / `voluntary_shows` | Parsed structure | Yes — `pnt rebuild` |
 | Stats | SQL + Python at query time | Always fresh |
 
 Keeping `raw_entries` is what makes "a re-import repairs any gap" true rather than
@@ -50,6 +50,7 @@ pnt stats                                    # every player, most hands first
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
 pnt serve                                    # http://127.0.0.1:8000/chart
+pnt service install                          # or: the same server, always on (Windows)
 ```
 
 Keep every PokerNow export in one folder — `~/Downloads/pokernow-logs` by
@@ -246,7 +247,7 @@ The suite is organized around invariants rather than examples:
 ## Live capture (Phase 3)
 
 `extension/` is an unpacked Chrome extension (Manifest V3). On a
-`pokernow.club/games/…` page it:
+`pokernow.com/games/…` page (or the older `pokernow.club` address) it:
 
 1. polls the game's log endpoint with the page's own session cookie —
    `GET /games/{gameId}/log?after_at=…&before_at=…`, the one `PokerNowGrabber`
@@ -266,26 +267,67 @@ the alias table already joins one person's devices.
 ### Install
 
 ```bash
-pnt serve                       # leave running; the extension talks to :8000
+pnt service install --db C:\full\path\to\pokernow.sqlite   # once; it stays up from then on
 ```
 
 Then `chrome://extensions` → *Developer mode* → *Load unpacked* → pick
 `extension/`. Open a PokerNow game; the panel appears top-right. The toolbar
 popup shows the server URL, poll interval, and capture status.
 
-### The one unverified assumption
+`pnt serve` in a terminal still works for a one-off session.
 
-The JSON shape of `/log` was never captured from a live table
-([`docs/findings.md`](docs/findings.md) §8). Everything that depends on it lives
-in [`extension/normalize.js`](extension/normalize.js), which accepts a bare array
-or `{logs|log|entries|data: [...]}`, item text under `entry|msg|message|text`,
-time under `at|createdAt|created_at|time|ts`, and `order` when present — and
-rebuilds the CSV's `epoch_ms × 100 + seq` formula when it is not. If the shape is
-something else, the popup says **UNRECOGNIZED** and the page console prints the
-first item; paste that into an issue and the fix is one line in that file.
+### Background server
+
+`pnt service install` registers a Task Scheduler task for your Windows user. The
+server then starts hidden at every login and restarts itself after a crash, with no
+terminal and no admin rights.
+
+| Command | |
+|---|---|
+| `pnt service status` | Task state, whether the server answers, and which database it has open |
+| `pnt service log` | The last lines of `~\.pnt\server.log` |
+| `pnt service restart` | **Run after pulling code changes** — a running server keeps the old code |
+| `pnt service stop` / `start` | Stop until the next login, or start again |
+| `pnt service uninstall` | Stop it and remove the task; the database is untouched |
+
+Why it is built the way it is:
+
+- **`--db` is resolved to a full path at install.** The task does not start in your
+  project folder, and a missing database file is created empty rather than
+  reported — so a relative path would give a server that answers and shows zero
+  hands. `install` refuses a path that does not exist.
+- **A terminal `pnt serve` wins.** If the port is already taken, the task waits
+  instead of crash-looping, and takes over once you close the terminal.
+- **Two Windows defaults would kill it**: tasks are ended after 72 hours, and
+  whenever a laptop goes on battery. Both are turned off.
+- **Crashes restart in-process**, after 1 s and doubling up to 60 s; a run longer
+  than a minute resets the delay. Task Scheduler's own restart is only a backup.
+- **Idle cost** is about 75 MB of memory (a 62 MB server behind an 11 MB venv
+  launcher) and no measurable CPU. The server only works when the extension posts.
+  Stopping or restarting the task takes the launcher's child down with it; nothing
+  is left holding the port.
+
+### How capture reads the log
+
+PokerNow's `/log` endpoint was checked against a live table on 2026-09-11
+([`docs/findings.md`](docs/findings.md) §8). It returns
+`{logs: [{at, created_at, msg}]}`, newest first, 50 lines per request, and
+`created_at` is exactly the CSV export's `order` — so a line captured live and the
+same line imported from a CSV later land on one row.
+
+Its `after_at` only *filters*: it returns the newest 50 lines above the value, never
+the next 50. So the extension pages backwards with `before_at` until it reaches
+lines already stored ([`extension/pager.js`](extension/pager.js)), pausing 3 s
+between pages because PokerNow answers bursts with HTTP 429. The first load of a
+long game takes several minutes to walk its history; the HUD fills in as it goes,
+and the popup's **history** row says when it is complete.
+
+Everything that knows the response shape is in
+[`extension/normalize.js`](extension/normalize.js). If PokerNow changes it, the
+popup says **UNRECOGNIZED** and the page console prints the first item.
 
 ```bash
-node --test extension/normalize.test.mjs
+node --test extension/normalize.test.mjs extension/pager.test.mjs
 ```
 
 The websocket trigger (`gC` / `gameResult`) is deliberately not used: a 5-second

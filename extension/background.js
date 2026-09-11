@@ -1,6 +1,6 @@
 /* Service worker: the only part of the extension that talks to the tracker.
  *
- * The content script cannot fetch 127.0.0.1 from the pokernow.club origin without
+ * The content script cannot fetch 127.0.0.1 from the PokerNow origin without
  * CORS games, but a background worker with host_permissions can. Everything the
  * page needs goes through one message: {type, ...} -> {ok, ...}.
  */
@@ -25,12 +25,14 @@ const handlers = {
 
   health: () => call("/health"),
 
-  ingest: ({ game_id, entries }) =>
+  ingest: ({ game_id, entries, rebuild = true }) =>
     call("/ingest", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ game_id, entries, source: "extension", rebuild: true }),
+      body: JSON.stringify({ game_id, entries, source: "extension", rebuild }),
     }),
+
+  rebuild: ({ game_id }) => call(`/rebuild/${encodeURIComponent(game_id)}`, { method: "POST" }),
 
   hud: ({ game_id }) => call(`/hud/${encodeURIComponent(game_id)}`),
 

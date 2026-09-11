@@ -258,9 +258,9 @@
     sel.value = state.player ?? "";
   }
 
-  async function load() {
+  async function load({ quiet = false } = {}) {
     if (!state.player) return;
-    $("card").classList.add("loading");
+    if (!quiet) $("card").classList.add("loading");
     $("err").classList.add("hidden");
     const q = new URLSearchParams({ by: state.by });
     if (state.filter) q.set("filter", state.filter);
@@ -554,6 +554,13 @@
   }
   $("filter").addEventListener("input", syncChips);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.data && render());
+
+  // The HUD overlay embeds this page and posts {type: "pnt-refresh"} when the
+  // player on show has played new hands. Only the data is fetched again: the spot,
+  // view and colour mode stay exactly as they are, and nothing flashes while it loads.
+  addEventListener("message", (e) => {
+    if (e.data && e.data.type === "pnt-refresh") load({ quiet: true });
+  });
 
   readUrl();
   $("filter").value = state.filter;

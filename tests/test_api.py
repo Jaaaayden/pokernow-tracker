@@ -101,6 +101,7 @@ def test_hand_replay(client):
     assert body["players"]
     assert body["actions"]
     assert [a["seq"] for a in body["actions"]] == sorted(a["seq"] for a in body["actions"])
+    assert isinstance(body["voluntary_shows"], list)
 
 
 def test_merge_endpoint(client):

@@ -34,12 +34,19 @@ STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="PokerNow Tracker", version="0.1.0")
 
-# The content script runs on pokernow.club and posts here. Restricted to that
-# origin: this server is a local database with no auth, so it should not be
-# callable from arbitrary pages the browser happens to have open.
+# The content script runs on PokerNow and posts here. Restricted to those origins:
+# this server is a local database with no auth, so it should not be callable from
+# arbitrary pages the browser happens to have open. Games are served from
+# pokernow.com; the pokernow.club addresses this was first built against are kept
+# in case links still use them. Keep in step with extension/manifest.json.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://www.pokernow.club", "https://pokernow.club"],
+    allow_origins=[
+        "https://www.pokernow.com",
+        "https://pokernow.com",
+        "https://www.pokernow.club",
+        "https://pokernow.club",
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -202,6 +209,13 @@ def hand(hand_id: int) -> dict:
             dict(r)
             for r in conn.execute(
                 "SELECT * FROM actions WHERE hand_id = ? ORDER BY seq", (hand_id,)
+            )
+        ],
+        # Shown after the hand ended -- never part of `players[].hole_cards`.
+        "voluntary_shows": [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM voluntary_shows WHERE hand_id = ? ORDER BY ord", (hand_id,)
             )
         ],
     }

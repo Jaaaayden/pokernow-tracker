@@ -91,7 +91,7 @@ class Action(Event):
 @dataclass(frozen=True, slots=True)
 class StreetDealt(Event):
     street: str
-    run: int  # 0 = first run, 1 = second run (run-it-twice)
+    run: int  # 0 = first board; 1 = second run (run-it-twice) or second board (Double Board)
     board: tuple[str, ...]  # full board for this street on this run
 
 

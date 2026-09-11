@@ -245,3 +245,16 @@ def test_hostile_player_names_parse_correctly():
     assert ev.kind == "call"
     assert ev.amount_to == 630
     assert ev.all_in is True
+
+
+def test_admin_forcing_a_player_away_is_recognized():
+    """Seen in real games outside the fixtures; it moves no chips."""
+    from pnt.logfmt.events import Noise
+
+    ev = classify(
+        'The admin "gurt @ gpP9uUffpu" forced the player "straight teeth @ ILQFEWJ0SW"'
+        " to away mode in the next hand.",
+        1,
+    )
+    assert isinstance(ev, Noise)
+    assert ev.kind == "admin_force_away"

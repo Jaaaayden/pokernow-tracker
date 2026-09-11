@@ -147,6 +147,28 @@ CREATE INDEX IF NOT EXISTS idx_actions_pn ON actions(pn_id, street, action_type)
 -- contiguous and ordered. An extra index there is never chosen by the planner and
 -- only costs write time on every rebuild.
 
+-- Cards shown AFTER `-- ending hand #N --`: a player who folded and then showed,
+-- a winner who took it down uncontested and showed, a showdown loser who mucked
+-- and revealed later. PokerNow logs all of these past the hand-end line, in the
+-- same slot as the 7-2 bounty.
+--
+-- Deliberately NOT merged into hand_players.hole_cards. Showdown cards are the
+-- hands that got there; these are the hands a player CHOSE to reveal -- the bluff
+-- they are proud of, the fold they want credit for -- a bias running the other
+-- way. Kept apart, a range view can opt in; merged, that choice is gone for good.
+--
+-- One row per player per hand. A player may show one card and then the other as
+-- two separate lines, so `cards` is the union, in the order shown.
+CREATE TABLE IF NOT EXISTS voluntary_shows (
+    hand_id INTEGER NOT NULL,
+    pn_id   TEXT NOT NULL,
+    cards   TEXT NOT NULL,     -- same encoding as hole_cards; may be one card
+    ord     INTEGER NOT NULL,  -- raw_entries.ord of the latest show line, for audit
+    PRIMARY KEY (hand_id, pn_id),
+    -- Only a player dealt into the hand can show from it.
+    FOREIGN KEY (hand_id, pn_id) REFERENCES hand_players(hand_id, pn_id) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 -- ------------------------------------------------------------------ views ----
 
 -- Resolves the identity layer once so every stat query can join on player_id
@@ -178,4 +200,30 @@ SELECT
 FROM actions a
 JOIN hands   h  ON h.hand_id = a.hand_id
 LEFT JOIN player_identities pi ON pi.pn_id = a.pn_id
+LEFT JOIN players p            ON p.player_id = pi.player_id;
+
+-- A voluntary show with the context that makes it readable: did the player fold,
+-- did anyone reach showdown, how far the board ran. "Folded, then showed, before
+-- the river" is `folded = 1 AND board_cards < 5`.
+CREATE VIEW IF NOT EXISTS v_voluntary_shows AS
+SELECT
+    vs.*,
+    length(vs.cards) / 2 AS n_cards,
+    hp.folded,
+    hp.seats_from_button,
+    hp.contributed,
+    hp.collected,
+    h.game_id,
+    h.hand_number,
+    h.n_dealt_in,
+    h.went_to_showdown,
+    COALESCE(json_array_length(h.board_json, '$[0]'), 0) AS board_cards,  -- first run
+    h.board_json,
+    h.ts,
+    pi.player_id,
+    p.alias
+FROM voluntary_shows vs
+JOIN hand_players hp ON hp.hand_id = vs.hand_id AND hp.pn_id = vs.pn_id
+JOIN hands        h  ON h.hand_id = vs.hand_id
+LEFT JOIN player_identities pi ON pi.pn_id = vs.pn_id
 LEFT JOIN players p            ON p.player_id = pi.player_id;

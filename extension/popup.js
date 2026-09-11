@@ -34,6 +34,7 @@
     put("capture", st.paused ? "paused" : "running");
     put("polls", `${st.polls} (${st.errors} errors)`);
     put("entries", `${st.inserted} new of ${st.offered} offered`);
+    put("history", st.history ? `${st.history}${st.pages ? ` · ${st.pages} pages` : ""}` : "–");
     put("last poll", st.lastPoll ? new Date(st.lastPoll).toLocaleTimeString() : "–");
     put("seated", String(st.seats));
     put("log shape", st.envelopeOk == null ? "not seen yet" : st.envelopeOk

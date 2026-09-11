@@ -194,6 +194,14 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
             for a in hand.actions
         ],
     )
+    # After hand_players: every show references the player row it came from.
+    conn.executemany(
+        "INSERT INTO voluntary_shows (hand_id, pn_id, cards, ord) VALUES (?, ?, ?, ?)",
+        [
+            (hand_id, s.pn_id, "".join(s.cards), s.ord)
+            for s in hand.voluntary_shows.values()
+        ],
+    )
 
 
 def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:

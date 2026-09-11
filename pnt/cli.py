@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import glob as globlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 
 import typer
 
+from . import service as svc
 from .db.conn import DEFAULT_DB, connect
 from .ingest.importer import import_csv, merge_players, rebuild_game
 from .stats.filters import parse_filter
@@ -18,6 +20,10 @@ from .stats.ranges import composition, range_grid
 app = typer.Typer(add_completion=False, help=__doc__)
 alias_app = typer.Typer(help="Manage player identities.")
 app.add_typer(alias_app, name="alias")
+service_app = typer.Typer(
+    help="Keep the server running in the background: starts at login, restarts on crash."
+)
+app.add_typer(service_app, name="service")
 
 DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
 
@@ -245,18 +251,111 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8000,
 ) -> None:
-    """Run the local API that the HUD and your analysis scripts read."""
-    import os
+    """Run the local API that the HUD and your analysis scripts read.
 
-    os.environ["PNT_DB"] = str(db)
+    Lasts until the terminal closes. To keep it running in the background instead,
+    use `pnt service install`.
+    """
     typer.echo(f"range chart: http://{host}:{port}/chart   api docs: http://{host}:{port}/docs")
+    if importlib.util.find_spec("uvicorn") is None:  # pragma: no cover
+        raise typer.BadParameter("server extras not installed. Run: pip install -e '.[server]'")
+    svc.run_server(db, host, port)
+
+
+def _svc(fn, *args, **kwargs):
+    """Call into `pnt.service`, turning its errors into a one-line CLI failure."""
     try:
-        import uvicorn
-    except ImportError as exc:  # pragma: no cover
-        raise typer.BadParameter(
-            "server extras not installed. Run: pip install -e '.[server]'"
-        ) from exc
-    uvicorn.run("pnt.server.app:app", host=host, port=port)
+        return fn(*args, **kwargs)
+    except svc.ServiceError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+
+@service_app.command("install")
+def service_install(
+    db: Path = DbOpt, host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT
+) -> None:
+    """Run the server in the background for this Windows user, starting now.
+
+    Re-run to change --db or --port: it replaces the existing task. --db must be
+    the database you actually use; the task does not start in this folder.
+    """
+    busy = svc.port_in_use(host, port)
+    interpreter = _svc(svc.install, db, host, port)
+    typer.echo(f"registered task {svc.TASK_NAME!r}: starts at login, restarts on crash")
+    typer.echo(f"  database:    {db.resolve()}")
+    typer.echo(f"  interpreter: {interpreter}")
+    typer.echo(f"  log:         {svc.LOG_FILE}")
+    if busy:
+        typer.echo(
+            f"\nport {port} is already in use, probably by a `pnt serve` in a terminal."
+            " The task is waiting and takes over as soon as that one stops."
+        )
+        return
+    body = svc.wait_for_health(host, port)
+    if body is None:
+        typer.echo("\nnot answering yet. Check `pnt service log`.")
+    else:
+        typer.echo(f"\nup: http://{host}:{port}/chart  ({body['hands']} hands)")
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Stop the background server and remove the task. The database is untouched."""
+    removed = _svc(svc.uninstall)
+    typer.echo(f"removed task {svc.TASK_NAME!r}" if removed else "not installed")
+
+
+@service_app.command("start")
+def service_start() -> None:
+    """Start the background server now. It also starts at every login."""
+    _svc(svc.start)
+    typer.echo("started")
+
+
+@service_app.command("stop")
+def service_stop() -> None:
+    """Stop the background server until `pnt service start` or the next login."""
+    _svc(svc.stop)
+    typer.echo("stopped")
+
+
+@service_app.command("restart")
+def service_restart() -> None:
+    """Restart it. Needed after pulling code changes: a running server keeps the old code."""
+    _svc(svc.restart)
+    typer.echo("restarted")
+
+
+@service_app.command("status")
+def service_status(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) -> None:
+    """Whether the task is installed and running, and whether the server answers."""
+    state = _svc(svc.task_state)
+    typer.echo(f"task:   {state or 'not installed'}")
+    body = svc.health(host, port)
+    if body is None:
+        typer.echo(f"server: not answering on http://{host}:{port}")
+    else:
+        typer.echo(f"server: up on http://{host}:{port}  {body['hands']} hands  db {body['db']}")
+    typer.echo(f"log:    {svc.LOG_FILE}")
+
+
+@service_app.command("log")
+def service_log(lines: int = typer.Option(40, "--lines", "-n")) -> None:
+    """The last lines of the background server's log."""
+    if not svc.LOG_FILE.exists():
+        typer.echo(f"no log yet at {svc.LOG_FILE}")
+        return
+    for line in svc.tail(svc.LOG_FILE, lines):
+        typer.echo(line)
+
+
+@service_app.command("run", hidden=True)
+def service_run(
+    db: Path = DbOpt, host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT
+) -> None:
+    """What the scheduled task executes: the supervised server, logging to a file."""
+    svc.run_service(db, host, port)
 
 
 @alias_app.command("list")

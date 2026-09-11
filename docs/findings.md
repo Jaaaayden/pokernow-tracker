@@ -146,7 +146,8 @@ exhaustive for the corpus rather than a guess. Grammar coverage is **0 unknowns*
 three optionally suffixed ` and go all in`
 
 **Board**: `Flop:  [C, C, C]` (two spaces), `Turn: … [C]`, `River: … [C]`, and
-`Flop|Turn|River (second run): …`
+`Flop|Turn|River (second run): …` (run it twice) and
+`Flop|Turn|River (second board): …` (Double Board)
 
 **Pot**: `Uncalled bet of N returned to "P"`, `"P" collected N from pot`,
 `"P" collected N from pot with <ranking> (combination: …)`
@@ -171,8 +172,10 @@ run-it-twice prompts
 | **Hostile player names** | Real players are named `all in`, `500`, `1500`. Loose pattern matching on `and go all in` or on digits will mis-parse them. Anchor on the quoted token |
 | **Multi-line CSV fields** | `Game Config Changes` contains newlines *inside* one field. Splitting the file on `\n` corrupts it — use a real CSV reader |
 | **Showdown ≠ `shows`** | Players voluntarily show after winning uncontested, and rabbit-hunt shows appear *between* hands. Detect showdown by counting players who never folded |
+| **Voluntary shows come after the hand ends** | A fold shown, an uncontested win shown, or a muck revealed late is logged *after* `-- ending hand #N --`, sometimes one card per line. Close the hand at that line and every one is silently dropped (157 lines in the fixtures). Attach them to the hand that just ended, but keep them out of showdown `hole_cards`: they are the hands players *chose* to reveal |
 | **Blind levels move** | `The game's big blind was changed from 20 to 10` occurs mid-log. bb/100 must normalize each hand by *its own* big blind |
 | **Run it twice** | Produces two `collected` lines and `(second run)` streets. Only the first run advances the betting street — by the time a second run is dealt, all action is complete |
+| **Double Board** | A table option. Every street deals two boards — `Flop:` then `Flop (second board):` at the same instant — with betting *between* streets, and the pot is split with one `collected … on the second board` line. Same shape as run it twice (run 1), but the second board's line must not reset the street's bets, because action is still to come |
 | **Encoding** | Real exports are clean UTF-8 (`♠♥♦♣`). If you see `Aâ¦`, the file was decoded as latin-1 — fix it at the file-open boundary, not in the parser |
 
 ---
@@ -193,10 +196,28 @@ fetch that slice of the log.
 
 This is the architecture to copy, because it means **one parser** serves both
 backfill and live capture, and the success criterion holds by construction rather
-than by diligence. An extension content script running on `pokernow.club` sends the
+than by diligence. An extension content script running on `pokernow.club` (games are now served from
+`pokernow.com`; the extension matches both) sends the
 `npt` cookie automatically (same-origin, `credentials: 'include'`), so it never
 needs the manual cookie extraction Grabber requires.
 
-**Still unverified**: the exact JSON envelope of `/log` (bare array vs
-`{logs: […]}`) and whether `after_at` is inclusive. Five minutes in DevTools on a
-live table settles both. Nothing in Phases 0–2 depends on it.
+**Confirmed on pokernow.com, 2026-09-11**, with read-only requests against a live
+table and against a finished game already imported from CSV:
+
+| Behaviour | Evidence |
+|---|---|
+| The envelope is `{logs: [{at, created_at, msg}], infos: {min, max}}` | Every response |
+| `created_at` is a digit string equal to the CSV `order`, with identical line text and `at` | 50 of 50 lines of `pgl9BTQl8…` matched the imported rows exactly |
+| Lines come **newest first**, at most **50** per request | Every response |
+| `before_at` and `after_at` take `created_at` units and are **exclusive** | A pivot line was never returned |
+| `before_at=X` pages **backwards** | Resumed at the very next line after the pivot |
+| `after_at=X` **filters and never pages forwards**: it returns the 50 *newest* lines above X | `after_at` an hour back still returned the newest 50 |
+| Both together return exactly the lines strictly between them, newest first | A 29-line window returned those 29 lines and nothing else |
+| Plain epoch milliseconds sit below every `created_at` | `after_at=0&before_at=<now in ms>` returned `{"logs": []}` — the first extension's bug |
+| Requests in quick succession get **HTTP 429** | Three requests in about 2 s |
+| The log of a game is readable without a cookie | All of the above were made without one. Hero's own `Your hand is` lines presumably need the cookie; unverified |
+
+So a complete capture walks **backwards**: fetch the newest page and, while pages
+come back full, fetch `before_at=<oldest line so far>` until a page is short or
+already stored. `extension/pager.js` implements exactly that, paced between pages
+and resumable after a 429.

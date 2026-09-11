@@ -161,10 +161,12 @@ RULES: list[Rule] = [
             all_in=bool(m.group("allin")),
         ),
     ),
-    # -- board
+    # -- board. A second board comes from run-it-twice ("second run", dealt once all
+    # -- action is over) or from Double Board ("second board", dealt with the first
+    # -- on every street, betting in between). Both are run 1 of the same pot.
     (
         re.compile(
-            r"^(?P<street>Flop|Turn|River)(?P<run> \(second run\))?:\s*(?P<rest>.+)$"
+            r"^(?P<street>Flop|Turn|River)(?P<run> \(second (?:run|board)\))?:\s*(?P<rest>.+)$"
         ),
         lambda m, o, r: E.StreetDealt(
             ord=o,
@@ -315,6 +317,11 @@ RULES: list[Rule] = [
     (
         re.compile(rf"^The admin {_P} rejected the seat request from the player {_P2}\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="admin_reject_seat"),
+    ),
+    (
+        # Takes effect next hand, and that hand's `Player stacks:` line is the roster.
+        re.compile(rf"^The admin {_P} forced the player {_P2} to away mode in the next hand\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="admin_force_away"),
     ),
     (
         re.compile(rf"^The player {_P} passed the room ownership to {_P2}\.$"),

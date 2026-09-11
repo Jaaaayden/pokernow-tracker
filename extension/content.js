@@ -1,10 +1,9 @@
 /* Content script on a PokerNow game page: capture + overlay.
  *
  * Capture: poll GET /games/{id}/log with the page's own cookie, normalize, and
- * hand the entries to the background worker, which posts them to /ingest.
- * Fetches overlap on purpose -- the server dedupes on (game_id, order), so a
- * window that starts a minute before the last entry seen costs nothing and
- * cannot lose a line to clock skew.
+ * hand the entries to the background worker, which posts them to /ingest. How
+ * that endpoint pages -- and why a full page means walking backwards -- is in
+ * pager.js. The server dedupes on (game_id, order), so re-sending a line is free.
  *
  * Overlay: after new entries land, ask /hud/{game} for the current roster and
  * lifetime stats, keyed by PokerNow ID (never by seat -- seats are reused), and
@@ -16,17 +15,21 @@
   const GAME = (location.pathname.match(/\/games\/([A-Za-z0-9_-]+)/) || [])[1];
   if (!GAME) return;
 
-  const OVERLAP_MS = 60_000;
   const HUD_EVERY_MS = 30_000;
+  // Between history pages. PokerNow answers a burst of /log requests with HTTP 429.
+  const PAGE_PAUSE_MS = 3_000;
+  // During a long history walk, re-derive and redraw this often so the HUD fills in.
+  const REBUILD_EVERY_PAGES = 10;
 
   const state = {
     server: "http://127.0.0.1:8000",
     pollSeconds: 5,
-    lastAtMs: 0,          // newest `at` we have seen, in epoch ms
-    backfilled: false,    // first sweep from the start of the game done
-    offered: 0, inserted: 0, polls: 0, errors: 0,
+    sync: { cursor: 0, walk: null }, // see pager.js
+    offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
     lastError: null, lastPoll: null, shape: null, envelopeOk: null,
     hud: null, hudAt: 0, paused: false,
+    backoffMs: 0,
+    rebuiltAt: 0, // `inserted` at the last rebuild
   };
 
   const send = (msg) => new Promise((resolve) => {
@@ -43,23 +46,25 @@
     status: {
       game: GAME, polls: state.polls, offered: state.offered, inserted: state.inserted,
       errors: state.errors, lastError: state.lastError, lastPoll: state.lastPoll,
-      shape: state.shape, envelopeOk: state.envelopeOk, lastAt: state.lastAtMs,
+      shape: state.shape, envelopeOk: state.envelopeOk, pages: state.pages,
+      history: state.sync.walk ? "loading" : state.sync.cursor ? "complete" : "not loaded",
       seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
     },
   });
 
   // ---------------------------------------------------------------- capture --
-  async function fetchLog(afterMs, beforeMs) {
-    const url = `${location.origin}/games/${GAME}/log?after_at=${afterMs}&before_at=${beforeMs}`;
-    const r = await fetch(url, { credentials: "include", headers: { accept: "application/json" } });
+  async function fetchPage({ after, before }) {
+    // Both cursors are created_at values (epoch ms * 100 + seq); empty means none.
+    const q = new URLSearchParams({ after_at: after ?? "", before_at: before ?? "" });
+    const r = await fetch(`${location.origin}/games/${GAME}/log?${q}`, {
+      credentials: "include", headers: { accept: "application/json" },
+    });
+    if (r.status === 429) {
+      const seconds = Number(r.headers.get("retry-after"));
+      throw new PNT.RateLimited(seconds > 0 ? seconds * 1000 : null);
+    }
     if (!r.ok) throw new Error(`log ${r.status}`);
-    return r.json();
-  }
-
-  async function pollOnce() {
-    const now = Date.now();
-    const after = state.backfilled ? Math.max(0, state.lastAtMs - OVERLAP_MS) : state.lastAtMs;
-    const body = await fetchLog(after, now + 60_000);
+    const body = await r.json();
     const { entries, shape, sample, ok } = PNT.normalize(body);
     state.shape = shape;
     if (state.envelopeOk !== ok) {
@@ -68,45 +73,67 @@
       else console.info("[pnt] /log envelope recognized:", shape);
     }
     if (!ok) throw new Error("unrecognized /log response shape (see console)");
+    return { entries, size: PNT.unwrap(body)[1].length };
+  }
 
-    if (entries.length) {
-      const res = await send({ type: "ingest", game_id: GAME, entries });
+  const io = {
+    fetchPage,
+    ingest: async (entries) => {
+      // No rebuild per page: a rebuild re-derives the whole game, and a history walk
+      // can run to a hundred pages. `rebuildIfNew` runs at checkpoints instead.
+      const res = await send({ type: "ingest", game_id: GAME, entries, rebuild: false });
       if (!res.ok) throw new Error(res.error);
       state.offered += res.data.offered;
       state.inserted += res.data.new;
-      const newest = Math.max(...entries.map((e) => Date.parse(e.at)));
-      if (newest > state.lastAtMs) state.lastAtMs = newest;
-      // A full page of entries on the first sweep means there may be more:
-      // keep walking forward until a fetch adds nothing.
-      if (!state.backfilled && res.data.new > 0) return true;
-    }
-    state.backfilled = true;
-    return false;
+      return res.data;
+    },
+    pause: () => new Promise((resolve) => setTimeout(resolve, PAGE_PAUSE_MS)),
+  };
+
+  async function rebuildIfNew() {
+    if (state.inserted === state.rebuiltAt) return;
+    const r = await send({ type: "rebuild", game_id: GAME });
+    if (!r.ok) throw new Error(r.error);
+    state.rebuiltAt = state.inserted;
+    await refreshHud();
   }
 
   async function loop() {
     if (state.paused) return schedule();
+    let delay = state.pollSeconds * 1000;
     try {
       state.polls += 1;
-      let more = true;
-      while (more) more = await pollOnce();
+      await PNT.sync(state.sync, io, {
+        onPage: async ({ pages }) => {
+          state.pages += 1;
+          if (pages > 1) overlay.setStatus(`loading history · ${state.inserted} lines`);
+          if (pages === 1 || pages % REBUILD_EVERY_PAGES === 0) await rebuildIfNew();
+          report();
+        },
+      });
+      await rebuildIfNew();
+      if (Date.now() - state.hudAt > HUD_EVERY_MS) await refreshHud();
       state.lastPoll = Date.now();
       state.lastError = null;
-      if (Date.now() - state.hudAt > HUD_EVERY_MS || state.inserted > (state._hudInserted || 0)) {
-        state._hudInserted = state.inserted;
-        await refreshHud();
-      }
+      state.backoffMs = 0;
     } catch (e) {
       state.errors += 1;
-      state.lastError = String(e.message || e);
+      if (e instanceof PNT.RateLimited) {
+        // The walk's place survives in state.sync, so the retry resumes it.
+        state.backoffMs = Math.min(Math.max(state.backoffMs * 2, 10_000), 120_000);
+        delay = e.waitMs ?? state.backoffMs;
+        state.lastError = `PokerNow rate limit; retrying in ${Math.round(delay / 1000)}s`;
+      } else {
+        state.lastError = String(e.message || e);
+      }
       overlay.setStatus(state.lastError);
     }
     report();
-    schedule();
+    schedule(delay);
   }
 
   let timer = null;
-  function schedule() { clearTimeout(timer); timer = setTimeout(loop, state.pollSeconds * 1000); }
+  function schedule(ms = state.pollSeconds * 1000) { clearTimeout(timer); timer = setTimeout(loop, ms); }
 
   async function refreshHud() {
     const r = await send({ type: "hud", game_id: GAME });
@@ -236,6 +263,18 @@
       if ($("view").value !== "preflop") q.set("by", $("view").value);
       return `${state.server}/chart?${q}`;
     }
+    // The chart page fetches its data once. When the player on show has played more
+    // hands, tell it to fetch again rather than reloading the frame: a reload would
+    // flash, and would throw away anything changed inside the chart itself.
+    let chartHands = null; // that player's hand count when the chart last had data
+    const handsOf = (alias) => state.hud?.seats.find((s) => s.alias === alias)?.stats?.hands ?? null;
+    function refreshChart() {
+      if (!selected || !$("chart").classList.contains("open")) return;
+      const hands = handsOf(selected);
+      if (hands == null || hands === chartHands) return;
+      chartHands = hands;
+      $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, new URL(state.server).origin);
+    }
     function showChart() {
       if (!selected) return;
       $("who").textContent = selected;
@@ -243,6 +282,7 @@
       $("frame").src = url;
       $("ext").href = url;
       $("chart").classList.add("open");
+      chartHands = handsOf(selected);
     }
     function markSel() {
       root.querySelectorAll("tr[data-alias]").forEach((tr) => tr.classList.toggle("sel", tr.dataset.alias === selected));
@@ -278,6 +318,7 @@
       }
       body.appendChild(t);
       markSel();
+      refreshChart();
       setStatus(state.paused ? "paused" : `capturing · ${state.inserted} new`);
     }
 

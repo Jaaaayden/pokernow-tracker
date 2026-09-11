@@ -206,9 +206,13 @@ A "3-bet range" from this data is really "3-bet hands that reached showdown":
 the bluffs that folded out are exactly the ones missing, and nothing here
 corrects for that. Percentages inside a range view are of *known* hands.
 
-`hole_cards` also includes cards shown voluntarily after an uncontested win,
-because the parser records any in-hand `shows` line. Those carry the opposite
-bias -- players show bluffs they are proud of -- and are not yet separated.
+Cards shown **after** the hand ended are *not* in `hole_cards`: a fold the player
+wants credit for, an uncontested win, a muck revealed late. PokerNow logs these
+past `-- ending hand #N --`, and they are stored separately in `voluntary_shows`
+(with context in the `v_voluntary_shows` view). They carry the opposite bias --
+players show the bluffs they are proud of -- so no range view includes them.
+Across the fixture logs that is 157 show lines, 52 of them two-card shows from
+hands that ended before the river.
 
 ---
 
@@ -237,7 +241,8 @@ archaeology.
    follows it.
 3. **Run-it-twice counts as W$SD-won when total collected > 0**, even if the player
    lost one of the two runs. A player who wins one run and loses the other shows as
-   a win here while being break-even in chips.
+   a win here while being break-even in chips. Double Board hands split the pot the
+   same way and follow the same rule; made-hand views read the first board only.
 4. **Hands with a dead button or a dead blind are excluded from positional
    splits.** Two distinct cases, both real in the fixtures:
 

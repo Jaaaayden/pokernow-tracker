@@ -112,6 +112,9 @@ class ParsedHand:
     board_runs: list[list[str]] = field(default_factory=list)
     hero_cards: tuple[str, ...] = ()
     run_count: int = 1
+    #: Cards shown after ``-- ending hand #N --``, keyed by pn_id. Deliberately
+    #: separate from `HandPlayer.hole_cards` -- see `_apply_voluntary_show`.
+    voluntary_shows: dict[str, VoluntaryShow] = field(default_factory=dict)
 
     @property
     def went_to_showdown(self) -> bool:
@@ -335,8 +338,11 @@ class _HandBuilder:
         self.hand.board_runs[ev.run] = list(ev.board)
         self.hand.run_count = len(self.hand.board_runs)
         if ev.run == 0:
-            # Only the first run advances the betting street; by the time a second
-            # run is dealt all action is already complete.
+            # Only the first board advances the betting street. A run-it-twice second
+            # run is dealt after all action is complete, and a Double Board second
+            # board is logged straight after the first board's line for the same
+            # street -- so in both cases resetting here again would be a no-op at
+            # best and would wipe a live street's commitments at worst.
             self.street = ev.street
             self._committed.clear()
 
@@ -384,17 +390,49 @@ def _apply_bounty(hand: ParsedHand, ev: E.BountyPaid) -> None:
         payee.bounty += ev.amount
 
 
+@dataclass(slots=True)
+class VoluntaryShow:
+    """Cards one player showed after a hand ended."""
+
+    pn_id: str
+    cards: list[str]  # in the order shown; a partial show leaves a single card
+    ord: int  # of the latest show line
+
+
+def _apply_voluntary_show(hand: ParsedHand, ev: E.Shows) -> None:
+    """Record cards shown after a hand ended, apart from its showdown cards.
+
+    Never written to `hole_cards`. Showdown cards are the hands that got there;
+    these are the ones a player *chose* to reveal -- the bluff they are proud of,
+    the fold they want credit for -- and that bias runs the other way. Merged,
+    every range view would carry it silently; kept apart, a view can opt in.
+
+    PokerNow lets a player show one card and then the other as two lines, so shows
+    accumulate per player rather than replacing each other.
+    """
+    if ev.player.pn_id not in hand.players:
+        return
+    show = hand.voluntary_shows.setdefault(
+        ev.player.pn_id, VoluntaryShow(pn_id=ev.player.pn_id, cards=[], ord=ev.ord)
+    )
+    for card in ev.cards:
+        if card not in show.cards:
+            show.cards.append(card)
+    show.ord = ev.ord
+
+
 def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     """Parse `order`-ascending raw entries into hands.
 
-    Events occurring outside hand boundaries (voluntary shows between hands, seat
-    changes, blind-level changes) are handled at game level rather than assumed to
-    belong to a hand.
+    Events occurring outside hand boundaries are handled at game level rather than
+    assumed to belong to the hand in progress: blind-level changes update the game,
+    while the 7-2 bounty and voluntary shows -- both logged after the hand-end
+    line -- attach to the hand that just ended.
     """
     result = ParseResult(game_id=game_id)
     builder: _HandBuilder | None = None
-    #: The most recently finished hand. The 7-2 bounty is settled *between* hands,
-    #: after the hand-end line, so those lines have no open builder to attach to.
+    #: The most recently finished hand. The 7-2 bounty and voluntary shows arrive
+    #: *between* hands, after the hand-end line, so they have no open builder.
     last: ParsedHand | None = None
 
     for raw in entries:
@@ -421,6 +459,13 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             target = builder.hand if builder is not None else last
             if target is not None:
                 _apply_bounty(target, ev)
+            continue
+
+        if isinstance(ev, E.Shows) and builder is None:
+            # Shown after the hand-end line: a fold, an uncontested win, or a muck
+            # revealed late. Shows inside the hand (showdown) go to `builder.shows`.
+            if last is not None:
+                _apply_voluntary_show(last, ev)
             continue
 
         if builder is None:
