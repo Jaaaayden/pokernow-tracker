@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -27,7 +27,7 @@ from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import ingest_entries, merge_players, rebuild_game
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import facts_for, hand_list, positional_report, report
+from pnt.stats.queries import aggregate, facts_for, hand_list, positional_report, report
 from pnt.stats.ranges import composition, range_grid, sizing_tells
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
@@ -76,22 +76,34 @@ class IngestRequest(BaseModel):
     )
 
 
+def _page(name: str) -> HTMLResponse:
+    """One of the static pages.
+
+    Re-read from disk on every request, with `no-store` so the browser holds no
+    old copy -- but the Python behind it is loaded once, so after changing stat
+    code, restart the server (`pnt service restart`).
+    """
+    return HTMLResponse(
+        (STATIC / name).read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/chart", include_in_schema=False)
 def chart() -> HTMLResponse:
     """The range chart page. One static file; all data comes from /players/{alias}/range.
 
     Query parameters (`?player=henry&filter=opener,srp&by=made&color=size`) seed
-    the page state, so a bookmark -- or later, an extension iframe -- lands on a
+    the page state, so a bookmark -- or an extension iframe -- lands on a
     specific player and spot.
-
-    The page is re-read from disk on every request, and `no-store` keeps the
-    browser from holding an old copy -- but the Python behind it is loaded once,
-    so after pulling a change to the stat code, restart `pnt serve`.
     """
-    return HTMLResponse(
-        (STATIC / "chart.html").read_text(encoding="utf-8"),
-        headers={"Cache-Control": "no-store"},
-    )
+    return _page("chart.html")
+
+
+@app.get("/stats.html", include_in_schema=False)
+def stats_page() -> HTMLResponse:
+    """Every player's stats, as a sortable table. `/stats` serves this to browsers."""
+    return _page("stats.html")
 
 
 @app.get("/health")
@@ -126,17 +138,24 @@ def rebuild(game_id: str) -> dict:
     return rebuild_game(db(), game_id)
 
 
-@app.get("/stats")
+@app.get("/stats", response_model=None)
 def stats(
+    request: Request,
     game: str | None = None,
     filter: Annotated[str | None, Query(description="e.g. '3bet,position=BTN'")] = None,
     min_hands: int = 1,
-) -> list[dict]:
+) -> list[dict] | HTMLResponse:
     """Per-player stats, optionally restricted to a spot.
 
     The filter compiles to a predicate over derived per-hand facts, which is only
     possible because actions are stored raw with street and sequence.
+
+    A browser navigating here asks for HTML and gets the stats page; every other
+    caller (the HUD, a script, curl) asks for anything and gets the JSON. The page
+    is also at /stats.html, which is what the page itself links to.
     """
+    if "text/html" in request.headers.get("accept", ""):
+        return _page("stats.html")
     try:
         pred = parse_filter(filter) if filter else None
     except ValueError as exc:
@@ -175,6 +194,16 @@ def _spot_facts(alias: str, filter: str | None, game: str | None) -> list[Facts]
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return [f for f in facts if pred(f)] if pred is not None else facts
+
+
+@app.get("/players/{alias}/stats")
+def player_stats(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's stats inside a spot -- what the chart page's postflop strip reads."""
+    return {"player": alias, "filter": filter, **aggregate(_spot_facts(alias, filter, game))}
 
 
 @app.get("/players/{alias}/range")

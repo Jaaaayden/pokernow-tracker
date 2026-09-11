@@ -156,6 +156,18 @@
   .replay li.forced { color: var(--muted); }
   .muted { color: var(--muted); }
 
+  /* --- postflop strip --- */
+  .strip { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+    padding: 10px 14px 12px; margin-bottom: 16px; overflow-x: auto; }
+  .strip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .strip-head b { font-size: 13px; font-weight: 600; }
+  .strip-head a { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .strip-grid { display: grid; grid-template-columns: 3.5em repeat(4, minmax(4.5em, max-content)) 1fr;
+    gap: 3px 16px; font-variant-numeric: tabular-nums; font-size: 13px; min-width: 520px; }
+  .strip-grid .h { color: var(--muted); font-size: 12px; }
+  .strip-grid .st { color: var(--ink-2); text-transform: capitalize; }
+  .strip-grid .mix { color: var(--muted); font-size: 12px; }
+
   .tip {
     position: fixed; pointer-events: none; z-index: 10; display: none;
     background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
@@ -198,6 +210,7 @@
   </div>
   <p class="note" id="note">Cards are known only when a hand is shown, and hands are shown when they reach showdown.
     The hands that folded out of this spot are the ones missing. Read coverage first.</p>
+  <div class="strip hidden" id="strip"></div>
   <div class="err hidden" id="err"></div>
 
   <section class="card" id="card">
@@ -396,6 +409,7 @@
         }
       }
       render();
+      loadStrip();
     } catch (e) {
       $("err").textContent = String(e.message || e);
       $("err").classList.remove("hidden");
@@ -865,6 +879,55 @@
     $("hands").classList.add("hidden");
     $("hand-rows").replaceChildren();
     $("replay").classList.add("hidden");
+  }
+
+  // ---- postflop strip ------------------------------------------------------
+  // The same spot, read as frequencies: how often they c-bet it, fold to one,
+  // raise one, or lead into it. Sample sizes are in the tooltips.
+  async function loadStrip() {
+    const el = $("strip");
+    try {
+      const q = new URLSearchParams();
+      if (state.filter) q.set("filter", state.filter);
+      renderStrip(await getJson(`/players/${encodeURIComponent(state.player)}/stats?` + q));
+    } catch {
+      el.classList.add("hidden"); // an older server has no per-player stats
+    }
+  }
+
+  function renderStrip(s) {
+    const el = $("strip");
+    el.replaceChildren();
+    const head = document.createElement("div"); head.className = "strip-head";
+    const b = document.createElement("b"); b.textContent = "Postflop, in this spot";
+    const a = document.createElement("a");
+    const q = new URLSearchParams();
+    if (state.filter) q.set("filter", state.filter);
+    if (theme) q.set("theme", theme);
+    a.href = "/stats.html?" + q; a.textContent = "all players ›";
+    head.append(b, a);
+    const grid = document.createElement("div"); grid.className = "strip-grid";
+    const cell = (text, cls, title) => {
+      const d = document.createElement("div");
+      if (cls) d.className = cls;
+      d.textContent = text;
+      if (title) d.title = title;
+      grid.appendChild(d);
+    };
+    for (const h of ["", "c-bet", "fold to", "raise", "lead", "c-bet sizes"]) cell(h, "h");
+    for (const st of ["flop", "turn", "river"]) {
+      const faced = s._opp[`fold_to_cbet_${st}`];
+      cell(st, "st");
+      cell(fmtPct(s[`cbet_${st}`]), "", `${s._opp[`cbet_${st}`]} c-bet chances`);
+      cell(fmtPct(s[`fold_to_cbet_${st}`]), "", `${faced} c-bets faced`);
+      cell(fmtPct(s[`raise_cbet_${st}`]), "", `${faced} c-bets faced`);
+      cell(fmtPct(s[`donk_${st}`]), "", `${s._opp[`donk_${st}`]} lead chances`);
+      const mix = s[`cbet_${st}_sizes`];
+      cell(SIZES.map(([lab, k]) => `${lab} ${mix[k].pct == null ? "–" : Math.round(mix[k].pct) + "%"}`).join(" · "),
+        "mix", "share of their c-bets at each size");
+    }
+    el.append(head, grid);
+    el.classList.remove("hidden");
   }
 
   // ---- wiring ----------------------------------------------------------

@@ -177,3 +177,29 @@ def test_hand_replay_names_every_player(client):
     body = client.get("/hands/1").json()
     assert set(body["names"]) == {p["pn_id"] for p in body["players"]}
     assert body["hand"]["bb_effective"]
+
+
+def test_player_stats_endpoint(client):
+    """What the chart page's postflop strip reads: one player, inside a spot."""
+    all_hands = client.get("/players/genericpoker/stats").json()
+    srp = client.get("/players/genericpoker/stats", params={"filter": "srp"}).json()
+    assert srp["player"] == "genericpoker"
+    assert {"cbet_flop", "raise_cbet_flop", "donk_flop", "cbet_flop_sizes"} <= set(srp)
+    assert srp["hands"] < all_hands["hands"]
+    assert client.get("/players/ghost/stats").status_code == 404
+    assert client.get("/players/genericpoker/stats", params={"filter": "nope"}).status_code == 400
+
+
+def test_stats_serves_json_to_scripts_and_a_page_to_browsers(client):
+    """The HUD and curl must keep getting JSON from /stats; a browser gets the page."""
+    assert isinstance(client.get("/stats").json(), list)
+    assert isinstance(client.get("/stats", headers={"accept": "application/json"}).json(), list)
+    page = client.get("/stats", headers={"accept": "text/html,application/xhtml+xml"})
+    assert page.headers["content-type"].startswith("text/html")
+    assert "/chart?" in page.text, "the page must link back to the range chart"
+    direct = client.get("/stats.html")
+    assert direct.status_code == 200 and direct.text == page.text
+
+
+def test_chart_page_links_to_the_stats_page(client):
+    assert "/stats.html" in client.get("/chart").text

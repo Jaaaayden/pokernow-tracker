@@ -169,7 +169,15 @@ they do not, so a single tilt jam cannot repaint a cell — see
 [`SPEC.md`](pnt/stats/SPEC.md).
 Player, spot, view, colour mode and theme all live in the URL
 (`/chart?player=henry&filter=opener,srp&color=size&theme=dark`), which is what the
-HUD will embed once live capture exists.
+HUD will embed once live capture exists. Under the tiles it also shows how often
+that player c-bets, folds to one, raises one and leads, in whatever spot is
+selected.
+
+Every player at once is [http://127.0.0.1:8000/stats](http://127.0.0.1:8000/stats):
+a browser gets a sortable table, while the HUD, curl and your scripts get the same
+figures as JSON from the same URL (the page alone is at `/stats.html`). Pick a
+street to swap the postflop columns, toggle the c-bet size mix, and click a player
+to open their range chart in the spot you are looking at.
 
 ### Identity
 
