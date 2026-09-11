@@ -12,7 +12,8 @@ import typer
 from .db.conn import DEFAULT_DB, connect
 from .ingest.importer import import_csv, merge_players, rebuild_game
 from .stats.filters import parse_filter
-from .stats.queries import positional_report, report
+from .stats.queries import facts_for, positional_report, report
+from .stats.ranges import composition, range_grid
 
 app = typer.Typer(add_completion=False, help=__doc__)
 alias_app = typer.Typer(help="Manage player identities.")
@@ -150,6 +151,81 @@ def positions(
         _print_table(rows, "position", key_width=24)
 
 
+def _print_grid(grid: dict) -> None:
+    """13x13 chart, one cell as `LABEL n`. A dot means never shown in this spot."""
+    for row in grid["rows"]:
+        typer.echo(
+            " ".join(
+                f"{label:<4}{grid['cells'][label]['n'] or '.':>3}" for label in row
+            )
+        )
+
+
+def _print_composition(comp: dict) -> None:
+    typer.echo(f"{'class':<24}{'n':>5}{'pct':>7}{'won':>5}{'net bb':>9}")
+    typer.echo("-" * 50)
+    for c in comp["classes"]:
+        typer.echo(
+            f"{c['class']:<24}{c['n']:>5}{_fmt(c['pct']):>7}{c['won']:>5}{c['net_bb']:>9}"
+        )
+        for d in c.get("details", []):
+            typer.echo(
+                f"  {d['class']:<22}{d['n']:>5}{_fmt(d['pct']):>7}{d['won']:>5}{d['net_bb']:>9}"
+            )
+
+
+@app.command("range")
+def range_cmd(
+    alias: str,
+    db: Path = DbOpt,
+    filter_: str = typer.Option(
+        None, "--filter", help="The spot or line, e.g. 'opener,open_bb>=4,srp,cbet_flop'"
+    ),
+    by: str = typer.Option(
+        "preflop", "--by", help="'preflop' for the 169-cell chart, 'made' for hand strength."
+    ),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """What a player *had* in a spot, from the hands where their cards were shown.
+
+    Coverage is the honest part: cards are only known at showdown, so the chart
+    sees the hands that got there and not the ones that folded on the way.
+    """
+    if by not in ("preflop", "made"):
+        raise typer.BadParameter("--by must be 'preflop' or 'made'")
+    conn = connect(db)
+    try:
+        facts = facts_for(conn, alias, game)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if filter_:
+        pred = parse_filter(filter_)
+        facts = [f for f in facts if pred(f)]
+
+    out = range_grid(facts) if by == "preflop" else composition(facts)
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+
+    typer.echo(f"{alias}  filter: {filter_ or '(none)'}")
+    typer.echo(
+        f"hands in this spot: {out['hands']}   cards known: {out['known']}"
+        f"   coverage: {_fmt(out['coverage'])}%"
+    )
+    r = out.get("raise")
+    if r:
+        typer.echo(
+            f"preflop raise-to (bb), all {r['n']} raised hands: median {r['median']}"
+            f"  mean {r['mean']}  mode {_fmt(r['mode'])}  min {r['min']}  max {r['max']}"
+        )
+    typer.echo("")
+    if by == "preflop":
+        _print_grid(out)
+    else:
+        _print_composition(out)
+
+
 @app.command()
 def misses(db: Path = DbOpt, limit: int = 20) -> None:
     """Log lines the grammar did not recognize. Empty means the parse was total."""
@@ -173,6 +249,7 @@ def serve(
     import os
 
     os.environ["PNT_DB"] = str(db)
+    typer.echo(f"range chart: http://{host}:{port}/chart   api docs: http://{host}:{port}/docs")
     try:
         import uvicorn
     except ImportError as exc:  # pragma: no cover

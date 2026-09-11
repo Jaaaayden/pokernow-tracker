@@ -53,6 +53,7 @@ def load_hands(
             ts=r["ts"],
             players={},
             actions=[],
+            board=tuple(runs[0]) if runs else (),
         )
 
     for r in conn.execute(
@@ -88,6 +89,7 @@ def load_hands(
                     amount=r["amount"],
                     is_forced=bool(r["is_forced"]),
                     all_in=bool(r["all_in"]),
+                    amount_to=r["amount_to"],
                 )
             )
 
@@ -200,19 +202,25 @@ def report(
     return rows
 
 
+def facts_for(
+    conn: sqlite3.Connection, alias: str, game_id: str | None = None
+) -> list[Facts]:
+    """Every Facts row for one canonical player, across all merged identities."""
+    grouped, aliases, _ = facts_by_player(conn, game_id)
+    pid = next((p for p, a in aliases.items() if a == alias), None)
+    if pid is None:
+        raise ValueError(f"unknown alias: {alias!r}")
+    return grouped[pid]
+
+
 def positional_report(conn: sqlite3.Connection, alias: str, pool: bool = True) -> list[dict]:
     """Break one player's stats down by position.
 
     Table size is *pooled at query time* from raw `n_dealt_in`, never pre-bucketed
     in storage -- pooling later is always possible, unpooling is not.
     """
-    grouped, aliases, _ = facts_by_player(conn)
-    pid = next((p for p, a in aliases.items() if a == alias), None)
-    if pid is None:
-        raise ValueError(f"unknown alias: {alias!r}")
-
     buckets: dict[str, list[Facts]] = defaultdict(list)
-    for f in grouped[pid]:
+    for f in facts_for(conn, alias):
         if f.seats_from_button is None or f.dead_button or f.blinds_irregular:
             # Positions are best-effort when the button or a blind is dead, so
             # they are left out of positional splits entirely. See SPEC.md.

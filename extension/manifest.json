@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "PokerNow Tracker",
+  "version": "0.1.0",
+  "description": "Streams the live PokerNow hand log into the local tracker and overlays per-player stats and range charts.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.pokernow.club/games/*", "https://pokernow.club/games/*"],
+      "js": ["normalize.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "PokerNow Tracker" }
+}

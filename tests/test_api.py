@@ -116,3 +116,26 @@ def test_merge_endpoint(client):
 def test_merge_unknown_alias_404s(client):
     r = client.post("/aliases/merge", json={"source": "ghost", "target": "genericpoker"})
     assert r.status_code == 404
+
+
+def test_range_endpoint(client):
+    body = client.get("/players/genericpoker/range", params={"filter": "opener,srp"}).json()
+    assert body["by"] == "preflop"
+    assert len(body["cells"]) == 169
+    assert body["known"] <= body["hands"]
+    made = client.get("/players/genericpoker/range", params={"by": "made", "filter": "wtsd"}).json()
+    assert made["classes"]
+    assert sum(c["n"] for c in made["classes"]) == made["known"]
+
+
+def test_range_endpoint_validates_input(client):
+    assert client.get("/players/ghost/range").status_code == 404
+    assert client.get("/players/genericpoker/range", params={"filter": "nope"}).status_code == 400
+    assert client.get("/players/genericpoker/range", params={"by": "sideways"}).status_code == 422
+
+
+def test_chart_page_is_served(client):
+    r = client.get("/chart")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "/range" in r.text, "the page must read from the range endpoint"

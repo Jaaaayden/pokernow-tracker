@@ -110,6 +110,108 @@ dealt.
 
 ---
 
+## Lines and sizing
+
+These facts exist so a *line* -- "opened 4bb+, single-raised pot, c-bet flop and
+turn, overbet river" -- is just a longer filter, and so a range chart can colour a
+cell by how big the player usually raises with it.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **opener** | Made the level-2 raise | Exactly one per hand at level ≥ 2 |
+| **pfa** | Last preflop aggressor | The player who owns the flop c-bet |
+| **pot_level** | Highest preflop level the hand reached | 1 limped/walk, 2 `srp`, 3 `3bet_pot`, 4+ `4bet_pot`; identical for everyone in the hand |
+| **open_bb** | The open raise's `raises to N`, over this hand's big blind | Same value for everyone in the hand; `None` in a limped pot |
+| **pf_raise_bb** | This player's own *last* preflop raise-to, in big blinds | An opener who 4-bets ends above their open |
+| **bet_pot[street]** | This player's *first* `bet` on that street, over the pot it was made into | 1.0 is a pot-sized bet, above it is an overbet |
+
+**Sizes use the raw `raises to N` figure**, not the incremental amount: "opened
+to 4bb" is about the total. Bet fractions use the incremental amount over the pot
+*before* the bet, forced posts included.
+
+**Only a `bet` gets a `bet_pot` entry.** A raise over someone else's bet is a
+different decision and is not folded into it. A filter for "bet the river" is
+therefore `bet_river` (the flag) or `bet_river>=1` (the size).
+
+**Comparisons against a missing value are false, not errors.** `open_bb<3` does not
+match a limped pot; the hand has no open size, so it cannot satisfy any claim
+about one.
+
+### Board texture
+
+`flop=<tag>`, `turn=<tag>`, `river=<tag>` and `board=<tag>` (the board as dealt,
+three to five cards) filter on the community cards; `!=` negates. A street needs
+that many cards dealt, so a hand that ended preflop matches no texture term,
+positively or negatively.
+
+| Group | Tags | Rule |
+|---|---|---|
+| highest card | `ace_high` `king_high` `queen_high` `jack_high` `ten_high` `low` | exactly one; `low` is 9-high or below |
+| suits | `monotone` `twotone` `rainbow` `flush_possible` | all one suit / exactly two suits present / no suit repeated / three or more of one suit |
+| pairing | `paired` `double_paired` `trips` `unpaired` | any rank repeated; two different pairs; three of a rank |
+| connectivity | `connected` `three_connected` `disconnected` | two adjacent ranks (ace plays high and low); three in a row; neither |
+| rank mix | `all_broadway` `no_broadway` | every card T or above / every card 9 or below |
+
+Tags overlap on purpose (a monotone flop is also `flush_possible`; a trips board is
+also `paired`) so a filter can be as broad or narrow as the question.
+
+### Sizing statistics
+
+Wherever a raise size is reported it comes with `n`, `min`, `max`, `mean`,
+`median` and `mode` (on a tie, the mode nearest the median). A range view also
+reports these over **every** hand in the spot, shown or not -- sizing needs no
+showdown, so it is the one range figure with full coverage.
+
+### The habitual size (`raise_typical`)
+
+An all-in is logged as an ordinary `raises to N`, so one tilt jam enters a cell as
+a 270bb "raise" beside a row of 3bb opens. Neither average survives that alone, so
+which one is used depends on whether the cell's sizes agree. `tolerance` is the
+spot's own median raise, floored at 1bb: a 3bb opener drifting between 2bb and 5bb
+is sizing consistently, and that same spread would be noise in a 10bb game.
+
+| Cell | Basis | Why |
+|---|---|---|
+| spread ≤ tolerance | `mean` | the sizes agree, so no outlier is present and the mean uses all of them |
+| spread > tolerance, n ≥ 3 | `median` | an outlier is present; the median steps over it |
+| spread > tolerance, n = 2 | `midpoint` | no third raise to break the tie, so their midpoint stands in |
+| n = 1 | `single` | the only evidence there is; the cell shows its own sample count |
+
+A `midpoint` is deliberately a size the player never used. It summarises two
+contradictory raises rather than claiming a habit, and the basis says so, because
+"raised small once and large once" is still worth seeing on the chart. It is the
+one basis that a single jam can still stretch: 6.7bb and 456bb reports 231bb.
+
+The chart colours each cell by the distance from `raise_typical` to the spot's
+median: the exceptions are the signal, and everything sized normally stays grey.
+
+`mode` is `None` whenever no size repeats. Two raises of 3.5bb and 15bb have no
+most-common size, and returning either one would report list order as a fact about
+the player.
+
+---
+
+## Ranges
+
+A range view is a filter, then a bucketing of the hands whose cards are known:
+
+- `preflop`: the 169 starting-hand classes, laid out as the standard 13x13 chart.
+- `made`: best-five strength on the final board (first run for run-it-twice),
+  with a `detail` for pairs (overpair / top / middle / bottom / pocket / board
+  pair) and trips (set vs trips).
+
+**Coverage** (`known / hands`) is reported alongside and is the honest part.
+Cards are known only when shown, and hands are shown when they reach showdown.
+A "3-bet range" from this data is really "3-bet hands that reached showdown":
+the bluffs that folded out are exactly the ones missing, and nothing here
+corrects for that. Percentages inside a range view are of *known* hands.
+
+`hole_cards` also includes cards shown voluntarily after an uncontested win,
+because the parser records any in-hand `shows` line. Those carry the opposite
+bias -- players show bluffs they are proud of -- and are not yet separated.
+
+---
+
 ## Money
 
 ```

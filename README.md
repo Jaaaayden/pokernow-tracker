@@ -4,8 +4,10 @@ A persistent, queryable database of PokerNow hands keyed to stable player
 identity, with per-player stats derived at read time. A live HUD is one consumer
 of that database, not the product.
 
-**Status**: Phases 0–2 complete — parser, schema, importer, CLI, stat engine and
-local API. Phases 3–5 (live capture, overlay HUD, refinement) are not built.
+**Status**: Phases 0–4 built — parser, schema, importer, CLI, stat engine, local
+API, range charts, and a browser extension for live capture with an overlay HUD.
+The extension has not yet been run against a live table (see
+[Live capture](#live-capture-phase-3)).
 
 ```
 2,761 hands · 50,202 log entries · 0 parse misses · 0 pot mismatches · 88 tests passing
@@ -47,7 +49,7 @@ pnt import path/to/log.csv                   # or specific files, a folder, or a
 pnt stats                                    # every player, most hands first
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
-pnt serve                                    # http://127.0.0.1:8000/docs
+pnt serve                                    # http://127.0.0.1:8000/chart
 ```
 
 Keep every PokerNow export in one folder — `~/Downloads/pokernow-logs` by
@@ -99,6 +101,58 @@ pnt stats --filter "faced_cbet_flop,players>=3"
 This works only because actions are stored raw with street and sequence. A
 pre-aggregated schema cannot answer "hands that reached this point" at all.
 
+### Ranges and lines
+
+What a player *had* in a spot, from the hands where their cards were shown:
+
+```bash
+pnt range henry --filter "opener,open_bb>=4,srp"          # the 13x13 chart
+pnt range henry --filter "pfa,srp,cbet_flop,cbet_turn,bet_river>=1" --by made
+```
+
+```
+henry  filter: pfa,srp,cbet_flop,cbet_turn,bet_river
+hands in this spot: 12   cards known: 7   coverage: 58.3%
+
+class                       n    pct  won   net bb
+--------------------------------------------------
+straight                    2   28.6    2     61.5
+two_pair                    2   28.6    1    -34.0
+pair                        3   42.9    2     36.0
+  middle_pair               2   28.6    1     20.9
+  top_pair                  1   14.3    1     15.1
+```
+
+A line is just a longer filter. The new terms are `opener`, `pfa` (preflop
+aggressor), `limped` / `srp` / `3bet_pot` / `4bet_pot`, and comparisons on
+`open_bb`, `raise_bb` (the player's own preflop raise-to) and `bet_flop` /
+`bet_turn` / `bet_river` (first bet on that street as a fraction of the pot, so
+`>=1` is an overbet).
+
+Board texture is a filter too: `flop=ace_high`, `flop=monotone`, `flop=paired`,
+`flop=connected`, `river!=flush_possible`, `board=twotone` and so on — the full tag
+list is in [`SPEC.md`](pnt/stats/SPEC.md). Every raise-size figure comes with
+median, mode, mean, min and max, computed over every hand in the spot (sizing
+needs no showdown), and the chart colours each hand by how far its size sits from
+that player's usual size in the spot.
+
+**Coverage is the number to read first.** Cards are known only at showdown, so a
+chart of "hands they 3-bet" is really "hands they 3-bet and showed down"; the
+bluffs that folded out are the missing part. `GET /players/{alias}/range` returns
+the same data as JSON with every one of the 169 cells present, in chart order.
+
+The same views as a page: `pnt serve`, then open
+[http://127.0.0.1:8000/chart](http://127.0.0.1:8000/chart). The 13x13 chart can be
+coloured by net won, by how often the player raised with each hand when they had
+a preflop decision (0–100%), or by how their habitual raise size with it compares
+to their usual size in the spot; the made-hand view shows what the shown hands had
+by the end. "Habitual" is the mean when a hand's sizes agree and the median when
+they do not, so a single tilt jam cannot repaint a cell — see
+[`SPEC.md`](pnt/stats/SPEC.md).
+Player, spot, view, colour mode and theme all live in the URL
+(`/chart?player=henry&filter=opener,srp&color=size&theme=dark`), which is what the
+HUD will embed once live capture exists.
+
 ### Identity
 
 PokerNow IDs are stable per browser and survive renames and quit/rejoin; the same
@@ -136,7 +190,7 @@ artifact; `derive.py` mirrors it and is a bug if they disagree.
 | File | Contents |
 |---|---|
 | [`docs/findings.md`](docs/findings.md) | The log format: identity, ordering, the cumulative-amount rule, complete line vocabulary, traps, and the live-capture endpoint |
-| [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Stat definitions |
+| [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Stat definitions, line and sizing facts, range views |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |
 
 ---
@@ -189,25 +243,50 @@ The suite is organized around invariants rather than examples:
 
 ---
 
-## Next: Phase 3 (live capture)
+## Live capture (Phase 3)
 
-The groundwork is done — `POST /ingest` takes raw log entries and is idempotent, so
-the capture contract is already fixed and tested.
+`extension/` is an unpacked Chrome extension (Manifest V3). On a
+`pokernow.club/games/…` page it:
 
-The captcha gates only the "download full log" button, not the endpoint
-`PokerNowGrabber` uses mid-game:
+1. polls the game's log endpoint with the page's own session cookie —
+   `GET /games/{gameId}/log?after_at=…&before_at=…`, the one `PokerNowGrabber`
+   uses, which the captcha does not gate;
+2. normalizes the response into `{entry, at, order}` — **the same three fields as
+   the CSV export** — and posts it to `POST /ingest`. Live capture and backfill
+   feed one parser with identical input, so they cannot disagree, and overlapping
+   fetches are free because `/ingest` dedupes on `(game_id, order)`;
+3. draws a draggable overlay listing everyone dealt into the latest hand, keyed by
+   PokerNow ID via `GET /hud/{gameId}`, with lifetime VPIP / PFR / 3-bet / fold to
+   3-bet / c-bet / WTSD. Click a row to embed that player's range chart, with a
+   spot selector, straight from the local server.
 
+No manual seat mapping is needed: the log names every player as `Name @ ID`, and
+the alias table already joins one person's devices.
+
+### Install
+
+```bash
+pnt serve                       # leave running; the extension talks to :8000
 ```
-GET https://www.pokernow.club/games/{gameId}/log?after_at={ms}&before_at={ms}
+
+Then `chrome://extensions` → *Developer mode* → *Load unpacked* → pick
+`extension/`. Open a PokerNow game; the panel appears top-right. The toolbar
+popup shows the server URL, poll interval, and capture status.
+
+### The one unverified assumption
+
+The JSON shape of `/log` was never captured from a live table
+([`docs/findings.md`](docs/findings.md) §8). Everything that depends on it lives
+in [`extension/normalize.js`](extension/normalize.js), which accepts a bare array
+or `{logs|log|entries|data: [...]}`, item text under `entry|msg|message|text`,
+time under `at|createdAt|created_at|time|ts`, and `order` when present — and
+rebuilds the CSV's `epoch_ms × 100 + seq` formula when it is not. If the shape is
+something else, the popup says **UNRECOGNIZED** and the page console prints the
+first item; paste that into an issue and the fix is one line in that file.
+
+```bash
+node --test extension/normalize.test.mjs
 ```
 
-A content script on `pokernow.club` sends the `npt` cookie automatically. Poll that
-endpoint as the primary path and use the websocket (`gC` / `gameResult`) only as a
-low-latency trigger, so a PokerNow socket change degrades to slower capture rather
-than none.
-
-Because live capture and backfill would then consume **byte-identical input through
-one parser**, they cannot disagree — which is the whole point.
-
-Verify the `/log` JSON envelope in DevTools first; it is the one assumption not yet
-confirmed against a live table.
+The websocket trigger (`gC` / `gameResult`) is deliberately not used: a 5-second
+poll is fast enough for a HUD and survives a PokerNow socket change.

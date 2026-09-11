@@ -32,6 +32,9 @@ class HandAction:
     amount: int
     is_forced: bool
     all_in: bool
+    #: The raw cumulative "raises to N" figure. Sizing facts read this, because
+    #: "opened to 4bb" is about the total, not the increment over the blind.
+    amount_to: int | None = None
 
 
 @dataclass(slots=True)
@@ -61,6 +64,8 @@ class HandRow:
     ts: str | None
     players: dict[str, HandPlayerRow]
     actions: list[HandAction]
+    #: First run of the board. Run-it-twice hands classify on run one only.
+    board: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -99,12 +104,32 @@ class Facts:
     net: int = 0
     bb_size: int | None = None
 
+    # --- line and sizing facts (SPEC.md, "Lines and sizing") -----------------
+    #: Made the level-2 raise.
+    opener: bool = False
+    #: Was the last preflop aggressor -- the player who "owns" the flop c-bet.
+    pfa: bool = False
+    #: Highest preflop bet level the hand reached: 1 limped/walk, 2 single-raised,
+    #: 3 three-bet pot, 4+ four-bet pot. Same value for everyone in the hand.
+    pot_level: int = 1
+    #: Size of the hand's open raise in big blinds, for everyone in the hand.
+    open_bb: float | None = None
+    #: This player's own last preflop raise-to, in big blinds.
+    pf_raise_bb: float | None = None
+    #: This player's first `bet` on each postflop street as a fraction of the pot
+    #: it was made into. 1.0 is a pot-sized bet; above it is an overbet.
+    bet_pot: dict[str, float] = field(default_factory=dict)
+
+    hole_cards: str | None = None
+    board: tuple[str, ...] = ()
+
 
 def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
     """Walk preflop voluntary actions, tracking bet level. Returns the last aggressor."""
     level = 1  # the blinds
     aggressor: str | None = None
     opener: str | None = None  # who made it level 2
+    open_bb: float | None = None
 
     for a in hand.actions:
         if a.street != PREFLOP or a.is_forced:
@@ -131,16 +156,34 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
             if a.kind == "raise" or a.kind == "bet":
                 f.pfr = True
                 level += 1
+                if hand.bb and a.amount_to is not None:
+                    f.pf_raise_bb = round(a.amount_to / hand.bb, 2)
                 if level == 2:
                     opener = a.pn_id
+                    f.opener = True
+                    open_bb = f.pf_raise_bb
                 elif level == 3:
                     f.three_bet = True
                 aggressor = a.pn_id
+
+    for f in facts.values():
+        f.pot_level = level
+        f.open_bb = open_bb
+    if aggressor is not None and aggressor in facts:
+        facts[aggressor].pfa = True
     return aggressor
 
 
 def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | None) -> None:
     prev_aggressor = preflop_aggressor
+
+    # Pot size *before* each action, forced posts included, so a bet can be
+    # expressed as a fraction of what it was made into.
+    pot_before: dict[int, int] = {}
+    running = 0
+    for a in hand.actions:
+        pot_before[a.seq] = running
+        running += a.amount
 
     for street in POSTFLOP_STREETS:
         street_actions = [a for a in hand.actions if a.street == street and not a.is_forced]
@@ -180,6 +223,8 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
             if a.kind == "bet":
                 if not bet_made and a.pn_id == prev_aggressor:
                     cbet_by = a.pn_id
+                if street not in f.bet_pot and pot_before[a.seq] > 0:
+                    f.bet_pot[street] = round(a.amount / pot_before[a.seq], 3)
                 bet_made = True
                 street_aggressor = a.pn_id
             elif a.kind == "raise":
@@ -203,6 +248,8 @@ def derive(hand: HandRow) -> list[Facts]:
             blinds_irregular=hand.blinds_irregular,
             net=p.collected - p.contributed + p.bounty,
             bb_size=hand.bb,
+            hole_cards=p.hole_cards,
+            board=hand.board,
         )
         for pid, p in hand.players.items()
     }

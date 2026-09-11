@@ -19,15 +19,18 @@ from typing import Annotated
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from pnt.db.conn import connect
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import ingest_entries, merge_players, rebuild_game
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import positional_report, report
+from pnt.stats.queries import facts_for, positional_report, report
+from pnt.stats.ranges import composition, range_grid
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
+STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="PokerNow Tracker", version="0.1.0")
 
@@ -62,6 +65,24 @@ class IngestRequest(BaseModel):
             "Re-derive the game after ingesting. Live capture may set this False "
             "on most hands and True periodically, since a rebuild is O(game)."
         ),
+    )
+
+
+@app.get("/chart", include_in_schema=False)
+def chart() -> HTMLResponse:
+    """The range chart page. One static file; all data comes from /players/{alias}/range.
+
+    Query parameters (`?player=henry&filter=opener,srp&by=made&color=size`) seed
+    the page state, so a bookmark -- or later, an extension iframe -- lands on a
+    specific player and spot.
+
+    The page is re-read from disk on every request, and `no-store` keeps the
+    browser from holding an old copy -- but the Python behind it is loaded once,
+    so after pulling a change to the stat code, restart `pnt serve`.
+    """
+    return HTMLResponse(
+        (STATIC / "chart.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -133,6 +154,32 @@ def positions(alias: str, split_by_size: bool = False) -> list[dict]:
         return positional_report(db(), alias, pool=not split_by_size)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/players/{alias}/range")
+def player_range(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'opener,open_bb>=4,srp'")] = None,
+    by: Annotated[str, Query(pattern="^(preflop|made)$")] = "preflop",
+    game: str | None = None,
+) -> dict:
+    """The range chart (`by=preflop`) or line composition (`by=made`) for one player.
+
+    This is what the chart page renders. Every cell of the 169-grid is present,
+    in chart order, so the client needs no card logic of its own.
+    """
+    try:
+        pred = parse_filter(filter) if filter else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        facts = facts_for(db(), alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if pred is not None:
+        facts = [f for f in facts if pred(f)]
+    out = range_grid(facts) if by == "preflop" else composition(facts)
+    return {"player": alias, "filter": filter, "by": by, **out}
 
 
 @app.get("/hands/{hand_id}")

@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Range chart</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --ring: rgba(11,11,11,0.10);
+    --mid: #f0efec;
+    --accent: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 20px 20px 48px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+
+  /* --- one filter row above everything it scopes --- */
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .controls label { color: var(--ink-2); font-size: 13px; }
+  select, input[type=text], button {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px;
+  }
+  input[type=text] { min-width: 320px; flex: 1; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .presets button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
+  .presets button:hover { border-color: var(--muted); }
+  .presets button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: transparent; }
+  .presets .lbl { color: var(--muted); font-size: 12px; align-self: center; margin-right: 2px; }
+  .presets .sep { width: 1px; background: var(--grid); margin: 0 4px; }
+  .tile .k small { color: var(--muted); }
+
+  /* --- stat tiles --- */
+  .tiles { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 10px 14px; min-width: 150px; }
+  .tile .v { font-size: 24px; font-weight: 600; line-height: 1.1; }
+  .tile .k { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .tile.warn .v { color: var(--ink-2); }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 72ch; }
+
+  /* --- chart card --- */
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; }
+  .card.loading { opacity: .45; transition: opacity .15s; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .card-head h2 { font-size: 14px; font-weight: 600; margin: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; background: var(--surface); }
+  .cell {
+    aspect-ratio: 1 / 1; border-radius: 4px; padding: 4px 5px; position: relative;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--mid); color: var(--ink); cursor: default; outline: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .cell.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--grid); color: var(--muted); }
+  .cell.empty .n { visibility: hidden; }
+  .cell.on-dark { color: #ffffff; }
+  .cell.on-light { color: #0b0b0b; }
+  .cell:hover, .cell:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); z-index: 1; }
+  .cell .l { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
+  .cell .n { font-size: 15px; font-weight: 500; align-self: flex-end; }
+  @media (max-width: 720px) { .cell .l { font-size: 10px; } .cell .n { font-size: 12px; } }
+
+  .scale { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--ink-2); font-size: 12px; }
+  .scale .bar { display: flex; gap: 2px; }
+  .scale .bar i { display: block; width: 22px; height: 12px; border-radius: 2px; }
+
+  /* --- composition bars --- */
+  .bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 6px 12px; align-items: center; }
+  .bars .lab { text-align: right; color: var(--ink-2); white-space: nowrap; }
+  .bars .lab.detail { padding-left: 14px; color: var(--muted); font-size: 13px; }
+  .bars .track { height: 14px; background: transparent; position: relative; }
+  .bars .fill { height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+  .bars .fill.detail { background: var(--accent); opacity: .45; height: 10px; margin-top: 2px; }
+  .bars .val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bars .val small { color: var(--muted); margin-left: 6px; }
+
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 12px; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.detail { padding-left: 24px; color: var(--ink-2); }
+
+  .tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+    border-radius: 8px; padding: 8px 10px; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    font-size: 13px; min-width: 150px;
+  }
+  .tip .big { font-size: 18px; font-weight: 600; }
+  .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
+  .tip .row b { color: var(--ink); font-weight: 500; }
+  .err { color: #d03b3b; margin: 12px 0; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Range chart <small id="subtitle">what a player had in a spot, from the hands where it was shown</small></h1>
+
+  <div class="controls">
+    <label for="player">Player</label>
+    <select id="player"></select>
+    <label for="filter">Spot</label>
+    <input id="filter" type="text" placeholder="opener,open_bb>=4,srp" spellcheck="false">
+    <button class="primary" id="apply">Apply</button>
+    <span class="seg" role="group" aria-label="View">
+      <button data-view="preflop" aria-pressed="true">Preflop chart</button>
+      <button data-view="made" aria-pressed="false">Made hands</button>
+    </span>
+  </div>
+  <div class="presets" id="presets"></div>
+  <div class="presets textures" id="textures"><span class="lbl">Flop</span></div>
+
+  <div class="tiles">
+    <div class="tile"><div class="v" id="t-hands">–</div><div class="k">hands in this spot</div></div>
+    <div class="tile"><div class="v" id="t-known">–</div><div class="k">cards known</div></div>
+    <div class="tile warn"><div class="v" id="t-cov">–</div><div class="k">coverage</div></div>
+    <div class="tile"><div class="v" id="t-raise">–</div><div class="k" id="t-raise-k">usual preflop raise</div></div>
+  </div>
+  <p class="note">Cards are known only when a hand is shown, and hands are shown when they reach showdown.
+    The hands that folded out of this spot are the ones missing. Read coverage first.</p>
+  <div class="err hidden" id="err"></div>
+
+  <section class="card" id="card">
+    <div class="card-head">
+      <h2 id="card-title">Starting hands</h2>
+      <span class="seg" id="colorseg" role="group" aria-label="Color by">
+        <button data-color="net" aria-pressed="true">Net won</button>
+        <button data-color="pfr" aria-pressed="false">Raise %</button>
+        <button data-color="size" aria-pressed="false">Raise size</button>
+      </span>
+      <button id="tabletoggle" aria-pressed="false">Table</button>
+    </div>
+    <div id="grid" class="grid" role="grid" aria-label="Starting hand chart"></div>
+    <div id="scale" class="scale"></div>
+    <div id="bars" class="bars hidden"></div>
+    <div id="table" class="hidden"></div>
+  </section>
+</main>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(() => {
+  // ---- palette (reference instance; one hue per job) ----------------------
+  const BLUE = ["#cde2fb","#9ec5f4","#6da7ec","#3987e5","#256abf","#184f95","#0d366b"];
+  const RED  = ["#fbd9d8","#f6b6b5","#ef9291","#e66e6d","#e34948","#b93a39","#8f2d2c"];
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  const dark = () => document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  // Ink is chosen from the fill itself, not from the theme: in dark mode the
+  // biggest values sit on the palest step and need dark ink there.
+  const lum = (hex) => { const n = parseInt(hex.slice(1), 16); const c = [16, 8, 0].map(s => ((n >> s) & 255) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const inkClass = (hex) => hex.startsWith("#") ? (lum(hex) > 0.35 ? "on-light" : "on-dark") : "";
+  // In dark mode "near zero" recedes toward the dark surface, so the ramp runs
+  // dark -> light with magnitude instead of light -> dark.
+  const ramp = (arr) => dark() ? [...arr].reverse() : arr;
+
+  const PRESETS = [
+    ["Any preflop decision", "acted_preflop"],
+    ["Opened, single-raised pot", "opener,srp"],
+    ["Opened 4bb+", "opener,open_bb>=4,srp"],
+    ["Opened 2–3bb", "opener,open_bb<=3,srp"],
+    ["3-bet", "3bet"],
+    ["Faced a 3-bet", "faced_3bet"],
+    ["C-bet flop", "pfa,cbet_flop"],
+    ["C-bet flop and turn", "pfa,cbet_flop,cbet_turn"],
+    ["Overbet river", "bet_river>=1"],
+    ["Went to showdown", "wtsd"],
+    ["Button", "position=BTN"],
+    ["Big blind", "position=BB"],
+  ];
+
+  const $ = (id) => document.getElementById(id);
+
+  // Board texture chips. Each toggles one `flop=<tag>` term; groups are
+  // separated visually but any combination composes (they AND together).
+  const TEXTURES = [
+    ["ace high", "ace_high"], ["king high", "king_high"], ["queen high", "queen_high"], ["low", "low"], null,
+    ["monotone", "monotone"], ["two-tone", "twotone"], ["rainbow", "rainbow"], null,
+    ["paired", "paired"], ["unpaired", "unpaired"], null,
+    ["connected", "connected"], ["disconnected", "disconnected"], ["all broadway", "all_broadway"],
+  ];
+  const terms = () => $("filter").value.split(",").map(t => t.trim()).filter(Boolean);
+  const hasTerm = (t) => terms().includes(t);
+  function toggleTerm(t) {
+    const cur = terms();
+    const next = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t];
+    $("filter").value = next.join(",");
+  }
+  function syncChips() {
+    document.querySelectorAll("#textures button[data-term]").forEach(b => b.setAttribute("aria-pressed", hasTerm(b.dataset.term)));
+  }
+  const state = { player: null, filter: "", by: "preflop", color: "net", table: false, data: null };
+
+  // ---- URL state so the page can be bookmarked or embedded --------------
+  const readUrl = () => {
+    const q = new URLSearchParams(location.search);
+    state.player = q.get("player");
+    state.filter = q.get("filter") || "";
+    state.by = q.get("by") === "made" ? "made" : "preflop";
+    const c = q.get("color") === "freq" ? "pfr" : q.get("color");
+    state.color = ["net","pfr","size"].includes(c) ? c : "net";
+  };
+  const writeUrl = () => {
+    const q = new URLSearchParams();
+    if (state.player) q.set("player", state.player);
+    if (state.filter) q.set("filter", state.filter);
+    if (state.by !== "preflop") q.set("by", state.by);
+    if (state.color !== "net") q.set("color", state.color);
+    history.replaceState(null, "", "?" + q.toString());
+  };
+
+  // ---- data ------------------------------------------------------------
+  async function loadPlayers() {
+    const r = await fetch("/players");
+    const rows = await r.json();
+    const sel = $("player");
+    sel.replaceChildren();
+    for (const p of rows) {
+      const o = document.createElement("option");
+      o.value = p.alias; o.textContent = p.alias;
+      sel.appendChild(o);
+    }
+    if (!state.player || !rows.some(p => p.alias === state.player)) state.player = rows[0]?.alias ?? null;
+    sel.value = state.player ?? "";
+  }
+
+  async function load() {
+    if (!state.player) return;
+    $("card").classList.add("loading");
+    $("err").classList.add("hidden");
+    const q = new URLSearchParams({ by: state.by });
+    if (state.filter) q.set("filter", state.filter);
+    try {
+      const r = await fetch(`/players/${encodeURIComponent(state.player)}/range?` + q);
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.detail || `${r.status} ${r.statusText}`);
+      }
+      state.data = await r.json();
+      const probe = state.data.cells ? Object.values(state.data.cells)[0] : state.data.classes?.[0];
+      if (probe && !("raise_typical" in probe)) {
+        throw new Error("the running server is older than this page (no raise_pct in its data): restart `pnt serve`");
+      }
+      render();
+    } catch (e) {
+      $("err").textContent = String(e.message || e);
+      $("err").classList.remove("hidden");
+    } finally {
+      $("card").classList.remove("loading");
+    }
+  }
+
+  // ---- render ----------------------------------------------------------
+  const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
+  const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+  // How each cell's habitual size was decided; see typical_size() in ranges.py.
+  const BASIS = {
+    mean: "mean; these raises agree",
+    median: "median; an outlier raise is present",
+    single: "one raise only",
+    midpoint: "midpoint of two raises that disagree",
+    none: "never raised",
+  };
+  const DETAIL = { trips: "one hole card", set: "set (pocket pair)", board_pair: "pair on board only" };
+  const label = (c, detail) => detail ? (DETAIL[c.class] || c.class.replace(/_/g, " ")) : c.class.replace(/_/g, " ");
+
+  function render() {
+    const d = state.data;
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = d.known;
+    $("t-cov").textContent = fmtPct(d.coverage);
+    const rs = d.raise;
+    $("t-raise").textContent = rs ? `${rs.median} bb` : "–";
+    $("t-raise-k").replaceChildren();
+    $("t-raise-k").append("usual preflop raise ");
+    const sm = document.createElement("small");
+    sm.textContent = rs
+      ? `median · ${rs.mode == null ? "no repeated size" : "mode " + rs.mode} · mean ${rs.mean} · ${rs.min}–${rs.max} · n=${rs.n}`
+      : "no raises in this spot";
+    $("t-raise-k").appendChild(sm);
+    $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
+    const preflop = state.by === "preflop";
+    $("colorseg").classList.toggle("hidden", !preflop);
+    $("card-title").textContent = preflop ? "Starting hands" : "What they had made";
+    $("grid").classList.toggle("hidden", !preflop || state.table);
+    $("scale").classList.toggle("hidden", !preflop || state.table);
+    $("bars").classList.toggle("hidden", preflop || state.table);
+    $("table").classList.toggle("hidden", !state.table);
+    if (preflop) { renderGrid(d); } else { renderBars(d); }
+    renderTable(d, preflop);
+  }
+
+  // value -> [fillColor, deep?] for the current color mode
+  function colorer(d) {
+    const cells = Object.values(d.cells).filter(c => c.n > 0);
+    if (state.color === "net") {
+      const max = Math.max(1, ...cells.map(c => Math.abs(c.net_bb)));
+      const B = ramp(BLUE), R = ramp(RED);
+      return {
+        fill(c) {
+          if (c.n === 0) return null;
+          const t = Math.sqrt(Math.abs(c.net_bb) / max);
+          if (t < 0.05) return "var(--mid)";
+          const i = Math.min(6, Math.floor(t * 7));
+          return (c.net_bb > 0 ? B : R)[i];
+        },
+        legend: { left: `−${max.toFixed(0)} bb loss`, right: `+${max.toFixed(0)} bb profit`, steps: [...ramp(RED).slice().reverse(), "var(--mid)", ...ramp(BLUE)] },
+      };
+    }
+    if (state.color === "pfr") {
+      // Raise frequency: raised / preflop opportunities, on a fixed 0-100 scale
+      // so the same colour means the same percentage on every chart.
+      const B = ramp(BLUE);
+      return {
+        fill(c) {
+          if (c.n === 0) return null;
+          if (c.raise_pct == null) return "var(--mid)";
+          return B[Math.min(6, Math.floor((c.raise_pct / 100) * 7 - 1e-9))];
+        },
+        legend: { left: "0% raised", right: "100% raised, of preflop decisions", steps: B },
+      };
+    }
+    // raise size, relative to how this player usually sizes in this spot.
+    // Gray = at the usual size; red = smaller than usual; blue = larger. The
+    // usual size comes from every hand in the spot, shown or not, so it has
+    // full coverage. Absolute values live in the tooltip and table. A
+    // light->dark ramp on absolute size put a 2bb-opener's whole chart on one
+    // step; centring on the median is what makes the exceptions visible.
+    const usual = d.raise ? d.raise.median : null;
+    const SPAN = 3; // +-3bb from usual reaches the deepest step; beyond saturates
+    const B = ramp(BLUE), R = ramp(RED);
+    return {
+      fill(c) {
+        if (c.n === 0) return null;
+        if (c.raise_typical == null || usual == null) return "var(--mid)";
+        const delta = c.raise_typical - usual;
+        if (Math.abs(delta) < 0.25) return "var(--mid)";
+        const t = Math.min(1, Math.abs(delta) / SPAN);
+        const i = Math.min(6, Math.floor(t * 7 - 1e-9));
+        return (delta > 0 ? B : R)[i];
+      },
+      legend: {
+        left: `−${SPAN}bb smaller`,
+        right: `+${SPAN}bb larger than usual (${usual == null ? "–" : usual + "bb"})`,
+        steps: [...ramp(RED).slice().reverse(), "var(--mid)", ...ramp(BLUE)],
+      },
+    };
+  }
+
+  function renderGrid(d) {
+    const col = colorer(d);
+    const grid = $("grid");
+    grid.replaceChildren();
+    for (const row of d.rows) {
+      for (const label of row) {
+        const c = d.cells[label];
+        const el = document.createElement("div");
+        el.className = "cell";
+        el.tabIndex = 0;
+        el.setAttribute("role", "gridcell");
+        const l = document.createElement("span"); l.className = "l"; l.textContent = label;
+        const n = document.createElement("span"); n.className = "n";
+        n.textContent = state.color === "pfr" ? (c.raise_pct == null ? "–" : Math.round(c.raise_pct) + "%")
+          : state.color === "size" ? (c.raise_typical == null ? "–" : c.raise_typical)
+          : c.n;
+        el.append(l, n);
+        const f = col.fill(c);
+        if (!f) el.classList.add("empty");
+        else { el.style.background = f; const k = inkClass(f); if (k) el.classList.add(k); }
+        el.setAttribute("aria-label", tipText(label, c).join(", "));
+        el.addEventListener("pointermove", (ev) => showTip(ev, label, c));
+        el.addEventListener("pointerleave", hideTip);
+        el.addEventListener("focus", (ev) => showTip(ev, label, c));
+        el.addEventListener("blur", hideTip);
+        grid.appendChild(el);
+      }
+    }
+    const s = $("scale");
+    s.replaceChildren();
+    const left = document.createElement("span"); left.textContent = col.legend.left;
+    const bar = document.createElement("span"); bar.className = "bar";
+    for (const hex of col.legend.steps) { const i = document.createElement("i"); i.style.background = hex; bar.appendChild(i); }
+    const right = document.createElement("span"); right.textContent = col.legend.right;
+    const note = document.createElement("span"); note.style.marginLeft = "auto"; note.style.color = "var(--muted)";
+    note.textContent = state.color === "size"
+      ? "outlined = never shown · grey = sized as usual"
+      : "outlined cells were never shown in this spot";
+    s.append(left, bar, right, note);
+  }
+
+  function tipText(label, c) {
+    if (c.n === 0) return [label, "never shown in this spot"];
+    const out = [`${label}: shown ${c.n}×`, `net ${fmtBb(c.net_bb)}`, `won ${c.won} of ${c.n}`,
+      c.pf_opp ? `raised ${c.pfr} of ${c.pf_opp} preflop decisions (${c.raise_pct}%)` : "no preflop decision"];
+    if (c.raise) out.push(`typically ${c.raise_typical}bb (${BASIS[c.raise_basis]}), median ${c.raise.median}, mean ${c.raise.mean}, ${c.raise.min}–${c.raise.max} of ${c.raise.n}`);
+    return out;
+  }
+
+  function showTip(ev, label, c) {
+    const tip = $("tip");
+    tip.replaceChildren();
+    const big = document.createElement("div"); big.className = "big";
+    big.textContent = c.n === 0 ? label : `${c.n}× ${label}`;
+    tip.appendChild(big);
+    const rows = c.n === 0 ? [["never shown in this spot", ""]] : [
+      ["net", fmtBb(c.net_bb)],
+      ["won", `${c.won} / ${c.n}`],
+      ["raised", c.pf_opp ? `${c.pfr} / ${c.pf_opp} (${c.raise_pct}%)` : "no decision"],
+      ...(c.raise ? [
+        ["typical raise", c.raise_typical == null ? "–" : `${c.raise_typical} bb`],
+        ["from", BASIS[c.raise_basis]],
+        ["raise median", `${c.raise.median} bb`],
+        ["mode", c.raise.mode == null ? "none repeats" : `${c.raise.mode} bb`],
+        ["mean", `${c.raise.mean} bb`],
+        ["min – max", `${c.raise.min} – ${c.raise.max}`],
+        ["raised", `${c.raise.n} of ${c.n}`],
+      ] : [["raised", "0 of " + c.n]]),
+    ];
+    for (const [k, v] of rows) {
+      const r = document.createElement("div"); r.className = "row";
+      const kk = document.createElement("span"); kk.textContent = k;
+      const vv = document.createElement("b"); vv.textContent = v;
+      r.append(kk, vv); tip.appendChild(r);
+    }
+    tip.style.display = "block";
+    const rect = (ev.currentTarget || ev.target).getBoundingClientRect();
+    const x = ev.clientX ?? rect.right, y = ev.clientY ?? rect.top;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px";
+    tip.style.top = Math.min(y + 14, innerHeight - h - 8) + "px";
+  }
+  function hideTip() { $("tip").style.display = "none"; }
+
+  function renderBars(d) {
+    const bars = $("bars");
+    bars.replaceChildren();
+    if (!d.classes.length) {
+      const p = document.createElement("div"); p.className = "lab"; p.textContent = "no shown hands in this spot";
+      bars.appendChild(p); return;
+    }
+    const max = Math.max(...d.classes.map(c => c.pct));
+    const addRow = (c, detail) => {
+      const lab = document.createElement("div"); lab.className = "lab" + (detail ? " detail" : "");
+      lab.textContent = label(c, detail);
+      const track = document.createElement("div"); track.className = "track";
+      const fill = document.createElement("div"); fill.className = "fill" + (detail ? " detail" : "");
+      fill.style.width = (c.pct / max * 100) + "%";
+      track.appendChild(fill);
+      const val = document.createElement("div"); val.className = "val";
+      val.textContent = fmtPct(c.pct);
+      const sm = document.createElement("small"); sm.textContent = `${c.n} · ${fmtBb(c.net_bb)}`;
+      val.appendChild(sm);
+      bars.append(lab, track, val);
+    };
+    for (const c of d.classes) { addRow(c, false); for (const dd of (c.details || [])) addRow(dd, true); }
+  }
+
+  function renderTable(d, preflop) {
+    const wrap = $("table");
+    wrap.replaceChildren();
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    const cols = preflop ? ["hand", "shown", "net bb", "won", "raise %", "raised / decisions", "typical bb", "from", "median", "mode", "mean", "min", "max"]
+                         : ["class", "% of known", "n", "net bb", "won"];
+    for (const c of cols) { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); }
+    t.appendChild(head);
+    const row = (vals, detail) => {
+      const tr = document.createElement("tr");
+      vals.forEach((v, i) => { const td = document.createElement("td"); if (detail && i === 0) td.className = "detail"; td.textContent = v ?? "–"; tr.appendChild(td); });
+      t.appendChild(tr);
+    };
+    if (preflop) {
+      Object.entries(d.cells).filter(([, c]) => c.n > 0).sort((a, b) => b[1].n - a[1].n)
+        .forEach(([label, c]) => row([label, c.n, c.net_bb.toFixed(1), c.won,
+          c.raise_pct, `${c.pfr} / ${c.pf_opp}`, c.raise_typical, c.raise ? BASIS[c.raise_basis] : null,
+          c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max]));
+    } else {
+      for (const c of d.classes) {
+        row([c.class, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won]);
+        for (const dd of (c.details || [])) row([label(dd, true), fmtPct(dd.pct), dd.n, dd.net_bb.toFixed(1), dd.won], true);
+      }
+    }
+    wrap.appendChild(t);
+  }
+
+  // ---- wiring ----------------------------------------------------------
+  function apply() {
+    state.player = $("player").value;
+    state.filter = $("filter").value.trim();
+    syncChips();
+    writeUrl();
+    load();
+  }
+  $("apply").addEventListener("click", apply);
+  $("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+  $("player").addEventListener("change", apply);
+  document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    state.by = b.dataset.view; writeUrl(); load();
+  }));
+  document.querySelectorAll("[data-color]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    state.color = b.dataset.color; writeUrl(); if (state.data) render();
+  }));
+  $("tabletoggle").addEventListener("click", () => {
+    state.table = !state.table; $("tabletoggle").setAttribute("aria-pressed", state.table); if (state.data) render();
+  });
+  for (const [name, f] of PRESETS) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = f;
+    b.addEventListener("click", () => { $("filter").value = f; apply(); });
+    $("presets").appendChild(b);
+  }
+  for (const t of TEXTURES) {
+    if (!t) { const s = document.createElement("span"); s.className = "sep"; $("textures").appendChild(s); continue; }
+    const [name, tag] = t;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = `flop=${tag}`;
+    b.dataset.term = `flop=${tag}`;
+    b.addEventListener("click", () => { toggleTerm(b.dataset.term); apply(); });
+    $("textures").appendChild(b);
+  }
+  $("filter").addEventListener("input", syncChips);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.data && render());
+
+  readUrl();
+  $("filter").value = state.filter;
+  syncChips();
+  document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
+  document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
+  loadPlayers().then(load).catch(e => { $("err").textContent = String(e); $("err").classList.remove("hidden"); });
+})();
+</script>
+</body>
+</html>

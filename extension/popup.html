@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PokerNow Tracker</title>
+<style>
+  body { margin: 0; width: 320px; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #0b0b0b; background: #f9f9f7; }
+  @media (prefers-color-scheme: dark) { body { color: #fff; background: #1a1a19; } input { background: #0d0d0d; color: #fff; border-color: #383835; } }
+  main { padding: 12px 14px; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  label { display: block; color: #898781; font-size: 12px; margin-top: 8px; }
+  input { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 7px; border: 1px solid #c3c2b7; border-radius: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 0; background: #2a78d6; color: #fff; cursor: pointer; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .kv span:nth-child(odd) { color: #898781; }
+  .ok { color: #0ca30c; } .bad { color: #d03b3b; }
+  a { color: #2a78d6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PokerNow Tracker</h1>
+  <label for="server">Tracker server</label>
+  <input id="server" placeholder="http://127.0.0.1:8000">
+  <label for="poll">Poll every (seconds)</label>
+  <input id="poll" type="number" min="2" max="60">
+  <div class="row"><button id="save">Save</button><span id="health"></span><a id="chart" target="_blank" rel="noopener" href="#">chart ↗</a></div>
+  <div class="kv" id="status"></div>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>
