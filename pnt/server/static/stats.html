@@ -63,6 +63,16 @@
   .crumb { margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .key { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+  .key summary { cursor: pointer; color: var(--accent); width: fit-content; }
+  .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px;
+    margin: 10px 0 0; padding: 12px 14px; background: var(--surface);
+    border: 1px solid var(--ring); border-radius: 10px; }
+  .key dt { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .key dd { margin: 0; }
+  .key dd b { font-weight: 600; color: var(--ink); }
+  @media (max-width: 620px) { .key dl { grid-template-columns: 1fr; gap: 2px 0; }
+    .key dd { margin: 0 0 8px; } }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -98,6 +108,11 @@
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
+
+  <details class="key" id="key">
+    <summary>What the columns mean</summary>
+    <dl id="key-list"></dl>
+  </details>
 </main>
 
 <script>
@@ -145,15 +160,24 @@
     donk: (s) => `Lead, or donk bet. They bet the ${s} into the ${PREV[s]} aggressor, before `
       + `that player gets to act. A bet after a checked-through street is a probe, not a lead.`,
   };
+  // [what the acronym stands for, what it counts]. One source of truth: the header
+  // tooltips and the visible key below the table are both built from this, and
+  // hover alone is no use on a touch screen.
   const BASE_TIP = {
-    hands: "Hands they were dealt into.",
-    vpip: "Voluntarily put money in preflop: called, bet or raised. Blinds never count.",
-    pfr: "Raised preflop. Same denominator as VPIP: the hands where action reached them.",
-    "3bet": "Re-raised someone's open, taking the betting to its third level.",
-    fold_to_3bet: "They opened, someone 3-bet, and they folded.",
-    wtsd: "Went to showdown, of the flops they saw.",
-    wsd: "Won money at showdown, of the showdowns they reached.",
-    bb_per_100: "Big blinds won per 100 hands. Incomplete hands are excluded.",
+    hands: ["", "Hands they were dealt into. Every rate below is over some subset of these, "
+      + "so treat a small number here as a warning about all of them."],
+    vpip: ["Voluntarily Put $ In Pot",
+      "How often they called, bet or raised preflop. Blinds are forced, so they never count. "
+      + "The headline looseness number: high means they play a lot of hands."],
+    pfr: ["Pre-Flop Raise",
+      "How often they raised preflop, over the same hands as VPIP. Compare the two: close "
+      + "together is an aggressive player, a wide gap means they call far more than they raise."],
+    "3bet": ["Three-Bet", "How often they re-raised someone's open, making it the third level of betting."],
+    fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
+    wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
+    wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
+    bb_per_100: ["Big blinds per 100 hands",
+      "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
   };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
@@ -186,8 +210,9 @@
   // [key, header, kind, opportunity key, hover text]
   const columns = () => {
     const s = state.street;
-    const base = BASE.map(([k, h, kind, opp]) => [k, h, kind, opp, BASE_TIP[k]]);
-    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k](s)]);
+    const base = BASE.map(([k, h, kind, opp]) =>
+      [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
+    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
     const sizes = state.sizes
       ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
           `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
@@ -263,6 +288,27 @@
     return rows;
   }
 
+  // Built from the columns actually on screen, so it follows the street and the
+  // size toggle rather than drifting from them.
+  function renderKey(cols) {
+    const dl = $("key-list");
+    dl.replaceChildren();
+    const row = (term, name, def) => {
+      const dt = document.createElement("dt"); dt.textContent = term;
+      const dd = document.createElement("dd");
+      if (name) { const b = document.createElement("b"); b.textContent = name; dd.append(b, " — "); }
+      dd.append(def);
+      dl.append(dt, dd);
+    };
+    for (const [key, header, , , tip] of cols) {
+      const base = BASE_TIP[key];
+      if (base) row(header, base[0], base[1]);
+      else row(header, "", tip || `Their ${state.street} c-bets at this size.`);
+    }
+    row("blank (–)", "", "Not that they never did it: they never faced the spot at all. "
+      + "An unknown rate is left blank rather than shown as zero.");
+  }
+
   function render() {
     const cols = columns();
     $("subtitle").textContent = `${state.rows.length} players · ${state.filter || "all hands"} · ${state.street} columns`;
@@ -296,6 +342,7 @@
       });
       head.appendChild(th);
     };
+    renderKey(cols);
     addHead("player", "player", "Click a name for their range chart in this same spot.");
     for (const [key, text, , , tip] of cols) addHead(key, text, tip);
     t.appendChild(head);

@@ -329,8 +329,23 @@
       if (!seats.length) { body.innerHTML = '<div class="empty">no one dealt in yet</div>'; return; }
       const t = document.createElement("table");
       const hr = document.createElement("tr");
-      for (const h of ["player", "hands", "VPIP", "PFR", "3Bet", "F3B", "CBet", "WTSD"]) {
-        const th = document.createElement("th"); th.textContent = h; hr.appendChild(th);
+      // The HUD has no room to spell these out, so the hover text does it -- it is
+      // the first place a new player meets the acronyms.
+      const HEADS = [
+        ["player", "Click to open their range chart below."],
+        ["hands", "Hands they were dealt into. Every rate here is over some subset of these."],
+        ["VPIP", "Voluntarily Put $ In Pot: how often they call, bet or raise preflop. "
+          + "Blinds are forced and never count. High means loose."],
+        ["PFR", "Pre-Flop Raise: how often they raise preflop. Close to VPIP means aggressive; "
+          + "far below it means they call far more than they raise."],
+        ["3Bet", "How often they re-raise someone's open."],
+        ["F3B", "Fold to Three-Bet: they opened, someone re-raised, and they folded."],
+        ["CBet", "Continuation bet: they raised preflop and then bet the flop first-in."],
+        ["WTSD", "Went To Showdown: of the flops they saw, how often they were still there at the end."],
+      ];
+      for (const [h, tip] of HEADS) {
+        const th = document.createElement("th"); th.textContent = h; th.title = tip;
+        hr.appendChild(th);
       }
       t.appendChild(hr);
       for (const s of seats) {

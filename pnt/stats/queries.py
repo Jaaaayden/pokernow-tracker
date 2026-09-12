@@ -364,9 +364,11 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
         return lookup.get(pn_id, pn_id)
 
     def named(ids: Iterable[str]) -> list[str]:
-        # Two merged identities of one villain collapse to one alias, so dedupe --
-        # while keeping acting order, which is what makes the first name the useful one.
-        return list(dict.fromkeys(name(i) for i in ids))
+        # Deliberately not deduped. Within one hand a pn_id is a seat, so two merged
+        # identities under one alias are two seats and two opponents -- collapsing
+        # them by name would drop a real one and make the count disagree with
+        # `pos_players`. It happens: one player sat twice in hand 54 of pgl8vNV4WURe.
+        return [name(i) for i in ids]
 
     rows = []
     for f in sorted(facts, key=lambda x: (x.ts or "", x.hand_id), reverse=True):
