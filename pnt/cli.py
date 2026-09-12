@@ -47,6 +47,11 @@ LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or DEFAULT_LOG_DIR)
 LogDirOpt = typer.Option(
     None, "--log-dir", help=f"Folder of PokerNow exports. Default: {LOG_DIR}"
 )
+PathsArg = typer.Argument(
+    None, help="CSV export path(s), directories or globs. Default: the log folder."
+)
+PnIdsArg = typer.Argument(..., help="PokerNow IDs to move off their player.")
+AliasOpt = typer.Option(..., "--alias", help="Name for the player they move to.")
 
 LOG_GLOB = "poker_now_log_*.csv"
 
@@ -90,9 +95,7 @@ def _logs_in(directory: Path) -> list[str]:
 
 @app.command("import")
 def import_cmd(
-    paths: list[str] | None = typer.Argument(
-        None, help="CSV export path(s), directories or globs. Default: the log folder."
-    ),
+    paths: list[str] | None = PathsArg,
     db: Path = DbOpt,
     log_dir: Path | None = LogDirOpt,
 ) -> None:
@@ -584,8 +587,8 @@ def alias_rename(old: str, new: str, db: Path = DbOpt) -> None:
 
 @alias_app.command("split")
 def alias_split(
-    pn_ids: list[str] = typer.Argument(..., help="PokerNow IDs to move off their player."),
-    alias: str = typer.Option(..., "--alias", help="Name for the player they move to."),
+    pn_ids: list[str] = PnIdsArg,
+    alias: str = AliasOpt,
     db: Path = DbOpt,
 ) -> None:
     """Move PokerNow IDs onto a new player. The inverse of `alias merge`.

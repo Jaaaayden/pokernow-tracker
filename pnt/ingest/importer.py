@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ..db.conn import bump_generation, writing
@@ -26,7 +26,7 @@ from .csv_source import RawEntry, game_id_from_filename, read_csv
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 # ------------------------------------------------------------------ layer 1 --

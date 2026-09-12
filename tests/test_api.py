@@ -8,7 +8,7 @@ from pnt.ingest.csv_source import read_csv
 from tests.conftest import ALL_LOGS, HU, HU_GAME
 
 fastapi = pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture()

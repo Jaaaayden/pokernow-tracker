@@ -1,8 +1,10 @@
 # PokerNow log format — findings
 
-Derived from three real log exports (549 hands, 9,206 entries) plus the
-`PokerNowGrabber` and `PokerNow-HUD` source. Everything below is verified against
-data in `tests/fixtures/`, not inferred from documentation.
+Derived from real log exports plus the `PokerNowGrabber` and `PokerNow-HUD`
+source. Everything below is verified against data, not inferred from documentation:
+the six logs in `tests/fixtures/` (944 hands, 16,364 entries) are what the test
+suite pins, and the grammar is additionally run against a 24-game working database
+(6,255 hands, 125,341 entries). Both parse with **zero unrecognized lines**.
 
 ---
 
@@ -130,17 +132,22 @@ invariant that catches all of this: **whoever posts the big blind must land on
 
 ## 6. Complete line vocabulary
 
-Obtained by normalizing all 9,206 entries into distinct shapes, so this is
-exhaustive for the corpus rather than a guess. Grammar coverage is **0 unknowns**.
+Obtained by normalizing every entry into distinct shapes, so this is exhaustive for
+the corpus rather than a guess. Grammar coverage is **0 unknowns** across all
+125,341 entries. `"P"` below stands for the quoted `Name @ ID` token.
 
 **Structure**: `-- starting hand #N (id: X)  <variant> (dealer: "P"|dead button) --`,
 `-- ending hand #N --`, `Player stacks: #N "P" (S) | …`, `Your hand is C, C`
 
-**Forced posts**: `posts a small blind of N`, `posts a big blind of N`,
-`posts a missed big blind of N`, `posts a missing small blind of N`, `Dead Small Blind`
+**Forced posts**: `"P" posts a <kind> of N`, where `<kind>` is one of
+`small blind`, `big blind`, `ante`, `missed big blind`, `missing small blind`,
+`straddle` — **each optionally suffixed ` and go all in`**. Also the bare line
+`Dead Small Blind`.
 
-> Note the inconsistent wording: PokerNow writes **missed** big blind but
-> **missing** small blind.
+> Two traps in one line. PokerNow writes **missed** big blind but **missing** small
+> blind. And a post carries the same all-in suffix the voluntary actions do, which
+> is easy to miss because it only appears when a stack is shorter than the blind it
+> owes — see *Traps*.
 
 **Actions**: `folds`, `checks`, `calls N`, `bets N`, `raises to N`, each of the last
 three optionally suffixed ` and go all in`
@@ -152,16 +159,38 @@ three optionally suffixed ` and go all in`
 **Pot**: `Uncalled bet of N returned to "P"`, `"P" collected N from pot`,
 `"P" collected N from pot with <ranking> (combination: …)`
 
+**Bounties**: `"P" paid N for the <kind> bounty to "P"`,
+`"P" collected N from the <kind> bounty`. A side bet (the 7-2 game), settled
+outside the pot — so it belongs in `net` but never in pot arithmetic.
+
 **Showdown**: `"P" shows a C, C.` and `"P" shows a C.` (single-card voluntary show)
 
-**Seating**: `joined the game with a stack of N`, `quits the game with a stack of N`,
-`requested a seat`, `stand up with the stack of N`, `sit back with the stack of N`,
-`The admin approved the player "P" participation with a stack of N`,
-`The admin updated the player "P" stack from N to N`
+**Seating**: `The player "P" joined the game with a stack of N.`, and the same shape
+for `quits the game with a stack of`, `stand up with the stack of` and
+`sit back with the stack of`; `The player "P" requested a seat.`,
+`The player "P" canceled the seat request.`,
+`The admin approved the player "P" participation with a stack of N.`,
+`The admin updated the player "P" stack from N to N.`
 
-**Config**: `The game's small|big blind|ante was changed from N to N`,
-`Game Config Changes` (multi-line), `Undealt cards: …` (rabbit hunt),
-run-it-twice prompts
+**Rebuys**: `The player "P" requested a rebuy of N.`,
+`The player "P" rebought. New stack N.`,
+`Asking to busted players the rebuy decision.`,
+`Waiting for the game owner to approve or reject pending rebuy requests.`
+
+**Room administration**: `The admin "P" enqueued|canceled the game stop on next hand.`,
+`The admin "P" enqueued the removal of the player "…".`,
+`The admin "P" rejected the seat request from the player "…".`,
+`The admin "P" forced the player "…" to away mode in the next hand.`,
+`The player "P" passed the room ownership to "…".`,
+`WARNING: the admin queued the stack change…`
+
+**Run it twice**: `"P" chooses to  run it twice.` and `chooses to  not run it twice.`
+(note the doubled space), `All players in hand choose to run it twice.`,
+`Some players choose to not run it twice.`,
+`Remaining players decide whether to run it twice.`
+
+**Config**: `The game's small|big blind|ante was changed from N to N.`,
+`Game Config Changes` (multi-line), `Undealt cards: …` (rabbit hunt)
 
 ---
 
@@ -173,9 +202,11 @@ run-it-twice prompts
 | **Multi-line CSV fields** | `Game Config Changes` contains newlines *inside* one field. Splitting the file on `\n` corrupts it — use a real CSV reader |
 | **Showdown ≠ `shows`** | Players voluntarily show after winning uncontested, and rabbit-hunt shows appear *between* hands. Detect showdown by counting players who never folded |
 | **Voluntary shows come after the hand ends** | A fold shown, an uncontested win shown, or a muck revealed late is logged *after* `-- ending hand #N --`, sometimes one card per line. Close the hand at that line and every one is silently dropped (157 lines in the fixtures). Attach them to the hand that just ended, but keep them out of showdown `hole_cards`: they are the hands players *chose* to reveal |
+| **A forced post can be all in** | `"P" posts a big blind of 1 and go all in` — a stack shorter than the blind it owes. If the post rule does not accept the suffix, the line matches *nothing*, and an unmatched post is not a missing label but a missing **blind**: the chips never enter the pot, the hand records no blind post, and every net figure in it is wrong. It is rare enough to hide — two lines in 125,341 — and it only ever shows up in the ledger, never in a rate |
 | **Blind levels move** | `The game's big blind was changed from 20 to 10` occurs mid-log. bb/100 must normalize each hand by *its own* big blind |
 | **Run it twice** | Produces two `collected` lines and `(second run)` streets. Only the first run advances the betting street — by the time a second run is dealt, all action is complete |
 | **Double Board** | A table option. Every street deals two boards — `Flop:` then `Flop (second board):` at the same instant — with betting *between* streets, and the pot is split with one `collected … on the second board` line. Same shape as run it twice (run 1), but the second board's line must not reset the street's bets, because action is still to come |
+| **A log can stop mid-hand** | The export is a snapshot, so the last hand may have chips committed and no `collected` line. Every player still in it then reads as having lost their whole contribution — a loss that never happened, biased one way only. Mark the hand incomplete and keep it out of money figures; its folds and bets are real and count everywhere else |
 | **Encoding** | Real exports are clean UTF-8 (`♠♥♦♣`). If you see `Aâ¦`, the file was decoded as latin-1 — fix it at the file-open boundary, not in the parser |
 
 ---

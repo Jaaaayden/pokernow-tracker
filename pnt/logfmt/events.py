@@ -7,7 +7,7 @@ recorded `Unknown` rather than a silent drop.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .tokens import PlayerRef
 
