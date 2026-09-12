@@ -8,7 +8,7 @@ the point, and IndexedDB would have trapped it in one profile.
 `POST /ingest` is deliberately built now, before any extension exists, so the
 capture contract is fixed and testable ahead of the browser work.
 
-Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 8000)
+Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
 """
 
 from __future__ import annotations
@@ -24,7 +24,13 @@ from pydantic import BaseModel, Field
 
 from pnt.db.conn import connect
 from pnt.ingest.csv_source import RawEntry
-from pnt.ingest.importer import ingest_entries, merge_players, rebuild_game
+from pnt.ingest.importer import (
+    ingest_entries,
+    merge_players,
+    rebuild_game,
+    rename_player,
+    split_identities,
+)
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
 from pnt.stats.queries import aggregate, facts_for, hand_list, positional_report, report
@@ -87,6 +93,28 @@ def _page(name: str) -> HTMLResponse:
         (STATIC / name).read_text(encoding="utf-8"),
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/", include_in_schema=False)
+def index() -> HTMLResponse:
+    """The front door: what is in the database and where everything is.
+
+    Without it, `127.0.0.1:52000` answered 404 and every page had to be reached by
+    typing its path -- fine for whoever built it, useless for anyone else.
+    """
+    return _page("index.html")
+
+
+@app.get("/players.html", include_in_schema=False)
+def players_page() -> HTMLResponse:
+    """Aliases and the PokerNow IDs behind them: merge, split and rename.
+
+    The one piece of upkeep this database needs that nothing can do for you. The
+    same human on a second device is a second ID, and only someone who was at the
+    table knows which two are the same person -- so this presents the evidence and
+    leaves the judgement alone. `/players` serves this to browsers.
+    """
+    return _page("players.html")
 
 
 @app.get("/chart", include_in_schema=False)
@@ -163,16 +191,53 @@ def stats(
     return report(db(), game_id=game, min_hands=min_hands, predicate=pred)
 
 
-@app.get("/players")
-def players() -> list[dict]:
-    rows = db().execute(
-        "SELECT p.alias, COUNT(pi.pn_id) AS n_ids,"
-        " GROUP_CONCAT(pi.pn_id, ',') AS pn_ids,"
-        " GROUP_CONCAT(DISTINCT pi.last_seen_name) AS names"
+@app.get("/players", response_model=None)
+def players(request: Request) -> list[dict] | HTMLResponse:
+    """Every canonical player, the PokerNow IDs behind them, and hands per ID.
+
+    A browser navigating here gets the players page; fetch, curl and the chart's
+    dropdown get the JSON, exactly as /stats works.
+
+    Hand counts come straight from `hand_players` rather than through `report()`.
+    That is a plain join -- milliseconds -- where the derived path walks every hand
+    in the database, and nothing on this page needs a derived statistic.
+    """
+    if "text/html" in request.headers.get("accept", ""):
+        return _page("players.html")
+    conn = db()
+    counts = {
+        r["pn_id"]: r["n"]
+        for r in conn.execute("SELECT pn_id, COUNT(*) AS n FROM hand_players GROUP BY pn_id")
+    }
+    out: dict[str, dict] = {}
+    for r in conn.execute(
+        "SELECT p.alias, pi.pn_id, pi.last_seen_name, pi.first_seen_at, pi.last_seen_at"
         " FROM players p JOIN player_identities pi ON pi.player_id = p.player_id"
-        " GROUP BY p.player_id ORDER BY p.alias"
-    ).fetchall()
-    return [dict(r) for r in rows]
+        " ORDER BY p.alias, pi.pn_id"
+    ):
+        entry = out.setdefault(
+            r["alias"], {"alias": r["alias"], "n_ids": 0, "hands": 0, "identities": []}
+        )
+        entry["n_ids"] += 1
+        entry["hands"] += counts.get(r["pn_id"], 0)
+        entry["identities"].append(
+            {
+                "pn_id": r["pn_id"],
+                "name": r["last_seen_name"],
+                "hands": counts.get(r["pn_id"], 0),
+                "first_seen_at": r["first_seen_at"],
+                "last_seen_at": r["last_seen_at"],
+            }
+        )
+    rows = list(out.values())
+    for entry in rows:
+        # Kept for callers written against the original shape -- the chart page's
+        # dropdown among them.
+        entry["pn_ids"] = ",".join(i["pn_id"] for i in entry["identities"])
+        entry["names"] = ",".join(
+            dict.fromkeys(i["name"] for i in entry["identities"] if i["name"])
+        )
+    return rows
 
 
 @app.get("/players/{alias}/positions")
@@ -340,10 +405,52 @@ class MergeRequest(BaseModel):
     target: str
 
 
+class RenameRequest(BaseModel):
+    old: str
+    new: str
+
+
+class SplitRequest(BaseModel):
+    pn_ids: list[str]
+    alias: str
+
+
 @app.post("/aliases/merge")
 def merge(req: Annotated[MergeRequest, Body()]) -> dict:
+    """Fold every ID of `source` into `target`. Returns the IDs that moved.
+
+    The IDs are returned, not just counted, so the caller can undo this: the source
+    player row is deleted here, and this list is the only remaining record of what
+    was behind it. `POST /aliases/split` with it puts things back.
+    """
     try:
-        n = merge_players(db(), req.source, req.target)
+        moved = merge_players(db(), req.source, req.target)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"moved": n, "source": req.source, "target": req.target}
+    return {
+        "moved": len(moved),
+        "pn_ids": moved,
+        "source": req.source,
+        "target": req.target,
+        "undo": {"pn_ids": moved, "alias": req.source},
+    }
+
+
+@app.post("/aliases/split")
+def split(req: Annotated[SplitRequest, Body()]) -> dict:
+    """Move PokerNow IDs onto a new player. Undo for a merge, and the fix when two
+    people were joined by mistake."""
+    try:
+        n = split_identities(db(), req.pn_ids, req.alias)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"moved": n, "alias": req.alias, "pn_ids": req.pn_ids}
+
+
+@app.post("/aliases/rename")
+def rename(req: Annotated[RenameRequest, Body()]) -> dict:
+    try:
+        rename_player(db(), req.old, req.new)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"old": req.old, "new": req.new.strip()}

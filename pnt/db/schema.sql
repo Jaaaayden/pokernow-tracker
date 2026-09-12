@@ -227,3 +227,14 @@ JOIN hand_players hp ON hp.hand_id = vs.hand_id AND hp.pn_id = vs.pn_id
 JOIN hands        h  ON h.hand_id = vs.hand_id
 LEFT JOIN player_identities pi ON pi.pn_id = vs.pn_id
 LEFT JOIN players p            ON p.player_id = pi.player_id;
+
+-- Bumped whenever something makes previously derived facts stale: a rebuild, or a
+-- change to who an identity belongs to. Read-side caches key on it, so they can
+-- hold a result for as long as it is still true and never longer.
+--
+-- Note what does NOT bump it: appending raw entries. Those change nothing derived
+-- until a rebuild reads them, so live capture between hands leaves caches warm.
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);

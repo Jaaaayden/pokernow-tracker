@@ -82,6 +82,9 @@ class HandRow:
     blinds_irregular: bool
     went_to_showdown: bool
     saw_flop: bool
+    #: False when the log stops mid-hand. The actions up to that point are real; the
+    #: chips are not all there, so no money figure may be drawn from this hand.
+    complete: bool
     bb: int | None
     ts: str | None
     players: dict[str, HandPlayerRow]
@@ -133,6 +136,10 @@ class Facts:
 
     net: int = 0
     bb_size: int | None = None
+    #: Carried from the hand so aggregation can drop this row from bb/100 without
+    #: dropping it from everything else -- folding, betting and showing down all
+    #: happened, and only the ledger is short.
+    complete: bool = True
 
     # --- line and sizing facts (SPEC.md, "Lines and sizing") -----------------
     #: Made the level-2 raise.
@@ -316,6 +323,7 @@ def derive(hand: HandRow) -> list[Facts]:
             ts=hand.ts,
             net=p.collected - p.contributed + p.bounty,
             bb_size=hand.bb,
+            complete=hand.complete,
             hole_cards=p.hole_cards,
             board=hand.board,
         )

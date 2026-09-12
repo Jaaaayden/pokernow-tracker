@@ -19,6 +19,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..db.conn import bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
 from ..logfmt.parser import ParsedHand, parse
 from .csv_source import RawEntry, game_id_from_filename, read_csv
@@ -39,23 +40,26 @@ def ingest_entries(
     Returns ``(offered, newly_inserted)``. A second import of the same log returns
     ``(n, 0)`` -- which is exactly the signal that live capture missed nothing.
     """
-    before = conn.execute(
-        "SELECT COUNT(*) FROM raw_entries WHERE game_id = ?", (game_id,)
-    ).fetchone()[0]
-    conn.executemany(
-        "INSERT OR IGNORE INTO raw_entries (game_id, ord, at, entry) VALUES (?, ?, ?, ?)",
-        [(game_id, e.ord, e.at, e.entry) for e in entries],
-    )
-    after = conn.execute(
-        "SELECT COUNT(*) FROM raw_entries WHERE game_id = ?", (game_id,)
-    ).fetchone()[0]
-    n_new = after - before
-    conn.execute(
-        "INSERT INTO imports (game_id, source, ingested_at, n_entries, n_new)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (game_id, source, _now(), len(entries), n_new),
-    )
-    conn.commit()
+    # Inside one `writing()` block, so the two counts bracket the insert atomically:
+    # a concurrent ingest of an overlapping page can no longer land between them and
+    # be credited here as new.
+    with writing(conn):
+        before = conn.execute(
+            "SELECT COUNT(*) FROM raw_entries WHERE game_id = ?", (game_id,)
+        ).fetchone()[0]
+        conn.executemany(
+            "INSERT OR IGNORE INTO raw_entries (game_id, ord, at, entry) VALUES (?, ?, ?, ?)",
+            [(game_id, e.ord, e.at, e.entry) for e in entries],
+        )
+        after = conn.execute(
+            "SELECT COUNT(*) FROM raw_entries WHERE game_id = ?", (game_id,)
+        ).fetchone()[0]
+        n_new = after - before
+        conn.execute(
+            "INSERT INTO imports (game_id, source, ingested_at, n_entries, n_new)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (game_id, source, _now(), len(entries), n_new),
+        )
     return len(entries), n_new
 
 
@@ -104,29 +108,108 @@ def resolve_identity(conn: sqlite3.Connection, pn_id: str, name: str, seen_at: s
     return player_id
 
 
-def merge_players(conn: sqlite3.Connection, source_alias: str, target_alias: str) -> int:
+def merge_players(conn: sqlite3.Connection, source_alias: str, target_alias: str) -> list[str]:
     """Point every ID of `source_alias` at `target_alias`, then drop the empty player.
 
     Cheap precisely because no statistic is materialized: repointing the identity
     rows *is* the whole merge.
+
+    Returns the `pn_id`s that moved, rather than a count of them. That is what
+    makes the merge undoable: the source player row is deleted here, so nothing
+    else records which IDs used to be behind it, and `split_identities` needs
+    exactly this list to put them back. A typed-out CLI merge hardly needs undo;
+    a one-click merge in a UI does.
     """
-    src = conn.execute(
-        "SELECT player_id FROM players WHERE alias = ?", (source_alias,)
-    ).fetchone()
-    dst = conn.execute(
-        "SELECT player_id FROM players WHERE alias = ?", (target_alias,)
-    ).fetchone()
-    if not src or not dst:
-        raise ValueError(f"unknown alias: {source_alias if not src else target_alias!r}")
-    if src["player_id"] == dst["player_id"]:
-        return 0
-    cur = conn.execute(
-        "UPDATE player_identities SET player_id = ? WHERE player_id = ?",
-        (dst["player_id"], src["player_id"]),
-    )
-    conn.execute("DELETE FROM players WHERE player_id = ?", (src["player_id"],))
-    conn.commit()
-    return cur.rowcount
+    with writing(conn):
+        src = conn.execute(
+            "SELECT player_id FROM players WHERE alias = ?", (source_alias,)
+        ).fetchone()
+        dst = conn.execute(
+            "SELECT player_id FROM players WHERE alias = ?", (target_alias,)
+        ).fetchone()
+        if not src or not dst:
+            raise ValueError(f"unknown alias: {source_alias if not src else target_alias!r}")
+        if src["player_id"] == dst["player_id"]:
+            return []
+        moved = [
+            r["pn_id"]
+            for r in conn.execute(
+                "SELECT pn_id FROM player_identities WHERE player_id = ? ORDER BY pn_id",
+                (src["player_id"],),
+            )
+        ]
+        conn.execute(
+            "UPDATE player_identities SET player_id = ? WHERE player_id = ?",
+            (dst["player_id"], src["player_id"]),
+        )
+        conn.execute("DELETE FROM players WHERE player_id = ?", (src["player_id"],))
+        bump_generation(conn)
+    return moved
+
+
+def split_identities(conn: sqlite3.Connection, pn_ids: list[str], alias: str) -> int:
+    """Move `pn_ids` onto a new player called `alias`. The inverse of a merge.
+
+    Undo for `merge_players`, and the only way to separate two humans who were
+    joined by mistake. Like the merge it is one UPDATE and recomputes nothing.
+
+    Refuses to empty a player entirely: moving *every* ID off one would leave a
+    player row with no identities behind it, which is a rename spelled the long
+    way round and would strand the old alias in the list.
+    """
+    if not pn_ids:
+        raise ValueError("no identities given")
+    with writing(conn):
+        rows = conn.execute(
+            "SELECT pn_id, player_id FROM player_identities"
+            f" WHERE pn_id IN ({','.join('?' * len(pn_ids))})",
+            pn_ids,
+        ).fetchall()
+        found = {r["pn_id"] for r in rows}
+        missing = [i for i in pn_ids if i not in found]
+        if missing:
+            raise ValueError(f"unknown PokerNow id(s): {missing}")
+        if conn.execute("SELECT 1 FROM players WHERE alias = ?", (alias,)).fetchone():
+            raise ValueError(f"alias already exists: {alias!r}")
+
+        for player_id in {r["player_id"] for r in rows}:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM player_identities WHERE player_id = ?", (player_id,)
+            ).fetchone()[0]
+            taking = sum(1 for r in rows if r["player_id"] == player_id)
+            if taking == total:
+                raise ValueError(
+                    "that would move every identity off a player, leaving it empty;"
+                    " rename it instead"
+                )
+
+        cur = conn.execute(
+            "INSERT INTO players (alias, created_at) VALUES (?, ?)", (alias, _now())
+        )
+        conn.executemany(
+            "UPDATE player_identities SET player_id = ? WHERE pn_id = ?",
+            [(cur.lastrowid, i) for i in pn_ids],
+        )
+        bump_generation(conn)
+    return len(pn_ids)
+
+
+def rename_player(conn: sqlite3.Connection, old: str, new: str) -> None:
+    """Rename a canonical player. Shared by `pnt alias rename` and the players page,
+    so the two cannot disagree about what counts as a valid name."""
+    new = new.strip()
+    if not new:
+        raise ValueError("the new name cannot be empty")
+    with writing(conn):
+        if new != old and conn.execute(
+            "SELECT 1 FROM players WHERE alias = ?", (new,)
+        ).fetchone():
+            raise ValueError(f"alias already exists: {new!r} -- merge into it instead")
+        if not conn.execute(
+            "UPDATE players SET alias = ? WHERE alias = ?", (new, old)
+        ).rowcount:
+            raise ValueError(f"unknown alias: {old!r}")
+        bump_generation(conn)
 
 
 # ------------------------------------------------------------------ layer 2 --
@@ -136,7 +219,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
     cur = conn.execute(
         "INSERT INTO hands (game_id, hand_number, table_hand_id, ts, ord, dealer_seat,"
         " dead_button, blinds_irregular, n_dealt_in, bb, board_json, run_count,"
-        " went_to_showdown) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " went_to_showdown, complete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             hand.game_id,
             hand.hand_number,
@@ -151,6 +234,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
             json.dumps(hand.board_runs),
             hand.run_count,
             int(hand.went_to_showdown),
+            int(hand.complete),
         ),
     )
     hand_id = int(cur.lastrowid)
@@ -220,7 +304,7 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
 
     started_at = entries[0].at if entries else None
 
-    with conn:  # single transaction
+    with writing(conn):  # single transaction, write lock taken up front
         conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
         conn.execute(
@@ -248,6 +332,7 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
             " VALUES (?, ?, ?, ?)",
             [(game_id, o, e, r) for o, e, r in result.misses],
         )
+        bump_generation(conn)
 
     return {
         "game_id": game_id,

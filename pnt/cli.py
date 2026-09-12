@@ -6,13 +6,20 @@ import glob as globlib
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 
 import typer
 
 from . import service as svc
 from .db.conn import DEFAULT_DB, connect
-from .ingest.importer import import_csv, merge_players, rebuild_game
+from .ingest.importer import (
+    import_csv,
+    merge_players,
+    rebuild_game,
+    rename_player,
+    split_identities,
+)
 from .stats.filters import parse_filter
 from .stats.queries import facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
@@ -27,9 +34,19 @@ app.add_typer(service_app, name="service")
 
 DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
 
-#: Where PokerNow exports are kept. One folder, so `pnt import` with no argument
-#: is the whole history. Override with the PNT_LOG_DIR environment variable.
-LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or Path.home() / "Downloads" / "pokernow-logs")
+#: Where PokerNow exports are kept, when you do not say. One folder, so `pnt import`
+#: with no argument is the whole history.
+#:
+#: Three ways to point somewhere else, narrowest first: pass paths (or a folder, or
+#: a glob) straight to `pnt import`; pass `--log-dir`; or set PNT_LOG_DIR for good.
+#: The environment variable is read once, at import, so it has to be set before the
+#: command runs -- which is exactly why `--log-dir` exists as well.
+DEFAULT_LOG_DIR = Path.home() / "Downloads" / "pokernow-logs"
+LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or DEFAULT_LOG_DIR)
+
+LogDirOpt = typer.Option(
+    None, "--log-dir", help=f"Folder of PokerNow exports. Default: {LOG_DIR}"
+)
 
 LOG_GLOB = "poker_now_log_*.csv"
 
@@ -77,12 +94,15 @@ def import_cmd(
         None, help="CSV export path(s), directories or globs. Default: the log folder."
     ),
     db: Path = DbOpt,
+    log_dir: Path | None = LogDirOpt,
 ) -> None:
     """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored.
 
-    With no argument, imports every log in the log folder (PNT_LOG_DIR, default
-    ~/Downloads/pokernow-logs).
+    With no argument, imports every log in the log folder, which is --log-dir if
+    given, else $PNT_LOG_DIR, else ~/Downloads/pokernow-logs. `pnt where` prints
+    which one is in effect.
     """
+    folder = log_dir or LOG_DIR
     conn = connect(db)
     if paths:
         expanded = []
@@ -90,11 +110,11 @@ def import_cmd(
             for p in globlib.glob(pat) or [pat]:
                 expanded.extend(_logs_in(Path(p)) if Path(p).is_dir() else [p])
     else:
-        expanded = _logs_in(LOG_DIR)
+        expanded = _logs_in(folder)
         if not expanded:
             raise typer.BadParameter(
-                f"no {LOG_GLOB} in {LOG_DIR} -- put your exports there, "
-                "pass paths explicitly, or set PNT_LOG_DIR"
+                f"no {LOG_GLOB} in {folder} -- put your exports there, pass paths "
+                "explicitly, or point somewhere else with --log-dir or PNT_LOG_DIR"
             )
     if not expanded:
         raise typer.BadParameter("no files matched")
@@ -108,6 +128,119 @@ def import_cmd(
         )
         if s["hero_pn_id"]:
             typer.echo(f"    hero: {s['hero_pn_id']} ({s['hero_votes']} showdown matches)")
+
+
+#: The unpacked Chrome extension, shipped inside the package so that a pip or
+#: pipx install has one to load. `pnt extension` prints this path.
+EXTENSION_DIR = Path(__file__).parent / "extension"
+
+
+@app.command()
+def extension(
+    open_folder: bool = typer.Option(False, "--open", help="Reveal it in a file manager."),
+) -> None:
+    """Where the Chrome extension lives, for `Load unpacked`.
+
+    Printed rather than assumed, because an installed copy sits inside site-packages
+    (or a pipx venv) rather than next to a checkout.
+    """
+    if not (EXTENSION_DIR / "manifest.json").exists():
+        raise typer.BadParameter(f"no extension at {EXTENSION_DIR} -- this install is incomplete")
+    typer.echo(str(EXTENSION_DIR))
+    if open_folder:
+        _reveal(EXTENSION_DIR)
+
+
+def _reveal(path: Path) -> None:
+    """Open a folder in the platform's file manager. Best-effort: never fatal."""
+    import subprocess
+    import sys
+
+    try:
+        if sys.platform == "win32":
+            os.startfile(path)  # a directory this module constructed, not user input
+        else:
+            subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(path)],
+                           check=False)  # fmt: skip
+    except OSError as exc:
+        typer.echo(f"(could not open the folder: {exc})")
+
+
+@app.command()
+def setup(
+    db: Path = DbOpt,
+    host: str = svc.DEFAULT_HOST,
+    port: int = svc.DEFAULT_PORT,
+    service: bool = typer.Option(True, help="Also install the always-on background server."),
+    log_dir: Path | None = LogDirOpt,
+) -> None:
+    """First run: create the database, import any logs, start the server.
+
+    Exists because the steps had an ordering trap. `service install` refuses a
+    database that does not exist yet -- rightly, since a missing file would be
+    created empty and the HUD would silently show nothing -- but nothing created
+    it for you, so a new install hit an error with no obvious next move. This does
+    them in the order that works, and is safe to re-run.
+    """
+    db = db.resolve()
+    fresh = not db.exists()
+    connect(db).close()
+    typer.echo(f"{'created' if fresh else 'using'} database: {db}")
+
+    folder = log_dir or LOG_DIR
+    logs = _logs_in(folder)
+    if logs:
+        typer.echo(f"importing {len(logs)} log(s) from {folder}")
+        conn = connect(db)
+        for path in logs:
+            s = import_csv(conn, path)
+            typer.echo(f"  {Path(path).name}: {s['hands']} hands, {s['parse_misses']} parse misses")
+        conn.close()
+    else:
+        # Not an error. Live capture fills an empty database on its own; the export
+        # folder only matters for backfilling games played before the extension.
+        typer.echo(f"no {LOG_GLOB} in {folder} -- skipping import (live capture will fill it)")
+
+    hands = connect(db).execute("SELECT COUNT(*) FROM hands").fetchone()[0]
+
+    if service and sys.platform == "win32":
+        service_install(db=db, host=host, port=port)
+    elif service:
+        typer.echo("")
+        typer.echo(
+            f"`pnt service` is Windows-only. Run `pnt serve --db {db}` in a terminal,"
+            " or put that command under launchd (macOS) or systemd (Linux)."
+        )
+
+    typer.echo("")
+    typer.echo("Next: load the extension in Chrome -- open chrome://extensions,")
+    typer.echo("turn on Developer mode, choose 'Load unpacked', and pick this folder:")
+    typer.echo(f"    {EXTENSION_DIR}")
+    typer.echo("")
+    typer.echo(f"Then open a PokerNow game. Charts: http://{host}:{port}/chart  ({hands} hands)")
+
+
+@app.command()
+def where(db: Path = DbOpt) -> None:
+    """Print the paths this install is using: database, log folder, extension, log file.
+
+    Every one of them has a default that can be overridden three different ways, so
+    "which one is it actually using" is a question worth being able to answer without
+    reading the source.
+    """
+    source = (
+        "$PNT_LOG_DIR" if os.environ.get("PNT_LOG_DIR") else "default (~/Downloads/pokernow-logs)"
+    )
+    rows = [
+        ("database", str(db.resolve()), "--db" if db != DEFAULT_DB else "default"),
+        ("log folder", str(LOG_DIR), source),
+        ("extension", str(EXTENSION_DIR), "inside the package"),
+        ("server log", str(svc.LOG_FILE), "fixed"),
+    ]
+    width = max(len(name) for name, _, _ in rows)
+    for name, value, note in rows:
+        typer.echo(f"{name:<{width}}  {value}")
+        typer.echo(f"{'':<{width}}  ({note})")
 
 
 @app.command()
@@ -298,7 +431,7 @@ def misses(db: Path = DbOpt, limit: int = 20) -> None:
 def serve(
     db: Path = DbOpt,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int = svc.DEFAULT_PORT,
 ) -> None:
     """Run the local API that the HUD and your analysis scripts read.
 
@@ -430,19 +563,41 @@ def alias_merge(source: str, target: str, db: Path = DbOpt) -> None:
     rows *is* the merge.
     """
     conn = connect(db)
-    n = merge_players(conn, source, target)
-    typer.echo(f"moved {n} identity row(s) from {source!r} to {target!r}")
+    moved = merge_players(conn, source, target)
+    typer.echo(f"moved {len(moved)} identity row(s) from {source!r} to {target!r}")
+    if moved:
+        # Printed because the merge cannot be undone without them: the source
+        # player row is gone, so this list is the only record of what was behind it.
+        typer.echo(f"  ids: {' '.join(moved)}")
+        typer.echo(f"  undo: pnt alias split {' '.join(moved)} --alias {source}")
 
 
 @alias_app.command("rename")
 def alias_rename(old: str, new: str, db: Path = DbOpt) -> None:
     """Rename a canonical player."""
-    conn = connect(db)
-    with conn:
-        cur = conn.execute("UPDATE players SET alias = ? WHERE alias = ?", (new, old))
-    if not cur.rowcount:
-        raise typer.BadParameter(f"unknown alias: {old!r}")
+    try:
+        rename_player(connect(db), old, new)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"{old!r} -> {new!r}")
+
+
+@alias_app.command("split")
+def alias_split(
+    pn_ids: list[str] = typer.Argument(..., help="PokerNow IDs to move off their player."),
+    alias: str = typer.Option(..., "--alias", help="Name for the player they move to."),
+    db: Path = DbOpt,
+) -> None:
+    """Move PokerNow IDs onto a new player. The inverse of `alias merge`.
+
+    Undoes a merge (the merge prints the exact command), and separates two humans
+    who were joined by mistake.
+    """
+    try:
+        n = split_identities(connect(db), pn_ids, alias)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"moved {n} identity row(s) to {alias!r}")
 
 
 if __name__ == "__main__":  # pragma: no cover

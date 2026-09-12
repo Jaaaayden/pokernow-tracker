@@ -207,6 +207,11 @@ def schtasks(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(svc, "_schtasks", fake)
     monkeypatch.setattr(svc, "LOG_DIR", tmp_path / "state")
+    # No task registered, unless a test says otherwise. Without this the real
+    # Task Scheduler is consulted, so these tests would pass or fail depending on
+    # whether the machine running them happens to have the tracker installed.
+    monkeypatch.setattr(svc, "task_state", lambda name=svc.TASK_NAME: None)
+    monkeypatch.setattr(svc.time, "sleep", lambda _: None)
     return calls
 
 
@@ -250,3 +255,30 @@ def test_cli_exposes_the_service_commands():
     out = CliRunner().invoke(app, ["service", "--help"]).output
     for command in ("install", "uninstall", "start", "stop", "restart", "status", "log"):
         assert command in out
+
+
+def test_reinstalling_ends_the_running_instance_first(schtasks, tmp_path, monkeypatch):
+    """Changing --db or --port on a live install must actually take effect.
+
+    The task is registered MultipleInstancesPolicy=IgnoreNew, so `/Run` is silently
+    ignored while an instance is alive. Without ending it first, `install` rewrote
+    the definition, reported success, and left the old server running on the old
+    port -- which is exactly how the port move failed the first time.
+    """
+    (tmp_path / "pokernow.sqlite").touch()
+    # install asks once, stop asks twice (installed? running?), then the wait asks
+    # until it is no longer running.
+    states = iter(["Running", "Running", "Running", "Ready"])
+    monkeypatch.setattr(svc, "task_state", lambda name=svc.TASK_NAME: next(states, "Ready"))
+
+    svc.install(tmp_path / "pokernow.sqlite", port=52000)
+
+    assert [call[0] for call in schtasks] == ["/End", "/Create", "/Run"], (
+        "the old instance must be ended before the new definition is started"
+    )
+
+
+def test_a_fresh_install_does_not_try_to_end_anything(schtasks, tmp_path):
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite", port=52000)
+    assert [call[0] for call in schtasks] == ["/Create", "/Run"]

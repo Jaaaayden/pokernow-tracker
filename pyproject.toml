@@ -3,12 +3,19 @@ name = "pokernow-tracker"
 version = "0.1.0"
 description = "Persistent, queryable PokerNow hand database with derived-at-read-time stats"
 requires-python = ">=3.11"
+# The server is not an add-on: `pnt serve`, `pnt service` and the browser
+# extension all require it, and an extra that every user must remember to type is
+# just a way to hand them a broken install.
 dependencies = [
     "typer>=0.12",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
 ]
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2.6"]
+# Kept so `pip install ".[server]"` in older notes and scripts still resolves.
+server = []
 # httpx2 backs fastapi.testclient; without it tests/test_api.py cannot even collect.
 dev = ["pytest>=8.0", "ruff>=0.4", "httpx2>=0.1"]
 
@@ -29,4 +36,12 @@ line-length = 100
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-pnt = ["server/static/*.html"]
+# Everything the package reads from disk at runtime. Miss one and an editable
+# install still works while a real one fails: `db/schema.sql` was absent here and
+# a pip-installed copy could not open a database at all, which no test caught
+# because the suite ran from a checkout. `test_packaging.py` now builds a wheel
+# and asserts each of these is in it.
+#
+# The extension lives inside the package for the same reason; `pnt extension`
+# prints the folder to load.
+pnt = ["db/*.sql", "server/static/*.html", "extension/*"]

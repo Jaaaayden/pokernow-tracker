@@ -182,11 +182,15 @@
   .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
   .tip .row b { color: var(--ink); font-weight: 500; }
   .err { color: #d03b3b; margin: 12px 0; }
+  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .crumb a:hover { text-decoration: underline; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <main>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
   <h1>Range chart <small id="subtitle">what a player had in a spot, from the hands where it was shown</small></h1>
 
   <div class="controls">
@@ -372,7 +376,10 @@
     // the HUD's "open ↗" link would otherwise still point at the spot the chart
     // opened on rather than the one being looked at. It carries nothing the
     // embedder did not already put in the URL, so the origin stays open.
-    if (parent !== window) parent.postMessage({ type: "pnt-url", url: location.href }, "*");
+    // `player` is sent alongside the URL because the embedder tracks who is on
+    // show: the dropdown above can pick someone other than the row that opened
+    // the chart, and the HUD has no other way to find out.
+    if (parent !== window) parent.postMessage({ type: "pnt-url", url: location.href, player: state.player }, "*");
   };
 
   // ---- data ------------------------------------------------------------
@@ -1030,6 +1037,9 @@
     if (e.data && e.data.type === "pnt-refresh") load({ quiet: true });
   });
 
+  // Embedded in the HUD, a link to the index would navigate the panel away from
+  // the chart with no way back, so it only appears in a real tab.
+  if (parent !== window) $("crumb").classList.add("hidden");
   readUrl();
   $("filter").value = state.filter;
   $("street").value = state.street;

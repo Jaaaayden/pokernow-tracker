@@ -36,7 +36,14 @@ from xml.sax.saxutils import escape
 
 TASK_NAME = "PokerNow Tracker"
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
+#: Deliberately not 8000. That is the busiest port on a developer's machine --
+#: Django, `python -m http.server` and most tutorials all default to it -- and
+#: the clash is quiet in both directions: this server holding it makes the other
+#: thing fail to bind, and the other thing holding it makes `supervise` wait
+#: politely forever while the HUD sits there saying the tracker is unreachable.
+#: 52000 is in the IANA dynamic range, which is never assigned to a registered
+#: service, and 52 is the number of cards in a deck. Override with --port.
+DEFAULT_PORT = 52000
 
 #: A hidden process has no console, so everything it would have printed goes here.
 #: Deliberately not under %LOCALAPPDATA%: Microsoft Store Python silently redirects a
@@ -297,7 +304,12 @@ def task_state(name: str = TASK_NAME) -> str | None:
 
 
 def install(
-    db: Path, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, *, name: str = TASK_NAME
+    db: Path,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    *,
+    name: str = TASK_NAME,
+    timeout: float = 15.0,
 ) -> Path:
     """Register (or replace) the task and start it. Returns the interpreter it runs.
 
@@ -328,6 +340,16 @@ def install(
         ),
         encoding="utf-16",
     )
+    # End any instance already running before swapping the definition in. The task
+    # is registered MultipleInstancesPolicy=IgnoreNew, so `/Run` is *silently*
+    # ignored while one is alive -- which meant re-installing to change --db or
+    # --port replaced the definition on disk and left the old server running on the
+    # old one, with every command reporting success. Nothing said otherwise until
+    # you noticed the port had not moved.
+    if task_state(name) is not None:
+        stop(name)
+        _await_stopped(name, timeout)
+
     _check(_schtasks("/Create", "/TN", name, "/XML", str(spec), "/F"), "register the task")
     _check(_schtasks("/Run", "/TN", name), "start the task")
     return interpreter
@@ -349,6 +371,15 @@ def stop(name: str = TASK_NAME) -> None:
         _check(_schtasks("/End", "/TN", name), "stop the task")
 
 
+def _await_stopped(name: str, timeout: float) -> None:
+    """Block until the task has no running instance."""
+    deadline = time.monotonic() + timeout
+    while task_state(name) == "Running":
+        if time.monotonic() >= deadline:
+            raise ServiceError(f"the task did not stop within {timeout:.0f}s")
+        time.sleep(0.5)
+
+
 def restart(name: str = TASK_NAME, *, timeout: float = 15.0) -> None:
     """Stop, wait for the old instance to exit, start.
 
@@ -356,11 +387,7 @@ def restart(name: str = TASK_NAME, *, timeout: float = 15.0) -> None:
     running, so starting straight away would silently keep the old code.
     """
     stop(name)
-    deadline = time.monotonic() + timeout
-    while task_state(name) == "Running":
-        if time.monotonic() >= deadline:
-            raise ServiceError(f"the task did not stop within {timeout:.0f}s")
-        time.sleep(0.5)
+    _await_stopped(name, timeout)
     start(name)
 
 

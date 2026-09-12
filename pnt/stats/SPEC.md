@@ -252,14 +252,33 @@ hands that ended before the river.
 
 ```
 contributed = Σ(incremental chips committed, including forced posts) − uncalled returns
-net         = collected − contributed
+net         = collected − contributed + bounty
 bb/100      = (Σ net / big_blind) / hands × 100
+              over complete hands with a known big blind only
 ```
 
 `contributed` subtracts uncalled bets because chips returned to you were never at
 risk. Verified against hand #187 of the sample log: Chris posts SB 5, raises to 30,
 opponent folds, 20 is returned, he collects 20 — net **+10**, which is the
 opponent's big blind and nothing else.
+
+**Incomplete hands are excluded from bb/100, and only from bb/100.** A log that
+stops mid-hand leaves that hand with chips in the pot and no `collected` line, so
+everyone still in it reads as having lost everything they put in — a loss that
+never happened, and one that can only ever bias downward. The hand is dropped from
+both sides of the bb/100 fraction, on the same principle that prints `--` for a
+rate with no opportunities: unknown is not zero.
+
+Everything else about such a hand is real and still counts. The players folded,
+bet, called and reached showdown exactly as recorded, so VPIP, PFR, 3-bet, c-bet
+and WTSD all include it. Only the ledger is short.
+
+`hands` therefore counts every hand, while the bb/100 denominator may be smaller.
+Re-importing the finished export repairs the hand and it rejoins.
+
+On the 6,255-hand database this was developed against, excluding the two truncated
+hands moves the whole-table ledger from −3.29 bb to −0.43 bb of 10,731 bb gross,
+and every one of the 6,253 complete hands conserves chips exactly.
 
 ---
 

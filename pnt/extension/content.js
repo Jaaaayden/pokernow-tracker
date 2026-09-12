@@ -22,7 +22,7 @@
   const REBUILD_EVERY_PAGES = 10;
 
   const state = {
-    server: "http://127.0.0.1:8000",
+    server: "http://127.0.0.1:52000",
     pollSeconds: 5,
     sync: { cursor: 0, walk: null }, // see pager.js
     offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
@@ -280,12 +280,31 @@
       chartHands = hands;
       $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, new URL(state.server).origin);
     }
-    // The chart page reports its URL whenever the spot, view or colour changes
-    // inside the frame, so the link out keeps up with what is on screen.
+    // The chart page reports its URL and current player whenever the spot, view,
+    // colour or player changes inside the frame, so the link out keeps up with
+    // what is on screen.
+    const paramOf = (url, key) => {
+      try { return new URL(url).searchParams.get(key); } catch { return null; }
+    };
     addEventListener("message", (e) => {
       if (e.source !== $("frame").contentWindow) return;
       if (e.origin !== new URL(state.server).origin) return;
-      if (e.data && e.data.type === "pnt-url") $("ext").href = e.data.url;
+      if (!e.data || e.data.type !== "pnt-url") return;
+      $("ext").href = e.data.url;
+      // The chart has a player dropdown of its own, over every player in the
+      // database rather than only the ones seated here. Using it leaves the frame
+      // showing someone other than the row that opened it, so follow it: otherwise
+      // the bar names the wrong player, the wrong row stays highlighted, and
+      // `refreshChart` keeps watching the hand count of a player no longer on
+      // screen -- refetching when they act and never when the shown player does.
+      // `player` falls back to the URL so an older server's page still tracks.
+      const player = e.data.player ?? paramOf(e.data.url, "player");
+      if (player && player !== selected) {
+        selected = player;
+        $("who").textContent = player;
+        markSel();
+        chartHands = handsOf(player);
+      }
     });
 
     function showChart() {

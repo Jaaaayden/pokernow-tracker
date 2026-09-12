@@ -9,7 +9,7 @@
 
   $("save").addEventListener("click", async () => {
     await chrome.storage.sync.set({
-      server: $("server").value.trim().replace(/\/+$/, "") || "http://127.0.0.1:8000",
+      server: $("server").value.trim().replace(/\/+$/, "") || "http://127.0.0.1:52000",
       pollSeconds: Math.max(2, Number($("poll").value) || 5),
     });
     $("chart").href = $("server").value.trim().replace(/\/+$/, "") + "/chart";

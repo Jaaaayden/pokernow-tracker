@@ -115,9 +115,14 @@ RULES: list[Rule] = [
     ),
     # -- forced posts (before generic actions)
     (
+        # The `and go all in` suffix is the same one `calls`/`bets`/`raises to`
+        # carry, and it appears here whenever a stack is shorter than the blind it
+        # owes. Without it the line did not match at all, and an unmatched post is
+        # not a missing label but a missing *blind*: the chips never enter the pot,
+        # the hand records no big-blind post, and every net figure in it is wrong.
         re.compile(
             rf"^{_P} posts a (?P<kind>small blind|big blind|ante|missed big blind|"
-            r"missing small blind|straddle) of (?P<amt>\d+)$"
+            r"missing small blind|straddle) of (?P<amt>\d+)(?P<allin> and go all in)?$"
         ),
         lambda m, o, r: E.Post(
             ord=o,
@@ -125,6 +130,7 @@ RULES: list[Rule] = [
             player=_player(m),
             kind=_POST_KINDS[m.group("kind")],
             amount=int(m.group("amt")),
+            all_in=bool(m.group("allin")),
         ),
     ),
     # -- voluntary actions

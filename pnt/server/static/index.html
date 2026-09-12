@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PokerNow Tracker</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --up: #4cc38a; --down: #e66e6d;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 28px 20px 56px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--ink-2); margin: 0 0 22px; max-width: 68ch; }
+
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+  .fact { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+          padding: 9px 14px; min-width: 96px; }
+  .fact .v { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fact .k { color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .fact.warn .v { color: var(--down); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  a.card { display: block; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+           padding: 14px 16px; text-decoration: none; color: inherit; transition: border-color .12s; }
+  a.card:hover { border-color: var(--accent); }
+  a.card h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--accent); }
+  a.card p { margin: 0; color: var(--ink-2); font-size: 13px; }
+
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .04em; margin: 30px 0 10px; }
+  .panel { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 4px 16px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0; align-items: baseline; }
+  dt { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+  dd { margin: 0; color: var(--ink-2); font-size: 13px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+         background: var(--mid); padding: 1px 5px; border-radius: 4px; }
+  .path { color: var(--muted); font-size: 12px; font-family: ui-monospace, Consolas, monospace;
+          word-break: break-all; margin-top: 22px; }
+  .err { color: var(--down); margin: 12px 0; }
+  .hidden { display: none !important; }
+  @media (max-width: 480px) { dl { grid-template-columns: 1fr; gap: 2px 0; } dd { margin-bottom: 8px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>PokerNow Tracker</h1>
+  <p class="sub">A queryable database of every hand, keyed to stable player identity. The
+    stats are derived when you ask for them, never stored — so a definition can change
+    and the history still answers to it.</p>
+
+  <div class="facts" id="facts"></div>
+  <div class="err hidden" id="err"></div>
+
+  <div class="cards">
+    <a class="card" href="/stats.html">
+      <h2>Stats →</h2>
+      <p>Every player, sortable. Pick a street, filter to a spot, click through to a range.</p>
+    </a>
+    <a class="card" href="/chart">
+      <h2>Range chart →</h2>
+      <p>What someone had in a spot — the 13×13 grid, made hands, or bet sizing.</p>
+    </a>
+    <a class="card" href="/players.html">
+      <h2>Players &amp; identities →</h2>
+      <p>Merge one human's two devices, split a bad merge, rename. The only upkeep this needs.</p>
+    </a>
+    <a class="card" href="/docs">
+      <h2>API →</h2>
+      <p>Every endpoint these pages use, with a try-it form. The database is also just a file.</p>
+    </a>
+  </div>
+
+  <h3>Keeping it running</h3>
+  <div class="panel">
+    <dl>
+      <dt>pnt service status</dt><dd>Is the background server up, and which database has it open</dd>
+      <dt>pnt service restart</dt><dd>Run after changing code — a running server keeps the old copy</dd>
+      <dt>pnt service log</dt><dd>The last lines of the server log</dd>
+      <dt>pnt extension</dt><dd>The folder to give Chrome's <em>Load unpacked</em></dd>
+      <dt>pnt import</dt><dd>Backfill from PokerNow CSV exports; re-importing is free.
+        Reads <code>~/Downloads/pokernow-logs</code> unless you pass a path,
+        <code>--log-dir</code>, or set <code>PNT_LOG_DIR</code></dd>
+      <dt>pnt where</dt><dd>Which database, log folder and extension folder this install
+        is actually using</dd>
+    </dl>
+  </div>
+
+  <h3>If the HUD is empty</h3>
+  <div class="panel">
+    <dl>
+      <dt>no panel at all</dt><dd>The extension is not loaded, or the tab is not a
+        <code>pokernow.com/games/…</code> page. Reload the tab after loading it.</dd>
+      <dt>“tracker not reachable<br>at http://…”</dt><dd>The extension prints the exact address
+        it tried. If that address is not the one in this page's address bar, the extension is
+        looking in the wrong place — open its toolbar popup and correct the <b>server</b> field.
+        If it <em>is</em> the same address, the server has stopped: <code>pnt service status</code>.</dd>
+      <dt>“waiting for the first hand”</dt><dd>Connected, but this table has no complete hand
+        stored yet. It fills in as hands finish.</dd>
+      <dt>everyone shows “–”</dt><dd>Real: an unknown rate, not a zero. They have had no
+        opportunity for that stat yet.</dd>
+    </dl>
+  </div>
+
+  <p class="path" id="dbpath"></p>
+  <p class="path">port 52000, chosen to stay out of the way of anything else you run
+    locally — 8000 and 8080 are the contested ones. Change it with
+    <code>pnt service install --port N</code>, and set the same address in the
+    extension's popup.</p>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fact = (v, k, warn = false) => {
+    const d = document.createElement("div");
+    d.className = "fact" + (warn ? " warn" : "");
+    const a = document.createElement("div"); a.className = "v"; a.textContent = v;
+    const b = document.createElement("div"); b.className = "k"; b.textContent = k;
+    d.append(a, b);
+    return d;
+  };
+  const n = (v) => Number(v).toLocaleString();
+
+  (async () => {
+    try {
+      const [health, players] = await Promise.all([
+        fetch("/health").then((r) => r.json()),
+        fetch("/players").then((r) => r.json()),
+      ]);
+      $("facts").append(
+        fact(n(health.hands), "hands"),
+        fact(n(players.length), "players"),
+        fact(n(health.entries), "log lines"),
+        // Zero is the claim that the parse was total, so it is worth showing even
+        // when it is boring; anything else is worth showing in red.
+        fact(n(health.parse_misses), "parse misses", health.parse_misses > 0),
+      );
+      $("dbpath").textContent = "database: " + health.db;
+    } catch (e) {
+      $("err").textContent = "could not reach the server: " + (e.message || e);
+      $("err").classList.remove("hidden");
+    }
+  })();
+})();
+</script>
+</body>
+</html>
