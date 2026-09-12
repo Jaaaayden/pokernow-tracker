@@ -91,7 +91,7 @@ def test_merge_moves_identities_without_recomputing_stats(db):
     combined_hands = before["genericpoker"]["hands"] + before["onlybluffs"]["hands"]
 
     moved = merge_players(db, "onlybluffs", "genericpoker")
-    assert moved == 1
+    assert len(moved) == 1
 
     after = {r["player"]: r for r in report(db)}
     assert "onlybluffs" not in after
@@ -102,6 +102,6 @@ def test_merge_is_idempotent_and_rejects_unknown_alias(db):
     import pytest
 
     merge_players(db, "hsj", "HSJ")
-    assert merge_players(db, "HSJ", "HSJ") == 0
+    assert merge_players(db, "HSJ", "HSJ") == []
     with pytest.raises(ValueError):
         merge_players(db, "nobody-at-all", "HSJ")

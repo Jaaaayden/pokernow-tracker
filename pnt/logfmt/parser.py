@@ -301,7 +301,7 @@ class _HandBuilder:
                 amount=incremental,
                 amount_to=amount_to,
                 is_forced=True,
-                all_in=False,
+                all_in=ev.all_in,
                 post_kind=ev.kind,
             )
         )

@@ -60,11 +60,15 @@
   td.down { color: var(--down); }
   tr:hover td, tr:hover td:first-child { background: var(--mid); }
   .err { color: #d03b3b; margin: 12px 0; }
+  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .crumb a:hover { text-decoration: underline; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <main>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
   <h1>Stats <small id="subtitle">every player, in one spot</small></h1>
 
   <div class="controls">
@@ -79,7 +83,8 @@
       <button data-street="river" aria-pressed="false">River</button>
     </span>
     <button id="sizetoggle" aria-pressed="false" title="show the c-bet size mix for this street">C-bet sizes</button>
-    <a class="link" id="chartlink" href="/chart">range chart &rsaquo;</a>
+    <a class="link" href="/players.html">players &rsaquo;</a>
+    <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
   </div>
 
   <p class="note">The postflop columns follow the street you pick. A rate is blank when the player

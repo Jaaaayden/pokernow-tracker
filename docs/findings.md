@@ -219,5 +219,5 @@ table and against a finished game already imported from CSV:
 
 So a complete capture walks **backwards**: fetch the newest page and, while pages
 come back full, fetch `before_at=<oldest line so far>` until a page is short or
-already stored. `extension/pager.js` implements exactly that, paced between pages
+already stored. `pnt/extension/pager.js` implements exactly that, paced between pages
 and resumable after a 429.

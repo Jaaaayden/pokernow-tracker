@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Players</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --up: #4cc38a; --down: #e66e6d;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 940px; margin: 0 auto; padding: 22px 20px 56px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0 0 18px; max-width: 80ch; }
+  a.link { color: var(--accent); text-decoration: none; }
+  a.link:hover { text-decoration: underline; }
+  .crumb { margin-bottom: 14px; font-size: 13px; }
+
+  select, input, button { font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  button.danger { background: var(--down); color: #fff; border-color: transparent; }
+  button.small { padding: 3px 8px; font-size: 12.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+          margin-bottom: 10px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; }
+  .row:hover { background: var(--mid); }
+  .row .tw { flex: 1 1 auto; min-width: 0; }
+  .row .alias { font-weight: 600; font-size: 15px; }
+  .row .names { color: var(--muted); font-size: 12.5px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .row .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row .num b { display: block; font-weight: 600; }
+  .row .num span { color: var(--muted); font-size: 12px; }
+  .chev { color: var(--muted); width: 14px; text-align: center; transition: transform .12s; }
+  .card.open .chev { transform: rotate(90deg); }
+
+  .body { display: none; border-top: 1px solid var(--grid); padding: 12px 14px 14px; }
+  .card.open .body { display: block; }
+
+  table.ids { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+  table.ids th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; }
+  table.ids td { padding: 5px 8px; border-top: 1px solid var(--grid); }
+  table.ids td.id { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  table.ids td.r, table.ids th.r { text-align: right; }
+  table.ids td.dim { color: var(--muted); font-size: 12.5px; }
+  table.ids tr.only td { color: var(--muted); }
+
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .acts .sep { flex: 1 1 auto; }
+  .sub { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--grid); }
+  .sub p { margin: 0 0 8px; color: var(--ink-2); font-size: 13px; }
+  .sub .line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .warnbox { background: var(--mid); border-radius: 8px; padding: 10px 12px; margin: 10px 0 0;
+             font-size: 13px; color: var(--ink-2); }
+  .warnbox b { color: var(--ink); }
+  .warnbox ul { margin: 6px 0 0; padding-left: 18px; }
+  .warnbox code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 50;
+    background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.28); padding: 10px 14px; display: flex; gap: 12px;
+    align-items: center; max-width: calc(100vw - 32px); }
+  .toast.bad { border-color: var(--down); }
+  .err { color: var(--down); margin: 10px 0; }
+  .hidden { display: none !important; }
+  .empty { color: var(--muted); padding: 16px 2px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a class="link" href="/">‹ tracker</a></div>
+  <h1>Players <small id="count"></small></h1>
+  <p class="note">One human, one row. PokerNow IDs are stable per browser, so the same person on
+    a phone and a laptop arrives as two — and nothing but you can tell that they are the same
+    person, because the names rarely agree. Merge them here and every stat re-answers to the
+    combined history immediately; nothing is stored, so nothing needs recomputing.</p>
+
+  <div class="err hidden" id="err"></div>
+  <div id="list"></div>
+</main>
+
+<div class="toast hidden" id="toast"><span id="toast-msg"></span><span id="toast-act"></span></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let players = [];
+  let openAlias = null;
+
+  const api = async (path, body) => {
+    const r = await fetch(path, body ? {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    } : undefined);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `${r.status} ${r.statusText}`);
+    return data;
+  };
+
+  let toastTimer = null;
+  function toast(msg, action) {
+    clearTimeout(toastTimer);
+    $("toast-msg").textContent = msg;
+    $("toast-act").replaceChildren();
+    $("toast").classList.toggle("bad", !action && /could not|failed/i.test(msg));
+    if (action) {
+      const b = document.createElement("button");
+      b.className = "small"; b.textContent = action.label;
+      b.addEventListener("click", () => { hideToast(); action.run(); });
+      $("toast-act").appendChild(b);
+    }
+    $("toast").classList.remove("hidden");
+    // An undo needs long enough to notice and reach; a plain confirmation does not.
+    toastTimer = setTimeout(hideToast, action ? 15000 : 4000);
+  }
+  const hideToast = () => { clearTimeout(toastTimer); $("toast").classList.add("hidden"); };
+
+  async function load() {
+    players = await api("/players");
+    players.sort((a, b) => b.hands - a.hands);
+    $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
+      + ` · ${players.reduce((n, p) => n + p.n_ids, 0)} PokerNow ids`;
+    render();
+  }
+
+  const fmt = (n) => Number(n).toLocaleString();
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+
+  function render() {
+    const list = $("list");
+    list.replaceChildren();
+    if (!players.length) {
+      list.appendChild(el("div", "empty", "No players yet — import a log or let the extension capture a hand."));
+      return;
+    }
+    for (const p of players) list.appendChild(card(p));
+  }
+
+  function card(p) {
+    const card = el("div", "card" + (p.alias === openAlias ? " open" : ""));
+
+    const row = el("div", "row");
+    row.appendChild(el("span", "chev", "›"));
+    const tw = el("div", "tw");
+    tw.appendChild(el("div", "alias", p.alias));
+    const names = p.identities.map((i) => i.name).filter(Boolean);
+    // The names are the evidence for a merge, so they lead rather than hide in the fold.
+    tw.appendChild(el("div", "names", names.length ? names.join(" · ") : "no name recorded"));
+    row.appendChild(tw);
+    const num = el("div", "num");
+    num.appendChild(el("b", null, fmt(p.hands)));
+    num.appendChild(el("span", null, `hands · ${p.n_ids} id${p.n_ids === 1 ? "" : "s"}`));
+    row.appendChild(num);
+    row.addEventListener("click", () => {
+      openAlias = p.alias === openAlias ? null : p.alias;
+      render();
+    });
+    card.appendChild(row);
+
+    card.appendChild(body(p));
+    return card;
+  }
+
+  function body(p) {
+    const body = el("div", "body");
+
+    const t = el("table", "ids");
+    const hr = document.createElement("tr");
+    for (const [h, cls] of [["PokerNow id", ""], ["shown as", ""], ["hands", "r"], ["last seen", "r"]]) {
+      const th = el("th", cls, h); hr.appendChild(th);
+    }
+    t.appendChild(hr);
+    const single = p.identities.length === 1;
+    for (const i of p.identities) {
+      const tr = el("tr", single ? "only" : "");
+      tr.appendChild(el("td", "id", i.pn_id));
+      tr.appendChild(el("td", null, i.name || "—"));
+      tr.appendChild(el("td", "r", fmt(i.hands)));
+      tr.appendChild(el("td", "r dim", (i.last_seen_at || "").slice(0, 10) || "—"));
+      if (!single) {
+        const td = el("td", "r");
+        const b = el("button", "small", "split off");
+        b.title = `Move ${i.pn_id} onto a player of its own`;
+        b.addEventListener("click", (e) => { e.stopPropagation(); splitOne(p, i); });
+        td.appendChild(b); tr.appendChild(td);
+      }
+      t.appendChild(tr);
+    }
+    body.appendChild(t);
+
+    const acts = el("div", "acts");
+    const chart = el("a", "link");
+    chart.href = "/chart?player=" + encodeURIComponent(p.alias);
+    chart.textContent = "range chart ↗";
+    chart.target = "_blank"; chart.rel = "noopener";
+    acts.appendChild(chart);
+    const stats = el("a", "link");
+    stats.href = "/stats.html";
+    stats.textContent = "stats ↗";
+    stats.target = "_blank"; stats.rel = "noopener";
+    acts.appendChild(stats);
+    acts.appendChild(el("span", "sep"));
+
+    const rn = el("button", "small", "rename");
+    rn.addEventListener("click", (e) => { e.stopPropagation(); doRename(p); });
+    acts.appendChild(rn);
+    body.appendChild(acts);
+
+    if (players.length > 1) body.appendChild(mergePanel(p));
+    return body;
+  }
+
+  function mergePanel(p) {
+    const wrap = el("div", "sub");
+    wrap.appendChild(el("p", null, `If one of the other rows is the same person as ${p.alias}, fold it in here.`));
+    const line = el("div", "line");
+    line.appendChild(el("span", null, "Merge"));
+
+    const sel = document.createElement("select");
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = "choose a player…";
+    sel.appendChild(none);
+    for (const o of players) {
+      if (o.alias === p.alias) continue;
+      const opt = document.createElement("option");
+      opt.value = o.alias;
+      opt.textContent = `${o.alias} (${fmt(o.hands)} hands, ${o.n_ids} id${o.n_ids === 1 ? "" : "s"})`;
+      sel.appendChild(opt);
+    }
+    line.appendChild(sel);
+    line.appendChild(el("span", null, `into ${p.alias}`));
+
+    const go = el("button", "primary small", "Merge");
+    go.disabled = true;
+    sel.addEventListener("change", () => {
+      go.disabled = !sel.value;
+      preview.replaceChildren();
+      if (sel.value) preview.appendChild(previewOf(players.find((x) => x.alias === sel.value), p));
+    });
+    go.addEventListener("click", (e) => {
+      e.stopPropagation();
+      doMerge(players.find((x) => x.alias === sel.value), p);
+    });
+    line.appendChild(go);
+    wrap.appendChild(line);
+
+    const preview = el("div");
+    wrap.appendChild(preview);
+    return wrap;
+  }
+
+  function previewOf(source, target) {
+    // Shown before the click, not after: a merge deletes the source player row, and
+    // the only thing that can put it back is the list of ids being moved.
+    const box = el("div", "warnbox");
+    box.appendChild(el("b", null, `${source.alias} disappears.`));
+    box.append(document.createTextNode(
+      ` Its ${source.n_ids} PokerNow id${source.n_ids === 1 ? "" : "s"} and ${fmt(source.hands)} hands`
+      + ` move to ${target.alias}, which then has ${fmt(source.hands + target.hands)}.`));
+    const ul = document.createElement("ul");
+    for (const i of source.identities) {
+      const li = document.createElement("li");
+      const code = el("code", null, i.pn_id);
+      li.appendChild(code);
+      li.append(document.createTextNode(` — ${i.name || "no name"}, ${fmt(i.hands)} hands`));
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    return box;
+  }
+
+  async function doMerge(source, target) {
+    try {
+      const res = await api("/aliases/merge", { source: source.alias, target: target.alias });
+      openAlias = target.alias;
+      await load();
+      toast(`Merged ${source.alias} into ${target.alias}.`, {
+        label: "Undo",
+        run: async () => {
+          try {
+            await api("/aliases/split", { pn_ids: res.undo.pn_ids, alias: res.undo.alias });
+            openAlias = res.undo.alias;
+            await load();
+            toast(`Put ${res.undo.alias} back.`);
+          } catch (e) { toast("Could not undo: " + e.message); }
+        },
+      });
+    } catch (e) { toast("Merge failed: " + e.message); }
+  }
+
+  async function splitOne(p, identity) {
+    const name = prompt(
+      `Move ${identity.pn_id} (${identity.name || "no name"}, ${fmt(identity.hands)} hands) off ${p.alias}.\n\n`
+      + "Name for the player it moves to:",
+      identity.name || identity.pn_id);
+    if (name === null) return;
+    try {
+      await api("/aliases/split", { pn_ids: [identity.pn_id], alias: name.trim() });
+      openAlias = name.trim();
+      await load();
+      toast(`Split ${identity.pn_id} off as ${name.trim()}.`);
+    } catch (e) { toast("Split failed: " + e.message); }
+  }
+
+  async function doRename(p) {
+    const next = prompt(`Rename ${p.alias} to:`, p.alias);
+    if (next === null || next.trim() === p.alias) return;
+    try {
+      await api("/aliases/rename", { old: p.alias, new: next });
+      openAlias = next.trim();
+      await load();
+      toast(`Renamed to ${next.trim()}.`);
+    } catch (e) { toast("Rename failed: " + e.message); }
+  }
+
+  load().catch((e) => {
+    $("err").textContent = "could not load players: " + (e.message || e);
+    $("err").classList.remove("hidden");
+  });
+})();
+</script>
+</body>
+</html>

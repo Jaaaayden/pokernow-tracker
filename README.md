@@ -7,21 +7,43 @@ of that database, not the product.
 ## Quick start
 
 ```bash
-pip install -e ".[server,dev]"
+pipx install git+https://github.com/Jaaaayden/pokernow-tracker
+pnt setup                                    # database, logs, background server, extension path
+```
 
+`pnt setup` is the whole first run: it creates the database, imports any exports
+it finds, installs the always-on server (Windows), and prints the folder to load
+in Chrome. It is safe to re-run.
+
+Then open **<http://127.0.0.1:52000>**. That page says what is in the database and
+links to everything else -- stats, range charts, and the players page below. The
+rest of the commands are there when you want them:
+
+```bash
 pnt import                                   # every log in ~/Downloads/pokernow-logs
 pnt import path/to/log.csv                   # or specific files, a folder, or a glob
 pnt stats                                    # every player, most hands first
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
-pnt serve                                    # http://127.0.0.1:8000/chart
+pnt where                                    # which database, log folder and extension
+pnt extension                                # where to point Chrome's "Load unpacked"
+pnt alias merge onlybluffs genericpoker      # or do it on the players page
+pnt alias split FQN9hzhzP_ --alias henry     # undo a merge, or separate two people
+pnt serve                                    # http://127.0.0.1:52000
 pnt service install                          # or: the same server, always on (Windows)
 ```
 
-Keep every PokerNow export in one folder — `~/Downloads/pokernow-logs` by
-default, or set `PNT_LOG_DIR` to point somewhere else — and a bare `pnt import``
-picks up whatever is new. Re-importing is free: duplicate entries are ignored, so
-the habit is "drop the export in the folder, run `pnt import`".
+`pipx` gives `pnt` its own virtualenv and puts it on PATH, so nothing has to be
+activated. To work on the code instead, clone it and `pip install -e ".[dev]"` --
+the server dependencies are part of the base install, not an extra.
+
+Keep every PokerNow export in one folder and a bare `pnt import` picks up whatever
+is new. That folder is `~/Downloads/pokernow-logs` unless you say otherwise — pass
+paths, a folder or a glob straight to `pnt import`, pass `--log-dir`, or set
+`PNT_LOG_DIR` to change it for good. `pnt where` prints the one in effect.
+
+Re-importing is free: duplicate entries are ignored, so the habit is "drop the
+export in the folder, run `pnt import`".
 
 Commands that take a player take an **alias** — a canonical name from
 `pnt alias list`, not a PokerNow ID and not a seat. Aliases start as the display
@@ -125,7 +147,7 @@ bluffs that folded out are the missing part. `GET /players/{alias}/range` return
 the same data as JSON with every one of the 169 cells present, in chart order.
 
 The same views as a page: `pnt serve`, then open
-[http://127.0.0.1:8000/chart](http://127.0.0.1:8000/chart). The 13x13 chart can be
+[http://127.0.0.1:52000/chart](http://127.0.0.1:52000/chart). The 13x13 chart can be
 coloured by net won, by how often the player raised with each hand when they had
 a preflop decision (0–100%), or by how their habitual raise size with it compares
 to their usual size in the spot; the made-hand view shows what the shown hands had
@@ -138,7 +160,11 @@ HUD will embed once live capture exists. Under the tiles it also shows how often
 that player c-bets, folds to one, raises one and leads, in whatever spot is
 selected.
 
-Every player at once is [http://127.0.0.1:8000/stats](http://127.0.0.1:8000/stats):
+The front door is [http://127.0.0.1:52000](http://127.0.0.1:52000) — hands, players,
+log lines and parse misses, links to every page, and the handful of commands worth
+knowing when something looks wrong.
+
+Every player at once is [http://127.0.0.1:52000/stats](http://127.0.0.1:52000/stats):
 a browser gets a sortable table, while the HUD, curl and your scripts get the same
 figures as JSON from the same URL (the page alone is at `/stats.html`). Pick a
 street to swap the postflop columns, toggle the c-bet size mix, and click a player
@@ -152,10 +178,31 @@ human on a second device gets a different ID.
 ```bash
 pnt alias list
 pnt alias merge "onlybluffs" "genericpoker"   # one person, two devices
+pnt alias split "FQN9hzhzP_" --alias henry    # the inverse: undo a merge, or part two people
 ```
 
 Merging is a single UPDATE, and nothing is recomputed — precisely because no
 statistic is materialized.
+
+The same thing with the evidence in front of you is
+**[http://127.0.0.1:52000/players](http://127.0.0.1:52000/players)**: every person,
+the PokerNow IDs behind them, and every name each ID has shown. That last column is
+the point — the names are how you recognise someone, and they are the reason this
+cannot be automated:
+
+```
+harry    <-  bread, Woolball (har), wool, wool ball, fish
+charles  <-  chugnuts, The Great Wall, straight teeth, SplayWash
+```
+
+No string comparison finds those. Only someone who was at the table knows, so the
+page lays out the IDs, names, hand counts and dates, shows exactly what a merge
+will move *before* you confirm it, and then offers an undo.
+
+That undo is why `POST /aliases/merge` returns the IDs it moved rather than a count
+of them: the merge deletes the source player row, so that list is the only record
+of what was behind it. `POST /aliases/split` takes it back. A merge followed by its
+undo restores every number exactly, which `test_identity_api.py` asserts.
 
 ---
 
@@ -199,15 +246,25 @@ artifact; `derive.py` mirrors it and is a bug if they disagree.
    re-derives from the street total and cancels the error. It only survives in
    hands where they never act again, so it surfaced in 6 fold-arounds out of 34
    straddles — invisible in aggregate, wrong in the ledger.
+
+   A forced post can also be **all in**: a stack shorter than the blind it owes
+   posts what it has, and the log says so on the same line — `posts a big blind of
+   1 and go all in`, the same suffix `bets` and `raises to` carry. The rule must
+   accept it, because an unmatched post is not a missing label but a missing
+   *blind*: those chips never reach the pot and the hand records no blind post at
+   all. Pinned by `test_allin_posts.py`.
 2. **The roster is the `Player stacks:` line** — the dealt-in roster — never join
    events and never "who acted". Getting it wrong is invisible: every rate comes
    out quietly too low for exactly the players who sit out most.
 3. **Unrecognized lines are recorded, never dropped.** `pnt misses` shows them.
    An empty table is the claim that the parse was total.
 
-4. **A log can end mid-hand.** That hand carries `complete = False`: its chips are
-   half-recorded, so it is excluded from the conservation law rather than counted
-   as a mismatch. Re-importing the finished export repairs it.
+4. **A log can end mid-hand.** That hand carries `complete = False`, stored on the
+   row: its chips are half-recorded, so it is excluded from the conservation law
+   rather than counted as a mismatch, and from bb/100 rather than booked as a loss
+   that never happened. Everything else about it is real — the folds, bets and
+   showdowns all happened — so it still counts for every other stat. Re-importing
+   the finished export repairs it.
 
 ---
 
@@ -231,12 +288,23 @@ The suite is organized around invariants rather than examples:
 - `test_stats.py` — derived stats checked against a hand-worked manual count of 20
   hands, including the exact set of BB walks that must be excluded
 - `test_identity.py` — IDs survive churn, names do not, merges are cheap
+- `test_caching.py` — reading less, and not deriving twice, change no number. One
+  player's figures read only that player's hands; the unfiltered report is memoized
+  against a counter bumped inside the same transaction as every change that could
+  invalidate it, so a hit is provably current
+- `test_incomplete_hands.py` — a truncated hand leaves bb/100 alone and counts
+  everywhere else
+- `test_concurrency.py` — concurrent writers queue instead of failing. Two tabs on
+  one table, or `pnt import` while the server is up, put two writers on the file;
+  a deferred transaction that reads before it writes cannot upgrade, and SQLite
+  refuses it *without* consulting `busy_timeout`. Every write goes through
+  `writing()`, which takes the lock up front with `BEGIN IMMEDIATE`
 
 ---
 
 ## Live capture (Phase 3)
 
-`extension/` is an unpacked Chrome extension (Manifest V3). On a
+`pnt/extension/` is an unpacked Chrome extension (Manifest V3). On a
 `pokernow.com/games/…` page (or the older `pokernow.club` address) it:
 
 1. polls the game's log endpoint with the page's own session cookie —
@@ -260,14 +328,22 @@ the alias table already joins one person's devices.
 ### Install
 
 ```bash
-pnt service install --db C:\full\path\to\pokernow.sqlite   # once; it stays up from then on
+pnt setup
 ```
 
-Then `chrome://extensions` → *Developer mode* → *Load unpacked* → pick
-`extension/`. Open a PokerNow game; the panel appears top-right. The toolbar
-popup shows the server URL, poll interval, and capture status.
+Then `chrome://extensions` -> *Developer mode* -> *Load unpacked* -> pick the
+folder `pnt extension` prints. It lives inside the package, so an installed copy
+has one without a checkout; `pnt extension --open` reveals it in Explorer. Open a
+PokerNow game; the panel appears top-right. The toolbar popup shows the server
+URL, poll interval, and capture status.
 
 `pnt serve` in a terminal still works for a one-off session.
+
+Why one command rather than the steps in order: `pnt service install` refuses a
+database that does not exist, and it is right to -- a missing file would be
+created empty and the HUD would then quietly show nothing. But until the first
+import nothing had created one, so a fresh install ran that command, got an
+error, and had no obvious next move.
 
 ### Background server
 
@@ -293,6 +369,16 @@ Why it is built the way it is:
   instead of crash-looping, and takes over once you close the terminal.
 - **Two Windows defaults would kill it**: tasks are ended after 72 hours, and
   whenever a laptop goes on battery. Both are turned off.
+- **The port is 52000, not 8000.** 8000 is the busiest port on a developer's
+  machine, and the clash is quiet in both directions: this server holding it makes
+  your other server fail to bind, and your other server holding it makes the task
+  wait politely forever while the HUD reports the tracker unreachable. 52000 sits
+  in the IANA dynamic range, which is never assigned to a registered service.
+  `--port N` changes it — set the same address in the extension's popup.
+- **Re-installing ends the running instance first.** The task is registered
+  `IgnoreNew`, so a start request is *silently* ignored while an instance is alive:
+  without ending it, changing `--db` or `--port` rewrote the definition, reported
+  success, and left the old server running on the old settings.
 - **Crashes restart in-process**, after 1 s and doubling up to 60 s; a run longer
   than a minute resets the delay. Task Scheduler's own restart is only a backup.
 - **Idle cost** is about 75 MB of memory (a 62 MB server behind an 11 MB venv
@@ -310,17 +396,17 @@ same line imported from a CSV later land on one row.
 
 Its `after_at` only *filters*: it returns the newest 50 lines above the value, never
 the next 50. So the extension pages backwards with `before_at` until it reaches
-lines already stored ([`extension/pager.js`](extension/pager.js)), pausing 3 s
+lines already stored ([`pnt/extension/pager.js`](pnt/extension/pager.js)), pausing 3 s
 between pages because PokerNow answers bursts with HTTP 429. The first load of a
 long game takes several minutes to walk its history; the HUD fills in as it goes,
 and the popup's **history** row says when it is complete.
 
 Everything that knows the response shape is in
-[`extension/normalize.js`](extension/normalize.js). If PokerNow changes it, the
+[`pnt/extension/normalize.js`](pnt/extension/normalize.js). If PokerNow changes it, the
 popup says **UNRECOGNIZED** and the page console prints the first item.
 
 ```bash
-node --test extension/normalize.test.mjs extension/pager.test.mjs
+node --test pnt/extension/normalize.test.mjs pnt/extension/pager.test.mjs
 ```
 
 The websocket trigger (`gC` / `gameResult`) is deliberately not used: a 5-second

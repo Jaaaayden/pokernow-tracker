@@ -69,9 +69,16 @@ class HeroCards(Event):
 
 @dataclass(frozen=True, slots=True)
 class Post(Event):
+    """A forced post: blind, ante, straddle, or a missed blind on rejoining.
+
+    `all_in` because a stack shorter than the blind posts what it has and is all
+    in for it -- the log says so on the same line, exactly as it does for a bet.
+    """
+
     player: PlayerRef
     kind: str
     amount: int
+    all_in: bool = False
 
 
 @dataclass(frozen=True, slots=True)

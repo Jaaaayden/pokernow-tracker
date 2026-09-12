@@ -5,11 +5,22 @@
  * page needs goes through one message: {type, ...} -> {ok, ...}.
  */
 
-const DEFAULTS = { server: "http://127.0.0.1:8000", pollSeconds: 5 };
+const DEFAULTS = { server: "http://127.0.0.1:52000", pollSeconds: 5 };
+
+// The default port moved off 8000, which is the busiest port on a dev machine.
+// Anyone whose saved value is exactly an old default was accepting that default
+// rather than choosing 8000, so they are moved across; any other value is a
+// deliberate choice and is left alone.
+const RETIRED_SERVERS = ["http://127.0.0.1:8000", "http://localhost:8000"];
 
 async function settings() {
   const s = await chrome.storage.sync.get(DEFAULTS);
-  return { ...DEFAULTS, ...s, server: (s.server || DEFAULTS.server).replace(/\/+$/, "") };
+  let server = (s.server || DEFAULTS.server).replace(/\/+$/, "");
+  if (RETIRED_SERVERS.includes(server)) {
+    server = DEFAULTS.server;
+    await chrome.storage.sync.set({ server });
+  }
+  return { ...DEFAULTS, ...s, server };
 }
 
 async function call(path, init) {

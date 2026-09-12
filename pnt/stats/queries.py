@@ -16,23 +16,49 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 
+from ..db.conn import generation, path_of
 from ..logfmt.parser import position_name
 from .derive import SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 
 
 def load_hands(
-    conn: sqlite3.Connection, game_id: str | None = None
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    pn_ids: Collection[str] | None = None,
 ) -> list[HandRow]:
-    """Load every hand (optionally one game) with its roster and actions."""
-    where, params = ("WHERE h.game_id = ?", (game_id,)) if game_id else ("", ())
+    """Load hands with their rosters and actions.
+
+    `pn_ids` keeps only the hands those identities were dealt into -- and keeps
+    each of those hands *whole*, every player and every action. That matters: a
+    hand is derived as a unit (the bet-level walk needs everyone), so narrowing the
+    roster would change the answer, while narrowing the set of hands does not.
+
+    One player's figures therefore cost one player's hands, instead of the whole
+    database re-derived and then discarded down to them.
+    """
+    clauses, params = [], []
+    if game_id:
+        clauses.append("h.game_id = ?")
+        params.append(game_id)
+    if pn_ids is not None:
+        ids = list(pn_ids)
+        if not ids:
+            return []
+        clauses.append(
+            "h.hand_id IN (SELECT hand_id FROM hand_players WHERE pn_id IN"
+            f" ({','.join('?' * len(ids))}))"
+        )
+        params.extend(ids)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    params = tuple(params)
 
     hands: dict[int, HandRow] = {}
     for r in conn.execute(
         f"""SELECT h.hand_id, h.game_id, h.hand_number, h.n_dealt_in, h.dead_button,
                    h.blinds_irregular, h.went_to_showdown, h.board_json, h.ts,
-                   COALESCE(h.bb, g.bb) AS bb
+                   h.complete, COALESCE(h.bb, g.bb) AS bb
             FROM hands h LEFT JOIN games g ON g.game_id = h.game_id
             {where} ORDER BY h.ord""",
         params,
@@ -49,6 +75,7 @@ def load_hands(
             blinds_irregular=bool(r["blinds_irregular"]),
             went_to_showdown=bool(r["went_to_showdown"]),
             saw_flop=saw_flop,
+            complete=bool(r["complete"]),
             bb=r["bb"],
             ts=r["ts"],
             players={},
@@ -134,7 +161,7 @@ def aggregate(facts: Iterable[Facts]) -> dict:
     net = sum(x.net for x in f)
     # Normalize each hand by *its own* big blind. Blind levels move within a game,
     # so dividing a whole session's net by one bb silently rescales history.
-    scaled = [x.net / x.bb_size for x in f if x.bb_size]
+    scaled = [x.net / x.bb_size for x in f if x.bb_size and x.complete]
 
     out = {
         "hands": len(f),
@@ -191,10 +218,12 @@ def aggregate(facts: Iterable[Facts]) -> dict:
 
 
 def facts_by_player(
-    conn: sqlite3.Connection, game_id: str | None = None
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    pn_ids: Collection[str] | None = None,
 ) -> tuple[dict[int, list[Facts]], dict[int, str], list[HandRow]]:
     """Derive every hand and group the resulting facts by canonical player."""
-    hands = load_hands(conn, game_id)
+    hands = load_hands(conn, game_id, pn_ids)
     ident = identity_map(conn)
     grouped: dict[int, list[Facts]] = defaultdict(list)
     aliases: dict[int, str] = {}
@@ -204,6 +233,23 @@ def facts_by_player(
             grouped[pid].append(fact)
             aliases[pid] = alias
     return grouped, aliases, hands
+
+
+#: The last unfiltered `report()` per (database, game), with the generation it was
+#: computed at. One entry each, holding a handful of small dicts -- deliberately not
+#: a cache of `Facts`, which runs to tens of megabytes and would grow without bound.
+#:
+#: This is the answer to the HUD asking the same whole-database question every 30
+#: seconds and after every hand. It cannot go stale: `bump_generation` runs inside
+#: the same transaction as every change that would invalidate it, so a hit means the
+#: derivation behind it is still exactly current.
+_REPORT_CACHE: dict[tuple[str, str | None], tuple[int, list[dict]]] = {}
+
+
+def clear_caches() -> None:
+    """Forget every memoized result. For tests, and for anything that edits the
+    database behind this module's back."""
+    _REPORT_CACHE.clear()
 
 
 def report(
@@ -218,6 +264,22 @@ def report(
     move: restrict to the hands where a player reached some specific spot, then
     report their behaviour within it.
     """
+    # Only the unfiltered report is cached. A predicate is an arbitrary callable --
+    # not something that can be used as a key -- and a spot query is asked once by a
+    # person, where the unfiltered one is asked on a timer.
+    # Cacheable only when the result can be keyed and invalidated with certainty:
+    # a filterless query, against a database on disk (an in-memory one has no path
+    # to tell it apart from another), whose generation counter can be read.
+    gen = generation(conn) if predicate is None else None
+    path = path_of(conn)
+    cacheable = predicate is None and gen is not None and bool(path)
+    key = (path, game_id)
+    if cacheable:
+        cached = _REPORT_CACHE.get(key)
+        if cached is not None and cached[0] == gen:
+            # Copied out so a caller that edits a row cannot corrupt the next reader.
+            return [dict(r) for r in cached[1] if r["hands"] >= min_hands]
+
     grouped, aliases, _ = facts_by_player(conn, game_id)
     rows = []
     for pid, facts in grouped.items():
@@ -227,18 +289,52 @@ def report(
             continue
         rows.append({"player": aliases.get(pid, "?"), **aggregate(facts)})
     rows.sort(key=lambda r: -r["hands"])
+    if cacheable:
+        # Stored before min_hands is applied, so a stricter or looser threshold is
+        # served from the same derivation.
+        full = rows if min_hands <= 1 else _report_rows(grouped, aliases)
+        _REPORT_CACHE[key] = (gen, full)
     return rows
+
+
+def _report_rows(grouped: dict[int, list[Facts]], aliases: dict[int, str]) -> list[dict]:
+    rows = [{"player": aliases.get(pid, "?"), **aggregate(facts)} for pid, facts in grouped.items()]
+    rows.sort(key=lambda r: -r["hands"])
+    return rows
+
+
+def identities_of(conn: sqlite3.Connection, alias: str) -> list[str]:
+    """Every PokerNow ID merged under one alias. Raises on an alias that does not exist."""
+    rows = conn.execute(
+        "SELECT pi.pn_id FROM players p JOIN player_identities pi"
+        " ON pi.player_id = p.player_id WHERE p.alias = ?",
+        (alias,),
+    ).fetchall()
+    if not rows:
+        if not conn.execute("SELECT 1 FROM players WHERE alias = ?", (alias,)).fetchone():
+            raise ValueError(f"unknown alias: {alias!r}")
+        return []  # a real player, with no identities yet
+    return [r["pn_id"] for r in rows]
 
 
 def facts_for(
     conn: sqlite3.Connection, alias: str, game_id: str | None = None
 ) -> list[Facts]:
-    """Every Facts row for one canonical player, across all merged identities."""
-    grouped, aliases, _ = facts_by_player(conn, game_id)
-    pid = next((p for p, a in aliases.items() if a == alias), None)
-    if pid is None:
-        raise ValueError(f"unknown alias: {alias!r}")
-    return grouped[pid]
+    """Every Facts row for one canonical player, across all merged identities.
+
+    The alias is resolved against the identity tables rather than against a full
+    derivation, so only that player's hands are read and derived. On a database
+    where one player has a fraction of the hands, that is the same fraction of the
+    work -- and an unknown alias now costs a single indexed lookup rather than the
+    whole history.
+    """
+    ids = identities_of(conn, alias)
+    if not ids:
+        return []
+    wanted = set(ids)
+    return [
+        f for hand in load_hands(conn, game_id, ids) for f in derive(hand) if f.pn_id in wanted
+    ]
 
 
 def hand_list(facts: Iterable[Facts]) -> list[dict]:
