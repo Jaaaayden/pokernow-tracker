@@ -20,6 +20,7 @@ from .ingest.importer import (
     rename_player,
     split_identities,
 )
+from .logfmt import redact as rd
 from .stats.filters import parse_filter
 from .stats.queries import facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
@@ -44,6 +45,15 @@ DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
 DEFAULT_LOG_DIR = Path.home() / "Downloads" / "pokernow-logs"
 LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or DEFAULT_LOG_DIR)
 
+#: A real 5,277-hand corpus shipped inside the package, so a fresh install has
+#: something to look at before it has logs of its own. `pnt import` and `pnt setup`
+#: fall back to it when the log folder is empty; naming a folder or passing paths
+#: never reaches it.
+#:
+#: These are `pnt redact` output, not raw exports: a hole card survives only where
+#: it was shown down. See `pnt/logs/README.md` and `pnt/logfmt/redact.py`.
+BUNDLED_LOG_DIR = Path(__file__).parent / "logs"
+
 LogDirOpt = typer.Option(
     None, "--log-dir", help=f"Folder of PokerNow exports. Default: {LOG_DIR}"
 )
@@ -51,6 +61,17 @@ PathsArg = typer.Argument(
     None, help="CSV export path(s), directories or globs. Default: the log folder."
 )
 PnIdsArg = typer.Argument(..., help="PokerNow IDs to move off their player.")
+OutOpt = typer.Option(
+    Path("logs"), "--out", help="Folder to write the redacted copies into."
+)
+SampleOpt = typer.Option(
+    True,
+    "--sample/--no-sample",
+    help="Fall back to the bundled sample logs when the log folder is empty.",
+)
+AuditOpt = typer.Option(
+    False, "--audit", help="Check files for unshown hole cards instead of writing."
+)
 AliasOpt = typer.Option(..., "--alias", help="Name for the player they move to.")
 
 LOG_GLOB = "poker_now_log_*.csv"
@@ -93,20 +114,29 @@ def _logs_in(directory: Path) -> list[str]:
     return sorted(str(p) for p in directory.glob(LOG_GLOB))
 
 
-@app.command("import")
-def import_cmd(
-    paths: list[str] | None = PathsArg,
-    db: Path = DbOpt,
-    log_dir: Path | None = LogDirOpt,
-) -> None:
-    """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored.
+def _announce_sample(folder: Path) -> None:
+    """Say, unmissably, that these hands are not the user's own.
 
-    With no argument, imports every log in the log folder, which is --log-dir if
-    given, else $PNT_LOG_DIR, else ~/Downloads/pokernow-logs. `pnt where` prints
-    which one is in effect.
+    A database that quietly filled itself with someone else's games would read as
+    the user's own history -- and every name in `pnt stats` would be a stranger.
     """
-    folder = log_dir or LOG_DIR
-    conn = connect(db)
+    typer.echo(f"no {LOG_GLOB} in {folder}")
+    typer.echo(f"importing the bundled sample corpus instead: {BUNDLED_LOG_DIR}")
+    typer.echo("These are someone else's hands, kept so a fresh install has something to")
+    typer.echo("query. Drop your own exports in the log folder and re-run to add yours;")
+    typer.echo("pass --no-sample to skip them.")
+    typer.echo("")
+
+
+def _expand(paths: list[str] | None, folder: Path, sample: bool = False) -> list[str]:
+    """Resolve CSV arguments -- paths, directories or globs -- to a list of files.
+
+    With nothing given, that is every export in the log folder; `sample` lets the
+    caller fall back to the bundled corpus when that folder is empty, rather than
+    failing. Only the two commands that fill a database do that -- asking for a
+    specific folder and silently getting a different one would be worse than the
+    error it replaces.
+    """
     if paths:
         expanded = []
         for pat in paths:
@@ -114,6 +144,8 @@ def import_cmd(
                 expanded.extend(_logs_in(Path(p)) if Path(p).is_dir() else [p])
     else:
         expanded = _logs_in(folder)
+        if not expanded and sample:
+            expanded = _logs_in(BUNDLED_LOG_DIR)
         if not expanded:
             raise typer.BadParameter(
                 f"no {LOG_GLOB} in {folder} -- put your exports there, pass paths "
@@ -121,6 +153,30 @@ def import_cmd(
             )
     if not expanded:
         raise typer.BadParameter("no files matched")
+    return expanded
+
+
+@app.command("import")
+def import_cmd(
+    paths: list[str] | None = PathsArg,
+    db: Path = DbOpt,
+    log_dir: Path | None = LogDirOpt,
+    sample: bool = SampleOpt,
+) -> None:
+    """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored.
+
+    With no argument, imports every log in the log folder, which is --log-dir if
+    given, else $PNT_LOG_DIR, else ~/Downloads/pokernow-logs. `pnt where` prints
+    which one is in effect.
+
+    If that folder is empty, the bundled sample corpus is imported instead, so a
+    fresh install has something to query. `--no-sample` turns that off.
+    """
+    conn = connect(db)
+    folder = log_dir or LOG_DIR
+    expanded = _expand(paths, folder, sample=sample)
+    if not paths and expanded and Path(expanded[0]).parent == BUNDLED_LOG_DIR:
+        _announce_sample(folder)
     for path in expanded:
         s = import_csv(conn, path)
         note = "no new entries (pure re-import)" if s["entries_new"] == 0 else ""
@@ -176,6 +232,7 @@ def setup(
     port: int = svc.DEFAULT_PORT,
     service: bool = typer.Option(True, help="Also install the always-on background server."),
     log_dir: Path | None = LogDirOpt,
+    sample: bool = SampleOpt,
 ) -> None:
     """First run: create the database, import any logs, start the server.
 
@@ -184,6 +241,10 @@ def setup(
     created empty and the HUD would silently show nothing -- but nothing created
     it for you, so a new install hit an error with no obvious next move. This does
     them in the order that works, and is safe to re-run.
+
+    With no exports to import, it falls back to the bundled sample corpus, so the
+    page it points you at has hands on it. `--no-sample` leaves the database empty
+    for live capture to fill.
     """
     db = db.resolve()
     fresh = not db.exists()
@@ -192,8 +253,11 @@ def setup(
 
     folder = log_dir or LOG_DIR
     logs = _logs_in(folder)
+    if not logs and sample:
+        _announce_sample(folder)
+        logs = _logs_in(BUNDLED_LOG_DIR)
     if logs:
-        typer.echo(f"importing {len(logs)} log(s) from {folder}")
+        typer.echo(f"importing {len(logs)} log(s) from {Path(logs[0]).parent}")
         conn = connect(db)
         for path in logs:
             s = import_csv(conn, path)
@@ -234,9 +298,11 @@ def where(db: Path = DbOpt) -> None:
     source = (
         "$PNT_LOG_DIR" if os.environ.get("PNT_LOG_DIR") else "default (~/Downloads/pokernow-logs)"
     )
+    n = len(_logs_in(BUNDLED_LOG_DIR))
     rows = [
         ("database", str(db.resolve()), "--db" if db != DEFAULT_DB else "default"),
         ("log folder", str(LOG_DIR), source),
+        ("sample logs", str(BUNDLED_LOG_DIR), f"{n} inside the package, used when the above is empty"),
         ("extension", str(EXTENSION_DIR), "inside the package"),
         ("server log", str(svc.LOG_FILE), "fixed"),
     ]
@@ -428,6 +494,67 @@ def misses(db: Path = DbOpt, limit: int = 20) -> None:
     typer.echo(f"{total} parse miss(es)")
     for r in rows:
         typer.echo(f"  [{r['reason']}] {r['entry'][:120]}")
+
+
+@app.command()
+def redact(
+    paths: list[str] | None = PathsArg,
+    out: Path = OutOpt,
+    log_dir: Path | None = LogDirOpt,
+    audit: bool = AuditOpt,
+) -> None:
+    """Write publishable copies of your logs with your unshown hole cards removed.
+
+    A raw export names your cards on every hand you were dealt in, folds included.
+    This keeps a `Your hand is` entry only where the same two cards also appear in
+    a `shows a` entry for that hand -- cards the table already saw -- and drops the
+    rest. Everything else in the log is copied byte for byte.
+
+    The copies are still importable: `pnt import` infers hero from showdowns, which
+    is exactly what survives. Nothing is written over your originals.
+
+    `--audit` skips writing and checks files instead. Run it on the folder you are
+    about to commit; anything it prints is a hand you did not show.
+    """
+    folder = log_dir or LOG_DIR
+    expanded = _expand(paths, folder)
+
+    if audit:
+        leaks = [line for p in expanded for line in rd.audit(Path(p))]
+        for line in leaks:
+            typer.echo(line)
+        typer.echo(
+            f"{len(expanded)} file(s): {len(leaks)} unshown hole-card entr"
+            f"{'y' if len(leaks) == 1 else 'ies'}"
+        )
+        raise typer.Exit(1 if leaks else 0)
+
+    out = out.resolve()
+    sources = {Path(p).resolve().parent for p in expanded}
+    if out in sources:
+        raise typer.BadParameter(
+            f"--out {out} is where the originals live; pick a different folder"
+        )
+
+    hero_hands = kept = 0
+    for path in expanded:
+        src = Path(path)
+        p = rd.redact_file(src, out / src.name)
+        hero_hands += p.hero_hands
+        kept += p.kept
+        typer.echo(f"{src.name}: removed {p.dropped} of {p.hero_hands} hole-card entries")
+
+    leaks = [line for f in sorted(out.glob(LOG_GLOB)) for line in rd.audit(f)]
+    if leaks:  # redact_file already refuses to write a partial redaction
+        for line in leaks:
+            typer.echo(line)
+        raise typer.Exit(1)
+    typer.echo("")
+    typer.echo(
+        f"{len(expanded)} file(s) -> {out}\n"
+        f"{kept} of {hero_hands} hands kept their hole cards (the showdowns); "
+        f"{hero_hands - kept} redacted. Verified: no unshown holding remains."
+    )
 
 
 @app.command()

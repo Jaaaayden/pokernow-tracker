@@ -22,6 +22,11 @@ pnt setup                                    # database, logs, background server
 it finds, installs the always-on server (Windows), and prints the folder to load
 in Chrome. It is safe to re-run.
 
+With no exports of its own to import, it loads the [bundled sample corpus](pnt/logs)
+instead — 5,257 real hands, so the page it points you at is not an empty one. Those
+are someone else's games and it says so; `--no-sample` leaves the database empty for
+live capture to fill.
+
 **That is the only command you need**, and there is nothing to start by hand
 afterwards — on Windows the server is registered as a Task Scheduler job for your
 user, so it comes back at every login and restarts itself if it crashes. The one
@@ -40,6 +45,7 @@ rest of the commands are there when you want them:
 ```bash
 pnt import                                   # every log in ~/Downloads/pokernow-logs
 pnt import path/to/log.csv                   # or specific files, a folder, or a glob
+pnt redact --out pnt/logs                    # copies you can publish: your unshown cards removed
 pnt stats                                    # every player, most hands first
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
@@ -62,6 +68,12 @@ paths, a folder or a glob straight to `pnt import`, pass `--log-dir`, or set
 
 Re-importing is free: duplicate entries are ignored, so the habit is "drop the
 export in the folder, run `pnt import`".
+
+If that folder is empty, `pnt import` falls back to the bundled corpus, the same
+way `pnt setup` does. The fallback triggers on *empty*, never on *small*: one log of
+your own in the folder and it is the only thing imported. Explicit paths and
+`--log-dir` never reach it — being handed a different folder than the one you named
+would be worse than the error it replaces.
 
 Commands that take a player take an **alias** — a canonical name from
 `pnt alias list`, not a PokerNow ID and not a seat. Aliases start as the display
@@ -226,6 +238,60 @@ of them: the merge deletes the source player row, so that list is the only recor
 of what was behind it. `POST /aliases/split` takes it back. A merge followed by its
 undo restores every number exactly, which `test_identity_api.py` asserts.
 
+### Publishing logs
+
+A raw export names your hole cards on **every hand you were dealt in** -- what you
+folded, what you three-bet light with, what you checked back on the river. Opponents
+get one line per showdown; you get one line per hand:
+
+```
+"Your hand is 4♦, 9♥",2026-07-23T08:18:05.455Z,178479468545503
+```
+
+`pnt redact` writes copies you can publish — [`pnt/logs/`](pnt/logs) is its output,
+and is what ships in the wheel:
+
+```bash
+pnt redact --out pnt/logs        # every log in the log folder -> the bundled corpus
+pnt redact --audit pnt/logs      # verify what you are about to commit; exits 1 on a leak
+```
+
+It keeps a `Your hand is` entry only when the same two cards also appear in a
+`shows a` entry for that hand, and drops the rest. A matching show *is* you showing
+-- two players cannot hold the same two cards -- so what survives is what the table
+already saw. On the 20-log corpus that keeps 1,451 of 5,006 hands and removes 3,555.
+
+Three things follow from matching on *cards* rather than on identity:
+
+* It never needs to know which player is hero, so it cannot protect the wrong one.
+* It fails closed. A one-card voluntary show does not match a two-card hand, so that
+  entry goes too -- the shown card survives in the `shows a` entry, where it was
+  public to begin with.
+* The copies still import. `infer_hero` votes on hands where hero's cards match a
+  showdown holding, which is exactly what is kept, so a published log still
+  identifies its own hero.
+
+Nothing else in an export carries a hidden holding. `collected N from pot with ...
+(combination: ...)` names five cards but only ever for a player who showed
+(`test_redact.py` asserts that over every fixture log), and `Undealt cards:` is by
+definition the part of the deck that reached nobody.
+
+Every stat is unchanged -- hole cards feed range charts, not action frequencies.
+What you lose is your own range coverage, which drops to the level you give an
+opponent:
+
+```
+pnt range wooooo          # original: cards known: 222   coverage: 100%
+pnt range wooooo          # redacted: cards known:  54   coverage: 24.3%
+```
+
+Only the surviving lines are removed; every other byte is copied unchanged, so the
+diff against the original is pure deletions. Your originals are never written to,
+and `--out` refuses to point at the folder they live in.
+
+`test_sample_logs.py` re-audits every file in `pnt/logs/` on each run, so a raw
+export dropped in there fails the suite rather than shipping in the next release.
+
 ---
 
 ## What the numbers mean
@@ -252,6 +318,7 @@ artifact; `derive.py` mirrors it and is a bug if they disagree.
 | [`docs/findings.md`](docs/findings.md) | The log format: identity, ordering, the cumulative-amount rule, complete line vocabulary, traps, and the live-capture endpoint |
 | [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Stat definitions, line and sizing facts, range views |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |
+| [`pnt/logs/README.md`](pnt/logs/README.md) | The bundled sample corpus: what was redacted out of it, and how to add to it |
 
 ---
 
@@ -316,6 +383,12 @@ The suite is organized around invariants rather than examples:
   invalidate it, so a hit is provably current
 - `test_incomplete_hands.py` — a truncated hand leaves bb/100 alone and counts
   everywhere else
+- `test_redact.py` — a published log gives away no holding a showdown did not, and
+  redaction touches nothing else: every surviving line byte-identical and in order,
+  every stat unchanged, hero still identifiable
+- `test_sample_logs.py` — the guard on what actually ships. Every file in `pnt/logs/`
+  re-audited, and the fallback proved to trigger on an *empty* log folder only —
+  never on a small one, never on an explicit path
 - `test_concurrency.py` — concurrent writers queue instead of failing. Two tabs on
   one table, or `pnt import` while the server is up, put two writers on the file;
   a deferred transaction that reads before it writes cannot upgrade, and SQLite

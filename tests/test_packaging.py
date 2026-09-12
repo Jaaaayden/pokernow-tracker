@@ -76,6 +76,20 @@ def test_runtime_file_is_shipped(wheel_contents, path):
     )
 
 
+def test_the_sample_corpus_is_shipped(wheel_contents):
+    """`pnt import` and `pnt setup` fall back to `pnt/logs/` when the user's log
+    folder is empty. Left out of the wheel that fallback is dead code everywhere
+    except a checkout -- the same shape of bug as the missing `db/schema.sql`,
+    and just as invisible to a suite that runs from one.
+    """
+    shipped = [p for p in wheel_contents if p.startswith("pnt/logs/poker_now_log_")]
+    assert shipped, (
+        "the bundled sample logs are not in the wheel -- add logs/*.csv to "
+        "[tool.setuptools.package-data] in pyproject.toml"
+    )
+    assert len(shipped) == len(list((ROOT / "pnt" / "logs").glob("poker_now_log_*.csv")))
+
+
 def test_the_console_script_is_declared():
     """`pnt` on PATH is the whole point of a pipx install."""
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
