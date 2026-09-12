@@ -4,41 +4,6 @@ A persistent, queryable database of PokerNow hands keyed to stable player
 identity, with per-player stats derived at read time. A live HUD is one consumer
 of that database, not the product.
 
-**Status**: Phases 0–4 built — parser, schema, importer, CLI, stat engine, local
-API, range charts, and a browser extension for live capture with an overlay HUD.
-PokerNow's log endpoint has been checked against a live table; end-to-end live
-capture has not yet been confirmed (see [Live capture](#live-capture-phase-3)).
-
-```
-2,761 hands · 50,202 log entries · 0 parse misses · 0 pot mismatches · 210 tests passing
-```
-
----
-
-## The design decision
-
-**Store raw actions. Derive every stat at read time.** No counter is persisted
-anywhere.
-
-Counters look cheaper and are a trap: one missed hand corrupts a number
-permanently, with no way to detect or repair it. With raw actions, a re-import
-fixes any gap, and a stat invented next month computes retroactively across all
-history.
-
-Three layers, each rebuildable from the one above:
-
-| Layer | Contents | Rebuildable? |
-|---|---|---|
-| `raw_entries` | Every log line, exactly as PokerNow emitted it | Immutable truth |
-| `hands` / `hand_players` / `actions` / `voluntary_shows` | Parsed structure | Yes — `pnt rebuild` |
-| Stats | SQL + Python at query time | Always fresh |
-
-Keeping `raw_entries` is what makes "a re-import repairs any gap" true rather than
-aspirational: improving the parser next month re-derives all history **without
-needing the original CSVs again**.
-
----
-
 ## Quick start
 
 ```bash
