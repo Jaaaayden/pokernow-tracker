@@ -127,6 +127,10 @@
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
   td.detail { padding-left: 24px; color: var(--ink-2); }
+  tr.pick { cursor: pointer; }
+  tr.pick:hover td { background: var(--mid); }
+  tr.pick:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  tr.pick td:first-child::after { content: " ›"; color: var(--muted); }
   #table { overflow-x: auto; }
 
   /* --- hand list and replay --- */
@@ -719,29 +723,47 @@
       : ["size", "n", `% of ${KIND_SPOT[d.kind]}`, ...(faced ? ["fold", "call", "raise"] : []), "shown", "coverage"];
     for (const c of cols) { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); }
     t.appendChild(head);
-    const row = (vals, detail) => {
+    // Every row stands for a set of hands, so clicking one lists them -- the
+    // same drill-down the grid cells and bars have. Without it the table is the
+    // one view you cannot get from a number back to the hands behind it.
+    const row = (vals, { detail = false, title = null, ids = null } = {}) => {
       const tr = document.createElement("tr");
       vals.forEach((v, i) => { const td = document.createElement("td"); if (detail && i === 0) td.className = "detail"; td.textContent = v ?? "–"; tr.appendChild(td); });
+      if (ids?.length) {
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        tr.setAttribute("aria-label", `${title} — list these hands`);
+        pickable(tr, title, ids);
+      }
       t.appendChild(tr);
     };
     if (view === "preflop") {
       Object.entries(d.cells).filter(([, c]) => c.n > 0).sort((a, b) => b[1].n - a[1].n)
         .forEach(([label, c]) => row([label, c.n, c.net_bb.toFixed(1), c.won,
           c.raise_pct, `${c.pfr} / ${c.pf_opp}`, c.raise_typical, c.raise ? BASIS[c.raise_basis] : null,
-          c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max]));
+          c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max],
+          { title: `${label} · shown ${c.n}×`, ids: c.hand_ids }));
     } else if (view === "made") {
       for (const c of d.classes) {
-        row([c.class, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won]);
-        for (const dd of (c.details || [])) row([label(dd, true), fmtPct(dd.pct), dd.n, dd.net_bb.toFixed(1), dd.won], true);
+        row([c.class, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
+          { title: `${label(c, false)} · shown ${c.n}×`, ids: c.hand_ids });
+        for (const dd of (c.details || [])) row([label(dd, true), fmtPct(dd.pct), dd.n, dd.net_bb.toFixed(1), dd.won],
+          { detail: true, title: `${label(dd, true)} · shown ${dd.n}×`, ids: dd.hand_ids });
       }
     } else {
       for (const b of d.blocks) {
         row([SIZE_LABEL[b.size], b.n, fmtPct(b.pct),
           ...(faced ? [fmtPct(b.fold), fmtPct(b.call), fmtPct(b.raise)] : []),
-          b.known, fmtPct(b.coverage)]);
+          b.known, fmtPct(b.coverage)],
+          { title: `${d.street} ${KIND_SPOT[d.kind]} · ${SIZE_LABEL[b.size]}`, ids: b.hand_ids });
       }
     }
     wrap.appendChild(t);
+    const hint = document.createElement("p");
+    hint.className = "note";
+    hint.style.margin = "10px 0 0";
+    hint.textContent = "click a row to list the hands behind it, then a hand to replay it";
+    wrap.appendChild(hint);
   }
 
   // ---- hand list and replay ------------------------------------------------
