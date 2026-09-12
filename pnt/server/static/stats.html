@@ -97,9 +97,11 @@
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
   </div>
 
-  <p class="note">The postflop columns follow the street you pick, and all four turn on the previous
-    street's aggressor: the player either <em>is</em> them (C-Bet) or is acting against them (Fold,
-    Raise, Lead) &mdash; <strong>hover a column header</strong> for what each one counts. Fold vs
+  <p class="note">The postflop columns follow the street you pick, and four of them turn on the
+    previous street's aggressor: the player either <em>is</em> them (C-Bet) or is acting against them
+    (Fold, Raise, Lead). Agg % is the exception &mdash; it takes in everything they did on the
+    street, whoever was betting. <strong>Hover a column header</strong>, or open the key below the
+    table, for what each one counts. Fold vs
     C-Bet and Raise C-Bet share one denominator, the c-bets that player faced, so with calls they add
     to 100%. Note that a lead removes the street from the c-bet columns entirely: the aggressor never
     got to c-bet, so they take no missed chance, and folding or raising against a lead is counted
@@ -140,10 +142,12 @@
     ["fold_to_cbet", "Fold vs C-Bet", "fold_to_cbet"],
     ["raise_cbet", "Raise C-Bet", "fold_to_cbet"],
     ["donk", "Lead (Donk)", "donk"],
+    ["af", "Agg %", "af"],
   ];
   const SIZES = [["small", "<½"], ["medium", "½–¾"], ["large", "¾–pot"], ["overbet", "over"]];
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
+    af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
   };
@@ -159,6 +163,9 @@
       + `Fold vs C-Bet, so fold + call + raise = 100%.`,
     donk: (s) => `Lead, or donk bet. They bet the ${s} into the ${PREV[s]} aggressor, before `
       + `that player gets to act. A bet after a checked-through street is a probe, not a lead.`,
+    af: (s) => `Aggression Frequency. Of everything they did on the ${s} bar checking, how often `
+      + `it was a bet or a raise rather than a call or a fold. Counts actions, not hands, and `
+      + `is the one column here that does not depend on who the aggressor was.`,
   };
   // [what the acronym stands for, what it counts]. One source of truth: the header
   // tooltips and the visible key below the table are both built from this, and

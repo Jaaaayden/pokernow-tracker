@@ -230,6 +230,9 @@ def aggregate(facts: Iterable[Facts]) -> dict:
         out["_opp"][f"cbet_{street}"] = sd("cbet_opp", street)
         out["_opp"][f"fold_to_cbet_{street}"] = faced_cbet
         out["_opp"][f"donk_{street}"] = sd("donk_opp", street)
+        # Alone among these, an action count rather than a hand count: one hand can
+        # contribute several. See SPEC.md, "Aggression Frequency".
+        out["_opp"][f"af_{street}"] = counter("agg_denom", street)
     return out
 
 

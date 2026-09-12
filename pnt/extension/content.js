@@ -161,7 +161,7 @@
         button { all: unset; cursor: pointer; padding: 2px 7px; border-radius: 5px; color: #c3c2b7; }
         button:hover { background: rgba(255,255,255,.1); color: #fff; }
         table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-        th, td { padding: 4px 8px; text-align: right; white-space: nowrap; }
+        th, td { padding: 4px 6px; text-align: right; white-space: nowrap; }
         th { color: #898781; font-weight: 500; font-size: 11px; }
         td:first-child, th:first-child { text-align: left; }
         td.name { font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
@@ -342,6 +342,8 @@
         ["F3B", "Fold to Three-Bet: they opened, someone re-raised, and they folded."],
         ["CBet", "Continuation bet: they raised preflop and then bet the flop first-in."],
         ["WTSD", "Went To Showdown: of the flops they saw, how often they were still there at the end."],
+        ["Agg", "Aggression Frequency on the flop: of everything they did bar checking, how often "
+          + "it was a bet or a raise rather than a call or a fold."],
       ];
       for (const [h, tip] of HEADS) {
         const th = document.createElement("th"); th.textContent = h; th.title = tip;
@@ -357,7 +359,7 @@
         name.textContent = s.alias || s.pn_id;
         const seat = document.createElement("small"); seat.textContent = `#${s.seat}`; name.appendChild(seat);
         tr.appendChild(name);
-        for (const k of ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd"]) {
+        for (const k of ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd", "af_flop"]) {
           const td = document.createElement("td"); td.textContent = fmt(st[k]); tr.appendChild(td);
         }
         // Clicking the selected player again unselects them and closes the chart.

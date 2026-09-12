@@ -264,3 +264,18 @@ def test_seat_ranks_do_not_collide_on_a_dead_blind(db):
     assert len(set(ranks.values())) == 3
     # The button posts nothing and acts last postflop; the dead slot sits before it.
     assert max(ranks, key=lambda q: ranks[q]) == next(q for q, v in sfb.items() if v == 0)
+
+
+def test_aggression_frequency_reports_its_sample(db):
+    """AF is the one rate whose denominator counts actions, not hands."""
+    facts = facts_for(db, "genericpoker")
+    out = aggregate(facts)
+    for street in STREETS:
+        denom = sum(f.agg_denom.get(street, 0) for f in facts)
+        num = sum(f.aggressive.get(street, 0) for f in facts)
+        # The sample the page shows on hover has to be the rate's own denominator.
+        assert out["_opp"][f"af_{street}"] == denom
+        assert out[f"af_{street}"] == (round(100.0 * num / denom, 1) if denom else None)
+        # Checks are excluded from both sides, so the denominator cannot exceed
+        # the actions actually taken, and one hand may contribute several.
+        assert denom >= num

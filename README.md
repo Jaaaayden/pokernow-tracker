@@ -6,6 +6,13 @@ of that database, not the product.
 
 ## Quick start
 
+You need **Python 3.11 or newer**, **pipx**, and **Chrome**. If you have Python but
+not pipx, `python -m pip install --user pipx` then `python -m pipx ensurepath`, and
+open a new terminal so PATH takes effect. On Windows prefer the python.org
+installer over the Microsoft Store build: the Store build sandboxes writes under
+`%LOCALAPPDATA%`, which is the kind of thing that makes a background task look
+like it started and then find none of its files.
+
 ```bash
 pipx install git+https://github.com/Jaaaayden/pokernow-tracker
 pnt setup                                    # database, logs, background server, extension path
@@ -14,6 +21,17 @@ pnt setup                                    # database, logs, background server
 `pnt setup` is the whole first run: it creates the database, imports any exports
 it finds, installs the always-on server (Windows), and prints the folder to load
 in Chrome. It is safe to re-run.
+
+**That is the only command you need**, and there is nothing to start by hand
+afterwards — on Windows the server is registered as a Task Scheduler job for your
+user, so it comes back at every login and restarts itself if it crashes. The one
+thing to remember: after you update the code, run `pnt service restart`, because a
+running server keeps the old code. `pnt service status` says whether it is up and
+which database it has open.
+
+On macOS and Linux there is no equivalent step — `pnt setup` sets everything else
+up and tells you to run `pnt serve` yourself, or to put it under launchd or systemd
+if you want it always on.
 
 Then open **<http://127.0.0.1:52000>**. That page says what is in the database and
 links to everything else -- stats, range charts, and the players page below. The
