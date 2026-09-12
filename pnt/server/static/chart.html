@@ -191,6 +191,7 @@
     <label for="filter">Spot</label>
     <input id="filter" type="text" placeholder="opener,open_bb>=4,srp" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
+    <button id="clear" title="back to all hands">Clear</button>
     <span class="seg" role="group" aria-label="View">
       <button data-view="preflop" aria-pressed="true">Preflop chart</button>
       <button data-view="made" aria-pressed="false">Made hands</button>
@@ -336,6 +337,9 @@
   }
   function syncChips() {
     document.querySelectorAll("button[data-term]").forEach(b => b.setAttribute("aria-pressed", hasTerm(b.dataset.term)));
+    const current = $("filter").value.trim();
+    document.querySelectorAll("button[data-preset]").forEach(b => b.setAttribute("aria-pressed", b.dataset.preset === current));
+    $("clear").disabled = !current;
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
                   table: false, data: null, handRows: null };
@@ -940,6 +944,7 @@
     load();
   }
   $("apply").addEventListener("click", apply);
+  $("clear").addEventListener("click", () => { $("filter").value = ""; apply(); });
   $("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
   $("player").addEventListener("change", apply);
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
@@ -959,7 +964,13 @@
   $("hands-close").addEventListener("click", closeHands);
   for (const [name, f] of PRESETS) {
     const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = f;
-    b.addEventListener("click", () => { $("filter").value = f; apply(); });
+    b.dataset.preset = f;
+    // Clicking the preset that is already showing clears it, rather than
+    // re-applying the same spot with no way back to all hands.
+    b.addEventListener("click", () => {
+      $("filter").value = $("filter").value.trim() === f ? "" : f;
+      apply();
+    });
     $("presets").appendChild(b);
   }
   for (const [name, key, what] of LINES) {

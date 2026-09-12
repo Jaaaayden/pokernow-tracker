@@ -345,7 +345,18 @@
         for (const k of ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd"]) {
           const td = document.createElement("td"); td.textContent = fmt(st[k]); tr.appendChild(td);
         }
-        tr.addEventListener("click", () => { selected = s.alias; markSel(); showChart(); });
+        // Clicking the selected player again unselects them and closes the chart.
+        tr.addEventListener("click", () => {
+          if (selected === s.alias && $("chart").classList.contains("open")) {
+            $("chart").classList.remove("open");
+            selected = null;
+            markSel();
+            return;
+          }
+          selected = s.alias;
+          markSel();
+          showChart();
+        });
         t.appendChild(tr);
       }
       body.appendChild(t);
