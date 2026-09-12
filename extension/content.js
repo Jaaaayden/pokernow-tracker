@@ -171,7 +171,6 @@
         .chart.open { display: block; }
         .chart iframe { width: 100%; height: 560px; border: 0; background: #0d0d0d; border-radius: 0 0 10px 10px; }
         .chart .bar { display: flex; gap: 6px; padding: 6px 10px; align-items: center; }
-        .chart select { font: inherit; background: #1a1a19; color: #fff; border: 1px solid #383835; border-radius: 5px; padding: 2px 6px; }
         .chart a { color: #86b6ef; margin-left: auto; }
         .empty { padding: 10px; color: #c3c2b7; }
         .hidden { display: none; }
@@ -183,30 +182,6 @@
         <div class="chart" id="chart">
           <div class="bar">
             <span id="who"></span>
-            <select id="spot">
-              <option value="opener,srp">opened, single-raised pot</option>
-              <option value="opener,open_bb>=4,srp">opened 4bb+</option>
-              <option value="3bet">3-bet</option>
-              <option value="faced_3bet">faced a 3-bet</option>
-              <option value="cbet_flop">c-bet flop</option>
-              <option value="cbet_turn">c-bet turn</option>
-              <option value="">all hands</option>
-            </select>
-            <select id="board">
-              <option value="">any flop</option>
-              <option value="flop=ace_high">ace high</option>
-              <option value="flop=king_high">king high</option>
-              <option value="flop=low">low (9 or under)</option>
-              <option value="flop=monotone">monotone</option>
-              <option value="flop=twotone">two-tone</option>
-              <option value="flop=rainbow">rainbow</option>
-              <option value="flop=paired">paired</option>
-              <option value="flop=connected">connected</option>
-            </select>
-            <select id="view">
-              <option value="preflop">chart</option>
-              <option value="made">made hands</option>
-            </select>
             <a id="ext" target="_blank" rel="noopener">open ↗</a>
             <button id="close">✕</button>
           </div>
@@ -284,15 +259,13 @@
       report();
     });
     $("close").addEventListener("click", () => { $("chart").classList.remove("open"); selected = null; markSel(); });
-    $("spot").addEventListener("change", showChart);
-    $("board").addEventListener("change", showChart);
-    $("view").addEventListener("change", showChart);
-
+    // The chart page owns the spot, board and view controls -- it has chips for
+    // all three, and a text box for filters no dropdown here could express. This
+    // bar only says who is on show and how to get out, so the two can never
+    // disagree. The filter below is just where the chart opens; change it there.
+    const OPENING_FILTER = "opener,srp";
     function chartUrl() {
-      const q = new URLSearchParams({ player: selected, theme: "dark" });
-      const f = [$("spot").value, $("board").value].filter(Boolean).join(",");
-      if (f) q.set("filter", f);
-      if ($("view").value !== "preflop") q.set("by", $("view").value);
+      const q = new URLSearchParams({ player: selected, filter: OPENING_FILTER, theme: "dark" });
       return `${state.server}/chart?${q}`;
     }
     // The chart page fetches its data once. When the player on show has played more
@@ -307,6 +280,14 @@
       chartHands = hands;
       $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, new URL(state.server).origin);
     }
+    // The chart page reports its URL whenever the spot, view or colour changes
+    // inside the frame, so the link out keeps up with what is on screen.
+    addEventListener("message", (e) => {
+      if (e.source !== $("frame").contentWindow) return;
+      if (e.origin !== new URL(state.server).origin) return;
+      if (e.data && e.data.type === "pnt-url") $("ext").href = e.data.url;
+    });
+
     function showChart() {
       if (!selected) return;
       $("who").textContent = selected;

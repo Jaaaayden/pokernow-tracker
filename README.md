@@ -283,8 +283,11 @@ The suite is organized around invariants rather than examples:
    fetches are free because `/ingest` dedupes on `(game_id, order)`;
 3. draws a draggable overlay listing everyone dealt into the latest hand, keyed by
    PokerNow ID via `GET /hud/{gameId}`, with lifetime VPIP / PFR / 3-bet / fold to
-   3-bet / c-bet / WTSD. Click a row to embed that player's range chart, with a
-   spot selector, straight from the local server.
+   3-bet / c-bet / WTSD. Click a row to embed that player's range chart straight
+   from the local server, opened on their single-raised pots. The spot, board
+   texture and view are the chart page's own controls, so the overlay adds none
+   of its own to fall out of step with them; *open ↗* carries whatever you have
+   picked in there out into a full tab.
 
 No manual seat mapping is needed: the log names every player as `Name @ ID`, and
 the alias table already joins one person's devices.

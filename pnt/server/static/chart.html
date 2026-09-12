@@ -364,6 +364,11 @@
     if (state.by === "sizing") { q.set("street", state.street); q.set("kind", state.kind); }
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
+    // An embedder cannot read this page's URL across origins, so hand it out:
+    // the HUD's "open ↗" link would otherwise still point at the spot the chart
+    // opened on rather than the one being looked at. It carries nothing the
+    // embedder did not already put in the URL, so the origin stays open.
+    if (parent !== window) parent.postMessage({ type: "pnt-url", url: location.href }, "*");
   };
 
   // ---- data ------------------------------------------------------------
