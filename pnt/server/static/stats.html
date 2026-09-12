@@ -87,9 +87,14 @@
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
   </div>
 
-  <p class="note">The postflop columns follow the street you pick. A rate is blank when the player
-    never reached that spot &mdash; hover any rate to see the sample it came from. Click a player for
-    their range chart in the same spot.</p>
+  <p class="note">The postflop columns follow the street you pick, and all four turn on the previous
+    street's aggressor: the player either <em>is</em> them (C-Bet) or is acting against them (Fold,
+    Raise, Lead) &mdash; <strong>hover a column header</strong> for what each one counts. Fold vs
+    C-Bet and Raise C-Bet share one denominator, the c-bets that player faced, so with calls they add
+    to 100%. Note that a lead removes the street from the c-bet columns entirely: the aggressor never
+    got to c-bet, so they take no missed chance, and folding or raising against a lead is counted
+    nowhere. A rate is blank when the player never reached that spot; hover any rate to see the
+    sample behind it. Click a player for their range chart in the same spot.</p>
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
@@ -116,16 +121,39 @@
   // Postflop columns, per street. Fold and Raise share one denominator: the
   // c-bets the player faced.
   const POSTFLOP = [
-    ["cbet", "CBet", "cbet"],
-    ["fold_to_cbet", "Fold", "fold_to_cbet"],
-    ["raise_cbet", "Raise", "fold_to_cbet"],
-    ["donk", "Lead", "donk"],
+    ["cbet", "C-Bet", "cbet"],
+    ["fold_to_cbet", "Fold vs C-Bet", "fold_to_cbet"],
+    ["raise_cbet", "Raise C-Bet", "fold_to_cbet"],
+    ["donk", "Lead (Donk)", "donk"],
   ];
   const SIZES = [["small", "<½"], ["medium", "½–¾"], ["large", "¾–pot"], ["overbet", "over"]];
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
+  };
+  // Every postflop stat is defined against the previous street's aggressor, so the
+  // header text names them. The street comes from the segmented control.
+  const PREV = { flop: "preflop", turn: "flop", river: "turn" };
+  const HEAD_TIP = {
+    cbet: (s) => `Continuation bet. They were the ${PREV[s]} aggressor and bet the ${s} `
+      + `first-in, at the players who came along.`,
+    fold_to_cbet: (s) => `How often they fold the ${s} facing that ${PREV[s]} aggressor's `
+      + `c-bet. Counted before anyone raises over it.`,
+    raise_cbet: (s) => `How often they raise that same c-bet instead. Same denominator as `
+      + `Fold vs C-Bet, so fold + call + raise = 100%.`,
+    donk: (s) => `Lead, or donk bet. They bet the ${s} into the ${PREV[s]} aggressor, before `
+      + `that player gets to act. A bet after a checked-through street is a probe, not a lead.`,
+  };
+  const BASE_TIP = {
+    hands: "Hands they were dealt into.",
+    vpip: "Voluntarily put money in preflop: called, bet or raised. Blinds never count.",
+    pfr: "Raised preflop. Same denominator as VPIP: the hands where action reached them.",
+    "3bet": "Re-raised someone's open, taking the betting to its third level.",
+    fold_to_3bet: "They opened, someone 3-bet, and they folded.",
+    wtsd: "Went to showdown, of the flops they saw.",
+    wsd: "Won money at showdown, of the showdowns they reached.",
+    bb_per_100: "Big blinds won per 100 hands. Incomplete hands are excluded.",
   };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
@@ -155,11 +183,16 @@
     $("chartlink").href = "/chart?" + c;
   };
 
+  // [key, header, kind, opportunity key, hover text]
   const columns = () => {
     const s = state.street;
-    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`]);
-    const sizes = state.sizes ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null]) : [];
-    return [...BASE, ...post, ...sizes];
+    const base = BASE.map(([k, h, kind, opp]) => [k, h, kind, opp, BASE_TIP[k]]);
+    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k](s)]);
+    const sizes = state.sizes
+      ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
+          `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
+      : [];
+    return [...base, ...post, ...sizes];
   };
 
   // Size columns live inside `cbet_<street>_sizes`, so they need their own lookup.
@@ -246,9 +279,10 @@
     }
 
     const head = document.createElement("tr");
-    const addHead = (key, text) => {
+    const addHead = (key, text, tip) => {
       const th = document.createElement("th");
       th.textContent = text;
+      if (tip) th.title = tip;
       if (state.sort === key) {
         th.setAttribute("aria-sort", state.dir === 1 ? "ascending" : "descending");
         const d = document.createElement("span"); d.className = "dir";
@@ -262,8 +296,8 @@
       });
       head.appendChild(th);
     };
-    addHead("player", "player");
-    for (const [key, text] of cols) addHead(key, text);
+    addHead("player", "player", "Click a name for their range chart in this same spot.");
+    for (const [key, text, , , tip] of cols) addHead(key, text, tip);
     t.appendChild(head);
 
     for (const row of sorted()) {

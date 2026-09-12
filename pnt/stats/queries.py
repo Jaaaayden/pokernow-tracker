@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 
 from ..db.conn import generation, path_of
 from ..logfmt.parser import position_name
@@ -130,6 +130,22 @@ def identity_map(conn: sqlite3.Connection) -> dict[str, tuple[int, str]]:
         for r in conn.execute(
             "SELECT pi.pn_id, pi.player_id, p.alias FROM player_identities pi"
             " JOIN players p ON p.player_id = pi.player_id"
+        )
+    }
+
+
+def display_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """pn_id -> the name a drill-down should print.
+
+    The canonical alias when there is one, otherwise the last name PokerNow showed
+    for that ID -- the same rule the replay endpoint uses. Resolved at read time,
+    so a merge or a rename shows up on the next request without re-deriving.
+    """
+    return {
+        r["pn_id"]: r["alias"] or r["last_seen_name"] or r["pn_id"]
+        for r in conn.execute(
+            "SELECT pi.pn_id, pi.last_seen_name, p.alias FROM player_identities pi"
+            " LEFT JOIN players p ON p.player_id = pi.player_id"
         )
     }
 
@@ -337,8 +353,21 @@ def facts_for(
     ]
 
 
-def hand_list(facts: Iterable[Facts]) -> list[dict]:
-    """One compact row per hand, newest first: what a drill-down lists before a replay."""
+def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) -> list[dict]:
+    """One compact row per hand, newest first: what a drill-down lists before a replay.
+
+    `names` resolves opponent pn_ids for display; without it they come through raw.
+    """
+    lookup = names or {}
+
+    def name(pn_id: str) -> str:
+        return lookup.get(pn_id, pn_id)
+
+    def named(ids: Iterable[str]) -> list[str]:
+        # Two merged identities of one villain collapse to one alias, so dedupe --
+        # while keeping acting order, which is what makes the first name the useful one.
+        return list(dict.fromkeys(name(i) for i in ids))
+
     rows = []
     for f in sorted(facts, key=lambda x: (x.ts or "", x.hand_id), reverse=True):
         # Same rule as positional_report: no label when the button or a blind is dead.
@@ -356,6 +385,15 @@ def hand_list(facts: Iterable[Facts]) -> list[dict]:
                 "net_bb": round(f.net / f.bb_size, 1) if f.bb_size else None,
                 "wtsd": f.wtsd,
                 "bet_size": dict(f.bet_size),
+                # Who the hand was against, and whether they closed the action.
+                # `position` above is the absolute seat and stays in the payload;
+                # the drill-down shows `ip` instead. See SPEC.md.
+                "ip": f.in_position,
+                "pos_order": f.pos_order,
+                "pos_players": f.pos_players,
+                "vs": named(f.opponents),
+                "vs_cbet": {s: name(p) for s, p in f.faced_cbet_by.items()},
+                "led_into": {s: name(p) for s, p in f.donk_into.items()},
             }
         )
     return rows

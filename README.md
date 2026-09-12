@@ -132,7 +132,11 @@ pnt sizing henry --street turn --kind faced_cbet   # fold / call / raise per siz
 ```
 
 The chart page has the same view under **Sizing**. Every cell, bar and size on
-the page opens the list of hands behind it, and clicking a hand replays it.
+the page opens the list of hands behind it, and clicking a hand replays it. Each
+row in that list names who the hand was against and whether the player closed the
+action — `IP` or `OOP` rather than a seat, since every postflop stat here is
+measured against an aggressor and not against a seat. Hover a row for the full
+opponent list and who c-bet on which street.
 
 Board texture is a filter too: `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on — the full tag

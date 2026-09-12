@@ -28,6 +28,9 @@ TRUNCATED = FIXTURES / "poker_now_log_pglkWn5b4Y8whHqWY3tVmrtW1.csv"
 EDGE_LOGS = [STRADDLE, MISSED_BLINDS, TRUNCATED]
 
 HU_GAME = "pgl41zM3_CKphpnKM1DMIosUT"
+#: Carries the two hands SPEC.md flags: #25 has a dead small blind
+#: (`blinds_irregular`) and #26 a dead button.
+MULTIWAY_GAME = "pgl1UViJ4BhoVP-KKHpux1Mpv"
 STRADDLE_GAME = "pgldBYgodxANW2_YvaxBEJh-3"
 MISSED_BLINDS_GAME = "pgl7sRNQr64BIPFwmlFel-Le5"
 TRUNCATED_GAME = "pglkWn5b4Y8whHqWY3tVmrtW1"
