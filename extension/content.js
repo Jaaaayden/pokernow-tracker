@@ -217,6 +217,29 @@
     let collapsed = false, selected = null;
 
     // drag
+    //
+    // Every move goes through place(), which keeps the panel inside the window.
+    // Without that, dragging toward the right or bottom edge -- or reopening the
+    // table on a smaller window later -- parks the panel off-screen, where it
+    // keeps capturing hands with nothing to show for it.
+    const EDGE = 4;
+    function place(left, top) {
+      const r = host.getBoundingClientRect();
+      const w = r.width || 300, h = r.height || 80;
+      const maxLeft = Math.max(0, innerWidth - Math.min(w, innerWidth) - EDGE);
+      const maxTop = Math.max(0, innerHeight - Math.min(h, innerHeight) - EDGE);
+      host.style.left = Math.min(Math.max(0, left), maxLeft) + "px";
+      host.style.top = Math.min(Math.max(0, top), maxTop) + "px";
+      host.style.right = "auto";
+    }
+    function savePos() {
+      try { localStorage.setItem("pnt-pos", JSON.stringify({ left: host.style.left, top: host.style.top })); } catch {}
+    }
+    function resetPos() {
+      host.style.left = "auto"; host.style.top = "12px"; host.style.right = "12px";
+      try { localStorage.removeItem("pnt-pos"); } catch {}
+    }
+
     const head = root.querySelector(".head");
     let drag = null;
     head.addEventListener("pointerdown", (e) => {
@@ -227,18 +250,26 @@
     });
     head.addEventListener("pointermove", (e) => {
       if (!drag) return;
-      host.style.left = Math.max(0, e.clientX - drag.dx) + "px";
-      host.style.top = Math.max(0, e.clientY - drag.dy) + "px";
-      host.style.right = "auto";
+      place(e.clientX - drag.dx, e.clientY - drag.dy);
     });
     head.addEventListener("pointerup", () => {
       drag = null;
-      try { localStorage.setItem("pnt-pos", JSON.stringify({ left: host.style.left, top: host.style.top })); } catch {}
+      savePos();
     });
-    try {
-      const pos = JSON.parse(localStorage.getItem("pnt-pos") || "null");
-      if (pos && pos.left) { host.style.left = pos.left; host.style.top = pos.top; host.style.right = "auto"; }
-    } catch {}
+    // Double-click the header to send it back to the top right.
+    head.addEventListener("dblclick", (e) => { if (e.target.tagName !== "BUTTON") resetPos(); });
+
+    function restorePos() {
+      let pos = null;
+      try { pos = JSON.parse(localStorage.getItem("pnt-pos") || "null"); } catch {}
+      if (!pos || !pos.left) return;
+      const left = parseFloat(pos.left), top = parseFloat(pos.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) place(left, top);
+    }
+    // A window that shrinks must not strand the panel outside it either.
+    addEventListener("resize", () => {
+      if (host.style.right === "auto") place(parseFloat(host.style.left) || 0, parseFloat(host.style.top) || 0);
+    });
 
     $("min").addEventListener("click", () => {
       collapsed = !collapsed;
@@ -326,6 +357,8 @@
     function setStatus(text) { $("st").textContent = text; $("st").title = text; }
 
     document.documentElement.appendChild(host);
+    // After it is in the page, so clamping can measure the panel.
+    restorePos();
     return { render, setStatus };
   })();
 
