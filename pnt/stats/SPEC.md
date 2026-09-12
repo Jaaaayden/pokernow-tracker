@@ -86,10 +86,42 @@ continuation bet. Some trackers carry the aggressor forward; this one does not.)
 |---|---|---|---|
 | **C-Bet** (flop/turn/river) | Player bets | Player was the previous street's aggressor, saw this street, and acts while no bet has yet been made on it | Previous street checked through; player already all-in |
 | **Fold to C-Bet** | Player folds | Player acts facing a c-bet, before anyone raises over it | — |
+| **Raise C-Bet** (flop/turn/river) | Player raises | Same as Fold to C-Bet | — |
+| **Donk Bet** (flop/turn/river) | Player bets | Player acts while no bet has yet been made on this street, the previous street's aggressor has not acted on it yet, and that aggressor is not all-in | The aggressor themselves; previous street checked through |
 | **Aggression Frequency** (per street) | `bet` + `raise` | `bet` + `raise` + `call` + `fold` | `check` is excluded from **both** sides |
 
 Aggression frequency deliberately excludes checks. Including them makes the stat
 measure how often a player is out of position rather than how aggressive they are.
+
+A donk bet (a *lead*) is a bet into the previous street's aggressor before they
+get to act. Like the c-bet it needs an aggressor: a bet after a checked-through
+street is a probe and counts as neither.
+
+### Bet size buckets
+
+Every postflop `bet` also gets a size bucket, measured the same way as `bet_pot`:
+the bet over the pot it was made into.
+
+| Bucket | Size | Rule |
+|---|---|---|
+| `small` | under ½ pot | `amount < floor(½ × pot)` |
+| `medium` | ½ to ¾ pot | `amount ≥ floor(½ × pot)` |
+| `large` | ¾ pot to pot | `amount ≥ floor(¾ × pot)` and `amount ≤ pot` |
+| `overbet` | more than pot | `amount > pot` |
+
+**PokerNow's ½, ¾ and pot buttons each start a bucket.** They are most of the
+bets: of 1,016 flop c-bets in a 5,836-hand database, 211 were exactly ½ pot, 62
+exactly pot and 28 exactly ¾. With the edges placed anywhere else, the same
+button click would land on either side of one. Bets are whole chips, so an edge
+is rounded down to a chip: a ¾-pot click into a pot of 30 is 22 or 23 chips, and
+both are `large`. A pot-sized bet is `large`, not an overbet.
+
+**Fold to C-Bet and Raise C-Bet by size** split both stats by the bucket of the
+c-bet the player faced -- that c-bet's own size, not the price of calling it.
+
+Filters use the bucket names: `cbet_flop=medium` (a flop c-bet of that size),
+`bet_river=overbet` (their first river bet, c-bet or not) and
+`faced_cbet_turn=large` (the c-bet they were facing).
 
 ---
 
@@ -260,3 +292,9 @@ archaeology.
    only the *position label* is uncertain, not the actions.
 5. **Antes and dead small blinds** contribute to the pot but not to a player's
    street commitment, so they do not reduce what that player must pay to call.
+6. **Each bet-size edge belongs to the bucket above it, rounded down to a chip**,
+   so every PokerNow ½, ¾ and pot click lands in the bucket it starts, and a
+   pot-sized bet is `large` rather than an overbet. See "Bet size buckets".
+7. **A donk bet needs a previous-street aggressor who has yet to act.** A lead
+   after a checked-through street, or into an aggressor who is already all-in,
+   is not counted as one.

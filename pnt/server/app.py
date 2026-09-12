@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -25,9 +25,10 @@ from pydantic import BaseModel, Field
 from pnt.db.conn import connect
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import ingest_entries, merge_players, rebuild_game
+from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import facts_for, positional_report, report
-from pnt.stats.ranges import composition, range_grid
+from pnt.stats.queries import aggregate, facts_for, hand_list, positional_report, report
+from pnt.stats.ranges import composition, range_grid, sizing_tells
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
@@ -75,22 +76,34 @@ class IngestRequest(BaseModel):
     )
 
 
+def _page(name: str) -> HTMLResponse:
+    """One of the static pages.
+
+    Re-read from disk on every request, with `no-store` so the browser holds no
+    old copy -- but the Python behind it is loaded once, so after changing stat
+    code, restart the server (`pnt service restart`).
+    """
+    return HTMLResponse(
+        (STATIC / name).read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/chart", include_in_schema=False)
 def chart() -> HTMLResponse:
     """The range chart page. One static file; all data comes from /players/{alias}/range.
 
     Query parameters (`?player=henry&filter=opener,srp&by=made&color=size`) seed
-    the page state, so a bookmark -- or later, an extension iframe -- lands on a
+    the page state, so a bookmark -- or an extension iframe -- lands on a
     specific player and spot.
-
-    The page is re-read from disk on every request, and `no-store` keeps the
-    browser from holding an old copy -- but the Python behind it is loaded once,
-    so after pulling a change to the stat code, restart `pnt serve`.
     """
-    return HTMLResponse(
-        (STATIC / "chart.html").read_text(encoding="utf-8"),
-        headers={"Cache-Control": "no-store"},
-    )
+    return _page("chart.html")
+
+
+@app.get("/stats.html", include_in_schema=False)
+def stats_page() -> HTMLResponse:
+    """Every player's stats, as a sortable table. `/stats` serves this to browsers."""
+    return _page("stats.html")
 
 
 @app.get("/health")
@@ -125,17 +138,24 @@ def rebuild(game_id: str) -> dict:
     return rebuild_game(db(), game_id)
 
 
-@app.get("/stats")
+@app.get("/stats", response_model=None)
 def stats(
+    request: Request,
     game: str | None = None,
     filter: Annotated[str | None, Query(description="e.g. '3bet,position=BTN'")] = None,
     min_hands: int = 1,
-) -> list[dict]:
+) -> list[dict] | HTMLResponse:
     """Per-player stats, optionally restricted to a spot.
 
     The filter compiles to a predicate over derived per-hand facts, which is only
     possible because actions are stored raw with street and sequence.
+
+    A browser navigating here asks for HTML and gets the stats page; every other
+    caller (the HUD, a script, curl) asks for anything and gets the JSON. The page
+    is also at /stats.html, which is what the page itself links to.
     """
+    if "text/html" in request.headers.get("accept", ""):
+        return _page("stats.html")
     try:
         pred = parse_filter(filter) if filter else None
     except ValueError as exc:
@@ -163,6 +183,29 @@ def positions(alias: str, split_by_size: bool = False) -> list[dict]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _spot_facts(alias: str, filter: str | None, game: str | None) -> list[Facts]:
+    """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
+    try:
+        pred = parse_filter(filter) if filter else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        facts = facts_for(db(), alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [f for f in facts if pred(f)] if pred is not None else facts
+
+
+@app.get("/players/{alias}/stats")
+def player_stats(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's stats inside a spot -- what the chart page's postflop strip reads."""
+    return {"player": alias, "filter": filter, **aggregate(_spot_facts(alias, filter, game))}
+
+
 @app.get("/players/{alias}/range")
 def player_range(
     alias: str,
@@ -175,25 +218,44 @@ def player_range(
     This is what the chart page renders. Every cell of the 169-grid is present,
     in chart order, so the client needs no card logic of its own.
     """
-    try:
-        pred = parse_filter(filter) if filter else None
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    try:
-        facts = facts_for(db(), alias, game)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if pred is not None:
-        facts = [f for f in facts if pred(f)]
+    facts = _spot_facts(alias, filter, game)
     out = range_grid(facts) if by == "preflop" else composition(facts)
     return {"player": alias, "filter": filter, "by": by, **out}
+
+
+@app.get("/players/{alias}/sizing")
+def player_sizing(
+    alias: str,
+    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
+    kind: Annotated[str, Query(pattern="^(cbet|bet|faced_cbet)$")] = "cbet",
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """What a player had at each bet size on one street, within a spot."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, **sizing_tells(facts, street, kind)}
+
+
+@app.get("/players/{alias}/hands")
+def player_hands(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'cbet_flop=overbet'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Every hand in a spot as a compact row, newest first. Replay one with /hands/{id}."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, "hands": hand_list(facts)}
 
 
 @app.get("/hands/{hand_id}")
 def hand(hand_id: int) -> dict:
     """Full replay of one hand -- for spot-checking a stat you do not believe."""
     conn = db()
-    h = conn.execute("SELECT * FROM hands WHERE hand_id = ?", (hand_id,)).fetchone()
+    h = conn.execute(
+        "SELECT h.*, COALESCE(h.bb, g.bb) AS bb_effective"
+        " FROM hands h LEFT JOIN games g ON g.game_id = h.game_id WHERE h.hand_id = ?",
+        (hand_id,),
+    ).fetchone()
     if h is None:
         raise HTTPException(status_code=404, detail="no such hand")
     return {
@@ -205,6 +267,18 @@ def hand(hand_id: int) -> dict:
                 (hand_id,),
             )
         ],
+        # pn_id -> the name a replay should print: the canonical alias when there
+        # is one, otherwise the last name PokerNow showed for that ID.
+        "names": {
+            r["pn_id"]: r["alias"] or r["last_seen_name"] or r["pn_id"]
+            for r in conn.execute(
+                "SELECT hp.pn_id, p.alias, pi.last_seen_name FROM hand_players hp"
+                " LEFT JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+                " LEFT JOIN players p ON p.player_id = pi.player_id"
+                " WHERE hp.hand_id = ?",
+                (hand_id,),
+            )
+        },
         "actions": [
             dict(r)
             for r in conn.execute(

@@ -108,11 +108,11 @@ What a player *had* in a spot, from the hands where their cards were shown:
 
 ```bash
 pnt range henry --filter "opener,open_bb>=4,srp"          # the 13x13 chart
-pnt range henry --filter "pfa,srp,cbet_flop,cbet_turn,bet_river>=1" --by made
+pnt range henry --filter "pfa,srp,cbet_flop,cbet_turn,bet_river=overbet" --by made
 ```
 
 ```
-henry  filter: pfa,srp,cbet_flop,cbet_turn,bet_river
+henry  filter: pfa,srp,cbet_flop,cbet_turn,bet_river=overbet
 hands in this spot: 12   cards known: 7   coverage: 58.3%
 
 class                       n    pct  won   net bb
@@ -127,8 +127,25 @@ pair                        3   42.9    2     36.0
 A line is just a longer filter. The new terms are `opener`, `pfa` (preflop
 aggressor), `limped` / `srp` / `3bet_pot` / `4bet_pot`, and comparisons on
 `open_bb`, `raise_bb` (the player's own preflop raise-to) and `bet_flop` /
-`bet_turn` / `bet_river` (first bet on that street as a fraction of the pot, so
-`>=1` is an overbet).
+`bet_turn` / `bet_river` (first bet on that street as a fraction of the pot).
+
+Bet sizes also come in four buckets: `small` (under ½ pot), `medium` (½ to ¾),
+`large` (¾ to pot) and `overbet` (more than pot). PokerNow's ½, ¾ and pot buttons
+each start one. Use them as `cbet_flop=medium`, `cbet_turn=overbet`,
+`bet_river=large`, or `faced_cbet_flop=small` for the c-bet a player was facing.
+Postflop responses are flags per street: `folded_to_cbet_turn`,
+`raised_cbet_flop` and `donk_flop` (betting into the previous street's aggressor
+before they act).
+
+What they bet each size *with* is its own view:
+
+```bash
+pnt sizing henry --street flop --kind cbet         # c-bets by size, plus the checks
+pnt sizing henry --street turn --kind faced_cbet   # fold / call / raise per size faced
+```
+
+The chart page has the same view under **Sizing**. Every cell, bar and size on
+the page opens the list of hands behind it, and clicking a hand replays it.
 
 Board texture is a filter too: `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on — the full tag
@@ -152,7 +169,15 @@ they do not, so a single tilt jam cannot repaint a cell — see
 [`SPEC.md`](pnt/stats/SPEC.md).
 Player, spot, view, colour mode and theme all live in the URL
 (`/chart?player=henry&filter=opener,srp&color=size&theme=dark`), which is what the
-HUD will embed once live capture exists.
+HUD will embed once live capture exists. Under the tiles it also shows how often
+that player c-bets, folds to one, raises one and leads, in whatever spot is
+selected.
+
+Every player at once is [http://127.0.0.1:8000/stats](http://127.0.0.1:8000/stats):
+a browser gets a sortable table, while the HUD, curl and your scripts get the same
+figures as JSON from the same URL (the page alone is at `/stats.html`). Pick a
+street to swap the postflop columns, toggle the c-bet size mix, and click a player
+to open their range chart in the spot you are looking at.
 
 ### Identity
 
@@ -258,8 +283,11 @@ The suite is organized around invariants rather than examples:
    fetches are free because `/ingest` dedupes on `(game_id, order)`;
 3. draws a draggable overlay listing everyone dealt into the latest hand, keyed by
    PokerNow ID via `GET /hud/{gameId}`, with lifetime VPIP / PFR / 3-bet / fold to
-   3-bet / c-bet / WTSD. Click a row to embed that player's range chart, with a
-   spot selector, straight from the local server.
+   3-bet / c-bet / WTSD. Click a row to embed that player's range chart straight
+   from the local server, opened on their single-raised pots. The spot, board
+   texture and view are the chart page's own controls, so the overlay adds none
+   of its own to fall out of step with them; *open ↗* carries whatever you have
+   picked in there out into a full tab.
 
 No manual seat mapping is needed: the log names every player as `Name @ ID`, and
 the alias table already joins one person's devices.

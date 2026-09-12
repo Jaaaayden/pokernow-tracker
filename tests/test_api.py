@@ -140,3 +140,66 @@ def test_chart_page_is_served(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert "/range" in r.text, "the page must read from the range endpoint"
+    assert "/sizing" in r.text and "/hands" in r.text
+
+
+def test_sizing_endpoint(client):
+    body = client.get("/players/genericpoker/sizing", params={"street": "flop"}).json()
+    assert body["kind"] == "cbet"
+    assert [b["size"] for b in body["blocks"]] == ["small", "medium", "large", "overbet", "check"]
+    assert sum(b["n"] for b in body["blocks"]) == body["spot"]
+    faced = client.get(
+        "/players/genericpoker/sizing", params={"street": "turn", "kind": "faced_cbet"}
+    ).json()
+    assert all({"fold", "call", "raise", "continued"} <= set(b) for b in faced["blocks"])
+
+
+def test_sizing_endpoint_validates_input(client):
+    url = "/players/genericpoker/sizing"
+    assert client.get(url, params={"street": "preflop"}).status_code == 422
+    assert client.get(url, params={"kind": "limp"}).status_code == 422
+    assert client.get(url, params={"filter": "cbet_flop=huge"}).status_code == 400
+    assert client.get("/players/ghost/sizing").status_code == 404
+
+
+def test_hands_endpoint_lists_the_spot(client):
+    rows = client.get("/players/genericpoker/hands", params={"filter": "wtsd"}).json()["hands"]
+    grid = client.get("/players/genericpoker/range", params={"filter": "wtsd"}).json()
+    assert len(rows) == grid["hands"]
+    assert all(r["wtsd"] for r in rows)
+    ids = {r["hand_id"] for r in rows}
+    for cell in grid["cells"].values():
+        assert len(cell["hand_ids"]) == cell["n"]
+        assert set(cell["hand_ids"]) <= ids
+
+
+def test_hand_replay_names_every_player(client):
+    body = client.get("/hands/1").json()
+    assert set(body["names"]) == {p["pn_id"] for p in body["players"]}
+    assert body["hand"]["bb_effective"]
+
+
+def test_player_stats_endpoint(client):
+    """What the chart page's postflop strip reads: one player, inside a spot."""
+    all_hands = client.get("/players/genericpoker/stats").json()
+    srp = client.get("/players/genericpoker/stats", params={"filter": "srp"}).json()
+    assert srp["player"] == "genericpoker"
+    assert {"cbet_flop", "raise_cbet_flop", "donk_flop", "cbet_flop_sizes"} <= set(srp)
+    assert srp["hands"] < all_hands["hands"]
+    assert client.get("/players/ghost/stats").status_code == 404
+    assert client.get("/players/genericpoker/stats", params={"filter": "nope"}).status_code == 400
+
+
+def test_stats_serves_json_to_scripts_and_a_page_to_browsers(client):
+    """The HUD and curl must keep getting JSON from /stats; a browser gets the page."""
+    assert isinstance(client.get("/stats").json(), list)
+    assert isinstance(client.get("/stats", headers={"accept": "application/json"}).json(), list)
+    page = client.get("/stats", headers={"accept": "text/html,application/xhtml+xml"})
+    assert page.headers["content-type"].startswith("text/html")
+    assert "/chart?" in page.text, "the page must link back to the range chart"
+    direct = client.get("/stats.html")
+    assert direct.status_code == 200 and direct.text == page.text
+
+
+def test_chart_page_links_to_the_stats_page(client):
+    assert "/stats.html" in client.get("/chart").text

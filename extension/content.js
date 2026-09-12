@@ -171,7 +171,6 @@
         .chart.open { display: block; }
         .chart iframe { width: 100%; height: 560px; border: 0; background: #0d0d0d; border-radius: 0 0 10px 10px; }
         .chart .bar { display: flex; gap: 6px; padding: 6px 10px; align-items: center; }
-        .chart select { font: inherit; background: #1a1a19; color: #fff; border: 1px solid #383835; border-radius: 5px; padding: 2px 6px; }
         .chart a { color: #86b6ef; margin-left: auto; }
         .empty { padding: 10px; color: #c3c2b7; }
         .hidden { display: none; }
@@ -183,29 +182,6 @@
         <div class="chart" id="chart">
           <div class="bar">
             <span id="who"></span>
-            <select id="spot">
-              <option value="opener,srp">opened, single-raised pot</option>
-              <option value="opener,open_bb>=4,srp">opened 4bb+</option>
-              <option value="3bet">3-bet</option>
-              <option value="faced_3bet">faced a 3-bet</option>
-              <option value="pfa,cbet_flop">c-bet flop</option>
-              <option value="">all hands</option>
-            </select>
-            <select id="board">
-              <option value="">any flop</option>
-              <option value="flop=ace_high">ace high</option>
-              <option value="flop=king_high">king high</option>
-              <option value="flop=low">low (9 or under)</option>
-              <option value="flop=monotone">monotone</option>
-              <option value="flop=twotone">two-tone</option>
-              <option value="flop=rainbow">rainbow</option>
-              <option value="flop=paired">paired</option>
-              <option value="flop=connected">connected</option>
-            </select>
-            <select id="view">
-              <option value="preflop">chart</option>
-              <option value="made">made hands</option>
-            </select>
             <a id="ext" target="_blank" rel="noopener">open ↗</a>
             <button id="close">✕</button>
           </div>
@@ -216,6 +192,29 @@
     let collapsed = false, selected = null;
 
     // drag
+    //
+    // Every move goes through place(), which keeps the panel inside the window.
+    // Without that, dragging toward the right or bottom edge -- or reopening the
+    // table on a smaller window later -- parks the panel off-screen, where it
+    // keeps capturing hands with nothing to show for it.
+    const EDGE = 4;
+    function place(left, top) {
+      const r = host.getBoundingClientRect();
+      const w = r.width || 300, h = r.height || 80;
+      const maxLeft = Math.max(0, innerWidth - Math.min(w, innerWidth) - EDGE);
+      const maxTop = Math.max(0, innerHeight - Math.min(h, innerHeight) - EDGE);
+      host.style.left = Math.min(Math.max(0, left), maxLeft) + "px";
+      host.style.top = Math.min(Math.max(0, top), maxTop) + "px";
+      host.style.right = "auto";
+    }
+    function savePos() {
+      try { localStorage.setItem("pnt-pos", JSON.stringify({ left: host.style.left, top: host.style.top })); } catch {}
+    }
+    function resetPos() {
+      host.style.left = "auto"; host.style.top = "12px"; host.style.right = "12px";
+      try { localStorage.removeItem("pnt-pos"); } catch {}
+    }
+
     const head = root.querySelector(".head");
     let drag = null;
     head.addEventListener("pointerdown", (e) => {
@@ -226,18 +225,26 @@
     });
     head.addEventListener("pointermove", (e) => {
       if (!drag) return;
-      host.style.left = Math.max(0, e.clientX - drag.dx) + "px";
-      host.style.top = Math.max(0, e.clientY - drag.dy) + "px";
-      host.style.right = "auto";
+      place(e.clientX - drag.dx, e.clientY - drag.dy);
     });
     head.addEventListener("pointerup", () => {
       drag = null;
-      try { localStorage.setItem("pnt-pos", JSON.stringify({ left: host.style.left, top: host.style.top })); } catch {}
+      savePos();
     });
-    try {
-      const pos = JSON.parse(localStorage.getItem("pnt-pos") || "null");
-      if (pos && pos.left) { host.style.left = pos.left; host.style.top = pos.top; host.style.right = "auto"; }
-    } catch {}
+    // Double-click the header to send it back to the top right.
+    head.addEventListener("dblclick", (e) => { if (e.target.tagName !== "BUTTON") resetPos(); });
+
+    function restorePos() {
+      let pos = null;
+      try { pos = JSON.parse(localStorage.getItem("pnt-pos") || "null"); } catch {}
+      if (!pos || !pos.left) return;
+      const left = parseFloat(pos.left), top = parseFloat(pos.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) place(left, top);
+    }
+    // A window that shrinks must not strand the panel outside it either.
+    addEventListener("resize", () => {
+      if (host.style.right === "auto") place(parseFloat(host.style.left) || 0, parseFloat(host.style.top) || 0);
+    });
 
     $("min").addEventListener("click", () => {
       collapsed = !collapsed;
@@ -252,15 +259,13 @@
       report();
     });
     $("close").addEventListener("click", () => { $("chart").classList.remove("open"); selected = null; markSel(); });
-    $("spot").addEventListener("change", showChart);
-    $("board").addEventListener("change", showChart);
-    $("view").addEventListener("change", showChart);
-
+    // The chart page owns the spot, board and view controls -- it has chips for
+    // all three, and a text box for filters no dropdown here could express. This
+    // bar only says who is on show and how to get out, so the two can never
+    // disagree. The filter below is just where the chart opens; change it there.
+    const OPENING_FILTER = "opener,srp";
     function chartUrl() {
-      const q = new URLSearchParams({ player: selected, theme: "dark" });
-      const f = [$("spot").value, $("board").value].filter(Boolean).join(",");
-      if (f) q.set("filter", f);
-      if ($("view").value !== "preflop") q.set("by", $("view").value);
+      const q = new URLSearchParams({ player: selected, filter: OPENING_FILTER, theme: "dark" });
       return `${state.server}/chart?${q}`;
     }
     // The chart page fetches its data once. When the player on show has played more
@@ -275,6 +280,14 @@
       chartHands = hands;
       $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, new URL(state.server).origin);
     }
+    // The chart page reports its URL whenever the spot, view or colour changes
+    // inside the frame, so the link out keeps up with what is on screen.
+    addEventListener("message", (e) => {
+      if (e.source !== $("frame").contentWindow) return;
+      if (e.origin !== new URL(state.server).origin) return;
+      if (e.data && e.data.type === "pnt-url") $("ext").href = e.data.url;
+    });
+
     function showChart() {
       if (!selected) return;
       $("who").textContent = selected;
@@ -313,7 +326,18 @@
         for (const k of ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd"]) {
           const td = document.createElement("td"); td.textContent = fmt(st[k]); tr.appendChild(td);
         }
-        tr.addEventListener("click", () => { selected = s.alias; markSel(); showChart(); });
+        // Clicking the selected player again unselects them and closes the chart.
+        tr.addEventListener("click", () => {
+          if (selected === s.alias && $("chart").classList.contains("open")) {
+            $("chart").classList.remove("open");
+            selected = null;
+            markSel();
+            return;
+          }
+          selected = s.alias;
+          markSel();
+          showChart();
+        });
         t.appendChild(tr);
       }
       body.appendChild(t);
@@ -325,6 +349,8 @@
     function setStatus(text) { $("st").textContent = text; $("st").title = text; }
 
     document.documentElement.appendChild(host);
+    // After it is in the page, so clamping can measure the panel.
+    restorePos();
     return { render, setStatus };
   })();
 

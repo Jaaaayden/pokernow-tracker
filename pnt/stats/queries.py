@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 
 from ..logfmt.parser import position_name
-from .derive import Facts, HandAction, HandPlayerRow, HandRow, derive
+from .derive import SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 
 
 def load_hands(
@@ -154,11 +154,39 @@ def aggregate(facts: Iterable[Facts]) -> dict:
         },
     }
     for street in ("flop", "turn", "river"):
+        faced_cbet = sd("fold_to_cbet_opp", street)
         out[f"cbet_{street}"] = _rate(sd("cbet", street), sd("cbet_opp", street))
-        out[f"fold_to_cbet_{street}"] = _rate(
-            sd("fold_to_cbet", street), sd("fold_to_cbet_opp", street)
-        )
+        out[f"fold_to_cbet_{street}"] = _rate(sd("fold_to_cbet", street), faced_cbet)
+        out[f"raise_cbet_{street}"] = _rate(sd("raise_cbet", street), faced_cbet)
+        out[f"donk_{street}"] = _rate(sd("donk", street), sd("donk_opp", street))
         out[f"af_{street}"] = _rate(counter("aggressive", street), counter("agg_denom", street))
+
+        # How big their c-bets are, and how they answer each size of c-bet.
+        sizes = Counter(x.bet_size.get(street) for x in f if x.cbet.get(street))
+        n_cbets = sum(sizes.values())
+        out[f"cbet_{street}_sizes"] = {
+            b: {"n": sizes[b], "pct": _rate(sizes[b], n_cbets)} for b in SIZE_BUCKETS
+        }
+        faced, folded, raised = Counter(), Counter(), Counter()
+        for x in f:
+            b = x.faced_cbet_size.get(street)
+            if b is None:
+                continue
+            faced[b] += 1
+            folded[b] += bool(x.fold_to_cbet.get(street))
+            raised[b] += bool(x.raise_cbet.get(street))
+        out[f"vs_cbet_{street}_by_size"] = {
+            b: {
+                "faced": faced[b],
+                "fold": _rate(folded[b], faced[b]),
+                "raise": _rate(raised[b], faced[b]),
+            }
+            for b in SIZE_BUCKETS
+        }
+
+        out["_opp"][f"cbet_{street}"] = sd("cbet_opp", street)
+        out["_opp"][f"fold_to_cbet_{street}"] = faced_cbet
+        out["_opp"][f"donk_{street}"] = sd("donk_opp", street)
     return out
 
 
@@ -211,6 +239,30 @@ def facts_for(
     if pid is None:
         raise ValueError(f"unknown alias: {alias!r}")
     return grouped[pid]
+
+
+def hand_list(facts: Iterable[Facts]) -> list[dict]:
+    """One compact row per hand, newest first: what a drill-down lists before a replay."""
+    rows = []
+    for f in sorted(facts, key=lambda x: (x.ts or "", x.hand_id), reverse=True):
+        # Same rule as positional_report: no label when the button or a blind is dead.
+        labelled = f.seats_from_button is not None and not f.dead_button and not f.blinds_irregular
+        rows.append(
+            {
+                "hand_id": f.hand_id,
+                "game_id": f.game_id,
+                "hand_number": f.hand_number,
+                "ts": f.ts,
+                "position": position_name(f.seats_from_button, f.n_dealt_in) if labelled else None,
+                "players": f.n_dealt_in,
+                "hole_cards": f.hole_cards,
+                "board": list(f.board),
+                "net_bb": round(f.net / f.bb_size, 1) if f.bb_size else None,
+                "wtsd": f.wtsd,
+                "bet_size": dict(f.bet_size),
+            }
+        )
+    return rows
 
 
 def positional_report(conn: sqlite3.Connection, alias: str, pool: bool = True) -> list[dict]:
