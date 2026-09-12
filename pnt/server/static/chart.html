@@ -143,7 +143,9 @@
   }
   .hand-row:hover, .hand-row[aria-pressed=true] { background: var(--mid); }
   .hand-row .num { min-width: 4.5em; color: var(--muted); }
-  .hand-row .pos { min-width: 3em; color: var(--ink-2); }
+  .hand-row .pos { min-width: 3.2em; color: var(--ink-2); }
+  .hand-row .vs { min-width: 6em; max-width: 11em; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--ink-2); }
   .hand-row .hole { min-width: 4em; }
   .hand-row .board { min-width: 9em; color: var(--ink-2); }
   .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
@@ -167,7 +169,7 @@
   .strip-head b { font-size: 13px; font-weight: 600; }
   .strip-head a { color: var(--accent); text-decoration: none; font-size: 12px; }
   .strip-grid { display: grid; grid-template-columns: 3.5em repeat(4, minmax(4.5em, max-content)) 1fr;
-    gap: 3px 16px; font-variant-numeric: tabular-nums; font-size: 13px; min-width: 520px; }
+    gap: 3px 16px; font-variant-numeric: tabular-nums; font-size: 13px; min-width: 640px; }
   .strip-grid .h { color: var(--muted); font-size: 12px; }
   .strip-grid .st { color: var(--ink-2); text-transform: capitalize; }
   .strip-grid .mix { color: var(--muted); font-size: 12px; }
@@ -782,6 +784,10 @@
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
     const body = await getJson(`/players/${encodeURIComponent(state.player)}/hands?` + q);
+    // Checked before caching, so a stale answer is never memoized for the session.
+    if (body.hands.length && !("ip" in body.hands[0])) {
+      throw new Error("the running server is older than this page: restart `pnt service`");
+    }
     state.handRows = { key, rows: body.hands };
     return body.hands;
   }
@@ -807,6 +813,19 @@
     const p = document.createElement("p"); p.className = cls; p.textContent = text; return p;
   }
 
+  // The row has one line; the tooltip is where "who was I facing" is spelled out.
+  function handTitle(h) {
+    const bits = [[h.game_id, `${h.players} dealt in`, h.ts].filter(Boolean).join(" · ")];
+    if (h.ip != null) {
+      bits.push((h.ip ? "in position" : "out of position")
+        + (h.pos_players > 2 ? ` · acts ${h.pos_order + 1} of ${h.pos_players} postflop` : ""));
+    }
+    if (h.vs?.length) bits.push("vs " + h.vs.join(", "));
+    for (const [st, who] of Object.entries(h.vs_cbet || {})) bits.push(`${st}: ${who} c-bet at them`);
+    for (const [st, who] of Object.entries(h.led_into || {})) bits.push(`${st}: could lead into ${who}`);
+    return bits.join("\n");
+  }
+
   function renderHandRows(rows) {
     const list = $("hand-rows");
     list.replaceChildren();
@@ -818,12 +837,18 @@
       b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
       const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; b.appendChild(s); };
       span("num", `#${h.hand_number}`);
-      span("pos", h.position || "–");
+      // Whether they closed the action, not where they sat: every postflop stat
+      // on these pages is defined against an aggressor, not against a seat.
+      span("pos", h.ip == null ? "–" : h.ip ? "IP" : "OOP");
+      // One name plus a count. The row is a wrapping flexbox and three names
+      // break it; the full list is in the tooltip.
+      span("vs", h.vs?.length
+        ? `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` : "");
       span("hole cards", h.hole_cards ? pretty(h.hole_cards) : "?? ??");
       span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop");
       span("sizes", Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
       span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
-      b.title = `${h.game_id} · ${h.players} dealt in${h.ts ? " · " + h.ts : ""}`;
+      b.title = handTitle(h);
       b.addEventListener("click", () => {
         list.querySelectorAll(".hand-row").forEach(x => x.setAttribute("aria-pressed", x === b));
         showReplay(h.hand_id);
@@ -952,7 +977,21 @@
       if (title) d.title = title;
       grid.appendChild(d);
     };
-    for (const h of ["", "c-bet", "fold to", "raise", "lead", "c-bet sizes"]) cell(h, "h");
+    // This strip is rowed by street, so the hover text names the aggressor
+    // generically rather than naming a specific previous street.
+    const HEADS = [
+      ["", ""],
+      ["c-bet", "Continuation bet: they were the previous street's aggressor and bet this "
+        + "street first-in."],
+      ["fold vs c-bet", "How often they fold facing that aggressor's c-bet, counted before "
+        + "anyone raises over it."],
+      ["raise c-bet", "How often they raise it instead. Same denominator as fold vs c-bet, "
+        + "so fold + call + raise = 100%."],
+      ["lead", "Lead, or donk bet: betting into the previous street's aggressor before that "
+        + "player gets to act."],
+      ["c-bet sizes", "Share of their c-bets at each size."],
+    ];
+    for (const [h, tip] of HEADS) cell(h, "h", tip);
     for (const st of ["flop", "turn", "river"]) {
       const faced = s._opp[`fold_to_cbet_${st}`];
       cell(st, "st");

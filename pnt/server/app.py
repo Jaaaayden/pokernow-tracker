@@ -14,6 +14,7 @@ Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 from typing import Annotated
 
@@ -33,7 +34,14 @@ from pnt.ingest.importer import (
 )
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import aggregate, facts_for, hand_list, positional_report, report
+from pnt.stats.queries import (
+    aggregate,
+    display_names,
+    facts_for,
+    hand_list,
+    positional_report,
+    report,
+)
 from pnt.stats.ranges import composition, range_grid, sizing_tells
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
@@ -248,14 +256,16 @@ def positions(alias: str, split_by_size: bool = False) -> list[dict]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def _spot_facts(alias: str, filter: str | None, game: str | None) -> list[Facts]:
+def _spot_facts(
+    alias: str, filter: str | None, game: str | None, conn: sqlite3.Connection | None = None
+) -> list[Facts]:
     """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
     try:
         pred = parse_filter(filter) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        facts = facts_for(db(), alias, game)
+        facts = facts_for(conn if conn is not None else db(), alias, game)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return [f for f in facts if pred(f)] if pred is not None else facts
@@ -308,8 +318,10 @@ def player_hands(
     game: str | None = None,
 ) -> dict:
     """Every hand in a spot as a compact row, newest first. Replay one with /hands/{id}."""
-    facts = _spot_facts(alias, filter, game)
-    return {"player": alias, "filter": filter, "hands": hand_list(facts)}
+    # One connection for both halves: db() opens a fresh one per call.
+    conn = db()
+    facts = _spot_facts(alias, filter, game, conn)
+    return {"player": alias, "filter": filter, "hands": hand_list(facts, display_names(conn))}
 
 
 @app.get("/hands/{hand_id}")

@@ -63,6 +63,16 @@
   .crumb { margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .key { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+  .key summary { cursor: pointer; color: var(--accent); width: fit-content; }
+  .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px;
+    margin: 10px 0 0; padding: 12px 14px; background: var(--surface);
+    border: 1px solid var(--ring); border-radius: 10px; }
+  .key dt { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .key dd { margin: 0; }
+  .key dd b { font-weight: 600; color: var(--ink); }
+  @media (max-width: 620px) { .key dl { grid-template-columns: 1fr; gap: 2px 0; }
+    .key dd { margin: 0 0 8px; } }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -87,12 +97,24 @@
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
   </div>
 
-  <p class="note">The postflop columns follow the street you pick. A rate is blank when the player
-    never reached that spot &mdash; hover any rate to see the sample it came from. Click a player for
-    their range chart in the same spot.</p>
+  <p class="note">The postflop columns follow the street you pick, and four of them turn on the
+    previous street's aggressor: the player either <em>is</em> them (C-Bet) or is acting against them
+    (Fold, Raise, Lead). Agg % is the exception &mdash; it takes in everything they did on the
+    street, whoever was betting. <strong>Hover a column header</strong>, or open the key below the
+    table, for what each one counts. Fold vs
+    C-Bet and Raise C-Bet share one denominator, the c-bets that player faced, so with calls they add
+    to 100%. Note that a lead removes the street from the c-bet columns entirely: the aggressor never
+    got to c-bet, so they take no missed chance, and folding or raising against a lead is counted
+    nowhere. A rate is blank when the player never reached that spot; hover any rate to see the
+    sample behind it. Click a player for their range chart in the same spot.</p>
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
+
+  <details class="key" id="key">
+    <summary>What the columns mean</summary>
+    <dl id="key-list"></dl>
+  </details>
 </main>
 
 <script>
@@ -116,16 +138,53 @@
   // Postflop columns, per street. Fold and Raise share one denominator: the
   // c-bets the player faced.
   const POSTFLOP = [
-    ["cbet", "CBet", "cbet"],
-    ["fold_to_cbet", "Fold", "fold_to_cbet"],
-    ["raise_cbet", "Raise", "fold_to_cbet"],
-    ["donk", "Lead", "donk"],
+    ["cbet", "C-Bet", "cbet"],
+    ["fold_to_cbet", "Fold vs C-Bet", "fold_to_cbet"],
+    ["raise_cbet", "Raise C-Bet", "fold_to_cbet"],
+    ["donk", "Lead (Donk)", "donk"],
+    ["af", "Agg %", "af"],
   ];
   const SIZES = [["small", "<½"], ["medium", "½–¾"], ["large", "¾–pot"], ["overbet", "over"]];
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
+    af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
+  };
+  // Every postflop stat is defined against the previous street's aggressor, so the
+  // header text names them. The street comes from the segmented control.
+  const PREV = { flop: "preflop", turn: "flop", river: "turn" };
+  const HEAD_TIP = {
+    cbet: (s) => `Continuation bet. They were the ${PREV[s]} aggressor and bet the ${s} `
+      + `first-in, at the players who came along.`,
+    fold_to_cbet: (s) => `How often they fold the ${s} facing that ${PREV[s]} aggressor's `
+      + `c-bet. Counted before anyone raises over it.`,
+    raise_cbet: (s) => `How often they raise that same c-bet instead. Same denominator as `
+      + `Fold vs C-Bet, so fold + call + raise = 100%.`,
+    donk: (s) => `Lead, or donk bet. They bet the ${s} into the ${PREV[s]} aggressor, before `
+      + `that player gets to act. A bet after a checked-through street is a probe, not a lead.`,
+    af: (s) => `Aggression Frequency. Of everything they did on the ${s} bar checking, how often `
+      + `it was a bet or a raise rather than a call or a fold. Counts actions, not hands, and `
+      + `is the one column here that does not depend on who the aggressor was.`,
+  };
+  // [what the acronym stands for, what it counts]. One source of truth: the header
+  // tooltips and the visible key below the table are both built from this, and
+  // hover alone is no use on a touch screen.
+  const BASE_TIP = {
+    hands: ["", "Hands they were dealt into. Every rate below is over some subset of these, "
+      + "so treat a small number here as a warning about all of them."],
+    vpip: ["Voluntarily Put $ In Pot",
+      "How often they called, bet or raised preflop. Blinds are forced, so they never count. "
+      + "The headline looseness number: high means they play a lot of hands."],
+    pfr: ["Pre-Flop Raise",
+      "How often they raised preflop, over the same hands as VPIP. Compare the two: close "
+      + "together is an aggressive player, a wide gap means they call far more than they raise."],
+    "3bet": ["Three-Bet", "How often they re-raised someone's open, making it the third level of betting."],
+    fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
+    wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
+    wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
+    bb_per_100: ["Big blinds per 100 hands",
+      "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
   };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
@@ -155,11 +214,17 @@
     $("chartlink").href = "/chart?" + c;
   };
 
+  // [key, header, kind, opportunity key, hover text]
   const columns = () => {
     const s = state.street;
-    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`]);
-    const sizes = state.sizes ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null]) : [];
-    return [...BASE, ...post, ...sizes];
+    const base = BASE.map(([k, h, kind, opp]) =>
+      [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
+    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
+    const sizes = state.sizes
+      ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
+          `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
+      : [];
+    return [...base, ...post, ...sizes];
   };
 
   // Size columns live inside `cbet_<street>_sizes`, so they need their own lookup.
@@ -230,6 +295,27 @@
     return rows;
   }
 
+  // Built from the columns actually on screen, so it follows the street and the
+  // size toggle rather than drifting from them.
+  function renderKey(cols) {
+    const dl = $("key-list");
+    dl.replaceChildren();
+    const row = (term, name, def) => {
+      const dt = document.createElement("dt"); dt.textContent = term;
+      const dd = document.createElement("dd");
+      if (name) { const b = document.createElement("b"); b.textContent = name; dd.append(b, " — "); }
+      dd.append(def);
+      dl.append(dt, dd);
+    };
+    for (const [key, header, , , tip] of cols) {
+      const base = BASE_TIP[key];
+      if (base) row(header, base[0], base[1]);
+      else row(header, "", tip || `Their ${state.street} c-bets at this size.`);
+    }
+    row("blank (–)", "", "Not that they never did it: they never faced the spot at all. "
+      + "An unknown rate is left blank rather than shown as zero.");
+  }
+
   function render() {
     const cols = columns();
     $("subtitle").textContent = `${state.rows.length} players · ${state.filter || "all hands"} · ${state.street} columns`;
@@ -246,9 +332,10 @@
     }
 
     const head = document.createElement("tr");
-    const addHead = (key, text) => {
+    const addHead = (key, text, tip) => {
       const th = document.createElement("th");
       th.textContent = text;
+      if (tip) th.title = tip;
       if (state.sort === key) {
         th.setAttribute("aria-sort", state.dir === 1 ? "ascending" : "descending");
         const d = document.createElement("span"); d.className = "dir";
@@ -262,8 +349,9 @@
       });
       head.appendChild(th);
     };
-    addHead("player", "player");
-    for (const [key, text] of cols) addHead(key, text);
+    renderKey(cols);
+    addHead("player", "player", "Click a name for their range chart in this same spot.");
+    for (const [key, text, , , tip] of cols) addHead(key, text, tip);
     t.appendChild(head);
 
     for (const row of sorted()) {

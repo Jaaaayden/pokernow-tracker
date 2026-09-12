@@ -125,6 +125,12 @@ class Facts:
     #: Leading into the previous street's aggressor before they act.
     donk_opp: dict[str, bool] = field(default_factory=dict)
     donk: dict[str, bool] = field(default_factory=dict)
+    #: Who c-bet at them, on each street where they faced one. Keys match
+    #: `fold_to_cbet_opp` exactly -- this is the *who* behind that opportunity.
+    faced_cbet_by: dict[str, str] = field(default_factory=dict)
+    #: The previous street's aggressor they had the chance to lead into. Keys
+    #: match `donk_opp`.
+    donk_into: dict[str, str] = field(default_factory=dict)
 
     aggressive: dict[str, int] = field(default_factory=dict)
     agg_denom: dict[str, int] = field(default_factory=dict)
@@ -160,6 +166,19 @@ class Facts:
     bet_size: dict[str, str] = field(default_factory=dict)
     #: The bucket of the c-bet this player faced, on streets where they faced one.
     faced_cbet_size: dict[str, str] = field(default_factory=dict)
+
+    # --- who they were up against, and whether they closed the action --------
+    #: The other players still in at this player's last action, in postflop
+    #: acting order. See SPEC.md, "Who the action was against".
+    opponents: tuple[str, ...] = ()
+    #: This player's place in postflop acting order among `opponents` plus
+    #: themselves; 0 acts first. None when the order cannot be established.
+    pos_order: int | None = None
+    #: How many players that order covers, this player included.
+    pos_players: int | None = None
+    #: True when they act last of them -- in position. Always
+    #: `pos_order == pos_players - 1`; stored so filters and tests read one flag.
+    in_position: bool | None = None
 
     hole_cards: str | None = None
     board: tuple[str, ...] = ()
@@ -266,12 +285,14 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 and all_in_at.get(prev_aggressor, a.seq) >= a.seq
             ):
                 f.donk_opp[street] = True
+                f.donk_into[street] = prev_aggressor
                 if a.kind == "bet":
                     f.donk[street] = True
 
             # facing a c-bet, before anyone raises over it
             if cbet_by is not None and not cbet_raised and a.pn_id != cbet_by:
                 f.fold_to_cbet_opp[street] = True
+                f.faced_cbet_by[street] = cbet_by
                 if cbet_size is not None:
                     f.faced_cbet_size[street] = cbet_size
                 if a.kind == "fold":
@@ -308,6 +329,87 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         prev_aggressor = street_aggressor
 
 
+def _seat_ranks(hand: HandRow) -> dict[str, int]:
+    """Postflop acting order from the button: small blind first, button last.
+
+    Deliberately *not* `(seats_from_button - 1) % n_dealt_in`. A dead small blind
+    leaves a slot no dealt-in player occupies, so `seats_from_button` can exceed
+    `n_dealt_in - 1` (SPEC.md judgement call 4), and the modulo then collides two
+    players onto one rank -- hand #25 of `pgl1UViJ4` is three-handed with seats 0,
+    2 and 3, where `(0-1) % 3` and `(3-1) % 3` are both 2. Counting slots keeps
+    the order right on those hands, which is all this needs: the position *label*
+    stays untrustworthy there, and is still withheld.
+    """
+    slots = max([hand.n_dealt_in, *((p.seats_from_button or 0) + 1 for p in hand.players.values())])
+    return {
+        pid: (p.seats_from_button - 1 if p.seats_from_button >= 1 else slots - 1)
+        for pid, p in hand.players.items()
+        if p.seats_from_button is not None
+    }
+
+
+def _table(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Who each player was up against, and whether they closed the action."""
+    fold_at: dict[str, int] = {}
+    last_at: dict[str, int] = {}
+    orbit: list[str] = []  # the first postflop orbit, in acting order
+    first_street: str | None = None
+
+    for a in hand.actions:
+        if a.is_forced:
+            continue
+        last_at[a.pn_id] = a.seq
+        if a.kind == "fold":
+            fold_at.setdefault(a.pn_id, a.seq)
+        if a.street in POSTFLOP_STREETS:
+            if first_street is None:
+                first_street = a.street
+            if a.street == first_street and a.pn_id not in orbit:
+                orbit.append(a.pn_id)
+
+    seat_rank = _seat_ranks(hand)
+    orbit_rank = {pid: i for i, pid in enumerate(orbit)}
+
+    for pid, f in facts.items():
+        # Opponents are those still in *at this player's last action*, not those
+        # who saw the flop: the villain who folds to your c-bet is someone you
+        # faced, and a player who folded before you acted is not. See SPEC.md.
+        mine = last_at.get(pid)
+        if mine is None:
+            # They never acted voluntarily -- a walk, or all-in from a post. The
+            # end-of-hand roster is the only statement available about who was in.
+            others = [q for q in hand.players if q != pid and not hand.players[q].folded]
+        else:
+            others = [q for q in hand.players if q != pid and fold_at.get(q, mine + 1) > mine]
+        others.sort(
+            key=lambda q: (
+                orbit_rank.get(q, len(orbit)),
+                seat_rank.get(q, len(seat_rank)),
+                hand.players[q].seat,
+            )
+        )
+        f.opponents = tuple(others)
+
+        group = [pid, *others]
+        if len(group) < 2:
+            continue
+        # Acting order is the better signal where it exists, because it is raw:
+        # it survives a dead button, which the seat labels do not. It needs every
+        # player in the group to have actually acted, though -- one lone actor
+        # with everyone else all-in would read as trivially last, and so as in
+        # position, which means nothing.
+        if all(q in orbit_rank for q in group):
+            rank = orbit_rank
+        elif all(q in seat_rank for q in group):
+            rank = seat_rank
+        else:
+            continue  # stays None: unknown is not "out of position"
+        ordered = sorted(group, key=lambda q: rank[q])
+        f.pos_order = ordered.index(pid)
+        f.pos_players = len(group)
+        f.in_position = f.pos_order == len(group) - 1
+
+
 def derive(hand: HandRow) -> list[Facts]:
     """Produce one Facts row per dealt-in player."""
     facts = {
@@ -332,6 +434,7 @@ def derive(hand: HandRow) -> list[Facts]:
 
     aggressor = _preflop(hand, facts)
     _postflop(hand, facts, aggressor)
+    _table(hand, facts)
 
     folded_preflop = {
         a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"

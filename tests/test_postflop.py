@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import pytest
 
-from pnt.stats.derive import SIZE_BUCKETS, derive, size_bucket
+from pnt.stats.derive import POSTFLOP_STREETS, SIZE_BUCKETS, _seat_ranks, derive, size_bucket
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import aggregate, facts_for, load_hands
+from pnt.stats.queries import aggregate, facts_for, hand_list, load_hands
 from pnt.stats.ranges import SIZING_KINDS, sizing_tells
-from tests.conftest import HU_GAME
+from tests.conftest import HU_GAME, MULTIWAY_GAME
 
 CHRIS = "5NARaPRkSp"
 GP = "gpP9uUffpu"
@@ -110,6 +110,18 @@ def test_postflop_invariants(db):
                 if f.cbet.get(s):
                     assert f.bet_size[s] in SIZE_BUCKETS
                 assert f.bet_size.keys() == f.bet_pot.keys()
+                # The villain maps answer exactly the opportunities they belong to.
+                assert f.faced_cbet_by.keys() == f.fold_to_cbet_opp.keys()
+                assert f.donk_into.keys() == f.donk_opp.keys()
+                assert f.faced_cbet_by.get(s) != f.pn_id
+                assert f.donk_into.get(s) != f.pn_id
+            assert f.pn_id not in f.opponents
+            if f.in_position is None:
+                assert f.pos_order is None and f.pos_players is None
+            else:
+                assert f.pos_players == len(f.opponents) + 1
+                assert 0 <= f.pos_order < f.pos_players
+                assert f.in_position == (f.pos_order == f.pos_players - 1)
 
 
 def test_size_breakdowns_add_up(db):
@@ -147,3 +159,123 @@ def test_sizing_tells_rejects_bad_input(db):
         sizing_tells(facts, "preflop", "cbet")
     with pytest.raises(ValueError, match="unknown sizing kind"):
         sizing_tells(facts, "flop", "limp")
+
+
+# --- who the action was against, and who closed it ---------------------------
+
+
+def test_the_villain_is_named(hu):
+    """The aggressor behind each opportunity, on the hands worked by hand above."""
+    # #10: gp donks the flop into Chris, then c-bets the turn and Chris folds.
+    assert hu[10][GP].donk_into == {"flop": CHRIS}
+    assert hu[10][CHRIS].faced_cbet_by == {"turn": GP}
+    assert hu[10][CHRIS].opponents == (GP,)
+    # #18: gp c-bets the flop, and leads the river into Chris, the turn aggressor.
+    assert hu[18][CHRIS].faced_cbet_by["flop"] == GP
+    assert hu[18][GP].donk_into["river"] == CHRIS
+    # #92: limped, so the flop has no aggressor and neither map has a flop key.
+    assert "flop" not in hu[92][CHRIS].faced_cbet_by
+    assert "flop" not in hu[92][CHRIS].donk_into
+    assert hu[92][CHRIS].faced_cbet_by == {"turn": GP, "river": GP}
+
+
+def test_in_position_heads_up(hu):
+    """The button acts first preflop and last postflop -- Chris is BTN/SB here."""
+    assert hu[10][CHRIS].seats_from_button == 0
+    assert hu[10][CHRIS].in_position is True
+    assert (hu[10][CHRIS].pos_order, hu[10][CHRIS].pos_players) == (1, 2)
+    assert hu[10][GP].in_position is False
+    assert (hu[10][GP].pos_order, hu[10][GP].pos_players) == (0, 2)
+
+
+def test_in_position_survives_a_dead_button(db):
+    """Acting order is known on the hands where the position *label* is not.
+
+    SPEC.md judgement calls 4 and 11: these two hands are barred from positional
+    splits and carry no BTN/SB name, but who acts after whom is still a fact.
+    """
+    hands = {
+        h.hand_number: h for h in load_hands(db, MULTIWAY_GAME) if h.hand_number in (25, 26)
+    }
+    facts = {n: {f.pn_id: f for f in derive(h)} for n, h in hands.items()}
+
+    # #25: a dead small blind pushes d-4X to seats_from_button 3 in a 3-handed pot.
+    assert hands[25].blinds_irregular and facts[25]["d-4X_F_SSU"].seats_from_button == 3
+    assert facts[25]["d-4X_F_SSU"].in_position is True
+    assert facts[25]["MBFczOlpuA"].in_position is False
+    # #26: no dealer at all; positions are anchored on the big blind.
+    assert hands[26].dead_button
+    assert facts[26]["PEMYRVPxOS"].in_position is True
+    assert facts[26]["d-4X_F_SSU"].in_position is False
+
+    # The label stays withheld on both, while the order is known.
+    for n in (25, 26):
+        rows = hand_list(derive(hands[n]))
+        assert {r["position"] for r in rows} == {None}
+        assert {r["ip"] for r in rows} != {None}
+
+
+def test_position_signals_agree(db):
+    """Acting order and seat order reach the same verdict, off the flagged hands.
+
+    The seat fallback only ever runs where the orbit is incomplete, so this is what
+    proves it is the same ordering and not a second, subtly different one. Dead
+    buttons are excluded because there the seat labels are the ones that are wrong
+    -- see SPEC.md judgement call 11.
+    """
+    compared = 0
+    for h in load_hands(db):
+        if h.dead_button or h.blinds_irregular:
+            continue
+        seat = _seat_ranks(h)
+        first, orbit = None, []
+        for a in h.actions:
+            if a.is_forced or a.street not in POSTFLOP_STREETS:
+                continue
+            if first is None:
+                first = a.street
+            if a.street == first and a.pn_id not in orbit:
+                orbit.append(a.pn_id)
+        for f in derive(h):
+            group = [f.pn_id, *f.opponents]
+            if f.in_position is None or not all(q in orbit and q in seat for q in group):
+                continue
+            compared += 1
+            assert (max(group, key=lambda q: seat[q]) == f.pn_id) == f.in_position
+    assert compared > 500, f"too few comparable rows to mean anything: {compared}"
+
+
+def test_seat_ranks_do_not_collide_on_a_dead_blind(db):
+    """The reason the rank is counted in slots and not `(sfb - 1) % n_dealt_in`.
+
+    Hand #25 is three-handed with seats_from_button 0, 2 and 3, because a dead small
+    blind leaves a slot no player occupies. The modulo form maps both 0 and 3 onto
+    rank 2, silently making two players the same seat; counting slots keeps them
+    apart and in the right order.
+    """
+    hand = next(h for h in load_hands(db, MULTIWAY_GAME) if h.hand_number == 25)
+    sfb = {p.pn_id: p.seats_from_button for p in hand.players.values()}
+    assert sorted(sfb.values()) == [0, 2, 3] and hand.n_dealt_in == 3
+
+    naive = [(s - 1) % hand.n_dealt_in for s in sfb.values()]
+    assert len(set(naive)) == 2, "the bug this guards against is a rank collision"
+
+    ranks = _seat_ranks(hand)
+    assert len(set(ranks.values())) == 3
+    # The button posts nothing and acts last postflop; the dead slot sits before it.
+    assert max(ranks, key=lambda q: ranks[q]) == next(q for q, v in sfb.items() if v == 0)
+
+
+def test_aggression_frequency_reports_its_sample(db):
+    """AF is the one rate whose denominator counts actions, not hands."""
+    facts = facts_for(db, "genericpoker")
+    out = aggregate(facts)
+    for street in STREETS:
+        denom = sum(f.agg_denom.get(street, 0) for f in facts)
+        num = sum(f.aggressive.get(street, 0) for f in facts)
+        # The sample the page shows on hover has to be the rate's own denominator.
+        assert out["_opp"][f"af_{street}"] == denom
+        assert out[f"af_{street}"] == (round(100.0 * num / denom, 1) if denom else None)
+        # Checks are excluded from both sides, so the denominator cannot exceed
+        # the actions actually taken, and one hand may contribute several.
+        assert denom >= num

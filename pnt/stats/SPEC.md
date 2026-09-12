@@ -97,6 +97,70 @@ A donk bet (a *lead*) is a bet into the previous street's aggressor before they
 get to act. Like the c-bet it needs an aggressor: a bet after a checked-through
 street is a probe and counts as neither.
 
+### Who the action was against
+
+Every postflop stat above is defined against an *aggressor*, so the aggressor's
+identity is a fact about the spot and not merely a step in computing it. Three
+facts carry it, and a drill-down names them.
+
+| Fact | Definition |
+|---|---|
+| **faced_cbet_by[street]** | The player whose c-bet they were facing. Keys match `fold_to_cbet_opp` exactly |
+| **donk_into[street]** | The previous street's aggressor they had the chance to lead into. Keys match `donk_opp` |
+| **opponents** | The other players who had not folded **at the time of this player's last action**, in postflop acting order |
+
+`opponents` is "still in when I last acted", not "saw the flop". The villain who
+folds to your c-bet *is* someone you faced; a player who folded before you ever
+acted is not.
+
+A consequence worth stating, because it looks like a bug: **a villain can appear
+in `faced_cbet_by` and not in `opponents`.** Three-handed, A c-bets, you call, B
+raises and A folds — A c-bet at you, and A was gone before you were done with the
+hand. The two facts answer different questions and are both right.
+
+A player who never acted voluntarily — a walk, or all-in from a post — has no
+last action to reckon from, so their `opponents` is whoever had not folded when
+the hand ended. On a walk that is nobody.
+
+### In position (IP / OOP)
+
+Absolute seat labels (BTN, SB) say where a player sat. What the postflop stats
+actually turn on is whether they **close the action**, so that is what is
+recorded.
+
+| Fact | Definition |
+|---|---|
+| **pos_order** | Their place in postflop acting order among `opponents` plus themselves; 0 acts first |
+| **pos_players** | How many players that order covers, this player included |
+| **in_position** | True when they act last of them. Always `pos_order == pos_players - 1` |
+
+Two signals, in priority order:
+
+1. **First-orbit acting order** — the distinct players in the order they first
+   acted on the earliest postflop street that saw voluntary action. Used only
+   when *every* player in the group acted there.
+2. **Seat order** otherwise: small blind first, button last. Counted in **slots**
+   (`seats_from_button - 1`, with the button wrapping to the end), never
+   `(seats_from_button - 1) mod n_dealt_in` — a dead small blind pushes a player
+   past `n_dealt_in - 1`, and the modulo then collides two players onto one rank.
+   Hand #25 of `pgl1UViJ4` is three-handed with seats 0, 2 and 3, where
+   `(0-1) mod 3` and `(3-1) mod 3` are both 2.
+
+When neither applies, all three are `None`. **Unknown is not "out of position"**,
+on the same principle that prints `--` for a rate with no opportunities.
+
+Because the group is each player's own `opponents`, **two players in one hand can
+both be in position** — each closed the action over the players still in when
+*they* last acted. A row is always one player's view of the hand, so the two never
+appear side by side, but the facts are per-player and not a single ranking of the
+table.
+
+The order signal is preferred because it is *raw*: it is who actually acted after
+whom, which is true even on the hands where the position label is a guess. On the
+6,255-hand database the two signals agree on 11,259 of 11,259 comparable rows on
+regular hands; the only rows where they disagree are dead-button hands, and there
+the acting order is the one that is right.
+
 ### Bet size buckets
 
 Every postflop `bet` also gets a size bucket, measured the same way as `bet_pot`:
@@ -308,7 +372,8 @@ archaeology.
 
    Both are rare (1 each in 549 hands) and both are flagged rather than guessed
    at. `positional_report` drops them; aggregate stats still include them, since
-   only the *position label* is uncertain, not the actions.
+   only the *position label* is uncertain, not the actions. IP/OOP is likewise
+   still computed on them — see call 11, which is the same distinction again.
 5. **Antes and dead small blinds** contribute to the pot but not to a player's
    street commitment, so they do not reduce what that player must pay to call.
 6. **Each bet-size edge belongs to the bucket above it, rounded down to a chip**,
@@ -317,3 +382,22 @@ archaeology.
 7. **A donk bet needs a previous-street aggressor who has yet to act.** A lead
    after a checked-through street, or into an aggressor who is already all-in,
    is not counted as one.
+8. **IP/OOP is one label for the whole hand, taken from the first postflop
+   orbit.** It is not recomputed when a later fold changes who closes the action:
+   a player who is out of position three-handed on the flop still reads OOP on
+   the row even if the player behind them folds that flop. A per-street map would
+   triple the payload of a drill-down row that has one line of space.
+9. **Multiway, only the player who closes the action is IP.** Everyone else is
+   OOP, including a player sandwiched in the middle. The exact place is carried
+   as `pos_order` of `pos_players` rather than invented as a third label.
+10. **`opponents` is "still in at my last action"**, so it can omit a player named
+    in `faced_cbet_by`. See "Who the action was against".
+11. **Acting *order* survives a dead button or a dead blind, even though the
+    position *label* does not.** Call 4 bars those hands from positional splits
+    and still prints no BTN/SB name for them. IP/OOP is a different claim — who
+    acts after whom — and a BB-anchored rotation and a skipped slot both preserve
+    it. The fixtures show why this is not merely permissible but necessary: on
+    dead-button hand #172 of `pgl9BTQl8oZL` the flop order is FQN → d-4X → gpP,
+    so gpP closes the action, while the seat labels say FQN is on the button and
+    therefore last. The seat labels are the ones that are wrong, which is exactly
+    what call 4 warns about.

@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 
 from ..db.conn import generation, path_of
 from ..logfmt.parser import position_name
@@ -134,6 +134,22 @@ def identity_map(conn: sqlite3.Connection) -> dict[str, tuple[int, str]]:
     }
 
 
+def display_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """pn_id -> the name a drill-down should print.
+
+    The canonical alias when there is one, otherwise the last name PokerNow showed
+    for that ID -- the same rule the replay endpoint uses. Resolved at read time,
+    so a merge or a rename shows up on the next request without re-deriving.
+    """
+    return {
+        r["pn_id"]: r["alias"] or r["last_seen_name"] or r["pn_id"]
+        for r in conn.execute(
+            "SELECT pi.pn_id, pi.last_seen_name, p.alias FROM player_identities pi"
+            " LEFT JOIN players p ON p.player_id = pi.player_id"
+        )
+    }
+
+
 def _rate(num: int, den: int) -> float | None:
     return round(100.0 * num / den, 1) if den else None
 
@@ -214,6 +230,9 @@ def aggregate(facts: Iterable[Facts]) -> dict:
         out["_opp"][f"cbet_{street}"] = sd("cbet_opp", street)
         out["_opp"][f"fold_to_cbet_{street}"] = faced_cbet
         out["_opp"][f"donk_{street}"] = sd("donk_opp", street)
+        # Alone among these, an action count rather than a hand count: one hand can
+        # contribute several. See SPEC.md, "Aggression Frequency".
+        out["_opp"][f"af_{street}"] = counter("agg_denom", street)
     return out
 
 
@@ -337,8 +356,23 @@ def facts_for(
     ]
 
 
-def hand_list(facts: Iterable[Facts]) -> list[dict]:
-    """One compact row per hand, newest first: what a drill-down lists before a replay."""
+def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) -> list[dict]:
+    """One compact row per hand, newest first: what a drill-down lists before a replay.
+
+    `names` resolves opponent pn_ids for display; without it they come through raw.
+    """
+    lookup = names or {}
+
+    def name(pn_id: str) -> str:
+        return lookup.get(pn_id, pn_id)
+
+    def named(ids: Iterable[str]) -> list[str]:
+        # Deliberately not deduped. Within one hand a pn_id is a seat, so two merged
+        # identities under one alias are two seats and two opponents -- collapsing
+        # them by name would drop a real one and make the count disagree with
+        # `pos_players`. It happens: one player sat twice in hand 54 of pgl8vNV4WURe.
+        return [name(i) for i in ids]
+
     rows = []
     for f in sorted(facts, key=lambda x: (x.ts or "", x.hand_id), reverse=True):
         # Same rule as positional_report: no label when the button or a blind is dead.
@@ -356,6 +390,15 @@ def hand_list(facts: Iterable[Facts]) -> list[dict]:
                 "net_bb": round(f.net / f.bb_size, 1) if f.bb_size else None,
                 "wtsd": f.wtsd,
                 "bet_size": dict(f.bet_size),
+                # Who the hand was against, and whether they closed the action.
+                # `position` above is the absolute seat and stays in the payload;
+                # the drill-down shows `ip` instead. See SPEC.md.
+                "ip": f.in_position,
+                "pos_order": f.pos_order,
+                "pos_players": f.pos_players,
+                "vs": named(f.opponents),
+                "vs_cbet": {s: name(p) for s, p in f.faced_cbet_by.items()},
+                "led_into": {s: name(p) for s, p in f.donk_into.items()},
             }
         )
     return rows

@@ -43,5 +43,7 @@ testpaths = ["tests"]
 # and asserts each of these is in it.
 #
 # The extension lives inside the package for the same reason; `pnt extension`
-# prints the folder to load.
-pnt = ["db/*.sql", "server/static/*.html", "extension/*"]
+# prints the folder to load. So does the sample corpus `pnt import` falls back to
+# when the log folder is empty -- a fresh install with an empty database has
+# nothing to show, and the fallback is only a fallback if it ships.
+pnt = ["db/*.sql", "server/static/*.html", "extension/*", "logs/*.csv", "logs/*.md"]

@@ -173,6 +173,33 @@ def test_hands_endpoint_lists_the_spot(client):
         assert set(cell["hand_ids"]) <= ids
 
 
+def test_hands_rows_name_the_villain(client):
+    """The drill-down payload carries who the hand was against, resolved to names."""
+    rows = client.get("/players/genericpoker/hands").json()["hands"]
+    assert rows
+    # The contract chart.html's stale-server guard tests against.
+    assert "ip" in rows[0]
+
+    aliases = {p["alias"] for p in client.get("/players").json()}
+    for r in rows:
+        assert r["ip"] in (True, False, None)
+        assert set(r["vs_cbet"]) <= {"flop", "turn", "river"}
+        assert set(r["led_into"]) <= {"flop", "turn", "river"}
+        assert "genericpoker" not in r["vs"], "a player is never their own opponent"
+        assert set(r["vs"]) <= aliases, "opponents come through as display names"
+        if r["ip"] is None:
+            assert r["pos_order"] is None
+        else:
+            assert r["pos_players"] == len(r["vs"]) + 1
+            assert r["ip"] == (r["pos_order"] == r["pos_players"] - 1)
+
+    # Every hand in a faced-a-flop-c-bet spot knows who made that c-bet.
+    faced = client.get(
+        "/players/genericpoker/hands", params={"filter": "faced_cbet_flop=small"}
+    ).json()["hands"]
+    assert faced and all(r["vs_cbet"].get("flop") for r in faced)
+
+
 def test_hand_replay_names_every_player(client):
     body = client.get("/hands/1").json()
     assert set(body["names"]) == {p["pn_id"] for p in body["players"]}
