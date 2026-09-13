@@ -453,8 +453,25 @@
     midpoint: "midpoint of two raises that disagree",
     none: "never raised",
   };
-  const DETAIL = { trips: "one hole card", set: "set (pocket pair)", board_pair: "pair on board only" };
+  // "trips" as a detail is a board pair plus one hole card. It used to read "one
+  // hole card", which looks like a player who showed one card.
+  const DETAIL = { trips: "paired board", set: "set", board_pair: "on board only" };
   const label = (c, detail) => detail ? (DETAIL[c.class] || c.class.replace(/_/g, " ")) : c.class.replace(/_/g, " ");
+  // Rows for a made-hand breakdown. A detail that covers every hand of its class
+  // is folded into the class row: drawn separately, it repeats the same hands.
+  function classRows(classes) {
+    const out = [];
+    for (const c of classes) {
+      const ds = c.details || [];
+      if (ds.length === 1 && ds[0].n === c.n) {
+        out.push({ c, detail: false, text: `${label(c, false)} · ${label(ds[0], true)}` });
+        continue;
+      }
+      out.push({ c, detail: false, text: label(c, false) });
+      for (const dd of ds) out.push({ c: dd, detail: true, text: label(dd, true) });
+    }
+    return out;
+  }
   const TITLE = { preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size" };
 
   function render() {
@@ -665,10 +682,10 @@
       bars.appendChild(p); return;
     }
     const max = Math.max(...classes.map(c => c.pct));
-    const addRow = (c, detail) => {
-      const title = `${context}${label(c, detail)} · shown ${c.n}×`;
+    for (const { c, detail, text } of classRows(classes)) {
+      const title = `${context}${text} · shown ${c.n}×`;
       const lab = document.createElement("div"); lab.className = "lab" + (detail ? " detail" : "");
-      lab.textContent = label(c, detail);
+      lab.textContent = text;
       lab.tabIndex = 0; lab.setAttribute("role", "button");
       pickable(lab, title, c.hand_ids);
       const track = document.createElement("div"); track.className = "track";
@@ -681,8 +698,7 @@
       const sm = document.createElement("small"); sm.textContent = `${c.n} · ${fmtBb(c.net_bb)}`;
       val.appendChild(sm);
       bars.append(lab, track, val);
-    };
-    for (const c of classes) { addRow(c, false); for (const dd of (c.details || [])) addRow(dd, true); }
+    }
   }
 
   function blockSummary(d, b) {
@@ -753,11 +769,9 @@
           c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max],
           { title: `${label} · shown ${c.n}×`, ids: c.hand_ids }));
     } else if (view === "made") {
-      for (const c of d.classes) {
-        row([c.class, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
-          { title: `${label(c, false)} · shown ${c.n}×`, ids: c.hand_ids });
-        for (const dd of (c.details || [])) row([label(dd, true), fmtPct(dd.pct), dd.n, dd.net_bb.toFixed(1), dd.won],
-          { detail: true, title: `${label(dd, true)} · shown ${dd.n}×`, ids: dd.hand_ids });
+      for (const { c, detail, text } of classRows(d.classes)) {
+        row([text, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
+          { detail, title: `${text} · shown ${c.n}×`, ids: c.hand_ids });
       }
     } else {
       for (const b of d.blocks) {
