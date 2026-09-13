@@ -87,10 +87,21 @@ def test_ingest_new_game_then_query(client, tmp_path):
 def test_hud_endpoint_keys_by_pn_id_not_seat(client):
     body = client.get(f"/hud/{HU_GAME}").json()
     assert body["seats"]
+    from pnt.server.app import db
+
+    conn = db()
     for s in body["seats"]:
         assert s["pn_id"]
         # Lifetime stats, across every game this identity appears in.
         assert s["stats"]["hands"] >= 188
+        # This game alone, beside them, with the same keys.
+        dealt_here = conn.execute(
+            "SELECT COUNT(*) FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
+            " WHERE h.game_id = ? AND hp.pn_id = ?",
+            (HU_GAME, s["pn_id"]),
+        ).fetchone()[0]
+        assert 0 < s["session"]["hands"] == dealt_here <= s["stats"]["hands"]
+        assert set(s["session"]) == set(s["stats"])
 
 
 def test_hand_replay(client):
@@ -141,6 +152,7 @@ def test_chart_page_is_served(client):
     assert r.headers["content-type"].startswith("text/html")
     assert "/range" in r.text, "the page must read from the range endpoint"
     assert "/sizing" in r.text and "/hands" in r.text
+    assert "hands-sort" in r.text, "the hand list can be ordered by pot size"
 
 
 def test_sizing_endpoint(client):
@@ -198,6 +210,26 @@ def test_hands_rows_name_the_villain(client):
         "/players/genericpoker/hands", params={"filter": "faced_cbet_flop=small"}
     ).json()["hands"]
     assert faced and all(r["vs_cbet"].get("flop") for r in faced)
+
+
+def test_hands_filter_by_pot_and_opponent(client):
+    """The two drill-down filters: big enough pots, and hands against one person."""
+    rows = client.get("/players/genericpoker/hands").json()["hands"]
+    assert all(isinstance(r["pot"], int) and r["pot"] >= 0 for r in rows)
+    floor = sorted(r["pot"] for r in rows)[len(rows) // 2]
+    big = client.get("/players/genericpoker/hands", params={"filter": f"pot>={floor}"}).json()
+    assert 0 < len(big["hands"]) < len(rows)
+    assert all(r["pot"] >= floor for r in big["hands"])
+
+    vs = client.get("/players/genericpoker/hands", params={"filter": "vs=Chris"}).json()
+    assert vs["hands"] and all("Chris" in r["vs"] for r in vs["hands"])
+    assert len(vs["hands"]) < len(rows)
+    r = client.get("/players/genericpoker/hands", params={"filter": "vs=nobody"})
+    assert r.status_code == 400 and "unknown player" in r.json()["detail"]
+    # /stats takes the same terms: everyone's figures in hands against one player.
+    r = client.get("/stats", params={"filter": "vs=Chris"})
+    assert r.status_code == 200 and "Chris" not in {row["player"] for row in r.json()}
+    assert client.get("/stats", params={"filter": "vs=nobody"}).status_code == 400
 
 
 def test_hand_replay_names_every_player(client):

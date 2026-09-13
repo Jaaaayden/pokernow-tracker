@@ -121,6 +121,44 @@ def test_unknown_numeric_term_still_rejected():
         parse_filter("open_bbb>=4")
 
 
+def test_pot_is_the_chips_that_stayed_in_the_middle(hu, db):
+    # #10: 20 + 20 preflop, 20 + 20 on the flop; gp's uncalled 60 on the turn goes back.
+    chris, gp = hu[10][CHRIS], hu[10][GP]
+    assert chris.pot == gp.pot == 80
+    for h in load_hands(db):
+        fs = derive(h)
+        assert len({f.pot for f in fs}) == 1, "one pot per hand"
+        assert fs[0].pot == sum(p.contributed for p in h.players.values())
+
+
+def test_pot_filter_terms(hu):
+    chris = hu[10][CHRIS]
+    assert parse_filter("pot>=80")(chris)
+    assert parse_filter("pot=80")(chris)
+    assert not parse_filter("pot>80")(chris)
+    assert parse_filter("pot_bb>=8")(chris) and not parse_filter("pot_bb>8")(chris)
+    # `pot_bb` is reached through the `pot` prefix without tripping on it
+    assert parse_filter("pot_bb<=8,pot<=80")(chris)
+
+
+def test_vs_filter_names_an_opponent(hu):
+    names = {GP: "genericpoker", CHRIS: "Chris"}
+    chris, gp = hu[10][CHRIS], hu[10][GP]
+    assert parse_filter("vs=genericpoker", names)(chris)
+    assert parse_filter("vs=GenericPoker", names)(chris), "names are matched case-insensitively"
+    assert not parse_filter("vs=genericpoker", names)(gp), "never against yourself"
+    assert parse_filter("vs=Chris", names)(gp)
+    assert not parse_filter("vs!=genericpoker", names)(chris)
+    # A raw ID works without the map; with it, a name nobody goes by is a typo.
+    assert parse_filter(f"vs={GP}")(chris)
+    with pytest.raises(ValueError, match="unknown player"):
+        parse_filter("vs=nobody", names)
+    with pytest.raises(ValueError, match="needs a player name"):
+        parse_filter("vs=", names)
+    # #1 is a walk for Chris: nobody was still in, so no one was faced.
+    assert not parse_filter("vs=genericpoker", names)(hu[1][CHRIS])
+
+
 # ------------------------------------------------------------------ views ----
 
 

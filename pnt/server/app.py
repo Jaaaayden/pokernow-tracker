@@ -192,11 +192,12 @@ def stats(
     """
     if "text/html" in request.headers.get("accept", ""):
         return _page("stats.html")
+    conn = db()
     try:
-        pred = parse_filter(filter) if filter else None
+        pred = parse_filter(filter, display_names(conn)) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return report(db(), game_id=game, min_hands=min_hands, predicate=pred)
+    return report(conn, game_id=game, min_hands=min_hands, predicate=pred)
 
 
 @app.get("/players", response_model=None)
@@ -260,12 +261,15 @@ def _spot_facts(
     alias: str, filter: str | None, game: str | None, conn: sqlite3.Connection | None = None
 ) -> list[Facts]:
     """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
+    if conn is None:
+        conn = db()
     try:
-        pred = parse_filter(filter) if filter else None
+        # The name map is what lets `vs=henry` name a person rather than an ID.
+        pred = parse_filter(filter, display_names(conn)) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        facts = facts_for(conn if conn is not None else db(), alias, game)
+        facts = facts_for(conn, alias, game)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return [f for f in facts if pred(f)] if pred is not None else facts
@@ -379,6 +383,12 @@ def hud(game_id: str) -> dict:
     Keyed by `pn_id` rather than seat on purpose: the overlay must re-resolve
     seat -> player every hand from the live dealt-in roster, because seats are
     reused as players come and go.
+
+    Each seat carries two reports with identical keys: `stats`, lifetime across
+    every game and merged identity, and `session`, this game alone -- the pair
+    the overlay prints side by side so a player drifting from their history is
+    visible while it happens. Both come from `report()`, whose cache is keyed on
+    the game, so a 30-second poll re-derives nothing between hands.
     """
     conn = db()
     latest = conn.execute(
@@ -396,6 +406,7 @@ def hud(game_id: str) -> dict:
     ).fetchall()
 
     by_alias = {r["player"]: r for r in report(conn)}
+    by_session = {r["player"]: r for r in report(conn, game_id=game_id)}
     return {
         "game_id": game_id,
         "seats": [
@@ -406,6 +417,8 @@ def hud(game_id: str) -> dict:
                 # Lifetime stats across every game and every merged identity --
                 # not just this session.
                 "stats": by_alias.get(r["alias"], {"hands": 0}),
+                # The same figures over this game only.
+                "session": by_session.get(r["alias"], {"hands": 0}),
             }
             for r in seated
         ],

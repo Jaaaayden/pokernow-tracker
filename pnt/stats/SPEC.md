@@ -220,6 +220,12 @@ cell by how big the player usually raises with it.
 | **open_bb** | The open raise's `raises to N`, over this hand's big blind | Same value for everyone in the hand; `None` in a limped pot |
 | **pf_raise_bb** | This player's own *last* preflop raise-to, in big blinds | An opener who 4-bets ends above their open |
 | **bet_pot[street]** | This player's *first* `bet` on that street, over the pot it was made into | 1.0 is a pot-sized bet, above it is an overbet |
+| **pot** | The final pot in chips: Σ `contributed` over everyone dealt in | Uncalled bets and bounties excluded; identical for everyone in the hand; short on an incomplete hand, like `net` |
+
+`pot>=500` and `pot_bb>=50` filter on it in chips and in that hand's big blinds.
+`vs=<name>` filters on `opponents` (see "Who the action was against"): the named
+player was still in when this player last acted. `vs!=` negates, and names match
+case-insensitively against the display name or the raw PokerNow ID.
 
 **Sizes use the raw `raises to N` figure**, not the incremental amount: "opened
 to 4bb" is about the total. Bet fractions use the incremental amount over the pot

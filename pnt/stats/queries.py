@@ -388,6 +388,9 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
                 "hole_cards": f.hole_cards,
                 "board": list(f.board),
                 "net_bb": round(f.net / f.bb_size, 1) if f.bb_size else None,
+                # Chips, plus this hand's blind so a row can print the pot in bb too.
+                "pot": f.pot,
+                "bb": f.bb_size,
                 "wtsd": f.wtsd,
                 "bet_size": dict(f.bet_size),
                 # Who the hand was against, and whether they closed the action.
