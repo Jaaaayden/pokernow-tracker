@@ -20,7 +20,7 @@ from typing import Annotated
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from pnt.db.conn import connect
@@ -33,7 +33,7 @@ from pnt.ingest.importer import (
     split_identities,
 )
 from pnt.stats.derive import Facts
-from pnt.stats.filters import parse_filter
+from pnt.stats.filters import parse_filter, vocabulary
 from pnt.stats.queries import (
     aggregate,
     display_names,
@@ -140,6 +140,22 @@ def chart() -> HTMLResponse:
 def stats_page() -> HTMLResponse:
     """Every player's stats, as a sortable table. `/stats` serves this to browsers."""
     return _page("stats.html")
+
+
+@app.get("/filter-help.js", include_in_schema=False)
+def filter_help_script() -> Response:
+    """The `?` panel beside every Spot box, shared by the chart and stats pages."""
+    return Response(
+        (STATIC / "filter-help.js").read_text(encoding="utf-8"),
+        media_type="text/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/filters")
+def filters() -> dict:
+    """Every term a `filter` parameter understands, grouped, with an example each."""
+    return vocabulary()
 
 
 @app.get("/health")

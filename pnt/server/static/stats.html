@@ -43,6 +43,10 @@
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
   a.link { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
+  .note p { margin: 0 0 4px; }
+  .note ul { margin: 0; padding-left: 18px; }
+  .note li { margin: 2px 0; }
+  .note b, .note strong { color: var(--ink); font-weight: 600; }
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 12px 12px; overflow-x: auto; }
   .card.loading { opacity: .45; transition: opacity .15s; }
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
@@ -97,16 +101,19 @@
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
   </div>
 
-  <p class="note">The postflop columns follow the street you pick, and four of them turn on the
-    previous street's aggressor: the player either <em>is</em> them (C-Bet) or is acting against them
-    (Fold, Raise, Lead). Agg % is the exception &mdash; it takes in everything they did on the
-    street, whoever was betting. <strong>Hover a column header</strong>, or open the key below the
-    table, for what each one counts. Fold vs
-    C-Bet and Raise C-Bet share one denominator, the c-bets that player faced, so with calls they add
-    to 100%. Note that a lead removes the street from the c-bet columns entirely: the aggressor never
-    got to c-bet, so they take no missed chance, and folding or raising against a lead is counted
-    nowhere. A rate is blank when the player never reached that spot; hover any rate to see the
-    sample behind it. Click a player for their range chart in the same spot.</p>
+  <div class="note">
+    <p>Postflop columns follow the street you pick. <strong>Hover a column header</strong> or open
+      the key below the table for what each one counts.</p>
+    <ul>
+      <li><b>C-Bet, Fold, Raise and Lead</b> are measured against the previous street's aggressor.
+        Agg % is not: it counts every action on the street.</li>
+      <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of the c-bets faced.</li>
+      <li>A <b>lead</b> takes the street out of the c-bet columns: no c-bet chance for the
+        aggressor, and no fold or raise for anyone else.</li>
+      <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
+      <li>Click a player for their range chart in the same spot.</li>
+    </ul>
+  </div>
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
@@ -422,5 +429,6 @@
   load();
 })();
 </script>
+<script src="/filter-help.js"></script>
 </body>
 </html>

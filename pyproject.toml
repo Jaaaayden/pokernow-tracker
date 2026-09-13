@@ -46,4 +46,4 @@ testpaths = ["tests"]
 # prints the folder to load. So does the sample corpus `pnt import` falls back to
 # when the log folder is empty -- a fresh install with an empty database has
 # nothing to show, and the fallback is only a fallback if it ships.
-pnt = ["db/*.sql", "server/static/*.html", "extension/*", "logs/*.csv", "logs/*.md"]
+pnt = ["db/*.sql", "server/static/*.html", "server/static/*.js", "extension/*", "logs/*.csv", "logs/*.md"]

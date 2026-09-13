@@ -260,5 +260,16 @@ def test_stats_serves_json_to_scripts_and_a_page_to_browsers(client):
     assert direct.status_code == 200 and direct.text == page.text
 
 
+def test_spot_help_lists_every_term(client):
+    body = client.get("/filters").json()
+    assert {"groups", "positions", "sizes", "textures", "operators"} <= set(body)
+    assert any(t["term"] == "vs=NAME" for g in body["groups"] for t in g["terms"])
+    script = client.get("/filter-help.js")
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    for page in ("/chart", "/stats.html"):
+        assert "/filter-help.js" in client.get(page).text
+
+
 def test_chart_page_links_to_the_stats_page(client):
     assert "/stats.html" in client.get("/chart").text

@@ -203,6 +203,104 @@ def _numeric_term(term: str) -> Predicate | None:
     return None
 
 
+#: Every term a filter understands, grouped for the pages' `?` panel. Each entry is
+#: (term as written, an example to drop into the box, what it keeps). `<street>`
+#: stands for flop, turn or river. `test_filter_vocabulary_covers_every_term` holds
+#: this to FLAGS, NUMERIC and SIZED, so a new term cannot ship undocumented.
+VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
+    ("Preflop", (
+        ("vpip", "vpip", "called, bet or raised preflop"),
+        ("no_vpip", "no_vpip", "had a decision, put nothing in"),
+        ("acted_preflop", "acted_preflop", "had a preflop decision"),
+        ("pfr", "pfr", "raised preflop"),
+        ("opener", "opener", "made the first raise"),
+        ("pfa", "pfa", "made the last preflop raise"),
+        ("3bet", "3bet", "re-raised an open"),
+        ("3bet_opp", "3bet_opp", "could have 3-bet"),
+        ("faced_3bet", "faced_3bet", "opened and got 3-bet"),
+        ("folded_to_3bet", "folded_to_3bet", "opened, got 3-bet, folded"),
+        ("open_bb>=N", "open_bb>=4", "the open raise, in bb"),
+        ("raise_bb>=N", "raise_bb<=2.5", "their own raise-to, in bb"),
+    )),
+    ("Pot type", (
+        ("limped", "limped", "nobody raised preflop"),
+        ("srp", "srp", "single-raised pot"),
+        ("3bet_pot", "3bet_pot", "the pot was 3-bet"),
+        ("4bet_pot", "4bet_pot", "the pot was 4-bet or more"),
+    )),
+    ("Table", (
+        ("position=POS", "position=BTN", "their seat, any table size"),
+        ("players=N", "players>=5", "how many were dealt in"),
+        ("dead_button", "dead_button", "the button was dead"),
+    )),
+    ("Postflop", (
+        ("saw_flop", "saw_flop", "saw the flop"),
+        ("cbet_<street>", "cbet_flop", "c-bet as last street's aggressor"),
+        ("cbet_flop_opp", "cbet_flop_opp", "could have c-bet the flop"),
+        ("faced_cbet_<street>", "faced_cbet_flop", "faced a c-bet"),
+        ("folded_to_cbet_<street>", "folded_to_cbet_flop", "folded to a c-bet"),
+        ("raised_cbet_<street>", "raised_cbet_flop", "raised a c-bet"),
+        ("donk_<street>", "donk_flop", "led into last street's aggressor"),
+        ("donk_<street>_opp", "donk_flop_opp", "could have led"),
+        ("bet_<street>", "bet_turn", "bet the street"),
+    )),
+    ("Bet size", (
+        ("cbet_<street>=SIZE", "cbet_flop=medium", "c-bet that size"),
+        ("bet_<street>=SIZE", "bet_river=overbet", "first bet was that size"),
+        ("faced_cbet_<street>=SIZE", "faced_cbet_flop=small", "faced a c-bet that size"),
+        ("bet_<street>>=N", "bet_river>=1", "first bet, as a pot fraction"),
+    )),
+    ("Board", (
+        ("flop=TEXTURE", "flop=monotone", "the flop has that texture"),
+        ("turn=TEXTURE", "turn=paired", "the board through the turn"),
+        ("river=TEXTURE", "river=flush_possible", "the board through the river"),
+        ("board=TEXTURE", "board=twotone", "the whole board as dealt"),
+        ("flop!=TEXTURE", "flop!=paired", "any of these, negated"),
+    )),
+    ("Result", (
+        ("wtsd", "wtsd", "went to showdown"),
+        ("won_sd", "won_sd", "won at showdown"),
+        ("won", "won", "won chips"),
+        ("lost", "lost", "lost chips"),
+        ("cards_known", "cards_known", "hole cards were shown"),
+        ("pot>=N", "pot>=500", "the final pot, in chips"),
+        ("pot_bb>=N", "pot_bb>=50", "the final pot, in bb"),
+    )),
+    ("Opponent", (
+        ("vs=NAME", "vs=henry", "played against that player"),
+        ("vs!=NAME", "vs!=henry", "not against that player"),
+    )),
+)
+
+
+_SIZE_WORDS = {
+    "small": "under ½ pot",
+    "medium": "½ to ¾ pot",
+    "large": "¾ pot to pot",
+    "overbet": "more than pot",
+}
+
+
+def vocabulary() -> dict:
+    """VOCABULARY plus the value lists it refers to, as the `/filters` payload."""
+    positions: list[str] = []
+    for n in range(2, 11):
+        for seat in range(n):
+            if (p := position_name(seat, n)) not in positions:
+                positions.append(p)
+    return {
+        "groups": [
+            {"name": name, "terms": [{"term": t, "example": e, "desc": d} for t, e, d in terms]}
+            for name, terms in VOCABULARY
+        ],
+        "streets": list(STREETS),
+        "operators": list(_OPS),
+        "positions": positions,
+        "sizes": {b: _SIZE_WORDS[b] for b in SIZE_BUCKETS},
+        "textures": list(TEXTURE_TAGS),
+    }
+
+
 def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate:
     """Compile a comma-separated filter expression into one predicate (AND).
 
