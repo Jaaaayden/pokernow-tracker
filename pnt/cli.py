@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import glob as globlib
 import importlib.util
 import json
@@ -14,6 +15,8 @@ import typer
 from . import service as svc
 from .db.conn import DEFAULT_DB, connect
 from .ingest.importer import (
+    apply_aliases,
+    export_aliases,
     import_csv,
     merge_players,
     rebuild_game,
@@ -73,6 +76,9 @@ AuditOpt = typer.Option(
     False, "--audit", help="Check files for unshown hole cards instead of writing."
 )
 AliasOpt = typer.Option(..., "--alias", help="Name for the player they move to.")
+AliasFileArg = typer.Argument(
+    BUNDLED_LOG_DIR / "aliases.csv", help="The alias CSV. Default: the one in the repo."
+)
 
 LOG_GLOB = "poker_now_log_*.csv"
 
@@ -728,6 +734,36 @@ def alias_split(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"moved {n} identity row(s) to {alias!r}")
+
+
+@alias_app.command("export")
+def alias_export(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
+    """Write every PokerNow ID and its alias to a CSV, so the table can be committed.
+
+    Merges and renames are the one thing a re-import cannot rebuild; this file is
+    how they survive a fresh database. `pnt alias import` reads it back.
+    """
+    pairs = export_aliases(connect(db))
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(["pn_id", "alias"])
+        writer.writerows(pairs)
+    typer.echo(f"wrote {len(pairs)} id(s) across {len({a for _, a in pairs})} player(s) to {path}")
+
+
+@alias_app.command("import")
+def alias_import(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
+    """Apply a CSV from `pnt alias export`: every known ID moves to its alias.
+
+    Safe to re-run. IDs not in the database yet are skipped -- import their logs,
+    then run this again.
+    """
+    if not path.exists():
+        raise typer.BadParameter(f"no alias file at {path}")
+    with path.open(newline="", encoding="utf-8") as fh:
+        pairs = [(r["pn_id"], r["alias"]) for r in csv.DictReader(fh)]
+    moved, unknown = apply_aliases(connect(db), pairs)
+    typer.echo(f"moved {moved} identity row(s); {unknown} id(s) not in this database yet")
 
 
 if __name__ == "__main__":  # pragma: no cover

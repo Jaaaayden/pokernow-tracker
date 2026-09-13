@@ -213,7 +213,15 @@ human on a second device gets a different ID.
 pnt alias list
 pnt alias merge "onlybluffs" "genericpoker"   # one person, two devices
 pnt alias split "FQN9hzhzP_" --alias henry    # the inverse: undo a merge, or part two people
+pnt alias export                              # save the table to pnt/logs/aliases.csv
+pnt alias import                              # and put it back on a fresh database
 ```
+
+The alias table is the one thing in the database a re-import cannot rebuild, so it
+is kept in the repo as [pnt/logs/aliases.csv](pnt/logs/aliases.csv). Run
+`pnt alias export` after merging and commit the file. `pnt alias import` is safe to
+repeat: IDs the database has not seen yet are skipped, so import new logs and run it
+again.
 
 Merging is a single UPDATE, and nothing is recomputed — precisely because no
 statistic is materialized.

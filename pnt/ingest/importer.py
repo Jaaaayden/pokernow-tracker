@@ -212,6 +212,83 @@ def rename_player(conn: sqlite3.Connection, old: str, new: str) -> None:
         bump_generation(conn)
 
 
+def export_aliases(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """Every ``(pn_id, alias)`` pair, in the order `pnt alias list` shows them.
+
+    The alias table is the one piece of the database that is not rebuilt from
+    logs -- it is a judgement about who is who -- so it is the one piece worth
+    keeping outside the database.
+    """
+    return [
+        (r["pn_id"], r["alias"])
+        for r in conn.execute(
+            "SELECT pi.pn_id, p.alias FROM player_identities pi"
+            " JOIN players p ON p.player_id = pi.player_id ORDER BY p.alias, pi.pn_id"
+        )
+    ]
+
+
+def apply_aliases(conn: sqlite3.Connection, pairs: list[tuple[str, str]]) -> tuple[int, int]:
+    """Make every known ``pn_id`` belong to the player named beside it.
+
+    The inverse of `export_aliases`, and idempotent: applying the same pairs twice
+    moves nothing the second time. IDs the database has not seen yet are skipped
+    rather than invented, since an identity row needs a name and a date only a log
+    can supply -- re-apply after importing more.
+
+    A player that already has an alias from the file but also holds IDs the file
+    puts elsewhere (or does not mention) is a different person who happens to share
+    the name; it is renamed out of the way the same way `resolve_identity` settles a
+    collision, instead of being silently merged in.
+
+    Returns ``(moved, unknown)``.
+    """
+    wanted: dict[str, list[str]] = {}
+    for pn_id, alias in pairs:
+        wanted.setdefault(alias, []).append(pn_id)
+
+    moved = 0
+    with writing(conn):
+        known = {r["pn_id"] for r in conn.execute("SELECT pn_id FROM player_identities")}
+        for alias, ids in wanted.items():
+            ids = [i for i in ids if i in known]
+            if not ids:
+                continue
+            row = conn.execute("SELECT player_id FROM players WHERE alias = ?", (alias,)).fetchone()
+            if row:
+                strays = [
+                    r["pn_id"]
+                    for r in conn.execute(
+                        "SELECT pn_id FROM player_identities WHERE player_id = ? ORDER BY pn_id",
+                        (row["player_id"],),
+                    )
+                    if r["pn_id"] not in ids
+                ]
+                if strays:
+                    conn.execute(
+                        "UPDATE players SET alias = ? WHERE player_id = ?",
+                        (f"{alias} ({strays[0]})", row["player_id"]),
+                    )
+                    row = None
+            if row:
+                player_id = row["player_id"]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO players (alias, created_at) VALUES (?, ?)", (alias, _now())
+                )
+                player_id = int(cur.lastrowid)
+            moved += conn.executemany(
+                "UPDATE player_identities SET player_id = ? WHERE pn_id = ? AND player_id != ?",
+                [(player_id, i, player_id) for i in ids],
+            ).rowcount
+        unknown = sum(1 for pn_id, _ in pairs if pn_id not in known)
+        conn.execute(
+            "DELETE FROM players WHERE player_id NOT IN (SELECT player_id FROM player_identities)"
+        )
+        bump_generation(conn)
+    return moved, unknown
+
+
 # ------------------------------------------------------------------ layer 2 --
 
 
