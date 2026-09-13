@@ -143,3 +143,20 @@ def test_filter_composition_and_positions(db):
 def test_unknown_filter_term_is_rejected_with_help():
     with pytest.raises(ValueError, match="unknown filter term"):
         parse_filter("definitely_not_a_stat")
+
+
+def test_filter_vocabulary_covers_every_term():
+    """The pages' `?` panel is built from VOCABULARY; a term missing from it is a
+    term nobody using the page can discover."""
+    import re
+
+    from pnt.stats.filters import FLAGS, NUMERIC, SIZED, STREETS, VOCABULARY
+
+    documented: set[str] = set()
+    for _, terms in VOCABULARY:
+        for term, example, _ in terms:
+            parse_filter(example)  # every example is a working filter
+            for s in STREETS:
+                documented.add(re.split(r"[!<>=]", term.replace("<street>", s), maxsplit=1)[0])
+    for key in [*FLAGS, *NUMERIC, *SIZED]:
+        assert key in documented, f"{key} is missing from filters.VOCABULARY"

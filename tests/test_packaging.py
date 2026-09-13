@@ -33,6 +33,7 @@ REQUIRED = [
     "pnt/db/schema.sql",
     "pnt/server/static/chart.html",
     "pnt/server/static/stats.html",
+    "pnt/server/static/filter-help.js",
     "pnt/extension/manifest.json",
     "pnt/extension/content.js",
     "pnt/extension/background.js",
