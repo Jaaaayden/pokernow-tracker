@@ -141,6 +141,10 @@ class Facts:
     wsd: bool = False
 
     net: int = 0
+    #: The final pot in chips: every chip that stayed in the middle, uncalled bets
+    #: and bounties excluded. Same value for everyone in the hand; short on an
+    #: incomplete hand, like `net`.
+    pot: int = 0
     bb_size: int | None = None
     #: Carried from the hand so aggregation can drop this row from bb/100 without
     #: dropping it from everything else -- folding, betting and showing down all
@@ -412,6 +416,7 @@ def _table(hand: HandRow, facts: dict[str, Facts]) -> None:
 
 def derive(hand: HandRow) -> list[Facts]:
     """Produce one Facts row per dealt-in player."""
+    pot = sum(p.contributed for p in hand.players.values())
     facts = {
         pid: Facts(
             hand_id=hand.hand_id,
@@ -424,6 +429,7 @@ def derive(hand: HandRow) -> list[Facts]:
             hand_number=hand.hand_number,
             ts=hand.ts,
             net=p.collected - p.contributed + p.bounty,
+            pot=pot,
             bb_size=hand.bb,
             complete=hand.complete,
             hole_cards=p.hole_cards,

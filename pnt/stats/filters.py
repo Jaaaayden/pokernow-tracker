@@ -13,11 +13,14 @@ A *line* is just a longer filter. "Opened 4bb+ in a single-raised pot, c-bet the
 flop half pot, c-bet the turn, overbet the river" is::
 
     opener,open_bb>=4,srp,cbet_flop=medium,cbet_turn,bet_river=overbet
+
+The pot and the opposition are terms too: `pot>=500` keeps the hands whose final
+pot reached 500 chips, and `vs=henry` the hands played against henry.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from ..logfmt.parser import position_name
 from .cards import TEXTURE_TAGS, board_texture
@@ -78,6 +81,11 @@ NUMERIC: dict[str, Callable[[Facts], float | None]] = {
     "bet_flop": lambda f: f.bet_pot.get("flop"),
     "bet_turn": lambda f: f.bet_pot.get("turn"),
     "bet_river": lambda f: f.bet_pot.get("river"),
+    #: The final pot, in chips and in this hand's big blinds. `pot_bb` sits after
+    #: `pot` on purpose: the prefix match tries `pot` first, finds no operator
+    #: behind `_bb`, and moves on.
+    "pot": lambda f: f.pot,
+    "pot_bb": lambda f: f.pot / f.bb_size if f.bb_size else None,
 }
 
 #: name -> getter for the size-bucket terms (`cbet_flop=medium`, `bet_river=overbet`,
@@ -141,6 +149,39 @@ _OPS: dict[str, Callable[[float, float], bool]] = {
 }
 
 
+def _player_term(term: str, names: Mapping[str, str] | None) -> Predicate | None:
+    """`vs=<name>` / `vs!=<name>`: the hand was played against that player.
+
+    "Against" is `Facts.opponents` -- the players still in at this player's last
+    action (SPEC.md, "Who the action was against"), the same list a hand row prints
+    as `vs`. `names` maps pn_id -> display name; a raw pn_id matches as well, so a
+    caller without the map can still name an identity. With the map, a name nobody
+    goes by is rejected: an empty chart is the wrong answer to a typo.
+    """
+    for op in ("!=", "="):
+        prefix = f"vs{op}"
+        if not term.startswith(prefix):
+            continue
+        want = term[len(prefix):].strip().casefold()
+        if not want:
+            raise ValueError("vs= needs a player name")
+        if names is not None and want not in {n.casefold() for n in names.values()} | {
+            i.casefold() for i in names
+        }:
+            raise ValueError(f"unknown player {term[len(prefix):].strip()!r}")
+        lookup = names or {}
+        positive = op == "="
+
+        def pred(f: Facts, want=want, lookup=lookup, positive=positive) -> bool:
+            hit = any(
+                want in (pid.casefold(), lookup.get(pid, pid).casefold()) for pid in f.opponents
+            )
+            return hit == positive
+
+        return pred
+    return None
+
+
 def _numeric_term(term: str) -> Predicate | None:
     for name, getter in NUMERIC.items():
         if not term.startswith(name):
@@ -162,8 +203,11 @@ def _numeric_term(term: str) -> Predicate | None:
     return None
 
 
-def parse_filter(expr: str) -> Predicate:
+def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate:
     """Compile a comma-separated filter expression into one predicate (AND).
+
+    `names` maps pn_id -> display name and is only needed for `vs=`; pass
+    `display_names(conn)` from queries.py.
 
     Supported terms:
       ``3bet``               a flag from FLAGS
@@ -173,6 +217,8 @@ def parse_filter(expr: str) -> Predicate:
       ``open_bb>=4``         the hand's open raise was at least 4bb
       ``raise_bb<=2.5``      this player's own preflop raise-to
       ``bet_river>=1``       this player's first river bet, as a fraction of the pot
+      ``pot>=500``           the final pot was at least 500 chips; ``pot_bb>=50`` in blinds
+      ``vs=henry``           henry was still in when this player last acted; ``vs!=`` negates
       ``cbet_flop=medium``   a flop c-bet in that size bucket; also bet_<street>= and
                              faced_cbet_<street>=, with small/medium/large/overbet
       ``flop=ace_high``      board texture on the flop; also turn=, river=, board=, and !=
@@ -183,6 +229,11 @@ def parse_filter(expr: str) -> Predicate:
     for term in terms:
         if term in FLAGS:
             preds.append(FLAGS[term])
+            continue
+
+        player = _player_term(term, names)
+        if player is not None:
+            preds.append(player)
             continue
 
         if term.startswith("position="):
@@ -212,7 +263,7 @@ def parse_filter(expr: str) -> Predicate:
         raise ValueError(
             f"unknown filter term: {term!r}. "
             f"Known flags: {', '.join(sorted(FLAGS))}; "
-            f"position=<POS>; a comparison on {', '.join(NUMERIC)}; "
+            f"position=<POS>; vs=<player>; a comparison on {', '.join(NUMERIC)}; "
             f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
             f"or flop=/turn=/river=/board= with a texture tag"
         )

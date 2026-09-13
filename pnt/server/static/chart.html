@@ -47,6 +47,9 @@
     border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px;
   }
   input[type=text] { min-width: 0; flex: 1 1 320px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
+  .controls.narrow { margin-top: -6px; }
+  .controls.narrow .lbl { color: var(--muted); font-size: 12px; margin-right: 8px; }
   button { cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: transparent; }
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
@@ -148,6 +151,7 @@
     white-space: nowrap; color: var(--ink-2); }
   .hand-row .hole { min-width: 4em; }
   .hand-row .board { min-width: 9em; color: var(--ink-2); }
+  .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
   .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
   .cards { font-family: ui-monospace, Consolas, monospace; }
@@ -199,7 +203,7 @@
     <label for="player">Player</label>
     <select id="player"></select>
     <label for="filter">Spot</label>
-    <input id="filter" type="text" placeholder="opener,open_bb>=4,srp" spellcheck="false">
+    <input id="filter" type="text" placeholder="srp,pot>=500,vs=henry" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
     <span class="seg" role="group" aria-label="View">
@@ -207,6 +211,15 @@
       <button data-view="made" aria-pressed="false">Made hands</button>
       <button data-view="sizing" aria-pressed="false">Sizing</button>
     </span>
+  </div>
+  <div class="controls narrow">
+    <label for="pot">Pot ≥</label>
+    <input id="pot" type="number" min="0" step="1" placeholder="any" title="final pot, in chips (writes pot>=N into the spot)">
+    <span class="lbl">chips</span>
+    <label for="vs">vs</label>
+    <select id="vs" title="hands where this player was still in when they last acted (writes vs=name into the spot)">
+      <option value="">anyone</option>
+    </select>
   </div>
   <div class="presets" id="presets"></div>
   <div class="lines" id="lines"></div>
@@ -256,7 +269,13 @@
   <section class="card hidden" id="hands" aria-live="polite">
     <div class="card-head">
       <h2><span id="hands-title">Hands</span> <small class="muted" id="hands-count"></small></h2>
-      <button id="hands-close">Close</button>
+      <span class="ctl">
+        <select id="hands-sort" aria-label="Order">
+          <option value="newest">newest first</option>
+          <option value="pot">biggest pot first</option>
+        </select>
+        <button id="hands-close">Close</button>
+      </span>
     </div>
     <div class="hand-rows" id="hand-rows"></div>
     <div class="replay hidden" id="replay"></div>
@@ -345,14 +364,39 @@
     if (!pressed) next.push(term);
     $("filter").value = next.join(",");
   }
+  // The pot box and the vs picker are two more ways of writing a term into the
+  // box above them; the text stays the one source of truth, so they read back
+  // whatever is typed there. `pot>=` is the only shape the box writes, but it
+  // reads any `pot<op>N` so a hand-typed `pot>500` still shows up. `pot_bb` is
+  // left alone: it is its own term.
+  const POT_TERM = /^pot(>=|<=|=|>|<)(\d+(?:\.\d+)?)$/;
+  const VS_TERM = /^vs=(.+)$/;
+  function setPotTerm(n) {
+    const next = terms().filter(t => !POT_TERM.test(t));
+    if (n !== "" && Number(n) > 0) next.push(`pot>=${Number(n)}`);
+    $("filter").value = next.join(",");
+  }
+  function setVsTerm(name) {
+    const next = terms().filter(t => !VS_TERM.test(t));
+    if (name) next.push(`vs=${name}`);
+    $("filter").value = next.join(",");
+  }
   function syncChips() {
     document.querySelectorAll("button[data-term]").forEach(b => b.setAttribute("aria-pressed", hasTerm(b.dataset.term)));
     const current = $("filter").value.trim();
     document.querySelectorAll("button[data-preset]").forEach(b => b.setAttribute("aria-pressed", b.dataset.preset === current));
     $("clear").disabled = !current;
+    const pot = terms().map(t => t.match(POT_TERM)).find(Boolean);
+    $("pot").value = pot ? pot[2] : "";
+    const vs = terms().map(t => t.match(VS_TERM)).find(Boolean);
+    const sel = $("vs");
+    const want = vs ? vs[1].trim() : "";
+    // A name typed in a different case than the dropdown's still selects it.
+    const opt = [...sel.options].find(o => o.value.toLowerCase() === want.toLowerCase());
+    sel.value = opt ? opt.value : "";
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
-                  table: false, data: null, handRows: null };
+                  table: false, data: null, handRows: null, handSort: "newest", handIds: null };
 
   // ---- URL state so the page can be bookmarked or embedded --------------
   const readUrl = () => {
@@ -408,6 +452,16 @@
     }
     if (!state.player || !rows.some(p => p.alias === state.player)) state.player = rows[0]?.alias ?? null;
     sel.value = state.player ?? "";
+    // The same names as opponents to pick from. Kept in one list rather than
+    // minus the player on show: swapping the player must not lose the vs term.
+    const vs = $("vs");
+    vs.replaceChildren(vs.options[0]);
+    for (const p of rows) {
+      const o = document.createElement("option");
+      o.value = p.alias; o.textContent = p.alias;
+      vs.appendChild(o);
+    }
+    syncChips(); // the dropdown can only show a vs= term once it has the names
   }
 
   async function load({ quiet = false } = {}) {
@@ -813,6 +867,7 @@
     $("replay").classList.add("hidden");
     const list = $("hand-rows");
     list.replaceChildren(message("loading…"));
+    state.handIds = ids; // remembered so a change of order re-lists the same set
     try {
       const rows = await handRows();
       const want = ids ? new Set(ids) : null;
@@ -840,11 +895,17 @@
     return bits.join("\n");
   }
 
+  // Chips first, since that is what the filter takes; blinds alongside when known.
+  const fmtPot = (h) => h.bb ? `${h.pot.toLocaleString()} (${Math.round(h.pot / h.bb)}bb)` : h.pot.toLocaleString();
+
   function renderHandRows(rows) {
     const list = $("hand-rows");
     list.replaceChildren();
+    // The server lists newest first; "biggest pot" reorders that, ties newest first.
+    if (state.handSort === "pot") rows = [...rows].sort((a, b) => (b.pot ?? -1) - (a.pot ?? -1));
     $("hands-count").textContent = rows.length > HAND_LIMIT
-      ? `newest ${HAND_LIMIT} of ${rows.length}` : `${rows.length} hand${rows.length === 1 ? "" : "s"}`;
+      ? `${state.handSort === "pot" ? "biggest" : "newest"} ${HAND_LIMIT} of ${rows.length}`
+      : `${rows.length} hand${rows.length === 1 ? "" : "s"}`;
     if (!rows.length) { list.appendChild(message("no hands")); return; }
     for (const h of rows.slice(0, HAND_LIMIT)) {
       const b = document.createElement("button");
@@ -860,6 +921,7 @@
         ? `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` : "");
       span("hole cards", h.hole_cards ? pretty(h.hole_cards) : "?? ??");
       span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop");
+      span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
       span("sizes", Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
       span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
       b.title = handTitle(h);
@@ -1049,6 +1111,13 @@
   });
   $("t-hands-tile").addEventListener("click", () => { if (state.player) openHands("All hands in this spot", null); });
   $("hands-close").addEventListener("click", closeHands);
+  $("hands-sort").addEventListener("change", () => {
+    state.handSort = $("hands-sort").value;
+    if (!$("hands").classList.contains("hidden")) openHands($("hands-title").textContent, state.handIds);
+  });
+  $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
+  $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });
+  $("vs").addEventListener("change", () => { setVsTerm($("vs").value); apply(); });
   for (const [name, f] of PRESETS) {
     const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = f;
     b.dataset.preset = f;

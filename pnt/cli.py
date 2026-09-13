@@ -25,7 +25,7 @@ from .ingest.importer import (
 )
 from .logfmt import redact as rd
 from .stats.filters import parse_filter
-from .stats.queries import facts_for, positional_report, report
+from .stats.queries import display_names, facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -337,7 +337,7 @@ def stats(
 ) -> None:
     """Per-player stats. Rates show `--` when the denominator is empty."""
     conn = connect(db)
-    pred = parse_filter(filter_) if filter_ else None
+    pred = parse_filter(filter_, display_names(conn)) if filter_ else None
     rows = report(conn, game_id=game, min_hands=min_hands, predicate=pred)
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
@@ -414,7 +414,10 @@ def range_cmd(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     if filter_:
-        pred = parse_filter(filter_)
+        try:
+            pred = parse_filter(filter_, display_names(conn))
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         facts = [f for f in facts if pred(f)]
 
     out = range_grid(facts) if by == "preflop" else composition(facts)
@@ -465,7 +468,7 @@ def sizing(
     try:
         facts = facts_for(conn, alias, game)
         if filter_:
-            pred = parse_filter(filter_)
+            pred = parse_filter(filter_, display_names(conn))
             facts = [f for f in facts if pred(f)]
         out = sizing_tells(facts, street, kind)
     except ValueError as exc:

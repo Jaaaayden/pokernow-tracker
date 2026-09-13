@@ -153,7 +153,8 @@
         :host { all: initial; position: fixed; top: 12px; right: 12px; z-index: 2147483000; }
         .panel { font: 12px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff;
           background: rgba(20,20,19,.92); border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
-          min-width: 300px; max-width: 460px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+          min-width: 300px; width: fit-content; max-width: calc(100vw - 24px);
+          box-shadow: 0 10px 30px rgba(0,0,0,.45); }
         .head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: move; user-select: none;
           border-bottom: 1px solid rgba(255,255,255,.1); }
         .head b { font-weight: 600; }
@@ -163,14 +164,22 @@
         table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
         th, td { padding: 4px 6px; text-align: right; white-space: nowrap; }
         th { color: #898781; font-weight: 500; font-size: 11px; }
+        th.group { color: #c3c2b7; text-align: center; border-bottom: 0; padding-bottom: 0; font-weight: 400; }
         td:first-child, th:first-child { text-align: left; }
         td.name { font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
         td.name small { color: #898781; font-weight: 400; margin-left: 4px; }
+        td small.life { color: #898781; font-weight: 400; margin-left: 5px; }
+        td .drift { color: #86b6ef; }
         tr.sel td { background: rgba(57,135,229,.18); }
+        /* The chart box sets the panel's width once it is open: the 13x13 grid
+           needs ~640px to show whole, and the corner handle lets it be dragged
+           bigger. The panel is fit-content, so the table above follows it. */
         .chart { display: none; border-top: 1px solid rgba(255,255,255,.1); }
-        .chart.open { display: block; }
-        .chart iframe { width: 100%; height: 560px; border: 0; background: #0d0d0d; border-radius: 0 0 10px 10px; }
-        .chart .bar { display: flex; gap: 6px; padding: 6px 10px; align-items: center; }
+        .chart.open { display: flex; flex-direction: column; resize: both; overflow: hidden;
+          width: 680px; height: 780px; min-width: 320px; min-height: 240px;
+          max-width: calc(100vw - 24px); max-height: calc(100vh - 80px); }
+        .chart iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: #0d0d0d; border-radius: 0 0 10px 10px; }
+        .chart .bar { display: flex; gap: 6px; padding: 6px 10px; align-items: center; flex: none; }
         .chart a { color: #86b6ef; margin-left: auto; }
         .empty { padding: 10px; color: #c3c2b7; }
         .hidden { display: none; }
@@ -262,10 +271,10 @@
     // The chart page owns the spot, board and view controls -- it has chips for
     // all three, and a text box for filters no dropdown here could express. This
     // bar only says who is on show and how to get out, so the two can never
-    // disagree. The filter below is just where the chart opens; change it there.
-    const OPENING_FILTER = "opener,srp";
+    // disagree. The chart opens on all of that player's hands; the spot is
+    // picked in there.
     function chartUrl() {
-      const q = new URLSearchParams({ player: selected, filter: OPENING_FILTER, theme: "dark" });
+      const q = new URLSearchParams({ player: selected, theme: "dark" });
       return `${state.server}/chart?${q}`;
     }
     // The chart page fetches its data once. When the player on show has played more
@@ -307,12 +316,41 @@
       }
     });
 
+    // The chart box remembers the size it was dragged to, the way the panel
+    // remembers where it was dragged. Clamped to the window on the way back in,
+    // since it may have been saved on a bigger screen.
+    function saveChartSize() {
+      const c = $("chart");
+      if (!c.classList.contains("open") || !c.style.width) return;
+      try { localStorage.setItem("pnt-chart-size", JSON.stringify({ w: c.style.width, h: c.style.height })); } catch {}
+    }
+    function restoreChartSize() {
+      let size = null;
+      try { size = JSON.parse(localStorage.getItem("pnt-chart-size") || "null"); } catch {}
+      if (!size) return;
+      const w = parseFloat(size.w), h = parseFloat(size.h);
+      if (Number.isFinite(w)) $("chart").style.width = Math.min(w, innerWidth - 24) + "px";
+      if (Number.isFinite(h)) $("chart").style.height = Math.min(h, innerHeight - 80) + "px";
+    }
+    // `resize: both` fires no event of its own; the observer sees the drag land.
+    // It also fires as the box opens and closes, which the guard in
+    // saveChartSize() ignores, so only a real drag is what gets remembered.
+    new ResizeObserver(() => {
+      const c = $("chart");
+      if (!c.classList.contains("open")) return;
+      // The browser writes the dragged size into the inline style; a bigger panel
+      // must still sit inside the window.
+      if (host.style.right === "auto") place(parseFloat(host.style.left) || 0, parseFloat(host.style.top) || 0);
+      saveChartSize();
+    }).observe($("chart"));
+
     function showChart() {
       if (!selected) return;
       $("who").textContent = selected;
       const url = chartUrl();
       $("frame").src = url;
       $("ext").href = url;
+      restoreChartSize();
       $("chart").classList.add("open");
       chartHands = handsOf(selected);
     }
@@ -321,6 +359,15 @@
     }
 
     const fmt = (v) => (v == null ? "–" : String(v));
+    // Which `_opp` count sits under each column; VPIP and PFR share one.
+    const OPP_KEY = { vpip: "vpip", pfr: "vpip", "3bet": "3bet", fold_to_3bet: "fold_to_3bet",
+      cbet_flop: "cbet_flop", wtsd: "wtsd", af_flop: "af_flop" };
+    const COLS = ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd", "af_flop"];
+    // A session figure is flagged as drifting when it has some sample behind it
+    // and sits well away from the lifetime one. Neither direction is "good" for
+    // a VPIP, so it is one colour, not red and green.
+    const DRIFT_POINTS = 10, DRIFT_MIN_OPP = 10;
+    const sample = (st, k) => (k === "hands" ? null : st._opp?.[OPP_KEY[k]]);
 
     function render(hud) {
       const body = $("body");
@@ -328,6 +375,18 @@
       const seats = [...hud.seats].sort((a, b) => a.seat - b.seat);
       if (!seats.length) { body.innerHTML = '<div class="empty">no one dealt in yet</div>'; return; }
       const t = document.createElement("table");
+      // An older server sends lifetime only; the overlay then prints just that.
+      const hasSession = seats.some((s) => s.session);
+      if (hasSession) {
+        const gr = document.createElement("tr");
+        const blank = document.createElement("th"); blank.className = "group";
+        const g = document.createElement("th"); g.className = "group"; g.colSpan = COLS.length;
+        g.textContent = "this session · lifetime";
+        g.title = "Each cell: this game first, then every game on record in grey. A blue session "
+          + `figure is ${DRIFT_POINTS}+ points from lifetime on at least ${DRIFT_MIN_OPP} chances.`;
+        gr.append(blank, g);
+        t.appendChild(gr);
+      }
       const hr = document.createElement("tr");
       // The HUD has no room to spell these out, so the hover text does it -- it is
       // the first place a new player meets the acronyms.
@@ -359,8 +418,23 @@
         name.textContent = s.alias || s.pn_id;
         const seat = document.createElement("small"); seat.textContent = `#${s.seat}`; name.appendChild(seat);
         tr.appendChild(name);
-        for (const k of ["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "cbet_flop", "wtsd", "af_flop"]) {
-          const td = document.createElement("td"); td.textContent = fmt(st[k]); tr.appendChild(td);
+        const ss = s.session;
+        for (const k of COLS) {
+          const td = document.createElement("td");
+          if (!ss) { td.textContent = fmt(st[k]); tr.appendChild(td); continue; }
+          const now = document.createElement("span"); now.textContent = fmt(ss[k]);
+          const nOpp = sample(ss, k), lOpp = sample(st, k);
+          if (typeof ss[k] === "number" && typeof st[k] === "number" && k !== "hands"
+              && (nOpp ?? 0) >= DRIFT_MIN_OPP && Math.abs(ss[k] - st[k]) >= DRIFT_POINTS) {
+            now.className = "drift";
+          }
+          const life = document.createElement("small"); life.className = "life"; life.textContent = fmt(st[k]);
+          td.append(now, life);
+          const of = (v, n) => (n == null ? fmt(v) : `${fmt(v)}% of ${n}`);
+          td.title = k === "hands"
+            ? `this session: ${fmt(ss[k])} hands · lifetime: ${fmt(st[k])}`
+            : `this session: ${of(ss[k], nOpp)} · lifetime: ${of(st[k], lOpp)}`;
+          tr.appendChild(td);
         }
         // Clicking the selected player again unselects them and closes the chart.
         tr.addEventListener("click", () => {

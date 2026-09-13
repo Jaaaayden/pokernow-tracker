@@ -119,6 +119,13 @@ pnt stats --filter "faced_cbet_flop,players>=3"
 This works only because actions are stored raw with street and sequence. A
 pre-aggregated schema cannot answer "hands that reached this point" at all.
 
+Two terms are about the hand rather than the line. `pot>=500` keeps the hands whose
+final pot reached 500 chips (`pot_bb>=50` says it in big blinds), which is how to
+find the pots worth replaying. `vs=henry` keeps the hands played against henry —
+he was still in when the player last acted, the same "vs" a hand row prints — and
+`vs!=henry` the rest. Both work everywhere a filter does, so
+`pnt stats --filter vs=henry` is everyone's figures in hands against him.
+
 ### Ranges and lines
 
 What a player *had* in a spot, from the hands where their cards were shown:
@@ -166,7 +173,10 @@ the page opens the list of hands behind it, and clicking a hand replays it. Each
 row in that list names who the hand was against and whether the player closed the
 action — `IP` or `OOP` rather than a seat, since every postflop stat here is
 measured against an aggressor and not against a seat. Hover a row for the full
-opponent list and who c-bet on which street.
+opponent list and who c-bet on which street. Each row also shows the pot, and the
+list can be ordered by it, newest first or biggest first; the **Pot ≥** box and
+the **vs** picker above the chart write the matching `pot>=` and `vs=` terms into
+the spot for you.
 
 Board texture is a filter too: `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on — the full tag
@@ -418,12 +428,17 @@ The suite is organized around invariants rather than examples:
    feed one parser with identical input, so they cannot disagree, and overlapping
    fetches are free because `/ingest` dedupes on `(game_id, order)`;
 3. draws a draggable overlay listing everyone dealt into the latest hand, keyed by
-   PokerNow ID via `GET /hud/{gameId}`, with lifetime VPIP / PFR / 3-bet / fold to
-   3-bet / c-bet / WTSD. Click a row to embed that player's range chart straight
-   from the local server, opened on their single-raised pots. The spot, board
-   texture and view are the chart page's own controls, so the overlay adds none
-   of its own to fall out of step with them; *open ↗* carries whatever you have
-   picked in there out into a full tab.
+   PokerNow ID via `GET /hud/{gameId}`, with VPIP / PFR / 3-bet / fold to 3-bet /
+   c-bet / WTSD twice per cell: this session first, lifetime in grey beside it, so
+   a player running hotter or tighter than their history shows while it happens.
+   A session figure turns blue when it sits 10 or more points from lifetime on at
+   least 10 chances; hover a cell for both samples. Click a row to embed that
+   player's range chart straight from the local server, opened on all of their
+   hands. The panel widens to fit the 13×13 grid and can be dragged larger by its
+   bottom-right corner; the size is remembered. The spot, board texture and view
+   are the chart page's own controls, so the overlay adds none of its own to fall
+   out of step with them; *open ↗* carries whatever you have picked in there out
+   into a full tab.
 
 No manual seat mapping is needed: the log names every player as `Name @ ID`, and
 the alias table already joins one person's devices.
