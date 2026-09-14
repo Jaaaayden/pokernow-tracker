@@ -6,6 +6,7 @@ import pytest
 
 from pnt.stats.cards import (
     ALL_CLASSES,
+    DRAW_DETAILS,
     MADE_CLASSES,
     TEXTURE_TAGS,
     board_texture,
@@ -89,6 +90,32 @@ def test_made_class(cards, expected):
 )
 def test_made_hand_detail(hole, board, cls, detail):
     assert made_hand(hole, board) == (cls, detail)
+
+
+DRAW_CASES = [
+    ("AhKh", ["Qh", "Jh", "2c"], "draw", "combo_draw"),  # flush draw plus a gutshot to the T
+    ("Ah8h", ["Kh", "9h", "2c", "7d", "3s"], "draw", "flush_draw"),  # missed on the river
+    ("9c8d", ["7h", "6s", "2c", "Kd", "Ah"], "draw", "open_ender"),  # T and 5 both complete it
+    ("9d7c", ["5h", "8s", "Jd", "2c"], "draw", "open_ender"),  # double gutshot: 6 and T
+    ("JcTd", ["7h", "8s", "2c"], "draw", "gutshot"),  # flop-only board
+    ("Ah2c", ["3d", "4s", "Kh", "9c"], "draw", "gutshot"),  # wheel draw, the ace plays low
+    ("Kc2d", ["5h", "6s", "7d", "8c", "Ah"], "high_card", None),  # board straight draw only
+    ("Kc2d", ["5h", "6h", "7h", "8h", "As"], "high_card", None),  # board flush draw only
+    ("AhKh", ["Ac", "Jh", "2h", "7d", "3s"], "pair", "top_pair"),  # a pair keeps its class
+    ("9cJd", ["Ac", "Kd", "2s", "3s", "7h"], "high_card", None),  # true air stays high card
+]
+
+
+@pytest.mark.parametrize("hole, board, cls, detail", DRAW_CASES)
+def test_draws_split_from_high_card(hole, board, cls, detail):
+    assert made_hand(hole, board) == (cls, detail)
+
+
+def test_draw_details_are_declared():
+    assert MADE_CLASSES.index("pair") < MADE_CLASSES.index("draw") < MADE_CLASSES.index("high_card")
+    for _, _, cls, detail in DRAW_CASES:
+        if cls == "draw":
+            assert detail in DRAW_DETAILS
 
 
 

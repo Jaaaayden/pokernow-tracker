@@ -190,6 +190,10 @@ def test_composition_sums_to_known(db):
     # strongest first
     order = [c["class"] for c in comp["classes"]]
     assert order.index("pair") > order.index("two_pair")
+    if "draw" in order:
+        assert order.index("pair") < order.index("draw")
+        if "high_card" in order:
+            assert order.index("draw") < order.index("high_card")
 
 
 def test_filtered_line_composition(db):

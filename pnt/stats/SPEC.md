@@ -320,7 +320,14 @@ A range view is a filter, then a bucketing of the hands whose cards are known:
 - `preflop`: the 169 starting-hand classes, laid out as the standard 13x13 chart.
 - `made`: best-five strength on the final board (first run for run-it-twice),
   with a `detail` for pairs (overpair / top / middle / bottom / pocket / board
-  pair) and trips (set vs trips).
+  pair) and trips (set vs trips). A holding that is only high card becomes a
+  `draw` if it had one on the flop or turn, with a `detail` of `combo_draw`
+  (flush plus straight draw), `flush_draw`, `open_ender` (any two-rank straight
+  draw, double gutshots included) or `gutshot`. Draws are read on the turn board,
+  or the flop when the hand ended there, so a draw that missed on the river still
+  counts. A draw must use a hole card; a four-flush or four-straight sitting on
+  the board alone does not. Any pair or better keeps its class even with a draw.
+  `draw` sorts between `pair` and `high_card`.
 
 **Coverage** (`known / hands`) is reported alongside and is the honest part.
 Cards are known only when shown, and hands are shown when they reach showdown.

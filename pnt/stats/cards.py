@@ -10,6 +10,8 @@ Two questions a range chart asks of a known holding:
    worse".  The class is the true best-five category (a pair on the board with
    no hole-card involvement is still a *pair*) and the ``detail`` says how the
    hole cards participate, which is what separates top pair from a board pair.
+   An unpaired holding that had a flush or straight draw on the flop or turn is
+   a *draw* rather than *high_card*, so the high-card row reads as real air.
 
 Pure functions over card strings; nothing here touches the database.
 """
@@ -25,6 +27,8 @@ RANK_VALUE = {r: 14 - i for i, r in enumerate(RANKS)}  # A=14 ... 2=2
 VALUE_RANK = {v: r for r, v in RANK_VALUE.items()}
 
 #: Made-hand classes, strongest first. The order is the sort order in reports.
+#: ``draw`` is never returned by `made_class`; `made_hand` produces it for a
+#: high-card holding that had a draw on the flop or turn.
 MADE_CLASSES = (
     "straight_flush",
     "quads",
@@ -34,8 +38,12 @@ MADE_CLASSES = (
     "trips",
     "two_pair",
     "pair",
+    "draw",
     "high_card",
 )
+
+#: Every ``detail`` a ``draw`` can carry, strongest first.
+DRAW_DETAILS = ("combo_draw", "flush_draw", "open_ender", "gutshot")
 
 
 class Card(NamedTuple):
@@ -109,7 +117,7 @@ ALL_CLASSES: tuple[str, ...] = tuple(label for row in grid_labels() for label in
 
 class MadeHand(NamedTuple):
     cls: str  # one of MADE_CLASSES, or "no_board" when fewer than three board cards
-    detail: str | None  # how the hole cards take part; see `made_hand`
+    detail: str | None  # how the hole cards take part, or which draw; see `made_hand`
 
 
 def _straight_high(values: set[int]) -> int | None:
@@ -122,6 +130,65 @@ def _straight_high(values: set[int]) -> int | None:
         if all(v in vs for v in range(high - 4, high + 1)):
             best = high
     return best
+
+
+def _straight_outs(hole: list[Card], board: list[Card]) -> int:
+    """Ranks that would complete a straight using at least one hole card.
+
+    Only meaningful for an unpaired, unmade holding: with no straight present,
+    every straight in ``values | {r}`` contains ``r``, so the count is exactly
+    the number of distinct out ranks. A four-straight on the board that the
+    hole cards do not take part in is not the player's draw and is not counted.
+    """
+    board_values = {c.value for c in board}
+    values = board_values | {c.value for c in hole}
+    hole_only = {c.value for c in hole} - board_values
+    if 14 in hole_only:
+        hole_only.add(1)  # the ace plays low in A-2-3-4-5
+    outs = 0
+    for r in range(2, 15):
+        if r in values:
+            continue
+        vs = values | {r}
+        if 14 in vs:
+            vs.add(1)
+        for high in range(5, 15):
+            window = set(range(high - 4, high + 1))
+            if window <= vs and window & hole_only:
+                outs += 1
+                break
+    return outs
+
+
+def _flush_draw(hole: list[Card], board: list[Card]) -> bool:
+    """Exactly four to a suit, at least one of them a hole card."""
+    by_suit = Counter(c.suit for c in hole + board)
+    hole_suits = {c.suit for c in hole}
+    return any(n == 4 and s in hole_suits for s, n in by_suit.items())
+
+
+def draw_detail(hole: list[Card], board: list[Card]) -> str | None:
+    """The strongest draw an unpaired holding has on this board, or None.
+
+    - ``combo_draw``  a flush draw plus any straight draw
+    - ``flush_draw``  four to a suit including a hole card
+    - ``open_ender``  two ranks complete a straight (open-ended or double gutshot)
+    - ``gutshot``     one rank completes a straight
+
+    Meant for a holding whose best five is high card; on a made hand the
+    straight-out count is not meaningful.
+    """
+    fd = _flush_draw(hole, board)
+    outs = _straight_outs(hole, board)
+    if fd and outs >= 1:
+        return "combo_draw"
+    if fd:
+        return "flush_draw"
+    if outs >= 2:
+        return "open_ender"
+    if outs == 1:
+        return "gutshot"
+    return None
 
 
 def made_class(cards: list[Card]) -> str:
@@ -165,7 +232,19 @@ def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[
     - ``board_pair``   the pair is entirely on the board; the hole cards add nothing
 
     For **trips**: ``set`` (pocket pair + one board card) or ``trips`` (one hole
-    card + a board pair). Every other class has ``detail = None``.
+    card + a board pair).
+
+    A holding that is only **high_card** on the final board becomes a **draw**
+    when it had one on the flop or the turn, with ``detail`` naming the draw
+    (see `draw_detail`): ``combo_draw``, ``flush_draw``, ``open_ender`` or
+    ``gutshot``. Draws are read on the turn board (or the flop, when the hand
+    ended there); since the final hand is unmade, the turn's draws include the
+    flop's. A busted draw on the river is still a draw -- that is what the
+    player was betting with. A draw must use a hole card; four to a flush or a
+    four-straight sitting on the board alone does not count. Any pair or better
+    keeps its class even with a draw.
+
+    Every other class has ``detail = None``.
     """
     h = parse_cards(hole)
     b = parse_cards(board)
@@ -173,6 +252,9 @@ def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[
         return MadeHand("no_board", None)
 
     cls = made_class(h + b)
+    if cls == "high_card":
+        d = draw_detail(h, b[:4])
+        return MadeHand("draw", d) if d else MadeHand("high_card", None)
     if cls not in ("pair", "trips"):
         return MadeHand(cls, None)
 

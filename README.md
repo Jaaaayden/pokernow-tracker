@@ -171,6 +171,10 @@ pair                        3   42.9    2     36.0
   top_pair                  1   14.3    1     15.1
 ```
 
+Unpaired hands split into `draw` (a flush or straight draw on the flop or turn,
+with the kind of draw as the detail) and `high_card`, so the high-card row is
+real air.
+
 A line is just a longer filter. The new terms are `opener`, `pfa` (preflop
 aggressor), `limped` / `srp` / `3bet_pot` / `4bet_pot`, and comparisons on
 `open_bb`, `raise_bb` (the player's own preflop raise-to) and `bet_flop` /
