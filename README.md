@@ -184,6 +184,13 @@ Postflop responses are flags per street: `folded_to_cbet_turn`,
 `raised_cbet_flop` and `donk_flop` (betting into the previous street's aggressor
 before they act).
 
+All-ins are flags too, preflop included: `jam` / `jam_river` (bet or raised all in),
+`faced_jam` / `faced_jam_turn`, and `called_jam` / `called_jam_preflop`. To check
+someone's river bluffing, open the chart on `jam_river` under **Made hands** and
+see how much is air, then read coverage: a jam everyone folds to is never shown,
+so the bluffs that worked are missing. The **Jammed** and **Called jam** chip rows
+on the chart write these terms for you.
+
 What they bet each size *with* is its own view:
 
 ```bash

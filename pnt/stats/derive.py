@@ -170,6 +170,13 @@ class Facts:
     bet_size: dict[str, str] = field(default_factory=dict)
     #: The bucket of the c-bet this player faced, on streets where they faced one.
     faced_cbet_size: dict[str, str] = field(default_factory=dict)
+    #: Went all-in with a bet or raise, per street, preflop included. An all-in
+    #: call is not a jam. See SPEC.md, "Jams".
+    jam: dict[str, bool] = field(default_factory=dict)
+    #: Acted while the street's latest bet or raise was someone else's jam.
+    faced_jam: dict[str, bool] = field(default_factory=dict)
+    #: Called that jam.
+    called_jam: dict[str, bool] = field(default_factory=dict)
 
     # --- who they were up against, and whether they closed the action --------
     #: The other players still in at this player's last action, in postflop
@@ -333,6 +340,29 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         prev_aggressor = street_aggressor
 
 
+def _jams(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Who jammed on each street, and who faced and called those jams.
+
+    A jam stays the thing to answer until someone raises over it with chips behind;
+    a second all-in over the top becomes the new jam. Forced posts never jam: an
+    all-in blind is not a decision.
+    """
+    for street in (PREFLOP, *POSTFLOP_STREETS):
+        jammer: str | None = None
+        for a in hand.actions:
+            if a.street != street or a.is_forced:
+                continue
+            f = facts.get(a.pn_id)
+            if jammer is not None and a.pn_id != jammer and f is not None:
+                f.faced_jam[street] = True
+                if a.kind == "call":
+                    f.called_jam[street] = True
+            if a.kind in AGGRESSIVE:
+                jammer = a.pn_id if a.all_in else None
+                if a.all_in and f is not None:
+                    f.jam[street] = True
+
+
 def _seat_ranks(hand: HandRow) -> dict[str, int]:
     """Postflop acting order from the button: small blind first, button last.
 
@@ -440,6 +470,7 @@ def derive(hand: HandRow) -> list[Facts]:
 
     aggressor = _preflop(hand, facts)
     _postflop(hand, facts, aggressor)
+    _jams(hand, facts)
     _table(hand, facts)
 
     folded_preflop = {

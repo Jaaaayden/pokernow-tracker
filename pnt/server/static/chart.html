@@ -223,6 +223,7 @@
   </div>
   <div class="presets" id="presets"></div>
   <div class="lines" id="lines"></div>
+  <div class="lines" id="jams"></div>
   <div class="presets textures" id="textures"><span class="lbl">Flop</span></div>
 
   <div class="tiles">
@@ -348,6 +349,13 @@
     ["paired", "paired"], ["unpaired", "unpaired"], null,
     ["connected", "connected"], ["disconnected", "disconnected"], ["all broadway", "all_broadway"],
   ];
+  // Jam chips: one row for jamming, one for calling a jam. Each row holds at most
+  // one term, `jam` for any street or `jam_<street>` for one.
+  const JAM_ROWS = [["Jammed", "jam", "bet or raised all-in"], ["Called jam", "called_jam", "called someone's all-in"]];
+  const JAM_STREETS = ["preflop", "flop", "turn", "river"];
+  const jamPattern = (key) => new RegExp(`^${key}(_(${JAM_STREETS.join("|")}))?$`);
+  const JAM_TERM = /^(faced_|called_)?jam(_\w+)?$/;
+  const JAM_NOTE = "A jam everyone folds to is never shown, so a jam range that looks like all value may only mean the bluffs got through.";
   const terms = () => $("filter").value.split(",").map(t => t.trim()).filter(Boolean);
   const hasTerm = (t) => terms().includes(t);
   function toggleTerm(t) {
@@ -361,6 +369,14 @@
     const cur = terms();
     const pressed = cur.includes(term);
     const next = cur.filter(t => t !== key && !t.startsWith(key + "="));
+    if (!pressed) next.push(term);
+    $("filter").value = next.join(",");
+  }
+  // The same for a jam row, whose terms are `key` and `key_<street>`.
+  function setJamTerm(key, term) {
+    const cur = terms();
+    const pressed = cur.includes(term);
+    const next = cur.filter(t => !jamPattern(key).test(t));
     if (!pressed) next.push(term);
     $("filter").value = next.join(",");
   }
@@ -533,7 +549,8 @@
     const view = state.by;
     if (view === "sizing") renderSizingTiles(d); else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
-    $("note").textContent = view === "sizing" ? KIND_NOTE[d.kind] : RANGE_NOTE;
+    $("note").textContent = view === "sizing" ? KIND_NOTE[d.kind]
+      : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? `${RANGE_NOTE} ${JAM_NOTE}` : RANGE_NOTE;
     $("colorseg").classList.toggle("hidden", view !== "preflop");
     $("sizingctl").classList.toggle("hidden", view !== "sizing");
     $("card-title").textContent = TITLE[view];
@@ -1140,6 +1157,18 @@
       row.appendChild(b);
     }
     $("lines").appendChild(row);
+  }
+  for (const [name, key, what] of JAM_ROWS) {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = name; lbl.title = what;
+    row.appendChild(lbl);
+    for (const [text, term] of [["any", key], ...JAM_STREETS.map(s => [s, `${key}_${s}`])]) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = term;
+      b.dataset.term = term;
+      b.addEventListener("click", () => { setJamTerm(key, term); apply(); });
+      row.appendChild(b);
+    }
+    $("jams").appendChild(row);
   }
   for (const t of TEXTURES) {
     if (!t) { const s = document.createElement("span"); s.className = "sep"; $("textures").appendChild(s); continue; }

@@ -16,6 +16,8 @@ flop half pot, c-bet the turn, overbet the river" is::
 
 The pot and the opposition are terms too: `pot>=500` keeps the hands whose final
 pot reached 500 chips, and `vs=henry` the hands played against henry.
+`jam_river` keeps river all-ins, the spot for reading bluffs against value, and
+`called_jam` the other side of it.
 """
 
 from __future__ import annotations
@@ -70,6 +72,13 @@ for _s in STREETS:
     FLAGS[f"raised_cbet_{_s}"] = lambda f, s=_s: bool(f.raise_cbet.get(s))
     FLAGS[f"donk_{_s}"] = lambda f, s=_s: bool(f.donk.get(s))
     FLAGS[f"donk_{_s}_opp"] = lambda f, s=_s: bool(f.donk_opp.get(s))
+
+# Jams: all-in bets and raises, and the players who faced and called them. Preflop
+# counts here, unlike the postflop terms above.
+for _name in ("jam", "faced_jam", "called_jam"):
+    FLAGS[_name] = lambda f, n=_name: any(getattr(f, n).values())
+    for _s in ("preflop", *STREETS):
+        FLAGS[f"{_name}_{_s}"] = lambda f, n=_name, s=_s: bool(getattr(f, n).get(s))
 
 #: name -> getter for the comparison terms (`open_bb>=4`, `bet_river>=1`).
 #: A getter returning None means "not applicable on this hand", and every
@@ -250,6 +259,17 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("faced_cbet_<street>=SIZE", "faced_cbet_flop=small", "faced a c-bet that size"),
         ("bet_<street>>=N", "bet_river>=1", "first bet, as a pot fraction"),
     )),
+    ("All-in", (
+        ("jam", "jam", "bet or raised all-in, any street"),
+        ("jam_preflop", "jam_preflop", "jammed preflop"),
+        ("jam_<street>", "jam_river", "jammed that street"),
+        ("faced_jam", "faced_jam", "acted facing someone's jam"),
+        ("faced_jam_preflop", "faced_jam_preflop", "faced a preflop jam"),
+        ("faced_jam_<street>", "faced_jam_river", "faced a jam on that street"),
+        ("called_jam", "called_jam", "called a jam, any street"),
+        ("called_jam_preflop", "called_jam_preflop", "called a preflop jam"),
+        ("called_jam_<street>", "called_jam_river", "called a jam on that street"),
+    )),
     ("Board", (
         ("flop=TEXTURE", "flop=monotone", "the flop has that texture"),
         ("turn=TEXTURE", "turn=paired", "the board through the turn"),
@@ -317,6 +337,8 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
       ``bet_river>=1``       this player's first river bet, as a fraction of the pot
       ``pot>=500``           the final pot was at least 500 chips; ``pot_bb>=50`` in blinds
       ``vs=henry``           henry was still in when this player last acted; ``vs!=`` negates
+      ``jam_river``          bet or raised all-in on the river; also ``jam``, ``faced_jam_<street>``
+                             and ``called_jam_<street>``, preflop included
       ``cbet_flop=medium``   a flop c-bet in that size bucket; also bet_<street>= and
                              faced_cbet_<street>=, with small/medium/large/overbet
       ``flop=ace_high``      board texture on the flop; also turn=, river=, board=, and !=

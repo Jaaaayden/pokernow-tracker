@@ -239,6 +239,26 @@ therefore `bet_river` (the flag) or `bet_river>=1` (the size).
 match a limped pot; the hand has no open size, so it cannot satisfy any claim
 about one.
 
+### Jams
+
+A jam is an all-in `bet` or `raise`, the `(all in)` PokerNow writes on the line.
+All three facts are kept per street, preflop included.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **jam[street]** | Made a voluntary `bet` or `raise` flagged all in | An all-in *call* is not a jam; neither is an all-in forced post (rule 1) |
+| **faced_jam[street]** | Acted while the street's latest bet or raise was someone else's jam | A raise over it with chips behind ends it; a second jam over the top becomes the one faced. Raising earlier in the street does not exempt a player |
+| **called_jam[street]** | Faced a jam and called | Includes a call that puts the caller all in |
+
+Filters: `jam`, `faced_jam` and `called_jam` for any street, and `jam_river`,
+`called_jam_preflop` and so on for one.
+
+**A jam range is short of bluffs.** A jam everyone folds to is never shown, and
+that is exactly where a bluff succeeds. A `jam_river` range that is all value can
+mean the player only jams value, or only that their bluffs got through. Read coverage
+before reading balance. `called_jam` ranges suffer much less from this, since a
+called jam almost always reaches showdown.
+
 ### Board texture
 
 `flop=<tag>`, `turn=<tag>`, `river=<tag>` and `board=<tag>` (the board as dealt,
