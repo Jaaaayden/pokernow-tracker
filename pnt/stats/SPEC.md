@@ -320,7 +320,14 @@ A range view is a filter, then a bucketing of the hands whose cards are known:
 - `preflop`: the 169 starting-hand classes, laid out as the standard 13x13 chart.
 - `made`: best-five strength on the final board (first run for run-it-twice),
   with a `detail` for pairs (overpair / top / middle / bottom / pocket / board
-  pair) and trips (set vs trips).
+  pair) and trips (set vs trips). A holding that is only high card becomes a
+  `draw` if it had one on the flop or turn, with a `detail` of `combo_draw`
+  (flush plus straight draw), `flush_draw`, `open_ender` (any two-rank straight
+  draw, double gutshots included) or `gutshot`. Draws are read on the turn board,
+  or the flop when the hand ended there, so a draw that missed on the river still
+  counts. A draw must use a hole card; a four-flush or four-straight sitting on
+  the board alone does not. Any pair or better keeps its class even with a draw.
+  `draw` sorts between `pair` and `high_card`.
 
 **Coverage** (`known / hands`) is reported alongside and is the honest part.
 Cards are known only when shown, and hands are shown when they reach showdown.
@@ -369,6 +376,36 @@ Re-importing the finished export repairs the hand and it rejoins.
 On the 6,255-hand database this was developed against, excluding the two truncated
 hands moves the whole-table ledger from −3.29 bb to −0.43 bb of 10,731 bb gross,
 and every one of the 6,253 complete hands conserves chips exactly.
+
+### All-in EV
+
+What a player's all-ins were *worth* beside what they *took*. `equity.py` computes
+the equities and `allin.py` turns them into rows; the page and `pnt allin` read those.
+
+```
+expected  = Σ over pots of  pot × P(this player wins the pot among its eligible players)
+adjusted  = expected  − contributed + bounty
+actual    = collected − contributed + bounty        (the `net` above, unchanged)
+diff      = actual − adjusted                        positive ran above expectation
+equity    = expected / pot                           share of the whole pot
+```
+
+| Term | Definition |
+|---|---|
+| **Population** | Complete hands that reached showdown with at least one all-in action, where every unfolded player's cards are known. One row per (hand, unfolded player). A hand with a mucked live hand is *counted* as `skipped.cards_unknown`, never silently dropped. Folded players have no row: they have no claim on the pot |
+| **Decision point** | The street of the last voluntary action -- where the betting stopped. The board is the first run's cards dealt by then: 0, 3, 4 or 5. A run-it-twice second board repeats that prefix, so the first run is what everyone saw when they committed |
+| **Pots** | Layered from `contributed` (which already excludes uncalled returns): the distinct amounts the live players put in are the layers, each open to the live players who reached it. Every chip is in some pot, a folded player's included; Σ pots = `pot` by construction. A layer only one player reached is folded into the pot below it -- see judgement call 15 |
+| **Method** | `exact` when two or fewer cards are to come (990 boards after a flop all-in, 44 after a turn one, 1 on the river); `sampled` preflop, 50,000 deals from a generator seeded by the cards and pots, so the same hand always gets the same answer and its error stays under a quarter of a percent |
+
+Because `actual` is the same `net` every other view prints, the two lines on the page
+differ only where the deck did something: **within one hand the `diff`s sum to zero.**
+A river all-in has no cards to come, so its equity is 0, ½ or 1 and its `diff` is 0;
+those rows stay in the population so `actual` covers every all-in showdown, and the
+by-street split shows where the variance actually was.
+
+Equities depend on cards and pot layout alone -- never on a hand id or an identity --
+so they are memoized in `equity_cache`, the one derived table in the schema. It is
+disposable: drop it and the next request refills it, with identical numbers.
 
 ---
 
@@ -427,3 +464,22 @@ archaeology.
     so gpP closes the action, while the seat labels say FQN is on the button and
     therefore last. The seat labels are the ones that are wrong, which is exactly
     what call 4 warns about.
+12. **All-in EV is measured from the last voluntary action, for everyone in the
+    hand.** When a short stack is all in preflop and two others keep betting to
+    the turn, the short stack's equity is taken on the turn board too, not on the
+    preflop one. What happened between was other people's decisions, and the one
+    board every pot was decided on is the one where the betting stopped. Thirteen
+    hands in the 8,036-hand database are like this.
+13. **River all-ins stay in the all-in EV population with a `diff` of zero**, and
+    bounties are in both `actual` and `adjusted`, so `diff` is pure variance.
+14. **Preflop equity is sampled, not enumerated.** 1.7 million boards heads-up is
+    fifteen seconds of pure Python per hand; 50,000 seeded deals is half a second
+    and reproducible, with an error smaller than a single chip on any pot in the
+    corpus. Every row says which it was.
+15. **Chips only one player could win go with the pot below.** PokerNow sometimes
+    lets a caller put in a few chips more than the all-in and returns nothing: in
+    hand #73 of `pgl8vNV4WURe` the caller put in 915 against 910, and the winner
+    collected all 1,945. Treated as a side pot of 5 that only the caller could win,
+    the hand would show a 5-chip gap on a river all-in, where there is no gap to
+    have. It is paid where PokerNow paid it. The one other river gap in the
+    database is the odd chip of a chopped pot, which is real and half a chip.

@@ -169,6 +169,22 @@ CREATE TABLE IF NOT EXISTS voluntary_shows (
     FOREIGN KEY (hand_id, pn_id) REFERENCES hand_players(hand_id, pn_id) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+-- ------------------------------------------------------- derived (layer 3) ---
+
+-- Showdown equities, memoized. DERIVED and DISPOSABLE: drop the table and the
+-- next all-in EV request refills it. It is the one exception to "nothing derived
+-- is stored", and it is safe because the key is the cards and the pot layout
+-- alone -- never a hand_id or an identity -- so no rebuild, merge or rename can
+-- make a row wrong. A preflop all-in costs half a second of sampling; without
+-- this the page would pay that for every hand on every request.
+CREATE TABLE IF NOT EXISTS equity_cache (
+    key         TEXT PRIMARY KEY,   -- hole cards | board | pot layout (equity.cache_key)
+    expected    TEXT NOT NULL,      -- JSON list: expected chips collected, per player
+    method      TEXT NOT NULL,      -- exact | sampled
+    n           INTEGER NOT NULL,   -- boards enumerated, or deals sampled
+    computed_at TEXT NOT NULL
+) WITHOUT ROWID;
+
 -- ------------------------------------------------------------------ views ----
 
 -- Resolves the identity layer once so every stat query can join on player_id

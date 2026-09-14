@@ -284,6 +284,7 @@
 </main>
 <div class="tip" id="tip" role="tooltip"></div>
 
+<script src="/replay.js"></script>
 <script>
 (() => {
   // ---- palette (reference instance; one hue per job) ----------------------
@@ -318,12 +319,10 @@
   // Bet-size buckets; see "Bet size buckets" in SPEC.md. PokerNow's 1/2, 3/4 and
   // pot buttons each start a bucket.
   const SIZES = [["<½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
-  const SIZE_LABEL = { small: "under ½ pot", medium: "½–¾ pot", large: "¾ pot to pot", overbet: "overbet", check: "checked" };
+  // The size words, the bucket rule and card formatting live with the replay
+  // renderer (replay.js), which the all-in page shares.
+  const { SIZE_LABEL, pretty } = pntReplay;
   const SHORT_SIZE = Object.fromEntries(SIZES.map(([t, b]) => [b, t]));
-  // Mirrors size_bucket() in derive.py, for labelling bets in a replay.
-  const bucketOf = (amount, pot) => amount > pot ? "overbet"
-    : amount >= Math.floor(0.75 * pot) ? "large"
-    : amount >= Math.floor(0.5 * pot) ? "medium" : "small";
 
   // Postflop line chips: one row per street, each holding at most one term, so
   // picking a size replaces "any" or another size on that street.
@@ -513,8 +512,6 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
-  const SUIT = { s: "♠", h: "♥", d: "♦", c: "♣" };
-  const pretty = (cards) => cards.replace(/([2-9TJQKA])([shdc])/g, (_, r, s) => r + SUIT[s] + " ").trim();
   // How each cell's habitual size was decided; see typical_size() in ranges.py.
   const BASIS = {
     mean: "mean; these raises agree",
@@ -950,86 +947,8 @@
     }
   }
 
-  async function showReplay(id) {
-    const box = $("replay");
-    box.classList.remove("hidden");
-    box.replaceChildren(message("loading…"));
-    try {
-      renderReplay(await getJson(`/hands/${id}`));
-    } catch (e) {
-      box.replaceChildren(message(String(e.message || e), "err"));
-    }
-  }
-
-  function renderReplay(d) {
-    const box = $("replay");
-    box.replaceChildren();
-    const h = d.hand;
-    const bb = h.bb_effective || h.bb;
-    const name = (id) => d.names?.[id] || id;
-    const amt = (chips) => bb ? `${+(chips / bb).toFixed(2)}bb` : `${chips}`;
-    const runs = JSON.parse(h.board_json || "[]");
-    const board = runs[0] || [];
-
-    const title = document.createElement("h3");
-    title.textContent = `Hand #${h.hand_number}`;
-    const sub = document.createElement("small");
-    sub.textContent = [h.game_id, h.ts, `${h.n_dealt_in} dealt in`].filter(Boolean).join(" · ");
-    title.appendChild(sub);
-    box.appendChild(title);
-
-    const who = document.createElement("p"); who.className = "who";
-    who.textContent = d.players.map(p => {
-      const net = p.collected - p.contributed + (p.bounty || 0);
-      return `${name(p.pn_id)}${p.hole_cards ? " " + pretty(p.hole_cards) : ""} ${net ? amt(net).replace(/^(?!-)/, "+") : "±0"}`;
-    }).join("  ·  ");
-    box.appendChild(who);
-
-    const STREETS = [["preflop", 0], ["flop", 3], ["turn", 4], ["river", 5]];
-    let pot = 0;
-    for (const [street, cards] of STREETS) {
-      const acts = d.actions.filter(a => a.street === street);
-      if (!acts.length && board.length < cards) continue;
-      const sec = document.createElement("div"); sec.className = "street";
-      const b = document.createElement("b"); b.textContent = street;
-      const info = document.createElement("span");
-      const dealt = street === "flop" ? board.slice(0, 3) : street === "turn" ? board.slice(3, 4) : street === "river" ? board.slice(4, 5) : [];
-      info.textContent = [dealt.length ? pretty(dealt.join("")) : "", street === "preflop" ? "" : `pot ${amt(pot)}`].filter(Boolean).join(" · ");
-      info.classList.add("cards");
-      sec.append(b, info);
-      const ol = document.createElement("ol");
-      for (const a of acts) {
-        const li = document.createElement("li");
-        li.textContent = actionText(a, pot, name, amt, street);
-        if (a.is_forced) li.className = "forced";
-        pot += a.amount;
-        ol.appendChild(li);
-      }
-      if (acts.length) sec.appendChild(ol);
-      box.appendChild(sec);
-    }
-    if (runs.length > 1) box.appendChild(message(`second run: ${pretty(runs[1].join(""))}`));
-    if (d.voluntary_shows?.length) {
-      box.appendChild(message("shown after the hand: " + d.voluntary_shows.map(s => `${name(s.pn_id)} ${pretty(s.cards)}`).join(", ")));
-    }
-  }
-
-  function actionText(a, potBefore, name, amt, street) {
-    const who = name(a.pn_id);
-    const allIn = a.all_in ? " (all-in)" : "";
-    switch (a.action_type) {
-      case "post": return `${who} posts ${a.post_kind ? a.post_kind.replace(/_/g, " ") + " " : ""}${amt(a.amount)}`;
-      case "fold": return `${who} folds`;
-      case "check": return `${who} checks`;
-      case "call": return `${who} calls ${amt(a.amount)}${allIn}`;
-      case "bet": {
-        const size = street !== "preflop" && potBefore > 0 ? ` (${SIZE_LABEL[bucketOf(a.amount, potBefore)]})` : "";
-        return `${who} bets ${amt(a.amount)} into ${amt(potBefore)}${size}${allIn}`;
-      }
-      case "raise": return `${who} raises to ${amt(a.amount_to ?? a.amount)}${allIn}`;
-      default: return `${who} ${a.action_type} ${amt(a.amount)}`;
-    }
-  }
+  // The replay itself is replay.js, shared with the all-in page.
+  const showReplay = (id) => pntReplay.show($("replay"), id);
 
   function closeHands() {
     $("hands").classList.add("hidden");

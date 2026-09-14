@@ -91,6 +91,8 @@ class HandRow:
     actions: list[HandAction]
     #: First run of the board. Run-it-twice hands classify on run one only.
     board: tuple[str, ...] = ()
+    #: How many boards were dealt: 2 when the players ran it twice.
+    run_count: int = 1
 
 
 @dataclass(slots=True)

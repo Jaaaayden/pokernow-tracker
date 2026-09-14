@@ -309,9 +309,56 @@ def test_spot_help_lists_every_term(client):
     script = client.get("/filter-help.js")
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("text/javascript")
-    for page in ("/chart", "/stats.html"):
+    for page in ("/chart", "/stats.html", "/allin.html"):
         assert "/filter-help.js" in client.get(page).text
 
 
 def test_chart_page_links_to_the_stats_page(client):
     assert "/stats.html" in client.get("/chart").text
+
+
+@pytest.fixture()
+def fast_sampling(monkeypatch):
+    from pnt.stats import equity
+
+    monkeypatch.setattr(equity, "SAMPLES", 2000)
+
+
+def test_allin_serves_json_to_scripts_and_a_page_to_browsers(client, fast_sampling):
+    rows = client.get("/allin").json()
+    assert rows
+    assert {"player", "hands", "net_bb", "adjusted_bb", "diff_bb", "by_street", "skipped"} <= set(rows[0])
+    fewer = client.get("/allin", params={"min_hands": 5}).json()
+    assert 0 < len(fewer) <= len(rows) and all(r["hands"] >= 5 for r in fewer)
+    assert client.get("/allin", params={"filter": "nope"}).status_code == 400
+    page = client.get("/allin", headers={"accept": "text/html"})
+    assert page.headers["content-type"].startswith("text/html")
+    assert client.get("/allin.html").text == page.text
+    assert "/players/" in page.text and "/allin" in page.text
+
+
+def test_player_allin_drilldown(client, fast_sampling):
+    body = client.get("/players/genericpoker/allin").json()
+    assert body["player"] == "genericpoker" and body["hands"]
+    row = body["hands"][0]
+    assert {"equity", "expected", "actual_bb", "adjusted_bb", "diff_bb", "villains", "board", "method"} <= set(row)
+    assert client.get("/players/ghost/allin").status_code == 404
+    assert client.get("/players/genericpoker/allin", params={"filter": "nope"}).status_code == 400
+    vs = client.get("/players/genericpoker/allin", params={"filter": "vs=Chris"}).json()
+    assert vs["hands"] and all(v["player"] == "Chris" for h in vs["hands"] for v in h["villains"])
+
+
+def test_the_replay_renderer_is_one_script_shared_by_both_pages(client):
+    script = client.get("/replay.js")
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert "pntReplay" in script.text
+    for page in ("/chart", "/allin.html"):
+        assert "/replay.js" in client.get(page).text
+    assert "function renderReplay" not in client.get("/chart").text
+
+
+def test_the_front_door_links_every_page(client):
+    text = client.get("/").text
+    for href in ("/stats.html", "/chart", "/players.html", "/allin.html"):
+        assert href in text
