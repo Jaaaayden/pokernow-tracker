@@ -51,7 +51,8 @@
   .note b, .note strong { color: var(--ink); font-weight: 600; }
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 12px 12px; overflow-x: auto; }
   .card.loading { opacity: .45; transition: opacity .15s; }
-  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 4px 0 8px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 4px 0 8px; flex-wrap: wrap; }
+  .card-head .ctl { display: inline-flex; gap: 6px; flex-wrap: wrap; }
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
@@ -170,7 +171,14 @@
   <section class="card hidden" id="detail" aria-live="polite">
     <div class="card-head">
       <h2><span id="detail-title"></span> <small id="detail-count"></small></h2>
-      <button id="detail-close">Close</button>
+      <span class="ctl">
+        <select id="hands-sort" aria-label="Order">
+          <option value="newest">newest first</option>
+          <option value="pot">biggest pot first</option>
+          <option value="swing">biggest swing first</option>
+        </select>
+        <button id="detail-close">Close</button>
+      </span>
     </div>
     <div class="legend">
       <span><i></i>actual</span><span><i class="adjusted"></i>adjusted</span>
@@ -205,7 +213,8 @@
 
   const STREETS = ["preflop", "flop", "turn", "river"];
   const STREET_HEAD = { preflop: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
-  const state = { filter: "", min: 5, unit: "bb", sort: "hands", dir: -1, player: null, rows: [], detail: null };
+  const state = { filter: "", min: 5, unit: "bb", sort: "hands", dir: -1, player: null, handSort: "newest", rows: [], detail: null };
+  const HAND_ORDERS = ["newest", "pot", "swing"];
 
   const readUrl = () => {
     const q = new URLSearchParams(location.search);
@@ -215,6 +224,7 @@
     state.sort = q.get("sort") || "hands";
     state.dir = q.get("dir") === "asc" ? 1 : -1;
     state.player = q.get("player") || null;
+    state.handSort = HAND_ORDERS.includes(q.get("order")) ? q.get("order") : "newest";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -224,6 +234,7 @@
     if (state.sort !== "hands") q.set("sort", state.sort);
     if (state.dir === 1) q.set("dir", "asc");
     if (state.player) q.set("player", state.player);
+    if (state.handSort !== "newest") q.set("order", state.handSort);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
     const c = new URLSearchParams();
@@ -492,13 +503,24 @@
     el.appendChild(svg);
   }
 
-  // Newest first, like every other hand list; the graph reads the same hands
-  // oldest first.
+  // The server lists oldest first, which is what the graph reads. The list
+  // shows newest first like every other hand list, or biggest pot first, or
+  // biggest swing first: the hands where the deck moved the most, in the unit
+  // on screen. Ties keep newest first.
+  function orderedHands(hands) {
+    const rows = [...hands].reverse();
+    const pot = (h) => h.bb ? h.pot / h.bb : h.pot;
+    const swing = (h) => Math.abs(h[unitKey("diff")] ?? 0);
+    if (state.handSort === "pot") rows.sort((a, b) => pot(b) - pot(a));
+    if (state.handSort === "swing") rows.sort((a, b) => swing(b) - swing(a));
+    return rows;
+  }
+
   function renderHandRows(hands) {
     const list = $("hand-rows");
     list.replaceChildren();
     if (!hands.length) { list.appendChild(message("no hands")); return; }
-    for (const h of [...hands].reverse()) {
+    for (const h of orderedHands(hands)) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "hand-row"; b.dataset.hand = h.hand_id;
       b.setAttribute("aria-pressed", "false");
@@ -565,11 +587,17 @@
     writeUrl(); render(); renderDetail();
   }));
   $("detail-close").addEventListener("click", closeDetail);
+  $("hands-sort").addEventListener("change", () => {
+    state.handSort = $("hands-sort").value;
+    writeUrl();
+    if (state.detail) renderHandRows(state.detail.hands);
+  });
 
   readUrl();
   $("filter").value = state.filter;
   $("minhands").value = state.min;
   document.querySelectorAll("[data-unit]").forEach(x => x.setAttribute("aria-pressed", x.dataset.unit === state.unit));
+  $("hands-sort").value = state.handSort;
   writeUrl();
   load();
 })();

@@ -280,7 +280,8 @@ where a live player mucked are counted as skipped rather than guessed at.
 The page is [http://127.0.0.1:52000/allin](http://127.0.0.1:52000/allin): the same
 table, in bb or chips, split by the street the betting stopped on, and a click on a
 player draws their cumulative actual and adjusted lines over every all-in hand,
-lists those hands with cards, board, equity and pot, and replays any of them. The
+lists those hands with cards, board, equity and pot (newest, biggest pot or biggest
+swing first), and replays any of them. The
 Spot box takes every filter the other pages do. Equities are computed once and kept
 in the database (`equity_cache`, the one derived table, safe to drop), so the first
 `pnt allin` or page load after an import takes about half a second per preflop
