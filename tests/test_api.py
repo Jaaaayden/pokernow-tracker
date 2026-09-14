@@ -84,6 +84,48 @@ def test_ingest_new_game_then_query(client, tmp_path):
     assert sum(r["hands"] for r in rows) == 188 * 2  # two seats per heads-up hand
 
 
+def test_live_capture_keeps_a_csv_of_the_game_in_the_log_folder(client):
+    """The folder is a running record: a captured game lands there as an export."""
+    from pnt.ingest import log_folder
+
+    rows = read_csv(HU)
+    first, rest = rows[:1500], rows[1500:]
+    wire = lambda es: [{"entry": e.entry, "at": e.at, "order": e.ord} for e in es]
+
+    client.post("/ingest", json={"game_id": "live-game", "entries": wire(first)})
+    path = log_folder.log_path(log_folder.LOG_DIR, "live-game")
+    assert read_csv(path) == first
+
+    # The extension's history walk: ingest without rebuilding, then rebuild once.
+    client.post("/ingest", json={"game_id": "live-game", "entries": wire(rest), "rebuild": False})
+    assert read_csv(path) == first  # nothing written until the game is rebuilt
+    client.post("/rebuild/live-game")
+    assert read_csv(path) == rows
+
+
+def test_saving_logs_can_be_turned_off(client, monkeypatch):
+    from pnt.ingest import log_folder
+    from pnt.server import app as app_module
+
+    monkeypatch.setattr(app_module, "SAVE_LOGS", False)
+    entries = [{"entry": e.entry, "at": e.at, "order": e.ord} for e in read_csv(HU)]
+    client.post("/ingest", json={"game_id": "unsaved", "entries": entries})
+    assert not log_folder.log_path(log_folder.LOG_DIR, "unsaved").exists()
+    assert client.get("/health").json()["log_folder"] is None
+
+
+def test_a_log_folder_that_cannot_be_written_never_fails_capture(client, monkeypatch, tmp_path):
+    from pnt.ingest import log_folder
+
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("a file where the folder should be")
+    monkeypatch.setattr(log_folder, "LOG_DIR", blocker)
+    entries = [{"entry": e.entry, "at": e.at, "order": e.ord} for e in read_csv(HU)]
+    r = client.post("/ingest", json={"game_id": "still-captured", "entries": entries})
+    assert r.status_code == 200
+    assert r.json()["hands"] == 188
+
+
 def test_hud_endpoint_keys_by_pn_id_not_seat(client):
     body = client.get(f"/hud/{HU_GAME}").json()
     assert body["seats"]

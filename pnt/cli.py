@@ -14,6 +14,7 @@ import typer
 
 from . import service as svc
 from .db.conn import DEFAULT_DB, connect
+from .ingest import fetch as fetchmod
 from .ingest.importer import (
     apply_aliases,
     export_aliases,
@@ -23,6 +24,7 @@ from .ingest.importer import (
     rename_player,
     split_identities,
 )
+from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
 from .stats.filters import parse_filter
 from .stats.queries import display_names, facts_for, positional_report, report
@@ -38,15 +40,14 @@ app.add_typer(service_app, name="service")
 
 DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
 
-#: Where PokerNow exports are kept, when you do not say. One folder, so `pnt import`
+#: LOG_DIR (from `ingest/log_folder.py`, shared with the server's live record) is
+#: where PokerNow exports are kept when you do not say. One folder, so `pnt import`
 #: with no argument is the whole history.
 #:
 #: Three ways to point somewhere else, narrowest first: pass paths (or a folder, or
 #: a glob) straight to `pnt import`; pass `--log-dir`; or set PNT_LOG_DIR for good.
 #: The environment variable is read once, at import, so it has to be set before the
 #: command runs -- which is exactly why `--log-dir` exists as well.
-DEFAULT_LOG_DIR = Path.home() / "Downloads" / "pokernow-logs"
-LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or DEFAULT_LOG_DIR)
 
 #: A real 5,277-hand corpus shipped inside the package, so a fresh install has
 #: something to look at before it has logs of its own. `pnt import` and `pnt setup`
@@ -195,6 +196,126 @@ def import_cmd(
             typer.echo(f"    hero: {s['hero_pn_id']} ({s['hero_votes']} showdown matches)")
 
 
+LinksArg = typer.Argument(None, help="Game links or game IDs.")
+FromFileOpt = typer.Option(
+    None, "--from-file", "-f", help="A text file of game links, one per line."
+)
+CookieOpt = typer.Option(
+    None,
+    "--cookie",
+    envvar="PNT_COOKIE",
+    show_default=False,
+    help="Your PokerNow cookies as 'npt=...; apt=...', for your own hole cards. "
+    "Prefer setting PNT_COOKIE: a flag lands in shell history.",
+)
+RefreshOpt = typer.Option(
+    False, "--refresh", help="Re-fetch games already in the folder, merging new lines in."
+)
+ImportOpt = typer.Option(False, "--import", help="Import each fetched log as well.")
+
+
+@app.command()
+def backfill(
+    links: list[str] | None = LinksArg,
+    from_file: Path | None = FromFileOpt,
+    log_dir: Path | None = LogDirOpt,
+    cookie: str | None = CookieOpt,
+    refresh: bool = RefreshOpt,
+    import_: bool = ImportOpt,
+    db: Path = DbOpt,
+) -> None:
+    """Download games' logs from their PokerNow links into the log folder.
+
+    For games played before live capture: no clicking "download full log" on each.
+    Files land where a manual export would (`poker_now_log_<id>.csv` in the log
+    folder), so a bare `pnt import` afterwards picks them up.
+
+    Without a cookie you get every action and every showdown, but not your own
+    unshown hole cards -- PokerNow only sends `Your hand is` to the logged-in player.
+    Copy the `npt` and `apt` cookies from DevTools (Application > Cookies >
+    pokernow.com) into PNT_COOKIE as `npt=...; apt=...` to get them; `npt` alone is
+    not enough. They are your login: keep them out of files and chat.
+
+    Games already in the folder are skipped; `--refresh` fetches them again and adds
+    only lines the file lacks, e.g. your hole cards after a first run without a cookie.
+    """
+    folder = log_dir or LOG_DIR
+    raw = list(links or [])
+    if from_file:
+        raw += [
+            line.strip()
+            for line in from_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    if not raw:
+        raise typer.BadParameter("give at least one game link, or --from-file")
+    try:
+        game_ids = list(dict.fromkeys(fetchmod.game_id_from_link(x) for x in raw))
+    except fetchmod.FetchError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"{len(game_ids)} game(s) -> {folder}")
+    if not cookie:
+        typer.echo("no cookie: your own unshown hole cards will be missing (see --help)")
+    elif "apt=" not in cookie:
+        typer.echo("cookie has no apt=: without it your hole cards will be missing (see --help)")
+    conn = connect(db) if import_ else None
+    pacer = fetchmod.Pacer()
+    # A game is a minute of paging; show it moving, but only where \r redraws a line.
+    live = sys.stdout.isatty()
+    failed = 0
+    for gid in game_ids:
+        path = log_path(folder, gid)
+        if path.exists() and not refresh:
+            typer.echo(f"{gid}: already in the folder, skipped (--refresh to fetch again)")
+            continue
+        if not live:
+            typer.echo(f"{gid}: fetching...")
+        try:
+            entries = fetchmod.fetch_log(
+                gid,
+                cookie,
+                pacer=pacer,
+                on_page=lambda pages, lines, gid=gid: typer.echo(
+                    f"\r{gid}: page {pages}, {lines} lines", nl=False
+                )
+                if live
+                else None,
+                on_wait=lambda s, gid=gid: typer.echo(
+                    f"{chr(10) if live else ''}{gid}: rate limited by PokerNow, waiting {s:g}s"
+                ),
+            )
+        except fetchmod.FetchError as exc:
+            if live:
+                typer.echo("")
+            typer.echo(str(exc), err=True)
+            failed += 1
+            continue
+        if live:
+            typer.echo("")
+        if not entries:
+            typer.echo(f"{gid}: the log is empty, nothing written")
+            continue
+        new = write_log(entries, path)
+        hands = sum(e.entry.startswith("-- starting hand #") for e in entries)
+        hero = fetchmod.count_hero_lines(entries)
+        typer.echo(
+            f"{gid}: {hands} hands, {new} new lines, {hero} of your hole cards -> {path.name}"
+        )
+        if cookie and not hero and hands:
+            typer.echo(
+                "    no hole cards of yours: you did not play this game, or PokerNow did"
+                " not accept the cookies (expired, or `apt` missing -- `npt` alone is not enough)"
+            )
+        if conn is not None:
+            s = import_csv(conn, str(path))
+            typer.echo(f"    imported: {s['entries_new']} new entries, {s['parse_misses']} parse misses")
+    if failed:
+        raise typer.Exit(1)
+    if not import_:
+        typer.echo("\nnext: pnt import")
+
+
 #: The unpacked Chrome extension, shipped inside the package so that a pip or
 #: pipx install has one to load. `pnt extension` prints this path.
 EXTENSION_DIR = Path(__file__).parent / "extension"
@@ -308,6 +429,13 @@ def where(db: Path = DbOpt) -> None:
     rows = [
         ("database", str(db.resolve()), "--db" if db != DEFAULT_DB else "default"),
         ("log folder", str(LOG_DIR), source),
+        (
+            "live record",
+            "on: live capture writes each game's CSV to the log folder"
+            if SAVE_LOGS
+            else "off",
+            "PNT_SAVE_LOGS=0 turns it off; restart the service after changing it",
+        ),
         ("sample logs", str(BUNDLED_LOG_DIR), f"{n} inside the package, used when the above is empty"),
         ("extension", str(EXTENSION_DIR), "inside the package"),
         ("server log", str(svc.LOG_FILE), "fixed"),

@@ -247,6 +247,11 @@ table and against a finished game already imported from CSV:
 | Plain epoch milliseconds sit below every `created_at` | `after_at=0&before_at=<now in ms>` returned `{"logs": []}` — the first extension's bug |
 | Requests in quick succession get **HTTP 429** | Three requests in about 2 s |
 | The log of a game is readable without a cookie | All of the above were made without one. Hero's own `Your hand is` lines presumably need the cookie; unverified |
+| Without a cookie, a full walk is the export minus `Your hand is` and `Undealt cards:` | 2026-09-13, `pgltDzcp7…`: 2,624 of the export's 2,819 lines, all identical; the other 195 were 143 `Your hand is` and 52 `Undealt cards:` |
+| The export CSV (`poker_now_log_<id>.csv`) is not scriptable; the ledger is | 403 and 200 respectively, without a cookie |
+| A `Set-Cookie: npt=` echoing the value sent proves nothing | A random 50-character value was echoed back just the same |
+| `npt` alone does **not** bring back `Your hand is` from a script | 2026-09-13: 0 of 3 expected in a window of `pglxfOwX…` (a game whose hero lines live capture had stored), with the right `npt`; browser-like headers and dropping `mm=false` changed nothing |
+| `npt` **and `apt`** do: the walk is then the export, line for line | Same window: 3 of 3, identical. `pgltDzcp7…`: 2,819 of 2,819 lines, identical to the manual export, `Undealt cards:` included. `cf_clearance` was not needed |
 
 So a complete capture walks **backwards**: fetch the newest page and, while pages
 come back full, fetch `before_at=<oldest line so far>` until a page is short or

@@ -36,6 +36,18 @@ MISSED_BLINDS_GAME = "pgl7sRNQr64BIPFwmlFel-Le5"
 TRUNCATED_GAME = "pglkWn5b4Y8whHqWY3tVmrtW1"
 
 
+@pytest.fixture(autouse=True)
+def _private_log_folder(tmp_path_factory, monkeypatch):
+    """Point the log folder at a temp dir for every test.
+
+    The server writes each rebuilt game's CSV there, so without this any API test
+    would drop fixture games into the real ~/Downloads/pokernow-logs.
+    """
+    from pnt.ingest import log_folder
+
+    monkeypatch.setattr(log_folder, "LOG_DIR", tmp_path_factory.mktemp("log-folder"))
+
+
 @pytest.fixture(scope="session")
 def all_logs() -> list[Path]:
     return ALL_LOGS
