@@ -99,6 +99,7 @@
     <button id="sizetoggle" aria-pressed="false" title="show the c-bet size mix for this street">C-bet sizes</button>
     <a class="link" href="/players.html">players &rsaquo;</a>
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
+    <a class="link" id="allinlink" href="/allin.html" style="margin-left:12px">all-in EV &rsaquo;</a>
   </div>
 
   <div class="note">
@@ -219,6 +220,7 @@
     if (state.filter) c.set("filter", state.filter);
     if (theme) c.set("theme", theme);
     $("chartlink").href = "/chart?" + c;
+    $("allinlink").href = "/allin.html?" + c;
   };
 
   // [key, header, kind, opportunity key, hover text]

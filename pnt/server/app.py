@@ -35,6 +35,7 @@ from pnt.ingest.importer import (
     rename_player,
     split_identities,
 )
+from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
 from pnt.stats.queries import (
@@ -152,14 +153,31 @@ def stats_page() -> HTMLResponse:
     return _page("stats.html")
 
 
-@app.get("/filter-help.js", include_in_schema=False)
-def filter_help_script() -> Response:
-    """The `?` panel beside every Spot box, shared by the chart and stats pages."""
+@app.get("/allin.html", include_in_schema=False)
+def allin_page() -> HTMLResponse:
+    """All-in EV: what every player's jams were worth against what they took.
+    `/allin` serves this to browsers."""
+    return _page("allin.html")
+
+
+def _script(name: str) -> Response:
     return Response(
-        (STATIC / "filter-help.js").read_text(encoding="utf-8"),
+        (STATIC / name).read_text(encoding="utf-8"),
         media_type="text/javascript",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.get("/filter-help.js", include_in_schema=False)
+def filter_help_script() -> Response:
+    """The `?` panel beside every Spot box, shared by the chart, stats and all-in pages."""
+    return _script("filter-help.js")
+
+
+@app.get("/replay.js", include_in_schema=False)
+def replay_script() -> Response:
+    """The hand replay renderer, shared by the chart and all-in pages."""
+    return _script("replay.js")
 
 
 @app.get("/filters")
@@ -245,11 +263,50 @@ def stats(
     if "text/html" in request.headers.get("accept", ""):
         return _page("stats.html")
     conn = db()
+    return report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter))
+
+
+def _predicate(conn: sqlite3.Connection, filter: str | None):
+    """Compile a spot filter, or 400 on a term the parser does not know."""
     try:
-        pred = parse_filter(filter, display_names(conn)) if filter else None
+        return parse_filter(filter, display_names(conn)) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return report(conn, game_id=game, min_hands=min_hands, predicate=pred)
+
+
+@app.get("/allin", response_model=None)
+def allin(
+    request: Request,
+    game: str | None = None,
+    filter: Annotated[str | None, Query(description="e.g. 'position=BTN,3bet_pot'")] = None,
+    min_hands: int = 1,
+) -> list[dict] | HTMLResponse:
+    """Per player: all-in showdowns, actual net, all-in adjusted net, and the gap.
+
+    Same shape of contract as /stats: a browser gets the page, everything else the
+    JSON. Equities are memoized in `equity_cache`, so the first request after an
+    import pays for the sampling once -- about half a second per preflop all-in --
+    and every request after it is a read.
+    """
+    if "text/html" in request.headers.get("accept", ""):
+        return _page("allin.html")
+    conn = db()
+    return allin_report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter))
+
+
+@app.get("/players/{alias}/allin")
+def player_allin(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'vs=henry'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's all-in showdowns, oldest first: the rows behind their two lines."""
+    conn = db()
+    pred = _predicate(conn, filter)
+    try:
+        return {"filter": filter, **allin_hand_list(conn, alias, game, pred)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/players", response_model=None)
@@ -315,11 +372,8 @@ def _spot_facts(
     """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
     if conn is None:
         conn = db()
-    try:
-        # The name map is what lets `vs=henry` name a person rather than an ID.
-        pred = parse_filter(filter, display_names(conn)) if filter else None
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # The name map is what lets `vs=henry` name a person rather than an ID.
+    pred = _predicate(conn, filter)
     try:
         facts = facts_for(conn, alias, game)
     except ValueError as exc:

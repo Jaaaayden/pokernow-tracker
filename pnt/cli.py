@@ -26,6 +26,7 @@ from .ingest.importer import (
 )
 from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
+from .stats.allin import allin_report
 from .stats.filters import parse_filter
 from .stats.queries import display_names, facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
@@ -104,16 +105,28 @@ def _fmt(value) -> str:
     return f"{value:g}"
 
 
-def _print_table(rows: list[dict], key: str, key_width: int = 22) -> None:
+#: `pnt allin`: everything in big blinds, the gap last.
+_ALLIN_COLUMNS = [
+    ("hands", "Hands", 6),
+    ("equity_avg", "Eq%", 7),
+    ("net_bb", "Actual", 9),
+    ("adjusted_bb", "Adjusted", 9),
+    ("diff_bb", "Diff", 9),
+]
+
+
+def _print_table(
+    rows: list[dict], key: str, key_width: int = 22, columns: list[tuple] = _COLUMNS
+) -> None:
     if not rows:
         typer.echo("(no rows)")
         return
-    header = key.ljust(key_width) + "".join(h.rjust(w) for _, h, w in _COLUMNS)
+    header = key.ljust(key_width) + "".join(h.rjust(w) for _, h, w in columns)
     typer.echo(header)
     typer.echo("-" * len(header))
     for r in rows:
         line = str(r[key])[: key_width - 1].ljust(key_width)
-        line += "".join(_fmt(r.get(c)).rjust(w) for c, _, w in _COLUMNS)
+        line += "".join(_fmt(r.get(c)).rjust(w) for c, _, w in columns)
         typer.echo(line)
 
 
@@ -491,6 +504,36 @@ def positions(
         typer.echo(json.dumps(rows, indent=2))
     else:
         _print_table(rows, "position", key_width=24)
+
+
+@app.command()
+def allin(
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    filter_: str = typer.Option(None, "--filter", help="e.g. 'position=BTN,3bet_pot'"),
+    min_hands: int = typer.Option(1, "--min-hands"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """All-in EV per player: actual net, all-in adjusted net, and the gap, in bb.
+
+    Equities are computed once and kept in the database, so the first run over a
+    fresh import takes a while -- about half a second per preflop all-in -- and
+    every run after it is instant. Running this once also warms the page.
+    """
+    conn = connect(db)
+    pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+    rows = allin_report(conn, game_id=game, min_hands=min_hands, predicate=pred)
+    if as_json:
+        typer.echo(json.dumps(rows, indent=2))
+        return
+    if filter_:
+        typer.echo(f"filter: {filter_}")
+    skipped = rows[0]["skipped"]["cards_unknown"] if rows else 0
+    if skipped:
+        typer.echo(f"skipped: {skipped} all-in showdown(s) where a live hand was mucked")
+    if filter_ or skipped:
+        typer.echo("")
+    _print_table(rows, "player", columns=_ALLIN_COLUMNS)
 
 
 def _print_grid(grid: dict) -> None:

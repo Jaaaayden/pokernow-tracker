@@ -48,6 +48,7 @@ pnt import path/to/log.csv                   # or specific files, a folder, or a
 pnt backfill -f links.txt                    # download old games by link into the log folder
 pnt redact --out pnt/logs                    # copies you can publish: your unshown cards removed
 pnt stats                                    # every player, most hands first
+pnt allin                                    # all-in EV: actual vs adjusted, per player
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
 pnt where                                    # which database, log folder and extension
@@ -247,6 +248,44 @@ a browser gets a sortable table, while the HUD, curl and your scripts get the sa
 figures as JSON from the same URL (the page alone is at `/stats.html`). Pick a
 street to swap the postflop columns, toggle the c-bet size mix, and click a player
 to open their range chart in the spot you are looking at.
+
+### All-in EV
+
+Whether the jams ran above or below their equity:
+
+```bash
+pnt allin                                  # every player: actual, adjusted, diff, in bb
+pnt allin --filter "3bet_pot" --min-hands 10
+```
+
+```
+skipped: 30 all-in showdown(s) where a live hand was mucked
+
+player                 Hands    Eq%   Actual Adjusted     Diff
+--------------------------------------------------------------
+jayden                   380   51.6  6356.99   5557.4   799.59
+henry                    278   45.6 -1983.67  -2028.1    44.43
+harry                    130   48.9   -577.8   -50.63  -527.17
+```
+
+Every all-in showdown where every live hand was shown gets a row per player:
+their equity when the betting stopped (the board dealt by the last voluntary
+action), what that equity was worth across the main and side pots, and what they
+actually collected. **Adjusted** is the net had every pot been paid out by equity;
+**Actual** is the same net every other page prints; the **Diff** is the deck's
+contribution, and within a hand it sums to zero. Flop, turn and river all-ins are
+enumerated exactly; preflop is sampled (50,000 seeded deals, marked `~`). Hands
+where a live player mucked are counted as skipped rather than guessed at.
+
+The page is [http://127.0.0.1:52000/allin](http://127.0.0.1:52000/allin): the same
+table, in bb or chips, split by the street the betting stopped on, and a click on a
+player draws their cumulative actual and adjusted lines over every all-in hand,
+lists those hands with cards, board, equity and pot, and replays any of them. The
+Spot box takes every filter the other pages do. Equities are computed once and kept
+in the database (`equity_cache`, the one derived table, safe to drop), so the first
+`pnt allin` or page load after an import takes about half a second per preflop
+all-in and everything after that is instant. `GET /allin` and
+`GET /players/{alias}/allin` return the JSON.
 
 ### Identity
 

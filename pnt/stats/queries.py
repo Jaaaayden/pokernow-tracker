@@ -27,6 +27,7 @@ def load_hands(
     conn: sqlite3.Connection,
     game_id: str | None = None,
     pn_ids: Collection[str] | None = None,
+    hand_ids: Collection[int] | None = None,
 ) -> list[HandRow]:
     """Load hands with their rosters and actions.
 
@@ -37,6 +38,9 @@ def load_hands(
 
     One player's figures therefore cost one player's hands, instead of the whole
     database re-derived and then discarded down to them.
+
+    `hand_ids` narrows to exactly those hands, for a caller that has already picked
+    its population in SQL (the all-in showdowns, say) and wants them whole.
     """
     clauses, params = [], []
     if game_id:
@@ -51,6 +55,12 @@ def load_hands(
             f" ({','.join('?' * len(ids))}))"
         )
         params.extend(ids)
+    if hand_ids is not None:
+        wanted = list(hand_ids)
+        if not wanted:
+            return []
+        clauses.append(f"h.hand_id IN ({','.join('?' * len(wanted))})")
+        params.extend(wanted)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     params = tuple(params)
 
@@ -58,7 +68,7 @@ def load_hands(
     for r in conn.execute(
         f"""SELECT h.hand_id, h.game_id, h.hand_number, h.n_dealt_in, h.dead_button,
                    h.blinds_irregular, h.went_to_showdown, h.board_json, h.ts,
-                   h.complete, COALESCE(h.bb, g.bb) AS bb
+                   h.complete, h.run_count, COALESCE(h.bb, g.bb) AS bb
             FROM hands h LEFT JOIN games g ON g.game_id = h.game_id
             {where} ORDER BY h.ord""",
         params,
@@ -81,6 +91,7 @@ def load_hands(
             players={},
             actions=[],
             board=tuple(runs[0]) if runs else (),
+            run_count=r["run_count"] or 1,
         )
 
     for r in conn.execute(
