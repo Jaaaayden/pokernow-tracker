@@ -334,6 +334,15 @@ RULES: list[Rule] = [
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="ownership_passed"),
     ),
     (
+        # A player who logs in mid-session keeps their seat under their account's ID.
+        # Lines after it carry the new ID; nothing here links the two identities.
+        re.compile(
+            rf"^The player {_P} changed the ID from [A-Za-z0-9_-]+ to [A-Za-z0-9_-]+ "
+            r"because [^\n]+\.$"
+        ),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="id_changed"),
+    ),
+    (
         re.compile(rf"^The player {_P} canceled the seat request\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="seat_request_canceled"),
     ),
