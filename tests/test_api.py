@@ -335,6 +335,7 @@ def test_allin_serves_json_to_scripts_and_a_page_to_browsers(client, fast_sampli
     assert page.headers["content-type"].startswith("text/html")
     assert client.get("/allin.html").text == page.text
     assert "/players/" in page.text and "/allin" in page.text
+    assert "hands-sort" in page.text, "the hand list can be ordered by pot size and by swing"
 
 
 def test_player_allin_drilldown(client, fast_sampling):
