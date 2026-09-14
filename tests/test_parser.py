@@ -258,3 +258,16 @@ def test_admin_forcing_a_player_away_is_recognized():
     )
     assert isinstance(ev, Noise)
     assert ev.kind == "admin_force_away"
+
+
+def test_an_id_change_on_login_is_recognized():
+    """Seen live on 2026-09-13, when a seated player logged in to their account."""
+    from pnt.logfmt.events import Noise
+
+    ev = classify(
+        'The player "Henry @ FQN9hzhzP_" changed the ID from wgnNFHC2ZI to FQN9hzhzP_'
+        " because authenticated login.",
+        1,
+    )
+    assert isinstance(ev, Noise)
+    assert ev.kind == "id_changed"

@@ -45,6 +45,7 @@ rest of the commands are there when you want them:
 ```bash
 pnt import                                   # every log in ~/Downloads/pokernow-logs
 pnt import path/to/log.csv                   # or specific files, a folder, or a glob
+pnt backfill -f links.txt                    # download old games by link into the log folder
 pnt redact --out pnt/logs                    # copies you can publish: your unshown cards removed
 pnt stats                                    # every player, most hands first
 pnt alias list                               # the player names you can query
@@ -68,6 +69,28 @@ paths, a folder or a glob straight to `pnt import`, pass `--log-dir`, or set
 
 Re-importing is free: duplicate entries are ignored, so the habit is "drop the
 export in the folder, run `pnt import`".
+
+Live capture keeps that folder current by itself: each time the server re-derives a
+captured game it writes the game's `poker_now_log_<id>.csv` there, merged with any
+copy already in the folder, so the folder is a running record of every game you
+capture -- enough to rebuild the database from scratch with `pnt import`. Set
+`PNT_SAVE_LOGS=0` to turn it off. The server reads `PNT_LOG_DIR` when it starts, so
+run `pnt service restart` after changing either.
+
+For games played before live capture, `pnt backfill` fetches them by link instead of
+clicking "download full log" on each: pass links or game IDs, or `-f` a text file
+with one per line. Each lands in the log folder as `poker_now_log_<id>.csv`, games
+already there are skipped, and requests are paced (PokerNow rate-limits), so expect
+about a minute per few thousand lines. Then `pnt import`, or pass `--import`.
+
+Without cookies the file has every action and showdown but not **your own unshown
+hole cards** -- PokerNow sends those only to you. Copy the `npt` and `apt` cookies
+from DevTools (Application → Cookies → `https://www.pokernow.com`) into `PNT_COOKIE`
+as `npt=...; apt=...` (`$env:PNT_COOKIE = "npt=...; apt=..."` in PowerShell). Both
+are needed: `npt` alone gets nothing more than no cookie at all. With both, the file
+is identical to a manual export. They are your login: don't put them in a file or a
+commit. `--refresh` re-fetches games already in the folder and adds only the
+lines they lack, so a game fetched without the cookie can be topped up later.
 
 If that folder is empty, `pnt import` falls back to the bundled corpus, the same
 way `pnt setup` does. The fallback triggers on *empty*, never on *small*: one log of

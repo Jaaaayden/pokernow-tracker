@@ -13,6 +13,8 @@ Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
 
 from __future__ import annotations
 
+import csv
+import logging
 import os
 import sqlite3
 from pathlib import Path
@@ -24,6 +26,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from pnt.db.conn import connect
+from pnt.ingest import log_folder
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
     ingest_entries,
@@ -46,6 +49,13 @@ from pnt.stats.ranges import composition, range_grid, sizing_tells
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
+
+#: Live capture also keeps each game's CSV in the log folder, so the folder stays a
+#: running record: every game in the database, as a file `pnt import` could rebuild
+#: it from. On unless PNT_SAVE_LOGS=0.
+SAVE_LOGS = log_folder.SAVE_LOGS
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="PokerNow Tracker", version="0.1.0")
 
@@ -165,7 +175,13 @@ def health() -> dict:
         "SELECT (SELECT COUNT(*) FROM hands) h, (SELECT COUNT(*) FROM raw_entries) e,"
         " (SELECT COUNT(*) FROM parse_misses) m"
     ).fetchone()
-    return {"db": str(DB_PATH), "hands": row["h"], "entries": row["e"], "parse_misses": row["m"]}
+    return {
+        "db": str(DB_PATH),
+        "hands": row["h"],
+        "entries": row["e"],
+        "parse_misses": row["m"],
+        "log_folder": str(log_folder.LOG_DIR) if SAVE_LOGS else None,
+    }
 
 
 @app.post("/ingest")
@@ -182,12 +198,32 @@ def ingest(req: IngestRequest) -> dict:
     out = {"game_id": req.game_id, "offered": offered, "new": n_new}
     if req.rebuild and n_new:
         out |= rebuild_game(conn, req.game_id)
+        _save_log(conn, req.game_id)
     return out
 
 
 @app.post("/rebuild/{game_id}")
 def rebuild(game_id: str) -> dict:
-    return rebuild_game(db(), game_id)
+    conn = db()
+    out = rebuild_game(conn, game_id)
+    _save_log(conn, game_id)
+    return out
+
+
+def _save_log(conn: sqlite3.Connection, game_id: str) -> None:
+    """Bring the game's CSV in the log folder up to date with the database.
+
+    Tied to rebuilds, not to every ingest: the extension ingests a history walk page
+    by page and rebuilds at checkpoints, and a rewrite is O(game) just as a rebuild
+    is (~40 ms for an 8,500-line game). Never fails the request -- the database
+    already has the lines, and a CSV open in Excel must not stop capture.
+    """
+    if not SAVE_LOGS:
+        return
+    try:
+        log_folder.save_game(conn, game_id, log_folder.LOG_DIR)
+    except (OSError, ValueError, csv.Error) as exc:  # locked, unwritable, or malformed
+        log.warning("could not save the log for %s to %s: %s", game_id, log_folder.LOG_DIR, exc)
 
 
 @app.get("/stats", response_model=None)
