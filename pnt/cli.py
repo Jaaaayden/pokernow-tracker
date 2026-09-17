@@ -15,8 +15,10 @@ import typer
 from . import service as svc
 from .db.conn import DEFAULT_DB, connect
 from .ingest import fetch as fetchmod
+from .ingest import sync as syncmod
 from .ingest.importer import (
     apply_aliases,
+    delete_game,
     export_aliases,
     import_csv,
     merge_players,
@@ -28,8 +30,12 @@ from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
 from .stats.allin import allin_report
 from .stats.filters import parse_filter
-from .stats.queries import display_names, facts_for, positional_report, report
+from .stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
+from .stats.queries import display_names, facts_by_player, facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
+from .stats.review import KIND_LABELS as REVIEW_LABELS
+from .stats.review import KINDS as REVIEW_KINDS
+from .stats.review import mark_reviewed, review_hand_list, reviewed_marks
 
 app = typer.Typer(add_completion=False, help=__doc__)
 alias_app = typer.Typer(help="Manage player identities.")
@@ -82,7 +88,7 @@ AliasFileArg = typer.Argument(
     BUNDLED_LOG_DIR / "aliases.csv", help="The alias CSV. Default: the one in the repo."
 )
 
-LOG_GLOB = "poker_now_log_*.csv"
+LOG_GLOB = syncmod.LOG_GLOB
 
 _COLUMNS = [
     ("hands", "Hands", 6),
@@ -148,6 +154,20 @@ def _announce_sample(folder: Path) -> None:
     typer.echo("")
 
 
+def _import(conn, path: str, folder: Path) -> dict:
+    """`import_csv`, and a file read from the log folder goes on record.
+
+    On record is what makes deleting that file later remove its game (`pnt sync`).
+    Files from anywhere else are not: deleting a Downloads copy once it is imported
+    must not take the game with it.
+    """
+    s = import_csv(conn, path)
+    p = Path(path)
+    if p.resolve().parent == folder.resolve():
+        syncmod.record_file(conn, p, s["game_id"])
+    return s
+
+
 def _expand(paths: list[str] | None, folder: Path, sample: bool = False) -> list[str]:
     """Resolve CSV arguments -- paths, directories or globs -- to a list of files.
 
@@ -198,7 +218,7 @@ def import_cmd(
     if not paths and expanded and Path(expanded[0]).parent == BUNDLED_LOG_DIR:
         _announce_sample(folder)
     for path in expanded:
-        s = import_csv(conn, path)
+        s = _import(conn, path, folder)
         note = "no new entries (pure re-import)" if s["entries_new"] == 0 else ""
         typer.echo(
             f"{Path(path).name}: {s['hands']} hands, "
@@ -321,7 +341,7 @@ def backfill(
                 " not accept the cookies (expired, or `apt` missing -- `npt` alone is not enough)"
             )
         if conn is not None:
-            s = import_csv(conn, str(path))
+            s = _import(conn, str(path), folder)
             typer.echo(f"    imported: {s['entries_new']} new entries, {s['parse_misses']} parse misses")
     if failed:
         raise typer.Exit(1)
@@ -400,7 +420,7 @@ def setup(
         typer.echo(f"importing {len(logs)} log(s) from {Path(logs[0]).parent}")
         conn = connect(db)
         for path in logs:
-            s = import_csv(conn, path)
+            s = _import(conn, path, folder)
             typer.echo(f"  {Path(path).name}: {s['hands']} hands, {s['parse_misses']} parse misses")
         conn.close()
     else:
@@ -457,6 +477,61 @@ def where(db: Path = DbOpt) -> None:
     for name, value, note in rows:
         typer.echo(f"{name:<{width}}  {value}")
         typer.echo(f"{'':<{width}}  ({note})")
+
+
+PruneUntrackedOpt = typer.Option(
+    False,
+    "--prune-untracked",
+    help="Also remove every game no log-folder file is on record for. See --help.",
+)
+
+
+@app.command()
+def sync(
+    db: Path = DbOpt,
+    log_dir: Path | None = LogDirOpt,
+    prune_untracked: bool = PruneUntrackedOpt,
+) -> None:
+    """Bring the database in step with the log folder: import new logs, drop deleted ones.
+
+    The background server does this by itself every few seconds (PNT_SYNC_SECONDS,
+    0 to turn it off), so this is for when it is not running.
+
+    A game is removed once every log-folder file it was read from or saved to has
+    been deleted. Games with no such file on record are never touched: imported from
+    another folder, the bundled sample, captured with PNT_SAVE_LOGS=0, or imported
+    before sync existed from a file already deleted. `--prune-untracked` removes
+    those too. Deleting the whole folder removes nothing: a missing folder reads as
+    an unplugged drive, not an instruction.
+
+    Player merges and renames survive; only players nothing but the deleted games
+    knew about go with them.
+    """
+    conn = connect(db)
+    folder = log_dir or LOG_DIR
+    out = syncmod.sync_folder(conn, folder)
+    for gid, hands in out.removed.items():
+        typer.echo(f"{gid}: log deleted, removed {hands} hands")
+    # A file already in the database is only put on record; nothing to say about it.
+    changed = [s for s in out.imported if s["entries_new"] or "hands" in s]
+    for s in changed:
+        typer.echo(f"{s['file']}: {s['entries_new']}/{s['entries_offered']} new entries")
+    for path, why in out.failed.items():
+        typer.echo(f"{Path(path).name}: could not import: {why}", err=True)
+
+    untracked = syncmod.untracked_games(conn)
+    if untracked and prune_untracked:
+        for gid in untracked:
+            typer.echo(f"{gid}: no log file on record, removed {delete_game(conn, gid)} hands")
+    elif untracked:
+        typer.echo(
+            f"{len(untracked)} game(s) have no log file in the folder on record and are"
+            " left alone; --prune-untracked removes them"
+        )
+    if not (out.removed or changed or out.failed or untracked):
+        typer.echo(f"in sync with {folder}")
+    if out.failed:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -534,6 +609,160 @@ def allin(
     if filter_ or skipped:
         typer.echo("")
     _print_table(rows, "player", columns=_ALLIN_COLUMNS)
+
+
+@app.command()
+def pots(
+    db: Path = DbOpt,
+    days: float = typer.Option(DEFAULT_DAYS, "--days", help="Window in days, back from now."),
+    all_time: bool = typer.Option(False, "--all", help="Ignore the window; read all of history."),
+    min_pot: int = typer.Option(DEFAULT_MIN_POT, "--min-pot", help="Chips a pot must reach to be listed."),
+    player: str = typer.Option(None, "--player", help="Only hands this player was dealt into."),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    limit: int = typer.Option(DEFAULT_LIMIT, "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """The biggest pots of the last few days -- everyone's, biggest first.
+
+    The same rows the Biggest pots page lists; SPEC.md, "Biggest pots", defines
+    the window and the pot.
+    """
+    if days <= 0 and not all_time:
+        raise typer.BadParameter("must be above zero; use --all for no window", param_hint="--days")
+    conn = connect(db)
+    try:
+        out = big_pots(
+            conn,
+            days=None if all_time else days,
+            min_pot=min_pot,
+            game_id=game,
+            player=player,
+            limit=limit,
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+    window = "all time" if all_time else f"the last {days:g} day(s)"
+    who = f" for {player}" if player else ""
+    typer.echo(
+        f"{out['over']} pot(s) over {out['min_pot']:,} in {window}{who}"
+        f"  |  {out['hands']:,} hands, biggest {out['biggest']:,}"
+    )
+    if not out["pots"]:
+        typer.echo("(no pots that big)")
+        return
+    if out["over"] > len(out["pots"]):
+        typer.echo(f"showing the {len(out['pots'])} biggest")
+    typer.echo("")
+    for h in out["pots"]:
+        bb = f"{h['pot_bb']:.0f}bb" if h["pot_bb"] is not None else "--"
+        who = "chopped" if h["chopped"] else (
+            f"{h['winner']} +{h['won']:,}" + (f" vs {h['loser']} {h['lost']:,}" if h["loser"] else "")
+        )
+        board = " ".join(h["board"]) or "no flop"
+        short = "" if h["complete"] else "  (log cut short)"
+        typer.echo(
+            f"{h['pot']:>7,} {bb:>7}  {(h['ts'] or '')[:16]:<17}{who:<34}{board}{short}"
+        )
+
+
+@app.command()
+def review(
+    alias: str,
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    filter_: str = typer.Option(None, "--filter", help="e.g. 'srp,vs=henry'"),
+    kind: str = typer.Option(
+        None, "--kind", help="One flag: " + ", ".join(REVIEW_KINDS)
+    ),
+    unreviewed: bool = typer.Option(
+        False, "--unreviewed", help="Only hands not yet marked reviewed."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Hands worth reviewing: missed bluffs, missed value, failed bluffs, and bad beats.
+
+    Newest first, a check mark against the ones already marked with `pnt reviewed`.
+    The same rows the chart's Hand review and Bad beats views list; SPEC.md,
+    "Hand review", defines each flag.
+    """
+    if kind is not None and kind not in REVIEW_KINDS:
+        raise typer.BadParameter(f"unknown kind {kind!r}. Known: {', '.join(REVIEW_KINDS)}", param_hint="--kind")
+    conn = connect(db)
+    try:
+        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--filter") from exc
+    try:
+        out = review_hand_list(conn, alias, game, pred)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    if kind is not None:
+        out["hands"] = [h for h in out["hands"] if h["kind"] == kind]
+    if unreviewed:
+        out["hands"] = [h for h in out["hands"] if not h["reviewed"]]
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+    if filter_:
+        typer.echo(f"filter: {filter_}")
+    typer.echo(
+        f"{out['examined']} hands, {out['showdowns']} showdowns, {out['known_showdowns']} with every hand shown"
+    )
+    typer.echo(
+        "  ".join(f"{REVIEW_LABELS[k]} {n}" for k, n in out["counts"].items())
+        + f"  |  reviewed {out['reviewed']}"
+    )
+    sk = out["skipped"]
+    if sk["cards_unknown"] or sk["stack_unknown"]:
+        typer.echo(
+            f"skipped: {sk['cards_unknown']} showdown(s) with a mucked hand,"
+            f" {sk['stack_unknown']} with a stack unknown"
+        )
+    typer.echo("")
+    if not out["hands"]:
+        typer.echo("(no hands)")
+        return
+    for h in out["hands"]:
+        pot = f"{h['pot_bb']:.0f}bb" if h["pot_bb"] is not None else f"{h['pot']}"
+        seen = "x" if h["reviewed"] else " "
+        typer.echo(f"{seen} #{h['hand_number']:<5}{REVIEW_LABELS[h['kind']]:<17}pot {pot:>6}  {h['why']}")
+
+
+@app.command()
+def reviewed(
+    game: str = typer.Argument(None, help="The game_id. Omit to list every mark."),
+    hand_number: int = typer.Argument(None, help="The hand number, as the log names it."),
+    db: Path = DbOpt,
+    undo: bool = typer.Option(False, "--undo", help="Clear the mark instead of setting it."),
+) -> None:
+    """Mark a hand as reviewed, so `pnt review` and the chart can set it aside.
+
+    With no arguments, lists what is marked. The mark is on the hand, keyed the way
+    the log names it, so it survives a rebuild and shows up on every player's review
+    of that hand.
+    """
+    conn = connect(db)
+    if game is None or hand_number is None:
+        if game is not None or hand_number is not None:
+            raise typer.BadParameter("give both a game_id and a hand number, or neither")
+        marks = reviewed_marks(conn)
+        if not marks:
+            typer.echo("(nothing marked reviewed)")
+            return
+        for (g, n), at in sorted(marks.items()):
+            typer.echo(f"{g}  #{n:<6}{at}")
+        return
+    try:
+        at = mark_reviewed(conn, game, hand_number, not undo)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"#{hand_number} {game}: " + (f"reviewed {at}" if at else "mark cleared"))
 
 
 def _print_grid(grid: dict) -> None:

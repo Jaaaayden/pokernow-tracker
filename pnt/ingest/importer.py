@@ -421,6 +421,37 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
     }
 
 
+def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
+    """Remove a game: its raw lines, every hand derived from them, its import history.
+
+    The inverse of importing it, so re-importing the log puts back exactly what this
+    took away. Returns the number of hands removed.
+
+    Identities mostly stay. A merge or a rename is a judgement no log can rebuild, so
+    a player is removed only when nothing about it came from a person: a single
+    PokerNow ID, still under the name `resolve_identity` gave it, in no hand left.
+    """
+    with writing(conn):
+        hands = conn.execute(
+            "SELECT COUNT(*) FROM hands WHERE game_id = ?", (game_id,)
+        ).fetchone()[0]
+        # Hands first: hand_players, actions and voluntary_shows cascade from them.
+        for table in ("hands", "games", "raw_entries", "parse_misses", "imports", "log_files"):
+            conn.execute(f"DELETE FROM {table} WHERE game_id = ?", (game_id,))
+        conn.execute(
+            "DELETE FROM players WHERE player_id IN ("
+            " SELECT pi.player_id FROM player_identities pi"
+            " JOIN players p ON p.player_id = pi.player_id"
+            " WHERE pi.pn_id NOT IN (SELECT pn_id FROM hand_players)"
+            "   AND p.alias IN"
+            "     (pi.pn_id, pi.last_seen_name, pi.last_seen_name || ' (' || pi.pn_id || ')')"
+            "   AND (SELECT COUNT(*) FROM player_identities o"
+            "        WHERE o.player_id = pi.player_id) = 1)"
+        )
+        bump_generation(conn)
+    return hands
+
+
 def import_csv(conn: sqlite3.Connection, path: str | Path, game_id: str | None = None) -> dict:
     """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly."""
     path = Path(path)

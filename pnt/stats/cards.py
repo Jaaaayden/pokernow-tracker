@@ -21,6 +21,37 @@ from __future__ import annotations
 from collections import Counter
 from typing import NamedTuple
 
+from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+
+#: Board cards dealt by the end of each street.
+DEALT = {PREFLOP: 0, FLOP: 3, TURN: 4, RIVER: 5}
+
+
+def board_at(board: list[str] | tuple[str, ...], street: str) -> tuple[str, ...] | None:
+    """The cards on the table when `street` was being played, or None when the
+    board never got that far -- the hand ended earlier, or was cut mid-street.
+
+    Run-it-twice second boards repeat this prefix, so the first run is the one
+    every player saw when they acted.
+    """
+    need = DEALT[street]
+    if len(board) < need:
+        return None
+    return tuple(board[:need])
+
+
+def street_of_board(board: tuple[str, ...] | list[str]) -> str:
+    """The betting street a board of this many cards is on."""
+    n = len(board)
+    if n >= 5:
+        return RIVER
+    if n == 4:
+        return TURN
+    if n >= 3:
+        return FLOP
+    return PREFLOP
+
+
 #: High to low -- this is the row/column order of the standard 13x13 chart.
 RANKS = "AKQJT98765432"
 RANK_VALUE = {r: 14 - i for i, r in enumerate(RANKS)}  # A=14 ... 2=2
@@ -110,6 +141,40 @@ def grid_labels() -> list[list[str]]:
 
 
 ALL_CLASSES: tuple[str, ...] = tuple(label for row in grid_labels() for label in row)
+
+#: The 169 classes strongest first, by all-in equity against one random hand --
+#: the ordering every "starting hand ranking" chart reproduces (Wikipedia's
+#: "Texas hold 'em starting hands", heads-up vs random). It is a *reference*, not
+#: a claim about how any spot should be played: a tag that says "called a 3-bet
+#: with a bottom-40% hand" is measured against this list, and SPEC.md says so.
+HAND_RANKING: tuple[str, ...] = (
+    "AA", "KK", "QQ", "JJ", "TT", "99", "88", "AKs", "77", "AQs", "AJs", "AKo", "ATs",
+    "AQo", "66", "AJo", "KQs", "55", "A9s", "KJs", "ATo", "A8s", "KTs", "KQo", "44",
+    "A7s", "A9o", "KJo", "QJs", "A5s", "A6s", "A8o", "KTo", "QTs", "33", "A4s", "K9s",
+    "A7o", "JTs", "A3s", "QJo", "K8s", "A5o", "K9o", "QTo", "A6o", "A2s", "K7s", "Q9s",
+    "JTo", "A4o", "K6s", "22", "A3o", "K5s", "J9s", "Q8s", "K8o", "Q9o", "T9s", "K4s",
+    "A2o", "K7o", "J8s", "K3s", "Q7s", "K6o", "T8s", "Q6s", "J9o", "K2s", "K5o", "Q5s",
+    "T9o", "J7s", "98s", "Q8o", "K4o", "Q4s", "J8o", "T7s", "K3o", "Q3s", "97s", "J6s",
+    "T8o", "Q7o", "K2o", "87s", "J5s", "Q2s", "Q6o", "96s", "T6s", "J4s", "98o", "J7o",
+    "Q5o", "86s", "T7o", "J3s", "76s", "95s", "Q4o", "T5s", "J2s", "97o", "85s", "Q3o",
+    "T4s", "65s", "87o", "J6o", "75s", "T3s", "94s", "Q2o", "96o", "J5o", "84s", "T2s",
+    "54s", "74s", "86o", "64s", "J4o", "93s", "T6o", "76o", "53s", "92s", "J3o", "83s",
+    "95o", "63s", "73s", "85o", "T5o", "J2o", "43s", "82s", "65o", "75o", "52s", "T4o",
+    "62s", "54o", "72s", "T3o", "42s", "94o", "84o", "64o", "74o", "32s", "T2o", "93o",
+    "53o", "63o", "73o", "92o", "43o", "83o", "52o", "82o", "62o", "42o", "72o", "32o",
+)
+
+_HAND_PCT: dict[str, float] = {
+    label: round((i + 1) / len(HAND_RANKING) * 100, 1) for i, label in enumerate(HAND_RANKING)
+}
+
+
+def hand_pct(label: str) -> float:
+    """Where a class sits in HAND_RANKING, as a percentile: 0.6 is AA, 100 is 32o.
+
+    `hand_pct("72o") > 90` reads as "a bottom-10% hand". Takes a `hand_class()` label.
+    """
+    return _HAND_PCT[label]
 
 
 # --------------------------------------------------------------- showdown ---
@@ -286,7 +351,7 @@ TEXTURE_TAGS: tuple[str, ...] = (
     # highest card
     "ace_high", "king_high", "queen_high", "jack_high", "ten_high", "low",
     # suits
-    "monotone", "twotone", "rainbow", "flush_possible",
+    "monotone", "twotone", "rainbow", "flush_possible", "straight_possible",
     # pairing
     "paired", "unpaired", "double_paired", "trips",
     # connectivity
@@ -307,7 +372,9 @@ def board_texture(board: list[str] | tuple[str, ...]) -> frozenset[str]:
 
     - highest card: exactly one of ``ace_high`` … ``ten_high`` or ``low`` (9-high or below)
     - suits: ``monotone`` (all one suit), ``rainbow`` (no suit repeated),
-      ``twotone`` (exactly two suits present), ``flush_possible`` (three or more of a suit)
+      ``twotone`` (exactly two suits present), ``flush_possible`` (three or more of a suit),
+      ``straight_possible`` (three ranks inside one five-rank window, so two hole
+      cards can make a straight)
     - pairing: ``paired`` (any rank repeated), ``double_paired``, ``trips``, else ``unpaired``
     - connectivity: ``connected`` (two ranks adjacent, ace plays high and low),
       ``three_connected`` (three in a row, e.g. 8-7-6), else ``disconnected``
@@ -331,6 +398,8 @@ def board_texture(board: list[str] | tuple[str, ...]) -> frozenset[str]:
         tags.add("twotone")
     if top >= 3:
         tags.add("flush_possible")
+    if straight_possible(board):
+        tags.add("straight_possible")
 
     ranks = Counter(values)
     if max(ranks.values()) >= 3:
@@ -363,3 +432,51 @@ def board_texture(board: list[str] | tuple[str, ...]) -> frozenset[str]:
     if all(v < 10 for v in values):
         tags.add("no_broadway")
     return frozenset(tags)
+
+
+def straight_possible(board: list[str] | tuple[str, ...]) -> bool:
+    """Two hole cards could make a straight on this board.
+
+    True when three or more distinct board ranks fit inside one five-rank window,
+    the ace playing both high and low. Fewer than three board cards is False.
+    """
+    cards = parse_cards(board)
+    if len(cards) < 3:
+        return False
+    values = {c.value for c in cards}
+    if 14 in values:
+        values.add(1)
+    return any(len(values & set(range(low, low + 5))) >= 3 for low in range(1, 11))
+
+
+# -------------------------------------------------------------- holdings ---
+
+
+def top_kicker(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[str, ...]) -> bool:
+    """Top pair with the best kicker there is: TPTK.
+
+    The hole card that does not pair the board is the highest rank missing from
+    the board, so no other top-pair holding outkicks it. ``AK`` on ``K72`` and on
+    ``A72`` are both TPTK; ``AQ`` on ``A72`` is not. False for anything that is not
+    top pair, pocket pairs included.
+    """
+    if made_hand(hole, board) != MadeHand("pair", "top_pair"):
+        return False
+    h = parse_cards(hole)
+    board_values = {c.value for c in parse_cards(board)}
+    kicker = next((c.value for c in h if c.value not in board_values), None)
+    if kicker is None:
+        return False
+    best = max(v for v in range(2, 15) if v not in board_values)
+    return kicker == best
+
+
+def top_two_pair(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[str, ...]) -> bool:
+    """Two pair made with both hole cards, pairing the board's two highest ranks."""
+    if made_hand(hole, board).cls != "two_pair":
+        return False
+    hv = {c.value for c in parse_cards(hole)}
+    if len(hv) != 2:
+        return False
+    board_values = sorted({c.value for c in parse_cards(board)}, reverse=True)
+    return hv == set(board_values[:2])

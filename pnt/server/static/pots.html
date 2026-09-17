@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biggest pots</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39; --bar: rgba(42,120,214,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .controls label { color: var(--ink-2); font-size: 13px; }
+  select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
+  input[type=number] { width: 6.5em; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+  a.link { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13px; }
+  a.link ~ a.link { margin-left: 12px; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
+  .note b { color: var(--ink); font-weight: 600; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 12px 12px; }
+  .card.loading { opacity: .45; transition: opacity .15s; }
+  .err { color: #d03b3b; margin: 12px 0; }
+  .muted { color: var(--muted); }
+  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .crumb a:hover { text-decoration: underline; }
+
+  /* --- the headline figures --- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 10px 12px; }
+  .tile b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: 12px; }
+
+  /* --- the list --- */
+  .pot-rows { display: flex; flex-direction: column; }
+  .pot-row {
+    position: relative; display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: baseline;
+    text-align: left; width: 100%; border: 0; border-bottom: 1px solid var(--grid); border-radius: 0;
+    background: transparent; padding: 7px 6px; font-variant-numeric: tabular-nums; overflow: hidden;
+  }
+  /* The pot as a bar behind the row: the biggest pot fills it, the rest are read
+     against it at a glance. Painted behind the text, never over it. */
+  .pot-row::before {
+    content: ""; position: absolute; inset: 0 auto 0 0; width: var(--share, 0%);
+    background: var(--bar); z-index: 0;
+  }
+  .pot-row > * { position: relative; z-index: 1; }
+  .pot-row:hover, .pot-row[aria-pressed=true] { background: var(--mid); }
+  .pot-row .pot { min-width: 7.5em; font-size: 15px; font-weight: 600; }
+  .pot-row .pot small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+  .pot-row .when { min-width: 8.5em; color: var(--muted); font-size: 12px; }
+  .pot-row .who { min-width: 15em; flex: 1; }
+  .pot-row .who .up { color: var(--up); }
+  .pot-row .who .down { color: var(--down); }
+  .pot-row .who .sep { color: var(--muted); margin: 0 6px; }
+  .pot-row .board { min-width: 10em; color: var(--ink-2); }
+  .pot-row .tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+  .pot-row .tag { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
+    color: var(--muted); white-space: nowrap; }
+  .pot-row .tag.allin { border-color: var(--accent); color: var(--accent); }
+  .pot-row .tag.short { border-color: var(--down); color: var(--down); }
+  .cards { font-family: ui-monospace, Consolas, monospace; }
+  .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
+  .replay h3 { font-size: 14px; margin: 0 0 4px; }
+  .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .replay .who { color: var(--ink-2); margin: 0 0 6px; }
+  .replay .street { margin-top: 10px; }
+  .replay .street > b { text-transform: capitalize; }
+  .replay .street > span { color: var(--muted); margin-left: 8px; }
+  .replay ol { margin: 4px 0 0; padding-left: 22px; }
+  .replay li.forced { color: var(--muted); }
+  .hidden { display: none !important; }
+  @media (max-width: 620px) {
+    .pot-row { gap: 1px 10px; font-size: 12px; padding: 6px 2px; }
+    .pot-row .pot { font-size: 14px; }
+    .pot-row .tags { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <h1>Biggest pots <small id="subtitle">the hands worth remembering</small></h1>
+
+  <div class="controls">
+    <span class="seg" id="dayseg" role="group" aria-label="Window">
+      <button data-days="1" aria-pressed="false">24h</button>
+      <button data-days="7" aria-pressed="true">7 days</button>
+      <button data-days="30" aria-pressed="false">30 days</button>
+      <button data-days="all" aria-pressed="false">all</button>
+    </span>
+    <label for="minpot">Pot over</label>
+    <input id="minpot" type="number" min="0" step="100" value="2000">
+    <label for="player">Player</label>
+    <select id="player"><option value="">everyone</option></select>
+    <button class="primary" id="apply">Apply</button>
+    <span class="seg" id="unitseg" role="group" aria-label="Unit">
+      <button data-unit="chips" aria-pressed="true">chips</button>
+      <button data-unit="bb" aria-pressed="false">bb</button>
+    </span>
+    <a class="link" href="/allin.html">all-in EV &rsaquo;</a>
+    <a class="link" href="/chart?by=review">hand review &rsaquo;</a>
+  </div>
+
+  <div class="note">
+    <p>Every pot over the bar in the window, biggest first, whoever was in it. The pot is
+      what actually sat in the middle — uncalled bets and 7-2 bounties are not part of it —
+      so it is the same figure every other page prints. <b>Click any row to replay the hand.</b>
+      Pots are in chips; blind levels move, so the <b>bb</b> toggle is the fairer comparison
+      across games.</p>
+  </div>
+  <div class="err hidden" id="err"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card" id="card">
+    <div class="pot-rows" id="rows"></div>
+    <div class="replay hidden" id="replay"></div>
+  </div>
+</main>
+
+<script src="/replay.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  const { pretty } = pntReplay;
+
+  const DAYS = ["1", "7", "30", "all"];
+  const state = { days: "7", minPot: 2000, player: "", unit: "chips", data: null };
+
+  const readUrl = () => {
+    const q = new URLSearchParams(location.search);
+    state.days = DAYS.includes(q.get("days")) ? q.get("days") : "7";
+    const min = parseInt(q.get("min"), 10);
+    state.minPot = Number.isFinite(min) && min >= 0 ? min : 2000;
+    state.player = q.get("player") || "";
+    state.unit = q.get("unit") === "bb" ? "bb" : "chips";
+  };
+  const writeUrl = () => {
+    const q = new URLSearchParams();
+    if (state.days !== "7") q.set("days", state.days);
+    if (state.minPot !== 2000) q.set("min", state.minPot);
+    if (state.player) q.set("player", state.player);
+    if (state.unit !== "chips") q.set("unit", state.unit);
+    if (theme) q.set("theme", theme);
+    history.replaceState(null, "", "?" + q.toString());
+  };
+
+  const chips = (v) => v == null ? "–" : Math.round(v).toLocaleString();
+  const signed = (v) => v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v).toLocaleString();
+  const signedBb = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+  // A row's money in the chosen unit. bb is per-hand: a hand with no big blind on
+  // record can only be shown in chips, so it says so rather than inventing one.
+  const money = (row, chipsKey, bbKey) =>
+    state.unit === "bb" ? (row[bbKey] == null ? "–" : signedBb(row[bbKey])) : signed(row[chipsKey]);
+
+  const WHEN = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const when = (ts) => { const d = new Date(ts); return isNaN(d) ? (ts || "") : WHEN.format(d); };
+
+  async function getJson(url) {
+    const r = await fetch(url);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      if (r.status === 404 && body.detail === "Not Found") {
+        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+      }
+      throw new Error(body.detail || `${r.status} ${r.statusText}`);
+    }
+    return r.json();
+  }
+
+  async function loadPlayers() {
+    const rows = await getJson("/players");
+    const sel = $("player");
+    for (const p of rows) {
+      const o = document.createElement("option");
+      o.value = p.alias; o.textContent = p.alias;
+      sel.appendChild(o);
+    }
+    sel.value = rows.some(p => p.alias === state.player) ? state.player : "";
+    state.player = sel.value;
+  }
+
+  async function load() {
+    $("card").classList.add("loading");
+    $("err").classList.add("hidden");
+    const q = new URLSearchParams({ min_pot: state.minPot });
+    if (state.days === "all") q.set("all_time", "1"); else q.set("days", state.days);
+    if (state.player) q.set("player", state.player);
+    try {
+      state.data = await getJson("/pots?" + q);
+      render();
+    } catch (e) {
+      $("err").textContent = String(e.message || e);
+      $("err").classList.remove("hidden");
+      $("tiles").replaceChildren();
+      $("rows").replaceChildren();
+    } finally {
+      $("card").classList.remove("loading");
+    }
+  }
+
+  function tile(value, caption, title) {
+    const d = document.createElement("div");
+    d.className = "tile";
+    if (title) d.title = title;
+    const b = document.createElement("b"); b.textContent = value;
+    const s = document.createElement("span"); s.textContent = caption;
+    d.append(b, s);
+    return d;
+  }
+
+  const WINDOW_WORD = { "1": "in the last 24 hours", "7": "in the last 7 days", "30": "in the last 30 days", all: "ever recorded" };
+
+  function render() {
+    const d = state.data;
+    const word = WINDOW_WORD[state.days];
+    $("subtitle").textContent = `over ${chips(d.min_pot)} ${word}` + (d.player ? ` · ${d.player}` : "");
+    $("tiles").replaceChildren(
+      tile(chips(d.biggest), "biggest pot", "the largest single pot in the window"),
+      tile(String(d.over), `pots over ${chips(d.min_pot)}`, "how many cleared the bar"),
+      tile(chips(d.chips), "chips in those pots", "every flagged pot added up"),
+      tile(d.hands.toLocaleString(), "hands in the window", "the denominator: every hand dealt in it"),
+    );
+
+    const list = $("rows");
+    list.replaceChildren();
+    $("replay").classList.add("hidden");
+    if (!d.pots.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = d.hands
+        ? `no pot reached ${chips(d.min_pot)} ${word} — ${d.hands.toLocaleString()} hands looked at`
+        : `no hands ${word}`;
+      list.appendChild(p);
+      return;
+    }
+    if (d.over > d.pots.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = `the ${d.pots.length} biggest of ${d.over} pots over the bar`;
+      p.style.margin = "0 0 6px";
+      list.appendChild(p);
+    }
+    const top = d.pots[0].pot || 1;
+    for (const h of d.pots) list.appendChild(potRow(h, top, list));
+  }
+
+  function potRow(h, top, list) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "pot-row"; b.setAttribute("aria-pressed", "false");
+    // Every pot is read against the biggest one in the window.
+    b.style.setProperty("--share", `${Math.max(2, Math.round(100 * h.pot / top))}%`);
+    const span = (cls, text, title) => {
+      const s = document.createElement("span"); s.className = cls; s.textContent = text;
+      if (title) s.title = title;
+      b.appendChild(s); return s;
+    };
+
+    const pot = span("pot", state.unit === "bb" && h.pot_bb != null ? `${h.pot_bb}bb` : chips(h.pot));
+    const other = document.createElement("small");
+    other.textContent = state.unit === "bb" ? chips(h.pot) : (h.pot_bb != null ? `${h.pot_bb}bb` : "");
+    pot.appendChild(other);
+    span("when", when(h.ts), [h.game_id, `#${h.hand_number}`, h.ts].filter(Boolean).join(" · "));
+
+    // Who it went to. A chopped pot has no winner to name, so it says so rather
+    // than crowning whoever came out a blind ahead.
+    const who = span("who", "");
+    if (h.chopped) {
+      who.append("chopped ");
+      const names = document.createElement("span");
+      names.className = "sep";
+      names.textContent = h.seats.filter(s => s.collected > 0).map(s => s.player).join(" · ");
+      who.appendChild(names);
+    } else if (h.winner) {
+      const w = document.createElement("span");
+      w.className = "up";
+      w.textContent = `${h.winner} ${money(h, "won", "won_bb")}`;
+      who.appendChild(w);
+      if (h.loser) {
+        const sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "vs";
+        const l = document.createElement("span"); l.className = "down";
+        const lost = h.seats[h.seats.length - 1];
+        l.textContent = `${h.loser} ${money(lost, "net", "net_bb")}`;
+        who.append(sep, l);
+      }
+    } else {
+      who.textContent = "—";
+    }
+    who.title = h.seats.map(s =>
+      `${s.player} ${s.net > 0 ? "+" : ""}${s.net.toLocaleString()}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
+    ).join("\n");
+
+    span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop",
+      h.run_count > 1 ? "ran twice; run one shown" : "");
+
+    const tags = document.createElement("span");
+    tags.className = "tags";
+    const tag = (text, cls, title) => {
+      const t = document.createElement("span");
+      t.className = "tag" + (cls ? " " + cls : "");
+      t.textContent = text;
+      if (title) t.title = title;
+      tags.appendChild(t);
+    };
+    if (h.all_in) tag("all in", "allin");
+    tag(h.went_to_showdown ? "showdown" : h.street, null,
+      h.went_to_showdown ? "shown down" : `no showdown; ended on the ${h.street}`);
+    tag(`${h.players}-handed`);
+    if (h.run_count > 1) tag("ran twice");
+    // The chips of an unfinished hand are not all on record, so its pot is short.
+    if (!h.complete) tag("log cut short", "short", "the log stops mid-hand: this pot is short");
+    b.appendChild(tags);
+
+    b.addEventListener("click", () => {
+      list.querySelectorAll(".pot-row").forEach(x => x.setAttribute("aria-pressed", x === b));
+      pntReplay.show($("replay"), h.hand_id);
+    });
+    return b;
+  }
+
+  // ---- controls ----------------------------------------------------------
+  function apply() {
+    const v = parseInt($("minpot").value, 10);
+    state.minPot = Number.isFinite(v) && v >= 0 ? v : 0;
+    state.player = $("player").value;
+    writeUrl(); load();
+  }
+  $("apply").addEventListener("click", apply);
+  $("minpot").addEventListener("change", apply);
+  $("minpot").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+  $("player").addEventListener("change", apply);
+  document.querySelectorAll("[data-days]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-days]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    state.days = b.dataset.days;
+    writeUrl(); load();
+  }));
+  document.querySelectorAll("[data-unit]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-unit]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    state.unit = b.dataset.unit;
+    writeUrl(); if (state.data) render();
+  }));
+
+  readUrl();
+  $("minpot").value = state.minPot;
+  document.querySelectorAll("[data-days]").forEach(x => x.setAttribute("aria-pressed", x.dataset.days === state.days));
+  document.querySelectorAll("[data-unit]").forEach(x => x.setAttribute("aria-pressed", x.dataset.unit === state.unit));
+  writeUrl();
+  loadPlayers().catch(() => {}).then(load);
+})();
+</script>
+</body>
+</html>

@@ -101,6 +101,20 @@ def rank7(cards: Sequence[Card]) -> tuple[int, ...]:
     return (0, *sorted(counts, reverse=True)[:5])
 
 
+def best_of(hands: Mapping[str, str], board: Sequence[str]) -> tuple[str, ...]:
+    """Who holds the best hand on a complete board: more than one on a chop.
+
+    `hands` maps a player to their hole cards; `board` has five cards. Keys come
+    back in the order given.
+    """
+    if not hands:
+        return ()
+    board_cards = parse_cards(list(board))
+    ranks = {pid: rank7(parse_cards(cards) + board_cards) for pid, cards in hands.items()}
+    top = max(ranks.values())
+    return tuple(pid for pid, r in ranks.items() if r == top)
+
+
 def side_pots(
     contributed: Mapping[str, int], live: Collection[str]
 ) -> list[tuple[int, tuple[str, ...]]]:

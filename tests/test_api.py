@@ -103,6 +103,20 @@ def test_live_capture_keeps_a_csv_of_the_game_in_the_log_folder(client):
     assert read_csv(path) == rows
 
 
+def test_deleting_a_captured_log_removes_the_game_instead_of_rewriting_it(client):
+    """Before sync, the next rebuild wrote the whole deleted file back out of the database."""
+    from pnt.ingest import log_folder
+
+    wire = [{"entry": e.entry, "at": e.at, "order": e.ord} for e in read_csv(HU)]
+    client.post("/ingest", json={"game_id": "deleted-game", "entries": wire})
+    path = log_folder.log_path(log_folder.LOG_DIR, "deleted-game")
+    path.unlink()
+
+    client.post("/rebuild/deleted-game")
+    assert not path.exists()
+    assert client.get("/stats", params={"game": "deleted-game"}).json() == []
+
+
 def test_saving_logs_can_be_turned_off(client, monkeypatch):
     from pnt.ingest import log_folder
     from pnt.server import app as app_module
@@ -195,6 +209,8 @@ def test_chart_page_is_served(client):
     assert "/range" in r.text, "the page must read from the range endpoint"
     assert "/sizing" in r.text and "/hands" in r.text
     assert "hands-sort" in r.text, "the hand list can be ordered by pot size"
+    assert 'data-view="review"' in r.text and 'data-view="beats"' in r.text
+    assert "/review" in r.text and "review-sort" in r.text, "the review views order by recency and pot"
 
 
 def test_sizing_endpoint(client):
@@ -349,6 +365,23 @@ def test_player_allin_drilldown(client, fast_sampling):
     assert vs["hands"] and all(v["player"] == "Chris" for h in vs["hands"] for v in h["villains"])
 
 
+def test_player_review(client, fast_sampling):
+    from pnt.stats.review import KINDS
+
+    body = client.get("/players/genericpoker/review").json()
+    assert {"player", "filter", "examined", "showdowns", "known_showdowns", "counts", "skipped", "hands"} <= set(body)
+    assert set(body["counts"]) == set(KINDS)
+    assert body["hands"]
+    for row in body["hands"]:
+        assert {"kind", "label", "group", "why", "street", "made", "villains", "pot_bb", "eff_bb", "spr"} <= set(row)
+        # every field the drill-down list renders, so the page draws both the same way
+        assert {"hand_id", "hand_number", "hole_cards", "board", "pot", "bb", "net_bb", "ip", "vs", "bet_size"} <= set(row)
+    assert client.get("/players/ghost/review").status_code == 404
+    assert client.get("/players/genericpoker/review", params={"filter": "nope"}).status_code == 400
+    vs = client.get("/players/genericpoker/review", params={"filter": "vs=Chris"}).json()
+    assert vs["hands"] and all("Chris" in h["vs"] for h in vs["hands"])
+
+
 def test_the_replay_renderer_is_one_script_shared_by_both_pages(client):
     script = client.get("/replay.js")
     assert script.status_code == 200
@@ -361,5 +394,35 @@ def test_the_replay_renderer_is_one_script_shared_by_both_pages(client):
 
 def test_the_front_door_links_every_page(client):
     text = client.get("/").text
-    for href in ("/stats.html", "/chart", "/players.html", "/allin.html"):
+    for href in ("/stats.html", "/chart", "/players.html", "/allin.html", "/chart?by=review"):
         assert href in text
+
+
+def test_marking_a_hand_reviewed_round_trips_and_reaches_the_review(client):
+    """The mark is addressed by hand_id but stored under the hand's own number, so
+    it comes back on every review row for that hand."""
+    listed = client.get("/players/genericpoker/review").json()
+    flagged = listed["hands"][0]
+    assert listed["reviewed"] == 0 and not flagged["reviewed"]
+
+    out = client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": True}).json()
+    assert out["reviewed"] and out["reviewed_at"]
+    assert (out["game_id"], out["hand_number"]) == (flagged["game_id"], flagged["hand_number"])
+    assert client.get("/reviewed").json() == [
+        {"game_id": out["game_id"], "hand_number": out["hand_number"], "reviewed_at": out["reviewed_at"]}
+    ]
+    assert client.get("/reviewed", params={"game": "nosuchgame"}).json() == []
+
+    again = client.get("/players/genericpoker/review").json()
+    same_hand = lambda h: (h["game_id"], h["hand_number"]) == (out["game_id"], out["hand_number"])
+    assert again["reviewed"] == sum(1 for h in again["hands"] if same_hand(h)) >= 1
+    for h in again["hands"]:
+        assert h["reviewed"] == same_hand(h)
+
+    cleared = client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": False}).json()
+    assert cleared["reviewed"] is False and cleared["reviewed_at"] is None
+    assert client.get("/reviewed").json() == []
+
+
+def test_marking_an_unknown_hand_is_a_404(client):
+    assert client.post("/hands/999999/reviewed", json={"reviewed": True}).status_code == 404

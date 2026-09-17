@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from .cards import board_at
 
 POSTFLOP_STREETS = (FLOP, TURN, RIVER)
 PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
@@ -70,6 +71,9 @@ class HandPlayerRow:
     hole_cards: str | None = None
     #: Signed 7-2 side-bet result. Part of `net`, but never of the pot.
     bounty: int = 0
+    #: Chips in front of them when the hand started, from the `Player stacks:`
+    #: line. None on rows imported before the column was filled: unknown, not 0.
+    starting_stack: int | None = None
 
 
 @dataclass(slots=True)
@@ -133,6 +137,19 @@ class Facts:
     #: The previous street's aggressor they had the chance to lead into. Keys
     #: match `donk_opp`.
     donk_into: dict[str, str] = field(default_factory=dict)
+    #: Acted while a bet or raise had already been made on the street -- c-bet or
+    #: not, and including the bettor facing a raise over their own bet. The three
+    #: below say what they did there. See SPEC.md, "Facing a bet".
+    faced_bet: dict[str, bool] = field(default_factory=dict)
+    folded_to_bet: dict[str, bool] = field(default_factory=dict)
+    called_bet: dict[str, bool] = field(default_factory=dict)
+    raised_bet: dict[str, bool] = field(default_factory=dict)
+    #: Made the street's last bet or raise -- the aggressor SPEC.md defines. The
+    #: preflop equivalent is `pfa`.
+    aggressor: dict[str, bool] = field(default_factory=dict)
+    #: Their check closed a street that checked through, with at least two players
+    #: acting on it. The player who declined to bet when nobody else did either.
+    check_back: dict[str, bool] = field(default_factory=dict)
 
     aggressive: dict[str, int] = field(default_factory=dict)
     agg_denom: dict[str, int] = field(default_factory=dict)
@@ -165,6 +182,11 @@ class Facts:
     open_bb: float | None = None
     #: This player's own last preflop raise-to, in big blinds.
     pf_raise_bb: float | None = None
+    #: What this player did at each preflop bet level they acted at: level ->
+    #: fold | check | call | raise. Level 1 is an unopened pot, 2 is facing the
+    #: open, 3 facing a 3-bet, and so on. A player acts at most once per level,
+    #: so this is the whole preflop decision path. See SPEC.md, "Decision points".
+    pf_faced: dict[int, str] = field(default_factory=dict)
     #: This player's first `bet` on each postflop street as a fraction of the pot
     #: it was made into. 1.0 is a pot-sized bet; above it is an overbet.
     bet_pot: dict[str, float] = field(default_factory=dict)
@@ -172,6 +194,9 @@ class Facts:
     bet_size: dict[str, str] = field(default_factory=dict)
     #: The bucket of the c-bet this player faced, on streets where they faced one.
     faced_cbet_size: dict[str, str] = field(default_factory=dict)
+    #: Chips in the middle when each postflop street was dealt, for the streets
+    #: that were: forced posts included, capped at `pot`. Same for everyone.
+    pot_at: dict[str, int] = field(default_factory=dict)
     #: Went all-in with a bet or raise, per street, preflop included. An all-in
     #: call is not a jam. See SPEC.md, "Jams".
     jam: dict[str, bool] = field(default_factory=dict)
@@ -219,6 +244,9 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
             f.three_bet_opp = True
         if level == 3 and a.pn_id == opener:
             f.fold_to_3bet_opp = True
+        # A preflop `bet` (no blind in front of it) takes the level exactly as a
+        # raise does, so it is recorded as one.
+        f.pf_faced.setdefault(level, "raise" if a.kind == "bet" else a.kind)
 
         # --- then apply it
         if a.kind == "fold":
@@ -282,6 +310,17 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 acted.add(a.pn_id)
                 continue
 
+            # facing a bet or raise, whoever made it -- the c-bet family below is
+            # the subset where it was the previous street's aggressor's c-bet
+            if bet_made:
+                f.faced_bet[street] = True
+                if a.kind == "fold":
+                    f.folded_to_bet[street] = True
+                elif a.kind == "call":
+                    f.called_bet[street] = True
+                elif a.kind == "raise":
+                    f.raised_bet[street] = True
+
             # c-bet opportunity: previous street's aggressor, first-in on this one
             if not bet_made and a.pn_id == prev_aggressor:
                 f.cbet_opp[street] = True
@@ -338,6 +377,14 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 street_aggressor = a.pn_id
 
             acted.add(a.pn_id)
+
+        if street_aggressor in facts:
+            facts[street_aggressor].aggressor[street] = True
+        # A street with no bet ends on a check, and that check closed it. One
+        # player checking alone -- everyone else all in -- decided nothing.
+        last = street_actions[-1]
+        if street_aggressor is None and last.kind == "check" and len(acted) >= 2 and last.pn_id in facts:
+            facts[last.pn_id].check_back[street] = True
 
         prev_aggressor = street_aggressor
 
@@ -446,9 +493,27 @@ def _table(hand: HandRow, facts: dict[str, Facts]) -> None:
         f.in_position = f.pos_order == len(group) - 1
 
 
+def pot_at(hand: HandRow, pot: int) -> dict[str, int]:
+    """Chips in the middle when each dealt postflop street began.
+
+    The running total of every action on the earlier streets, forced posts
+    included. Capped at the final `pot`, which already excludes uncalled bets: an
+    over-shove the caller could not match never sat in the middle.
+    """
+    out: dict[str, int] = {}
+    for street in POSTFLOP_STREETS:
+        if board_at(hand.board, street) is None:
+            break
+        before = {PREFLOP, *POSTFLOP_STREETS[: POSTFLOP_STREETS.index(street)]}
+        running = sum(a.amount for a in hand.actions if a.street in before)
+        out[street] = min(running, pot)
+    return out
+
+
 def derive(hand: HandRow) -> list[Facts]:
     """Produce one Facts row per dealt-in player."""
     pot = sum(p.contributed for p in hand.players.values())
+    streets_pot = pot_at(hand, pot)
     facts = {
         pid: Facts(
             hand_id=hand.hand_id,
@@ -466,6 +531,7 @@ def derive(hand: HandRow) -> list[Facts]:
             complete=hand.complete,
             hole_cards=p.hole_cards,
             board=hand.board,
+            pot_at=dict(streets_pot),
         )
         for pid, p in hand.players.items()
     }

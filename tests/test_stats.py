@@ -150,7 +150,7 @@ def test_filter_vocabulary_covers_every_term():
     term nobody using the page can discover."""
     import re
 
-    from pnt.stats.filters import FLAGS, NUMERIC, SIZED, STREETS, VOCABULARY
+    from pnt.stats.filters import DECIDED, FLAGS, NUMERIC, SIZED, STREETS, VOCABULARY
 
     documented: set[str] = set()
     for _, terms in VOCABULARY:
@@ -159,4 +159,8 @@ def test_filter_vocabulary_covers_every_term():
             for s in STREETS:
                 documented.add(re.split(r"[!<>=]", term.replace("<street>", s), maxsplit=1)[0])
     for key in [*FLAGS, *NUMERIC, *SIZED]:
+        assert key in documented, f"{key} is missing from filters.VOCABULARY"
+    # The decision family is documented as one `<spot>=DECISION` row; every spot it
+    # covers must be a documented term in its own right so the row can be found.
+    for key in DECIDED:
         assert key in documented, f"{key} is missing from filters.VOCABULARY"

@@ -45,10 +45,13 @@ rest of the commands are there when you want them:
 ```bash
 pnt import                                   # every log in ~/Downloads/pokernow-logs
 pnt import path/to/log.csv                   # or specific files, a folder, or a glob
+pnt sync                                     # match the log folder: new logs in, deleted logs out
 pnt backfill -f links.txt                    # download old games by link into the log folder
 pnt redact --out pnt/logs                    # copies you can publish: your unshown cards removed
 pnt stats                                    # every player, most hands first
 pnt allin                                    # all-in EV: actual vs adjusted, per player
+pnt pots                                     # biggest pots: over 2,000 chips in the last 7 days
+pnt review jayden                            # hands to review: missed bluffs, missed value, bad beats
 pnt alias list                               # the player names you can query
 pnt positions genericpoker                   # one player, split by position
 pnt where                                    # which database, log folder and extension
@@ -77,6 +80,17 @@ copy already in the folder, so the folder is a running record of every game you
 capture -- enough to rebuild the database from scratch with `pnt import`. Set
 `PNT_SAVE_LOGS=0` to turn it off. The server reads `PNT_LOG_DIR` when it starts, so
 run `pnt service restart` after changing either.
+
+The database follows the folder the other way too. **Delete a game's CSV and the
+game leaves the database**: its hands, its raw lines, and any player nobody but that
+game knew about. Merges and renames stay. Drop a new export in and it is imported.
+The running server checks every few seconds (`PNT_SYNC_SECONDS`, `0` to turn it
+off); without the server, `pnt sync` does the same once. Only games that have had a
+file in the log folder are ever removed. Games imported from somewhere else, like a
+Downloads copy or the bundled sample, stay where they are, and `pnt sync` counts
+them (`--prune-untracked` removes them). Deleting the whole folder removes nothing,
+because a missing folder looks the same as an unplugged drive. Deletion works on
+whole files: lines cut out of a CSV that stays in the folder stay in the database.
 
 For games played before live capture, `pnt backfill` fetches them by link instead of
 clicking "download full log" on each: pass links or game IDs, or `-f` a text file
@@ -181,6 +195,14 @@ aggressor), `limped` / `srp` / `3bet_pot` / `4bet_pot`, and comparisons on
 `open_bb`, `raise_bb` (the player's own preflop raise-to) and `bet_flop` /
 `bet_turn` / `bet_river` (first bet on that street as a fraction of the pot).
 
+Preflop decision points are terms too, one per bet level: `unopened` (had a
+decision with no raise in front), `faced_open`, `faced_3bet_any`, `faced_4bet`,
+`faced_5bet`, and what they did there as `limp`, `called_open`, `4bet`, `5bet` or
+spelled out — `faced_open=fold`, `faced_4bet=call`. `faced_3bet` stays the
+opener's alone, since fold-to-3-bet is defined on it; `limp` is the action where
+`limped` is the pot. So "what does he call a 3-bet with after cold-calling" is
+`called_open,faced_3bet_any=call`.
+
 Bet sizes also come in four buckets: `small` (under ½ pot), `medium` (½ to ¾),
 `large` (¾ to pot) and `overbet` (more than pot). PokerNow's ½, ¾ and pot buttons
 each start one. Use them as `cbet_flop=medium`, `cbet_turn=overbet`,
@@ -212,6 +234,13 @@ opponent list and who c-bet on which street. Each row also shows the pot, and th
 list can be ordered by it, newest first or biggest first; the **Pot ≥** box and
 the **vs** picker above the chart write the matching `pot>=` and `vs=` terms into
 the spot for you.
+
+Facing any bet, not only a c-bet, is a term too: `faced_bet_river`,
+`folded_to_bet_river`, `called_bet_flop`, `raised_bet_turn`; `aggressor_river` is
+the player who made the street's last bet or raise, and `check_back_turn` (or
+`check_back` for any street) the player whose check closed a street that checked
+through. The holding itself is `hand=72` (both suits), `hand=72o`, `hand!=AA`, or
+`hand_pct>=60` for a bottom-40% hand by the standard strength ranking.
 
 Board texture is a filter too: `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on — the full tag
@@ -287,6 +316,101 @@ in the database (`equity_cache`, the one derived table, safe to drop), so the fi
 `pnt allin` or page load after an import takes about half a second per preflop
 all-in and everything after that is instant. `GET /allin` and
 `GET /players/{alias}/allin` return the JSON.
+
+### Biggest pots
+
+The pots that actually mattered lately — everyone's, not one player's:
+
+```bash
+pnt pots                                   # over 2,000 chips in the last 7 days
+pnt pots --days 1                          # just today
+pnt pots --all --min-pot 10000             # the biggest ever recorded
+pnt pots --player jayden                   # only hands you were dealt into
+```
+
+```
+47 pot(s) over 2,000 in the last 7 day(s)  |  2,841 hands, biggest 6,650
+showing the 6 biggest
+
+  6,650   133bb  2026-09-16T02:59 henry +3,350 vs luis -3,300       6d 4s Kd Qc Qd
+  5,596   112bb  2026-09-16T03:10 jayden +2,798 vs luis -2,798      7h 7c Tc 8d 6d
+  4,824   482bb  2026-09-16T00:58 luis +2,478 vs jayden -2,346      9d 8c 7c As 9h
+  4,763    95bb  2026-09-16T02:30 chopped                           Qd 9h Ad 7s Ac
+```
+
+The pot is what actually sat in the middle: uncalled bets are not in it (an
+over-shove nobody matched never sat there) and neither are 7-2 bounties, so it is
+the same figure every other page prints. A **chopped** pot names no winner rather
+than crowning whoever came out a blind ahead, and a hand whose log stopped
+mid-way is listed and labelled, never silently dropped.
+
+The page is [http://127.0.0.1:52000/pots.html](http://127.0.0.1:52000/pots.html):
+a 24h / 7 day / 30 day / all switch, the bar as a number you can change, chips or
+bb, and each row drawn as a bar against the biggest pot in the window so the
+outliers stand out. Click any row to replay the hand. `GET /pots` returns the
+JSON. SPEC.md, "Biggest pots", pins the window and the pot.
+
+### Hand review
+
+The hands worth opening again, and the ones that were only the deck:
+
+```bash
+pnt review jayden                          # newest first, every flag
+pnt review jayden --kind missed_bluff      # one flag
+pnt review jayden --filter "3bet_pot"      # any spot filter the other pages take
+pnt review jayden --unreviewed             # only what you have not marked off yet
+```
+
+```
+8054 hands, 2280 showdowns, 1626 with every hand shown
+Missed bluff 35  Missed value 0  Failed bluff 313  Suckout 5  Preflop cooler 1  Postflop cooler 3  |  reviewed 2
+skipped: 654 showdown(s) with a mucked hand, 0 with a stack unknown
+
+x #267  Missed bluff     pot   20bb  20bb pot checked down on the river: K-high vs K-high (henry)
+  #85   Postflop cooler  pot  166bb  set into set (harry) on the flop, all in on the flop, 4% to win, lost 81bb
+```
+
+Three mistakes and three beats. A **missed bluff** is a pot of 15bb or more that
+checked down on the river with every hand shown a board pair or worse -- nobody
+bet, and nobody had anything. **Missed value** is two hands good enough to play
+for stacks (top two pair or a set; top pair top kicker in a 3-bet pot at 100bb)
+on a board with no flush or straight available, where less than half the stacks
+went in. A **failed bluff** is a postflop bet or raise with air that got called or
+raised in a hand you lost, and the row carries the size, who called, their
+archetype and their showdown rate, so "was it the sizing or the target" has its
+evidence beside it. The beats are a **suckout** (all in 60% or better and lost), a
+**preflop cooler** (QQ+ or AK all in behind) and a **postflop cooler** (a stacks
+hand already behind on a dry board).
+
+A flag is a prompt to open the replay, not a verdict. Every flag that reads the
+villain's cards can only see showdowns, so the mucked hands are counted and
+reported rather than dropped, and the tiles put that coverage beside the count.
+
+The page is the chart's **Hand review** and **Bad beats** views
+([http://127.0.0.1:52000/chart?by=review](http://127.0.0.1:52000/chart?by=review)):
+the same rows, ordered by recency, biggest pot, or biggest swing, with the flags
+switchable one by one and a click replaying any hand. `GET
+/players/{alias}/review` returns the JSON. SPEC.md, "Hand review", pins every
+rule and threshold.
+
+#### Marking a hand reviewed
+
+A flag says a hand is worth a look; a mark says you have taken it. Each row on the
+page has a check box beside it, **Hide reviewed** clears the ones you are done
+with out of the list, and the same mark is on the command line:
+
+```bash
+pnt reviewed pgl41zM3_CKphpnKM1DMIosUT 161    # mark it
+pnt reviewed pgl41zM3_CKphpnKM1DMIosUT 161 --undo
+pnt reviewed                                  # everything marked so far
+```
+
+The mark is on the *hand*, so a hand carrying two flags -- or showing up on two
+players' reviews -- is marked once and reads as marked everywhere. It is stored
+under the hand's own number in its game rather than its `hand_id`, which a rebuild
+reassigns, so `pnt rebuild` leaves your marks alone. It is also the one judgement
+on these pages that is stored rather than derived on every request, which is why
+it survives a rebuild at all: nothing in a log could ever re-derive it.
 
 ### Identity
 
@@ -408,7 +532,7 @@ artifact; `derive.py` mirrors it and is a bug if they disagree.
 | File | Contents |
 |---|---|
 | [`docs/findings.md`](docs/findings.md) | The log format: identity, ordering, the cumulative-amount rule, complete line vocabulary, traps, and the live-capture endpoint |
-| [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Stat definitions, line and sizing facts, range views |
+| [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Stat definitions, line and sizing facts, range views, hand-review flags |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |
 | [`pnt/logs/README.md`](pnt/logs/README.md) | The bundled sample corpus: what was redacted out of it, and how to add to it |
 
@@ -501,18 +625,33 @@ The suite is organized around invariants rather than examples:
    the CSV export** — and posts it to `POST /ingest`. Live capture and backfill
    feed one parser with identical input, so they cannot disagree, and overlapping
    fetches are free because `/ingest` dedupes on `(game_id, order)`;
-3. draws a draggable overlay listing everyone dealt into the latest hand, keyed by
+3. shows everyone dealt into the latest hand in Chrome's side panel — beside the
+   game, so nothing covers the table — one card per player, keyed by
    PokerNow ID via `GET /hud/{gameId}`, with VPIP / PFR / 3-bet / fold to 3-bet /
-   c-bet / WTSD twice per cell: this session first, lifetime in grey beside it, so
+   c-bet / WTSD twice per figure: this session first, lifetime in grey beside it, so
    a player running hotter or tighter than their history shows while it happens.
    A session figure turns blue when it sits 10 or more points from lifetime on at
-   least 10 chances; hover a cell for both samples. Click a row to embed that
-   player's range chart straight from the local server, opened on all of their
-   hands. The panel widens to fit the 13×13 grid and can be dragged larger by its
-   bottom-right corner; the size is remembered. The spot, board texture and view
-   are the chart page's own controls, so the overlay adds none of its own to fall
+   least 10 chances; hover a figure for both samples. Click a card to embed that
+   player's range chart straight from the local server, under the cards, opened
+   on all of their hands.
+   It takes the panel's width (drag the panel's edge to widen it) and its height
+   is dragged at the corner and remembered. The spot, board texture and view
+   are the chart page's own controls, so the panel adds none of its own to fall
    out of step with them; *open ↗* carries whatever you have picked in there out
    into a full tab.
+
+The whole-game rebuild that refreshes the roster and the stats waits for
+`-- ending hand --` (with a one-minute safety net) instead of running on every poll.
+
+The poll interval is only the slowest the HUD can be. The content script also
+watches the table on the page ([`pnt/extension/watch.js`](pnt/extension/watch.js)):
+the pot, the board, the dealer button, and each seat's classes, bet and stack.
+When an action changes any of them — a bet moves chips, a fold or a check moves
+`decision-current` to the next seat — it polls `/log` straight away, so the HUD
+follows the action within about a second. The log is still the only thing read into the
+tracker; the table only says when to look. Table-triggered polls start at least
+a second apart, a change that finds no new log line yet gets up to three more
+looks a second apart, and the shot clock (which redraws constantly) is ignored.
 
 No manual seat mapping is needed: the log names every player as `Name @ ID`, and
 the alias table already joins one person's devices.
@@ -526,8 +665,9 @@ pnt setup
 Then `chrome://extensions` -> *Developer mode* -> *Load unpacked* -> pick the
 folder `pnt extension` prints. It lives inside the package, so an installed copy
 has one without a checkout; `pnt extension --open` reveals it in Explorer. Open a
-PokerNow game; the panel appears top-right. The toolbar popup shows the server
-URL, poll interval, and capture status.
+PokerNow game and click the extension's toolbar icon (pin it first) to open the
+side panel; it shows whichever tab is active in that window. Its ⏸ pauses capture,
+and its ⚙ holds the server URL, poll interval, and capture status.
 
 `pnt serve` in a terminal still works for a one-off session.
 
@@ -566,7 +706,7 @@ Why it is built the way it is:
   your other server fail to bind, and your other server holding it makes the task
   wait politely forever while the HUD reports the tracker unreachable. 52000 sits
   in the IANA dynamic range, which is never assigned to a registered service.
-  `--port N` changes it — set the same address in the extension's popup.
+  `--port N` changes it — set the same address in the extension's ⚙ settings.
 - **Re-installing ends the running instance first.** The task is registered
   `IgnoreNew`, so a start request is *silently* ignored while an instance is alive:
   without ending it, changing `--db` or `--port` rewrote the definition, reported
@@ -591,14 +731,14 @@ the next 50. So the extension pages backwards with `before_at` until it reaches
 lines already stored ([`pnt/extension/pager.js`](pnt/extension/pager.js)), pausing 3 s
 between pages because PokerNow answers bursts with HTTP 429. The first load of a
 long game takes several minutes to walk its history; the HUD fills in as it goes,
-and the popup's **history** row says when it is complete.
+and the ⚙ settings' **history** row says when it is complete.
 
 Everything that knows the response shape is in
 [`pnt/extension/normalize.js`](pnt/extension/normalize.js). If PokerNow changes it, the
-popup says **UNRECOGNIZED** and the page console prints the first item.
+⚙ settings say **UNRECOGNIZED** and the page console prints the first item.
 
 ```bash
-node --test pnt/extension/normalize.test.mjs pnt/extension/pager.test.mjs
+node --test pnt/extension/normalize.test.mjs pnt/extension/pager.test.mjs pnt/extension/watch.test.mjs
 ```
 
 The websocket trigger (`gC` / `gameResult`) is deliberately not used: a 5-second

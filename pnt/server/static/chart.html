@@ -42,7 +42,7 @@
   /* --- one filter row above everything it scopes --- */
   .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
   .controls label { color: var(--ink-2); font-size: 13px; }
-  select, input[type=text], button {
+  select, input[type=text], input[type=number], button {
     font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px;
   }
@@ -154,6 +154,26 @@
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
   .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
+  .hand-rows.tall { max-height: 560px; }
+  .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
+    color: var(--ink-2); white-space: nowrap; }
+  .hand-row .kind[data-group=beat] { border-color: var(--accent); color: var(--accent); }
+  .hand-row .why { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }
+  /* A flagged row and its "reviewed" mark. The mark sits beside the row, not in
+     it: the row is itself a button, and a button may not contain another. */
+  .rev-row { display: flex; align-items: flex-start; gap: 6px; border-bottom: 1px solid var(--grid); }
+  .rev-row .hand-row { flex: 1; min-width: 0; border-bottom: 0; }
+  .rev-row .seen { flex: none; margin-top: 6px; width: 22px; height: 22px; padding: 0; line-height: 1;
+    border-radius: 6px; color: var(--muted); font-size: 12px; }
+  .rev-row .seen[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  /* Marked rows stay in place and step back, so the list keeps its shape. */
+  .rev-row[data-reviewed=true] .hand-row { opacity: .5; }
+  .rev-row[data-reviewed=true] .hand-row:hover { opacity: 1; }
+  #review-count { margin: 0 0 6px; font-size: 12px; }
+  .kinds { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .kinds button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
+  .kinds button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: transparent; }
+  .kinds button small { opacity: .8; margin-left: 4px; }
   .cards { font-family: ui-monospace, Consolas, monospace; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
@@ -192,6 +212,71 @@
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
   .hidden { display: none !important; }
+
+  /* Narrow: the extension's side panel embeds this page a few hundred pixels
+     wide. The grid shrinks to the width instead of scrolling sideways -- the
+     cell text scales with it -- and the legend puts its bar on a row of its own,
+     stretched across, with the two ends labelled underneath. The controls come
+     down to the side panel's own 11px so the page reads as part of it.
+     `minmax(0, 1fr)`: a plain 1fr column will not shrink below its label, which
+     pushed the last column a few pixels past the edge. The page is not to scroll
+     sideways at all -- everything wide has a scroller of its own -- since a
+     nudge sideways hides the left edge of every control. */
+  @media (max-width: 600px) {
+    html, body { overflow-x: hidden; }
+    body { font-size: 12px; }
+    main { padding: 8px 8px 32px; }
+    .crumb { font-size: 11px; margin-bottom: 6px; }
+    h1 { font-size: 14px; margin-bottom: 8px; }
+    h1 small { font-size: 11px; margin-left: 4px; }
+
+    .controls { gap: 4px 6px; margin-bottom: 8px; }
+    .controls label, .controls.narrow .lbl { font-size: 11px; }
+    .controls.narrow { margin-top: -2px; }
+    select, input[type=text], input[type=number], button { font-size: 11px; padding: 2px 6px; border-radius: 5px; }
+    input[type=text] { font-size: 11px; flex-basis: 200px; }
+    input[type=number] { width: 5em; }
+    .seg { border-radius: 5px; }
+    .seg button { padding: 2px 7px; }
+    .presets { gap: 3px; margin-bottom: 8px; }
+    .presets button { font-size: 10px; padding: 1px 6px; }
+    .presets .lbl { font-size: 10px; }
+    .lines { margin-bottom: 8px; }
+    .lines .presets { margin-bottom: 3px; }
+    .lines .lbl { min-width: 5.5em; }
+    .block h3 button { font-size: 10px; padding: 0 6px; }
+
+    .tiles { gap: 6px; margin-bottom: 8px; }
+    .tile { padding: 5px 8px; min-width: 100px; flex-basis: 100px; border-radius: 6px; }
+    .tile .v { font-size: 16px; }
+    .tile .k { font-size: 10px; }
+    .note { font-size: 11px; margin-bottom: 8px; }
+    .strip { padding: 6px 8px 8px; margin-bottom: 8px; }
+    .strip-grid { font-size: 11px; gap: 2px 10px; }
+    .strip-head b { font-size: 12px; }
+    .strip-head a { font-size: 11px; }
+    .bars { font-size: 11px; gap: 3px 8px; }
+    .bars .lab.detail { font-size: 10px; }
+    table { font-size: 11px; }
+    th, td { padding: 3px 5px; }
+    th { font-size: 10px; }
+    .hand-row { gap: 1px 8px; padding: 4px 2px; font-size: 11px; }
+    .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
+    .kinds button { padding: 1px 6px; }
+    .replay { font-size: 11px; }
+    .tip { font-size: 11px; }
+
+    .card { padding: 8px; border-radius: 8px; }
+    .card-head { gap: 6px; margin-bottom: 6px; }
+    .card-head h2 { font-size: 12px; }
+    .grid { min-width: 0; gap: 1px; grid-template-columns: repeat(13, minmax(0, 1fr)); }
+    .cell { padding: 1px 2px; border-radius: 2px; min-width: 0; overflow: hidden; }
+    .cell .l { font-size: clamp(7px, 2.1vw, 11px); letter-spacing: 0; }
+    .cell .n { font-size: clamp(8px, 2.5vw, 13px); }
+    .scale { gap: 2px 8px; justify-content: space-between; font-size: 10px; margin-top: 6px; }
+    .scale .bar { order: -1; flex: 1 1 100%; gap: 1px; }
+    .scale .bar i { flex: 1 1 0; width: auto; height: 8px; }
+  }
 </style>
 </head>
 <body>
@@ -210,6 +295,8 @@
       <button data-view="preflop" aria-pressed="true">Preflop chart</button>
       <button data-view="made" aria-pressed="false">Made hands</button>
       <button data-view="sizing" aria-pressed="false">Sizing</button>
+      <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Hand review</button>
+      <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
     </span>
   </div>
   <div class="controls narrow">
@@ -228,9 +315,9 @@
 
   <div class="tiles">
     <button type="button" class="tile pick" id="t-hands-tile" title="list these hands">
-      <div class="v" id="t-hands">–</div><div class="k">hands in this spot ›</div></button>
-    <div class="tile"><div class="v" id="t-known">–</div><div class="k">cards known</div></div>
-    <div class="tile warn"><div class="v" id="t-cov">–</div><div class="k">coverage</div></div>
+      <div class="v" id="t-hands">–</div><div class="k" id="t-hands-k">hands in this spot ›</div></button>
+    <div class="tile"><div class="v" id="t-known">–</div><div class="k" id="t-known-k">cards known</div></div>
+    <div class="tile warn"><div class="v" id="t-cov">–</div><div class="k" id="t-cov-k">coverage</div></div>
     <div class="tile"><div class="v" id="t-raise">–</div><div class="k" id="t-raise-k">usual preflop raise</div></div>
   </div>
   <p class="note" id="note">Cards are known only when a hand is shown, and hands are shown when they reach showdown.
@@ -258,13 +345,27 @@
           <option value="faced_cbet">c-bets they faced</option>
         </select>
       </span>
+      <span class="ctl hidden" id="reviewctl">
+        <span class="kinds" id="review-kinds" role="group" aria-label="Which flags"></span>
+        <select id="review-sort" aria-label="Order">
+          <option value="newest">newest first</option>
+          <option value="pot">biggest pot first</option>
+          <option value="swing">biggest swing first</option>
+        </select>
+        <button id="review-seen" aria-pressed="false" title="hide the hands already marked reviewed">Hide reviewed</button>
+      </span>
       <button id="tabletoggle" aria-pressed="false">Table</button>
     </div>
-    <div class="grid-wrap"><div id="grid" class="grid" role="grid" aria-label="Starting hand chart"></div></div>
+    <div class="grid-wrap" id="grid-wrap"><div id="grid" class="grid" role="grid" aria-label="Starting hand chart"></div></div>
     <div id="scale" class="scale"></div>
     <div id="bars" class="bars hidden"></div>
     <div id="sizing" class="sizing hidden"></div>
     <div id="table" class="hidden"></div>
+    <div id="review" class="hidden" aria-live="polite">
+      <p class="muted" id="review-count"></p>
+      <div class="hand-rows tall" id="review-rows"></div>
+      <div class="replay hidden" id="review-replay"></div>
+    </div>
   </section>
 
   <section class="card hidden" id="hands" aria-live="polite">
@@ -311,6 +412,11 @@
     ["Opened 2–3bb", "opener,open_bb<=3,srp"],
     ["3-bet", "3bet"],
     ["Faced a 3-bet", "faced_3bet"],
+    ["Facing an open", "faced_open"],
+    ["Called an open", "called_open"],
+    ["Squeezed", "called_open,faced_3bet_any"],
+    ["4-bet", "4bet"],
+    ["Facing a 4-bet", "faced_4bet"],
     ["Went to showdown", "wtsd"],
     ["Button", "position=BTN"],
     ["Big blind", "position=BB"],
@@ -411,14 +517,36 @@
     sel.value = opt ? opt.value : "";
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
-                  table: false, data: null, handRows: null, handSort: "newest", handIds: null };
+                  table: false, data: null, handRows: null, handSort: "newest", handIds: null,
+                  order: "newest", hide: new Set(), hideSeen: false, review: null };
+
+  // ---- hand review ------------------------------------------------------
+  // Both views read one endpoint and split its rows by group; see "Hand review"
+  // in SPEC.md for what each flag means.
+  const REVIEW_VIEWS = ["review", "beats"];
+  const isReview = (view) => REVIEW_VIEWS.includes(view);
+  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS];
+  const REVIEW_KINDS = {
+    review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
+    beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
+  };
+  const KIND_LABEL = Object.fromEntries(Object.values(REVIEW_KINDS).flat());
+  const ALL_KINDS = Object.keys(KIND_LABEL);
+  const ORDERS = { review: ["newest", "pot"], beats: ["newest", "pot", "swing"] };
+  const REVIEW_NOTE = {
+    review: "A flag is a prompt to open the replay, not a verdict. Missed bluffs and missed value need every live hand shown, so they come from showdowns only; a failed bluff also counts bluffs given up on before showdown.",
+    beats: "Bookkeeping. Suckouts and preflop coolers are all-in showdowns with every hand shown, their equity taken where the betting stopped; a postflop cooler is a stacks hand already behind on a dry board.",
+  };
 
   // ---- URL state so the page can be bookmarked or embedded --------------
   const readUrl = () => {
     const q = new URLSearchParams(location.search);
     state.player = q.get("player");
     state.filter = q.get("filter") || "";
-    state.by = ["made", "sizing"].includes(q.get("by")) ? q.get("by") : "preflop";
+    state.by = VIEWS.includes(q.get("by")) ? q.get("by") : "preflop";
+    state.order = ["pot", "swing"].includes(q.get("order")) ? q.get("order") : "newest";
+    state.hide = new Set((q.get("hide") || "").split(",").filter(k => ALL_KINDS.includes(k)));
+    state.hideSeen = q.get("seen") === "hide";
     const c = q.get("color") === "freq" ? "pfr" : q.get("color");
     state.color = ["net","pfr","size"].includes(c) ? c : "net";
     state.street = ["turn", "river"].includes(q.get("street")) ? q.get("street") : "flop";
@@ -431,6 +559,11 @@
     if (state.by !== "preflop") q.set("by", state.by);
     if (state.color !== "net") q.set("color", state.color);
     if (state.by === "sizing") { q.set("street", state.street); q.set("kind", state.kind); }
+    if (isReview(state.by)) {
+      if (state.order !== "newest") q.set("order", state.order);
+      if (state.hide.size) q.set("hide", [...state.hide].join(","));
+      if (state.hideSeen) q.set("seen", "hide");
+    }
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
     // An embedder cannot read this page's URL across origins, so hand it out:
@@ -444,8 +577,8 @@
   };
 
   // ---- data ------------------------------------------------------------
-  async function getJson(url) {
-    const r = await fetch(url);
+  async function sendJson(url, opts) {
+    const r = await fetch(url, opts);
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       if (r.status === 404 && body.detail === "Not Found") {
@@ -455,6 +588,10 @@
     }
     return r.json();
   }
+  const getJson = (url) => sendJson(url);
+  const postJson = (url, body) => sendJson(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
 
   async function loadPlayers() {
     const rows = await getJson("/players");
@@ -488,7 +625,20 @@
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
     try {
-      if (state.by === "sizing") {
+      if (isReview(state.by)) {
+        // One request serves both views: switching between them re-renders
+        // rather than re-fetching, unless the HUD said there are new hands.
+        const key = `${state.player}|${state.filter}`;
+        if (!quiet && state.review?.key === key) {
+          state.data = state.review.data;
+        } else {
+          state.data = await getJson(`/players/${player}/review?` + q);
+          if (!("counts" in state.data)) {
+            throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+          }
+          state.review = { key, data: state.data };
+        }
+      } else if (state.by === "sizing") {
         q.set("street", state.street); q.set("kind", state.kind);
         state.data = await getJson(`/players/${player}/sizing?` + q);
       } else {
@@ -539,23 +689,35 @@
     }
     return out;
   }
-  const TITLE = { preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size" };
+  const TITLE = {
+    preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
+    review: "Hands to review", beats: "Bad beats",
+  };
 
   function render() {
     const d = state.data;
     const view = state.by;
-    if (view === "sizing") renderSizingTiles(d); else renderRangeTiles(d);
+    const review = isReview(view);
+    const table = state.table && !review;
+    if (review) renderReviewTiles(d, view);
+    else if (view === "sizing") renderSizingTiles(d);
+    else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
-    $("note").textContent = view === "sizing" ? KIND_NOTE[d.kind]
+    $("note").textContent = review ? REVIEW_NOTE[view]
+      : view === "sizing" ? KIND_NOTE[d.kind]
       : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? `${RANGE_NOTE} ${JAM_NOTE}` : RANGE_NOTE;
     $("colorseg").classList.toggle("hidden", view !== "preflop");
     $("sizingctl").classList.toggle("hidden", view !== "sizing");
+    $("reviewctl").classList.toggle("hidden", !review);
+    $("tabletoggle").classList.toggle("hidden", review);
     $("card-title").textContent = TITLE[view];
-    $("grid").classList.toggle("hidden", view !== "preflop" || state.table);
-    $("scale").classList.toggle("hidden", view !== "preflop" || state.table);
-    $("bars").classList.toggle("hidden", view !== "made" || state.table);
-    $("sizing").classList.toggle("hidden", view !== "sizing" || state.table);
-    $("table").classList.toggle("hidden", !state.table);
+    $("grid").classList.toggle("hidden", view !== "preflop" || table);
+    $("scale").classList.toggle("hidden", view !== "preflop" || table);
+    $("bars").classList.toggle("hidden", view !== "made" || table);
+    $("sizing").classList.toggle("hidden", view !== "sizing" || table);
+    $("table").classList.toggle("hidden", !table);
+    $("review").classList.toggle("hidden", !review);
+    if (review) { renderReview(d, view); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "");
     else renderSizing(d);
@@ -570,7 +732,13 @@
     $("t-raise-k").appendChild(sm);
   }
 
+  // The tile captions the range views print; the review views swap in their own.
+  function setTileKeys(hands, known, cov) {
+    $("t-hands-k").textContent = hands; $("t-known-k").textContent = known; $("t-cov-k").textContent = cov;
+  }
+
   function renderRangeTiles(d) {
+    setTileKeys("hands in this spot ›", "cards known", "coverage");
     $("t-hands").textContent = d.hands;
     $("t-known").textContent = d.known;
     $("t-cov").textContent = fmtPct(d.coverage);
@@ -582,6 +750,7 @@
   }
 
   function renderSizingTiles(d) {
+    setTileKeys("hands in this spot ›", "cards known", "coverage");
     const known = d.blocks.reduce((s, b) => s + b.known, 0);
     // Faced c-bets: only the hands that continued can be shown, so they are the base.
     const base = d.blocks.reduce((s, b) => s + (b.continued ?? b.n), 0);
@@ -590,6 +759,22 @@
     $("t-cov").textContent = fmtPct(base ? Math.round(1000 * known / base) / 10 : null);
     $("t-raise").textContent = d.spot;
     setRaiseKey(KIND_SPOT[d.kind], `on the ${d.street}`);
+  }
+
+  // The rows a review view lists: its own group, minus the flags switched off.
+  const reviewRows = (d, view) => d.hands.filter(h =>
+    REVIEW_KINDS[view].some(([k]) => k === h.kind) && !state.hide.has(h.kind));
+
+  function renderReviewTiles(d, view) {
+    const rows = reviewRows(d, view);
+    setTileKeys("hands in this spot ›", "showdowns, every hand shown", "of showdowns shown");
+    $("t-hands").textContent = d.examined;
+    $("t-known").textContent = d.known_showdowns;
+    $("t-cov").textContent = fmtPct(d.showdowns ? Math.round(1000 * d.known_showdowns / d.showdowns) / 10 : null);
+    const biggest = Math.max(...rows.map(h => h.pot_bb ?? 0), 0);
+    $("t-raise").textContent = rows.length ? `${Math.round(biggest)} bb` : "–";
+    const skipped = d.skipped.stack_unknown ? ` · ${d.skipped.stack_unknown} with a stack unknown` : "";
+    setRaiseKey("biggest pot flagged", `${rows.length} flagged · ${d.skipped.cards_unknown} showdowns mucked${skipped}`);
   }
 
   // value -> [fillColor, deep?] for the current color mode
@@ -921,34 +1106,176 @@
       ? `${state.handSort === "pot" ? "biggest" : "newest"} ${HAND_LIMIT} of ${rows.length}`
       : `${rows.length} hand${rows.length === 1 ? "" : "s"}`;
     if (!rows.length) { list.appendChild(message("no hands")); return; }
-    for (const h of rows.slice(0, HAND_LIMIT)) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
-      const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; b.appendChild(s); };
-      span("num", `#${h.hand_number}`);
-      // Whether they closed the action, not where they sat: every postflop stat
-      // on these pages is defined against an aggressor, not against a seat.
-      span("pos", h.ip == null ? "–" : h.ip ? "IP" : "OOP");
-      // One name plus a count. The row is a wrapping flexbox and three names
-      // break it; the full list is in the tooltip.
-      span("vs", h.vs?.length
-        ? `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` : "");
-      span("hole cards", h.hole_cards ? pretty(h.hole_cards) : "?? ??");
-      span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop");
-      span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
-      span("sizes", Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
-      span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
-      b.title = handTitle(h);
+    for (const h of rows.slice(0, HAND_LIMIT)) list.appendChild(handRowButton(h, list, $("replay")));
+  }
+
+  // One hand as a row: the drill-down list and the review views both build them
+  // here, so the two can never drift. `opts.kind`, `opts.vs`, `opts.sizes` and
+  // `opts.why` let a review row say what it was flagged for.
+  function handRowButton(h, list, replayBox, opts = {}) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
+    const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; b.appendChild(s); return s; };
+    if (opts.kind) span("kind", opts.kind.text).dataset.group = opts.kind.group;
+    span("num", `#${h.hand_number}`);
+    // Whether they closed the action, not where they sat: every postflop stat
+    // on these pages is defined against an aggressor, not against a seat.
+    span("pos", h.ip == null ? "–" : h.ip ? "IP" : "OOP");
+    // One name plus a count. The row is a wrapping flexbox and three names
+    // break it; the full list is in the tooltip.
+    span("vs", opts.vs ?? (h.vs?.length
+      ? `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` : ""));
+    span("hole cards", h.hole_cards ? pretty(h.hole_cards) : "?? ??");
+    span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop");
+    span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
+    span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
+    span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
+    if (opts.why) span("why", opts.why);
+    b.title = handTitle(h) + (opts.title ? "\n" + opts.title : "");
+    b.addEventListener("click", () => {
+      list.querySelectorAll(".hand-row").forEach(x => x.setAttribute("aria-pressed", x === b));
+      pntReplay.show(replayBox, h.hand_id);
+    });
+    return b;
+  }
+
+  // Newest is the server's order; the others sort that, ties staying newest first.
+  function orderReview(rows, view) {
+    const order = ORDERS[view].includes(state.order) ? state.order : "newest";
+    if (order === "pot") return [...rows].sort((a, b) => (b.pot_bb ?? b.pot ?? -1) - (a.pot_bb ?? a.pot ?? -1));
+    if (order === "swing") return [...rows].sort((a, b) => Math.abs(b.diff_bb ?? b.net_bb ?? 0) - Math.abs(a.diff_bb ?? a.net_bb ?? 0));
+    return rows;
+  }
+
+  // What the row's "sizes" slot says for each flag.
+  function reviewDetail(h) {
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    if (h.kind === "failed_bluff") {
+      const size = h.bluff_size ? SHORT_SIZE[h.bluff_size] : h.bluff_pot != null ? `${pct(h.bluff_pot)} pot` : "";
+      return [`${h.bluff_kind} ${h.street}`, size, h.answer].filter(Boolean).join(" · ");
+    }
+    if (h.equity != null && h.street !== "river") return `${pct(h.equity)} to win on the ${h.street}`;
+    return [h.eff_bb != null ? `${Math.round(h.eff_bb)}bb deep` : "", h.spr != null ? `SPR ${h.spr}` : ""].filter(Boolean).join(" · ");
+  }
+
+  function reviewTitle(h) {
+    const bits = [];
+    if (h.eff_bb != null) bits.push(`effective ${Math.round(h.eff_bb)}bb` + (h.spr != null ? `, SPR ${h.spr} on the flop` : ""));
+    for (const v of h.villains) {
+      const profile = [v.archetype, v.wtsd_pct != null ? `WTSD ${v.wtsd_pct}%` : null,
+        v.folds_river_pct != null ? `folds to river bets ${v.folds_river_pct}%` : null].filter(Boolean).join(", ");
+      const range = v.uncapped == null ? "" : v.uncapped ? " · bet or raised earlier: uncapped" : " · only called before: capped";
+      bits.push(`${v.player}${v.cards ? " " + pretty(v.cards) : ""}${v.made ? ` (${v.made.label})` : ""}${profile ? " · " + profile : ""}${range}`);
+    }
+    return bits.join("\n");
+  }
+
+  function renderReview(d, view) {
+    // Flag chips for this view, each with its count; pressed means listed.
+    const chips = $("review-kinds");
+    chips.replaceChildren();
+    for (const [kind, label] of REVIEW_KINDS[view]) {
+      const b = document.createElement("button"); b.type = "button";
+      b.dataset.kind = kind;
+      b.setAttribute("aria-pressed", !state.hide.has(kind));
+      b.append(label);
+      const n = document.createElement("small"); n.textContent = d.counts[kind]; b.appendChild(n);
       b.addEventListener("click", () => {
-        list.querySelectorAll(".hand-row").forEach(x => x.setAttribute("aria-pressed", x === b));
-        showReplay(h.hand_id);
+        if (state.hide.has(kind)) state.hide.delete(kind); else state.hide.add(kind);
+        writeUrl(); render();
       });
-      list.appendChild(b);
+      chips.appendChild(b);
+    }
+    const sort = $("review-sort");
+    [...sort.options].forEach(o => { o.hidden = o.disabled = !ORDERS[view].includes(o.value); });
+    sort.value = ORDERS[view].includes(state.order) ? state.order : "newest";
+
+    const all = reviewRows(d, view);
+    const rows = orderReview(listedReview(all), view);
+    const list = $("review-rows");
+    list.replaceChildren();
+    $("review-replay").classList.add("hidden");
+    setReviewCount();
+    if (!rows.length) {
+      const hidden = state.hideSeen && all.length;
+      list.appendChild(message(hidden ? "every flagged hand here is reviewed" : "nothing flagged in this spot"));
+      return;
+    }
+    for (const h of rows.slice(0, HAND_LIMIT)) {
+      const v = h.villains[0];
+      const row = handRowButton(h, list, $("review-replay"), {
+        kind: { text: KIND_LABEL[h.kind], group: h.group },
+        vs: v ? `vs ${v.player}${v.cards ? " " + pretty(v.cards) : ""}${h.villains.length > 1 ? ` +${h.villains.length - 1}` : ""}` : "",
+        sizes: reviewDetail(h),
+        why: h.why,
+        title: reviewTitle(h),
+      });
+      list.appendChild(reviewedRow(h, row));
     }
   }
 
-  // The replay itself is replay.js, shared with the all-in page.
-  const showReplay = (id) => pntReplay.show($("replay"), id);
+  // ---- marking a hand reviewed -------------------------------------------
+  // The mark is on the hand, and it is the server that holds it: the click is
+  // not believed until the write comes back. See SPEC.md, "Marking a hand
+  // reviewed", and schema.sql for why it is not stored against the hand id.
+
+  const listedReview = (rows) => rows.filter(h => !(state.hideSeen && h.reviewed));
+
+  // How many rows this view lists, and how many of its flags are marked. Read
+  // off state rather than passed in, so a toggle can refresh it without a render.
+  function setReviewCount() {
+    const all = reviewRows(state.data, state.by);
+    const n = listedReview(all).length;
+    const seen = all.filter(h => h.reviewed).length;
+    const head = n > HAND_LIMIT
+      ? `${$("review-sort").value === "newest" ? "newest" : "top"} ${HAND_LIMIT} of ${n} flagged hands`
+      : `${n} flagged hand${n === 1 ? "" : "s"}`;
+    $("review-count").textContent = seen ? `${head} · ${seen} reviewed` : head;
+  }
+
+  function reviewedRow(h, row) {
+    const wrap = document.createElement("div");
+    wrap.className = "rev-row";
+    const mark = document.createElement("button");
+    mark.type = "button";
+    mark.className = "seen";
+    const paint = () => {
+      wrap.dataset.reviewed = String(!!h.reviewed);
+      mark.setAttribute("aria-pressed", String(!!h.reviewed));
+      mark.textContent = h.reviewed ? "✓" : "";
+      mark.title = h.reviewed
+        ? `reviewed ${(h.reviewed_at || "").slice(0, 10)} — click to unmark`
+        : "mark this hand reviewed";
+      mark.setAttribute("aria-label", `hand ${h.hand_number} reviewed`);
+    };
+    paint();
+    mark.addEventListener("click", async () => {
+      mark.disabled = true;
+      try {
+        const out = await postJson(`/hands/${h.hand_id}/reviewed`, { reviewed: !h.reviewed });
+        // One hand can carry two flags -- a missed bluff and a beat -- and they
+        // are one replay, so every row of that hand moves together, including
+        // the rows of the view that is not on show.
+        for (const other of state.data.hands) {
+          if (other.hand_id !== h.hand_id) continue;
+          other.reviewed = out.reviewed;
+          other.reviewed_at = out.reviewed_at;
+        }
+        // Hidden rows leave the list, which needs the render; otherwise the row
+        // is repainted where it is, so an open replay stays open.
+        if (state.hideSeen) { render(); return; }
+        paint();
+        setReviewCount();
+      } catch (e) {
+        $("err").textContent = String(e.message || e);
+        $("err").classList.remove("hidden");
+      } finally {
+        mark.disabled = false;
+      }
+    });
+    wrap.append(mark, row);
+    return wrap;
+  }
 
   function closeHands() {
     $("hands").classList.add("hidden");
@@ -1023,6 +1350,7 @@
   function apply() {
     state.player = $("player").value;
     state.filter = $("filter").value.trim();
+    state.review = null; // Apply always asks the server again
     syncChips();
     closeHands();
     writeUrl();
@@ -1046,6 +1374,18 @@
     state.table = !state.table; $("tabletoggle").setAttribute("aria-pressed", state.table); if (state.data) render();
   });
   $("t-hands-tile").addEventListener("click", () => { if (state.player) openHands("All hands in this spot", null); });
+  // The drill-down list and the review views read separate data; opening a view
+  // with the list showing would leave a stale list under the new card.
+  document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", closeHands));
+  $("review-sort").addEventListener("change", () => {
+    state.order = $("review-sort").value; writeUrl(); if (state.data && isReview(state.by)) render();
+  });
+  $("review-seen").addEventListener("click", () => {
+    state.hideSeen = !state.hideSeen;
+    $("review-seen").setAttribute("aria-pressed", state.hideSeen);
+    writeUrl();
+    if (state.data && isReview(state.by)) render();
+  });
   $("hands-close").addEventListener("click", closeHands);
   $("hands-sort").addEventListener("change", () => {
     state.handSort = $("hands-sort").value;
@@ -1103,8 +1443,25 @@
   // The HUD overlay embeds this page and posts {type: "pnt-refresh"} when the
   // player on show has played new hands. Only the data is fetched again: the spot,
   // view and colour mode stay exactly as they are, and nothing flashes while it loads.
+  //
+  // It posts {type: "pnt-spot", player, filter} when a card is clicked: that
+  // player, in that spot. That goes through the same path as typing the spot and
+  // pressing apply -- the box, the chips and the URL all follow, and `writeUrl`
+  // reports the result back up. The view and colour mode are left alone.
   addEventListener("message", (e) => {
-    if (e.data && e.data.type === "pnt-refresh") load({ quiet: true });
+    if (!e.data) return;
+    if (e.data.type === "pnt-refresh") load({ quiet: true });
+    if (e.data.type === "pnt-spot") {
+      const player = e.data.player;
+      if (player && [...$("player").options].some(o => o.value === player)) $("player").value = player;
+      $("filter").value = e.data.filter || "";
+      state.player = $("player").value;
+      state.filter = $("filter").value.trim();
+      syncChips();
+      closeHands();
+      writeUrl();
+      load({ quiet: true });
+    }
   });
 
   // Embedded in the HUD, a link to the index would navigate the panel away from
@@ -1114,6 +1471,8 @@
   $("filter").value = state.filter;
   $("street").value = state.street;
   $("kind").value = state.kind;
+  $("review-sort").value = state.order;
+  $("review-seen").setAttribute("aria-pressed", state.hideSeen);
   syncChips();
   document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
   document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));

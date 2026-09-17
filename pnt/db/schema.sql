@@ -35,6 +35,20 @@ CREATE TABLE IF NOT EXISTS imports (
     n_new       INTEGER NOT NULL        -- entries actually inserted (0 == pure re-import)
 );
 
+-- Which log-folder files each game has been read from or written to. This is what
+-- lets deleting a CSV remove its game: a game is dropped once EVERY file on record
+-- for it is gone. A game with no row here was imported from somewhere else, or
+-- captured with PNT_SAVE_LOGS=0, and no file's absence says anything about it.
+-- mtime_ns and size are how a sync tells a file it has already read from a new one.
+CREATE TABLE IF NOT EXISTS log_files (
+    path     TEXT PRIMARY KEY,   -- resolved, absolute
+    game_id  TEXT NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    size     INTEGER NOT NULL
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_log_files_game ON log_files(game_id);
+
 -- Lines the grammar did not recognize. Never silently dropped: an empty table is
 -- a claim that the parse was total, and a non-empty one tells you exactly what to
 -- teach the grammar next.
@@ -71,6 +85,27 @@ CREATE TABLE IF NOT EXISTS player_identities (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_identities_player ON player_identities(player_id);
+
+-- ----------------------------------------------------- judgement (layer 2) --
+
+-- The hands you have already looked at. A mark is a judgement you made, not a
+-- fact any log holds, so -- alone among the layer-2 tables -- it is never thrown
+-- away and a rebuild does not touch it. It is the same kind of row as an
+-- identity merge or `players.notes`.
+--
+-- Keyed on (game_id, hand_number), the log's own name for a hand, and NOT on
+-- hand_id. hand_id is a rowid the importer hands out, and `rebuild_game` deletes
+-- every hand of a game before re-inserting it, so those ids move: a mark keyed
+-- on one would come back after a rebuild silently pointing at a different hand.
+-- The same reasoning rules out a foreign key to hands, whose ON DELETE CASCADE
+-- would clear every mark at exactly the moment you most want them kept -- and
+-- whose absence lets a mark outlive a game deleted and imported again later.
+CREATE TABLE IF NOT EXISTS hand_reviews (
+    game_id     TEXT NOT NULL,
+    hand_number INTEGER NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    PRIMARY KEY (game_id, hand_number)
+) WITHOUT ROWID;
 
 -- ---------------------------------------------------------------- layer 2 ----
 

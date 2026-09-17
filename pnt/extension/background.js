@@ -47,13 +47,26 @@ const handlers = {
 
   hud: ({ game_id }) => call(`/hud/${encodeURIComponent(game_id)}`),
 
-  // The content script reports here; the popup reads it back.
+  // The content script reports here -- counters, status text, and the HUD
+  // payload -- and the side panel and settings page read it back.
   status: async (msg, sender) => {
     const key = `status:${sender.tab?.id ?? "?"}`;
     await chrome.storage.session.set({ [key]: { ...msg.status, tabId: sender.tab?.id, at: Date.now() } });
     return {};
   },
 };
+
+// The toolbar icon opens the side panel. The HUD lives there, beside the page,
+// because drawn on the page it covered half the table.
+chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+// A closed tab's report would otherwise sit in session storage until the browser closes.
+chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove(`status:${tabId}`));
+// Nor may it outlive a reload or a move off the game: the side panel would go on
+// showing a table that is no longer there. A game page reports again as it loads.
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (info.status === "loading") chrome.storage.session.remove(`status:${tabId}`);
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const h = handlers[msg?.type];

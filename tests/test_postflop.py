@@ -76,7 +76,70 @@ def test_raise_cbet_and_no_donk_without_an_aggressor(hu):
     assert chris.fold_to_cbet == {}
 
 
+def test_facing_a_bet_the_aggressor_and_checking_back(hu):
+    """The generic facts behind the tags. #2 and #21 are limped pots that check
+    through to a river bet; #12 checks the turn through between two Chris bets."""
+    chris, gp = hu[2][CHRIS], hu[2][GP]
+    assert chris.check_back == {"flop": True, "turn": True}, "Chris closed both streets"
+    assert chris.faced_bet == {"river": True} and chris.folded_to_bet == {"river": True}
+    assert gp.aggressor == {"river": True} and gp.check_back == {} and gp.faced_bet == {}
+
+    chris, gp = hu[12][CHRIS], hu[12][GP]
+    assert chris.aggressor == {"flop": True, "river": True} and chris.check_back == {"turn": True}
+    assert gp.called_bet == {"flop": True} and gp.folded_to_bet == {"river": True}
+    assert gp.faced_bet == {"flop": True, "river": True}
+
+    assert hu[21][GP].check_back == {"flop": True, "turn": True}
+    assert hu[21][CHRIS].folded_to_bet == {"river": True}
+
+    # The c-bet hands from the docstring, seen through the generic facts.
+    assert hu[10][GP].aggressor == {"flop": True, "turn": True}
+    assert hu[10][CHRIS].called_bet == {"flop": True} and hu[10][CHRIS].folded_to_bet == {"turn": True}
+    assert hu[18][CHRIS].aggressor == {"turn": True} and hu[18][GP].called_bet == {"turn": True}
+    chris, gp = hu[92][CHRIS], hu[92][GP]
+    assert chris.faced_bet == {"flop": True, "turn": True, "river": True}, "a bettor faces the raise over it"
+    assert chris.raised_bet == {"river": True} and chris.aggressor == {"river": True}
+    assert gp.raised_bet == {"flop": True} and gp.aggressor == {"flop": True, "turn": True}
+
+
+def test_facing_a_bet_invariants(db):
+    for game in (HU_GAME, MULTIWAY_GAME):
+        for hand in load_hands(db, game):
+            facts = derive(hand)
+            for f in facts:
+                for s in STREETS:
+                    # Not exclusive: a player who calls and then raises over a
+                    # re-raise did both. Each implies a bet was faced.
+                    if f.folded_to_bet.get(s) or f.called_bet.get(s) or f.raised_bet.get(s):
+                        assert f.faced_bet.get(s)
+                    if f.fold_to_cbet_opp.get(s):
+                        assert f.faced_bet.get(s), "a c-bet faced is a bet faced"
+            for s in STREETS:
+                closed = [f for f in facts if f.check_back.get(s)]
+                assert len(closed) <= 1
+                if closed:
+                    assert not any(f.aggressor.get(s) for f in facts), "a checked-through street has no aggressor"
+
+
+def test_holding_filter_terms(hu):
+    seven_deuce = hu[10][CHRIS]
+    seven_deuce.hole_cards = "7h2d"
+    for term in ("hand=72", "hand=72o", "hand=27o", "hand=72O", "hand!=AA", "hand_pct>=90"):
+        assert parse_filter(term)(seven_deuce), term
+    for term in ("hand=72s", "hand=AKs", "hand!=72", "hand_pct<50"):
+        assert not parse_filter(term)(seven_deuce), term
+    seven_deuce.hole_cards = "7h2h"
+    assert parse_filter("hand=72")(seven_deuce) and not parse_filter("hand=72o")(seven_deuce)
+    seven_deuce.hole_cards = None
+    assert not parse_filter("hand!=AA")(seven_deuce), "an unknown holding matches no claim about one"
+    for bad in ("hand=ZZ", "hand=77s", "hand=7", "hand=AKx"):
+        with pytest.raises(ValueError):
+            parse_filter(bad)
+
+
 def test_postflop_filter_terms(hu):
+    assert parse_filter("check_back_turn,faced_bet_river,folded_to_bet_river")(hu[2][CHRIS])
+    assert parse_filter("check_back,aggressor_river")(hu[21][GP])
     assert parse_filter("donk_flop,bet_flop=medium")(hu[10][GP])
     assert parse_filter("cbet_turn=large")(hu[10][GP])
     assert not parse_filter("cbet_turn=overbet")(hu[10][GP])

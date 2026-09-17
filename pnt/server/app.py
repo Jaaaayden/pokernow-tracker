@@ -17,6 +17,8 @@ import csv
 import logging
 import os
 import sqlite3
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -26,7 +28,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from pnt.db.conn import connect
-from pnt.ingest import log_folder
+from pnt.ingest import log_folder, sync
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
     ingest_entries,
@@ -38,6 +40,7 @@ from pnt.ingest.importer import (
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
     aggregate,
     display_names,
@@ -47,6 +50,7 @@ from pnt.stats.queries import (
     report,
 )
 from pnt.stats.ranges import composition, range_grid, sizing_tells
+from pnt.stats.review import mark_reviewed, review_hand_list, reviewed_marks
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
@@ -58,7 +62,54 @@ SAVE_LOGS = log_folder.SAVE_LOGS
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="PokerNow Tracker", version="0.1.0")
+#: Seconds between log-folder syncs while the server runs; 0 turns them off. Each
+#: pass is a stat per file, so a short interval costs nothing between changes.
+SYNC_SECONDS = float(os.environ.get("PNT_SYNC_SECONDS", "5"))
+
+
+def _sync_loop(stop: threading.Event) -> None:
+    """Keep the database in step with the log folder until `stop` is set.
+
+    Its own connection: sqlite3 connections belong to the thread that opened them.
+    Never raises -- a sync that fails is logged and tried again next interval.
+    """
+    conn = db()
+    skip: dict[str, tuple[int, int]] = {}
+    try:
+        while True:
+            try:
+                out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
+                for s in out.imported:
+                    if s["entries_new"]:
+                        log.info("imported %s: %d new entries", s["file"], s["entries_new"])
+                for path, why in out.failed.items():
+                    log.warning("could not import %s: %s", path, why)
+            except Exception:
+                log.exception("log folder sync failed")
+                if conn.in_transaction:
+                    conn.rollback()
+            if stop.wait(SYNC_SECONDS):
+                return
+    finally:
+        conn.close()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    stop = threading.Event()
+    worker = None
+    if SYNC_SECONDS > 0:
+        worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
+        worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        if worker is not None:
+            worker.join(timeout=10)
+
+
+app = FastAPI(title="PokerNow Tracker", version="0.1.0", lifespan=_lifespan)
 
 # The content script runs on PokerNow and posts here. Restricted to those origins:
 # this server is a local database with no auth, so it should not be callable from
@@ -160,6 +211,12 @@ def allin_page() -> HTMLResponse:
     return _page("allin.html")
 
 
+@app.get("/pots.html", include_in_schema=False)
+def pots_page() -> HTMLResponse:
+    """The biggest pots over a window of days. `/pots` serves this to browsers."""
+    return _page("pots.html")
+
+
 def _script(name: str) -> Response:
     return Response(
         (STATIC / name).read_text(encoding="utf-8"),
@@ -239,8 +296,15 @@ def _save_log(conn: sqlite3.Connection, game_id: str) -> None:
     if not SAVE_LOGS:
         return
     try:
+        # A log deleted since the last save means the game is to go, not to be
+        # written straight back out of the database.
+        if sync.prune(conn, [game_id]):
+            return
         log_folder.save_game(conn, game_id, log_folder.LOG_DIR)
-    except (OSError, ValueError, csv.Error) as exc:  # locked, unwritable, or malformed
+        path = log_folder.log_path(log_folder.LOG_DIR, game_id)
+        if path.exists():
+            sync.record_file(conn, path, game_id)
+    except (OSError, ValueError, csv.Error, sqlite3.Error) as exc:  # locked, unwritable, malformed
         log.warning("could not save the log for %s to %s: %s", game_id, log_folder.LOG_DIR, exc)
 
 
@@ -294,6 +358,38 @@ def allin(
     return allin_report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter))
 
 
+@app.get("/pots", response_model=None)
+def pots(
+    request: Request,
+    days: Annotated[float, Query(gt=0, description="Window in days, counted back from now.")] = DEFAULT_DAYS,
+    all_time: Annotated[bool, Query(description="Ignore the window and read all of history.")] = False,
+    min_pot: Annotated[int, Query(ge=0, description="Chips a pot must reach to be listed.")] = DEFAULT_MIN_POT,
+    game: str | None = None,
+    player: Annotated[str | None, Query(description="Only hands this player was dealt into.")] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = DEFAULT_LIMIT,
+) -> dict | HTMLResponse:
+    """The biggest pots in a window, largest first -- everyone's, not one player's.
+
+    Same contract as /stats and /allin: a browser gets the page, everything else
+    the JSON. `all_time` is how "no window" is asked for, since a window of zero
+    days would otherwise have to mean two different things. See SPEC.md,
+    "Biggest pots".
+    """
+    if "text/html" in request.headers.get("accept", ""):
+        return _page("pots.html")
+    try:
+        return big_pots(
+            db(),
+            days=None if all_time else days,
+            min_pot=min_pot,
+            game_id=game,
+            player=player,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/players/{alias}/allin")
 def player_allin(
     alias: str,
@@ -305,6 +401,22 @@ def player_allin(
     pred = _predicate(conn, filter)
     try:
         return {"filter": filter, **allin_hand_list(conn, alias, game, pred)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/players/{alias}/review")
+def player_review(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's flagged hands, newest first: the mistakes worth a replay and the
+    bad beats, one row per hand and flag. See SPEC.md, "Hand review"."""
+    conn = db()
+    pred = _predicate(conn, filter)
+    try:
+        return {"filter": filter, **review_hand_list(conn, alias, game, pred)}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -480,6 +592,44 @@ def hand(hand_id: int) -> dict:
             )
         ],
     }
+
+
+class ReviewedRequest(BaseModel):
+    reviewed: bool = True
+
+
+@app.post("/hands/{hand_id}/reviewed")
+def set_reviewed(hand_id: int, req: Annotated[ReviewedRequest, Body()]) -> dict:
+    """Mark one hand as reviewed, or clear the mark.
+
+    Addressed by `hand_id` because that is what a row on the page already holds,
+    but stored under the hand's (game_id, hand_number) -- see schema.sql -- so the
+    mark survives the rebuild that gives the hand a new id.
+    """
+    conn = db()
+    row = conn.execute(
+        "SELECT game_id, hand_number FROM hands WHERE hand_id = ?", (hand_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such hand")
+    at = mark_reviewed(conn, row["game_id"], row["hand_number"], req.reviewed)
+    return {
+        "hand_id": hand_id,
+        "game_id": row["game_id"],
+        "hand_number": row["hand_number"],
+        "reviewed": at is not None,
+        "reviewed_at": at,
+    }
+
+
+@app.get("/reviewed")
+def reviewed(game: str = Query(None, description="Restrict to one game_id.")) -> list[dict]:
+    """Every hand marked reviewed, newest mark first."""
+    marks = reviewed_marks(db(), game)
+    return [
+        {"game_id": g, "hand_number": n, "reviewed_at": at}
+        for (g, n), at in sorted(marks.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+    ]
 
 
 @app.get("/hud/{game_id}")

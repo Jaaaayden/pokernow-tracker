@@ -1,7 +1,7 @@
 """The extension and the server must both accept every PokerNow address.
 
 A content script whose `matches` miss the page's domain never loads, and nothing
-reports it: no console error, the overlay just never appears and the popup says
+reports it: no console error, the HUD just never appears and the settings say
 "not a PokerNow game page". That is how this was found -- a live table at
 `pokernow.com/games/...` while the manifest only listed `pokernow.club`.
 """
@@ -63,6 +63,27 @@ def test_the_extension_ships_inside_the_package():
     get the browser half was to clone the repo.
     """
     assert (EXTENSION_DIR / "manifest.json").is_file(), f"no manifest in {EXTENSION_DIR}"
-    shipped = ("background.js", "content.js", "normalize.js", "pager.js", "popup.html", "popup.js")
+    shipped = (
+        "background.js", "content.js", "normalize.js", "pager.js", "popup.html", "popup.js",
+        "sidepanel.html", "sidepanel.js", "watch.js",
+    )
     for name in shipped:
         assert (EXTENSION_DIR / name).is_file(), f"{name} missing from {EXTENSION_DIR}"
+    # Every script the content script relies on must be loaded ahead of it.
+    manifest = json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))
+    js = manifest["content_scripts"][0]["js"]
+    assert js.index("pager.js") < js.index("content.js")
+    assert js.index("watch.js") < js.index("content.js")
+
+
+def test_the_hud_opens_in_the_side_panel():
+    """The HUD is drawn in Chrome's side panel, beside the page rather than over it.
+
+    The toolbar icon opens it, which only works while the action has no popup: a
+    `default_popup` would take the click and the panel would never open.
+    """
+    manifest = json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))
+    assert "sidePanel" in manifest["permissions"]
+    path = manifest["side_panel"]["default_path"]
+    assert (EXTENSION_DIR / path).is_file()
+    assert "default_popup" not in manifest["action"]

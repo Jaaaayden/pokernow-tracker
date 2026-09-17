@@ -32,13 +32,12 @@ from datetime import UTC, datetime
 
 from ..db.conn import writing
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from .cards import board_at
 from .derive import Facts, HandRow, derive
 from .equity import cache_key, expected_collected, side_pots
 from .queries import display_names, identities_of, identity_map, load_hands
 
 STREETS = (PREFLOP, FLOP, TURN, RIVER)
-#: Board cards dealt by the end of each street.
-_DEALT = {PREFLOP: 0, FLOP: 3, TURN: 4, RIVER: 5}
 
 
 @dataclass(slots=True)
@@ -76,19 +75,39 @@ class AllInRow:
     n: int
 
 
-def allin_hand_ids(conn: sqlite3.Connection, game_id: str | None = None) -> list[int]:
-    """Complete hands that reached showdown with someone all in."""
-    clause = " AND h.game_id = ?" if game_id else ""
-    params = (game_id,) if game_id else ()
-    return [
-        r[0]
-        for r in conn.execute(
-            "SELECT h.hand_id FROM hands h WHERE h.complete = 1 AND h.went_to_showdown = 1"
-            " AND EXISTS (SELECT 1 FROM actions a WHERE a.hand_id = h.hand_id AND a.all_in = 1)"
-            f"{clause} ORDER BY h.ord",
-            params,
+def allin_hand_ids(
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    hand_ids: Collection[int] | None = None,
+) -> list[int]:
+    """Complete hands that reached showdown with someone all in.
+
+    `hand_ids` narrows the search to those hands, so a caller that only wants one
+    player's all-ins never pays for everyone else's equities.
+    """
+    out: list[int] = []
+    wanted = None if hand_ids is None else list(hand_ids)
+    if wanted is not None and not wanted:
+        return out
+    chunks = [None] if wanted is None else [wanted[i : i + 500] for i in range(0, len(wanted), 500)]
+    for chunk in chunks:
+        clause, params = "", []
+        if game_id:
+            clause += " AND h.game_id = ?"
+            params.append(game_id)
+        if chunk is not None:
+            clause += f" AND h.hand_id IN ({','.join('?' * len(chunk))})"
+            params.extend(chunk)
+        out.extend(
+            r[0]
+            for r in conn.execute(
+                "SELECT h.hand_id FROM hands h WHERE h.complete = 1 AND h.went_to_showdown = 1"
+                " AND EXISTS (SELECT 1 FROM actions a WHERE a.hand_id = h.hand_id AND a.all_in = 1)"
+                f"{clause} ORDER BY h.ord",
+                params,
+            )
         )
-    ]
+    return out
 
 
 def decision_street(hand: HandRow) -> str:
@@ -101,12 +120,8 @@ def decision_street(hand: HandRow) -> str:
 
 
 def decision_board(hand: HandRow) -> tuple[str, ...]:
-    """The first run's cards dealt by the time the betting stopped.
-
-    Run-it-twice second boards repeat this prefix, so the first run is the one
-    every player saw when they committed.
-    """
-    return hand.board[: _DEALT[decision_street(hand)]]
+    """The first run's cards dealt by the time the betting stopped."""
+    return board_at(hand.board, decision_street(hand)) or ()
 
 
 def _cached(conn: sqlite3.Connection, keys: Collection[str]) -> dict[str, tuple[list[float], str, int]]:
@@ -123,14 +138,17 @@ def _cached(conn: sqlite3.Connection, keys: Collection[str]) -> dict[str, tuple[
 
 
 def allin_rows(
-    conn: sqlite3.Connection, game_id: str | None = None
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    hand_ids: Collection[int] | None = None,
 ) -> tuple[list[AllInRow], dict[str, int], dict[int, HandRow]]:
     """Every all-in showdown row, oldest hand first, plus what was skipped and why.
 
     Also returns the hands themselves, keyed by id, so a caller that wants to
-    filter on derived facts can derive exactly these and no others.
+    filter on derived facts can derive exactly these and no others. `hand_ids`
+    narrows the population, as in `allin_hand_ids`.
     """
-    hands = load_hands(conn, game_id, hand_ids=allin_hand_ids(conn, game_id))
+    hands = load_hands(conn, game_id, hand_ids=allin_hand_ids(conn, game_id, hand_ids))
     skipped = {"cards_unknown": 0}
 
     # First pass: what each hand needs computed, so the cache is read once and the

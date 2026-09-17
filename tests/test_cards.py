@@ -7,15 +7,28 @@ import pytest
 from pnt.stats.cards import (
     ALL_CLASSES,
     DRAW_DETAILS,
+    HAND_RANKING,
     MADE_CLASSES,
     TEXTURE_TAGS,
+    board_at,
     board_texture,
     grid_labels,
     hand_class,
+    hand_pct,
     made_class,
     made_hand,
     parse_cards,
 )
+
+
+def test_hand_ranking_orders_every_class_once():
+    assert sorted(HAND_RANKING) == sorted(ALL_CLASSES)
+    assert HAND_RANKING[0] == "AA" and HAND_RANKING[-1] == "32o"
+    assert hand_pct("AA") < hand_pct("KK") < hand_pct("AKs") < hand_pct("AKo")
+    assert hand_pct("32o") == 100.0 and hand_pct("72o") > 90
+    for label in ALL_CLASSES:
+        if label.endswith("s"):
+            assert hand_pct(label) < hand_pct(label[:-1] + "o"), f"{label} suited ranks above offsuit"
 
 
 @pytest.mark.parametrize(
@@ -145,3 +158,15 @@ def test_board_texture(board, present, absent):
 def test_no_texture_before_the_flop():
     assert board_texture([]) == frozenset()
     assert board_texture(["Ah"]) == frozenset()
+
+
+def test_board_at_is_the_prefix_dealt_by_that_street():
+    board = ("Ac", "7s", "2d", "9c", "4h")
+    assert board_at(board, "preflop") == ()
+    assert board_at(board, "flop") == ("Ac", "7s", "2d")
+    assert board_at(board, "turn") == ("Ac", "7s", "2d", "9c")
+    assert board_at(board, "river") == board
+    # A hand that ended on the flop has no turn board to speak of.
+    assert board_at(board[:3], "turn") is None
+    assert board_at((), "flop") is None
+    assert board_at((), "preflop") == ()

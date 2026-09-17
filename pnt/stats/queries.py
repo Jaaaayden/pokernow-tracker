@@ -109,6 +109,7 @@ def load_hands(
                 bounty=r["bounty"],
                 folded=bool(r["folded"]),
                 hole_cards=r["hole_cards"],
+                starting_stack=r["starting_stack"],
             )
 
     for r in conn.execute(
@@ -276,10 +277,48 @@ def facts_by_player(
 _REPORT_CACHE: dict[tuple[str, str | None], tuple[int, list[dict]]] = {}
 
 
+#: One player's `Facts`, per (database, alias, game), with the generation they
+#: were derived at. This one *is* a cache of Facts, which `_REPORT_CACHE` refuses
+#: to be -- but for a handful of players, not the whole database: the live view
+#: asks for everyone at the table on every poll, and a table seats ten. Capped so
+#: an evening across several tables cannot grow it without bound.
+_FACTS_CACHE: dict[tuple[str, str, str | None], tuple[int, list[Facts]]] = {}
+_FACTS_CACHE_MAX = 16
+
+
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
     database behind this module's back."""
     _REPORT_CACHE.clear()
+    _FACTS_CACHE.clear()
+
+
+def facts_cached(
+    conn: sqlite3.Connection, alias: str, game_id: str | None = None
+) -> list[Facts]:
+    """`facts_for`, remembered until the derivation generation moves.
+
+    The same contract as `report()`'s cache: keyed on the generation counter,
+    which every write that changes a derived fact bumps inside its own
+    transaction, so a hit is exactly current. Ingesting raw lines does not bump
+    it, which is the point -- live capture writes every few seconds and the
+    answer does not change until the hand is rebuilt. Callers must not mutate the
+    rows they get back.
+    """
+    gen = generation(conn)
+    path = path_of(conn)
+    cacheable = gen is not None and bool(path)
+    key = (path, alias, game_id)
+    if cacheable:
+        hit = _FACTS_CACHE.get(key)
+        if hit is not None and hit[0] == gen:
+            return hit[1]
+    facts = facts_for(conn, alias, game_id)
+    if cacheable:
+        if key not in _FACTS_CACHE and len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
+            _FACTS_CACHE.pop(next(iter(_FACTS_CACHE)))
+        _FACTS_CACHE[key] = (gen, facts)
+    return facts
 
 
 def report(

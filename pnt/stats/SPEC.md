@@ -73,6 +73,33 @@ level 2.
 A BB who checks their option has an opportunity and does not have VPIP. An SB who
 completes to the BB *does* have VPIP — completing is voluntary.
 
+### Decision points
+
+Every preflop decision is taken at some bet level, and the level *is* the spot:
+"facing an open" is level 2, "facing a 3-bet" is level 3. One fact carries the
+whole path.
+
+| Fact | Definition |
+|---|---|
+| **pf_faced[level]** | What the player did the (only) time they acted at that level: `fold`, `check`, `call` or `raise`. Recorded before the action resolves, like every opportunity. A preflop `bet` is a `raise`. |
+
+A player acts at most once per level — action only comes back to them after a
+raise, which is the next level — so the dict is the player's decision path.
+
+| Level | Spot term | Acting there is… | Raising there is… | Calling there is… |
+|---|---|---|---|---|
+| 1 | `unopened` | had a decision with no raise in front | `opener` | `limp` |
+| 2 | `faced_open` | same hands as `3bet_opp` | `3bet` | `called_open` |
+| 3 | `faced_3bet_any` | opener or not | `4bet` | `faced_3bet_any=call` |
+| 4 | `faced_4bet` | | `5bet` | `faced_4bet=call` |
+| 5 | `faced_5bet` | | `faced_5bet=raise` | `faced_5bet=call` |
+
+`<spot>=<decision>` filters on the decision itself, so `faced_open=fold` is the
+hands where they folded to an open. `faced_3bet` and `faced_3bet=<decision>` stay
+**the opener's alone**, because Fold to 3-Bet is defined on them; `faced_3bet_any`
+covers the cold-caller and the squeezed player too. `limp` is the action and
+`limped` the pot type.
+
 ---
 
 ## Postflop
@@ -87,6 +114,7 @@ continuation bet. Some trackers carry the aggressor forward; this one does not.)
 | **C-Bet** (flop/turn/river) | Player bets | Player was the previous street's aggressor, saw this street, and acts while no bet has yet been made on it | Previous street checked through; player already all-in |
 | **Fold to C-Bet** | Player folds | Player acts facing a c-bet, before anyone raises over it | — |
 | **Raise C-Bet** (flop/turn/river) | Player raises | Same as Fold to C-Bet | — |
+| **Call C-Bet** (flop/turn/river) | Player neither folds nor raises | Same as Fold to C-Bet | — |
 | **Donk Bet** (flop/turn/river) | Player bets | Player acts while no bet has yet been made on this street, the previous street's aggressor has not acted on it yet, and that aggressor is not all-in | The aggressor themselves; previous street checked through |
 | **Aggression Frequency** (per street) | `bet` + `raise` | `bet` + `raise` + `call` + `fold` | `check` is excluded from **both** sides |
 
@@ -96,6 +124,26 @@ measure how often a player is out of position rather than how aggressive they ar
 A donk bet (a *lead*) is a bet into the previous street's aggressor before they
 get to act. Like the c-bet it needs an aggressor: a bet after a checked-through
 street is a probe and counts as neither.
+
+### Facing a bet, the aggressor, and checking back
+
+The c-bet family above is defined against one bettor, the previous street's
+aggressor. Three generic facts cover the rest.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **faced_bet[street]** | Acted while a bet or raise had already been made on the street | Whoever made it. A bettor who is raised and acts again *faced a bet*: their own bet is not the last word. `fold_to_cbet_opp` is a subset |
+| **folded_to_bet / called_bet / raised_bet[street]** | What they did there | Not exclusive: a player who called and then raised over a re-raise has both |
+| **aggressor[street]** | Made the street's last bet or raise | The aggressor of the Postflop section; `pfa` is the preflop one |
+| **check_back[street]** | Their check was the last action of a street that checked through | Needs two or more players to have acted on the street: a lone check against a player already all in decided nothing |
+
+A street with no bet ends on a check, and exactly one player's check closed it,
+so a street has a `check_back` for at most one player and never alongside an
+`aggressor`.
+
+Filters: `faced_bet_river`, `folded_to_bet_river`, `called_bet_<street>`,
+`raised_bet_<street>`, `aggressor_<street>`, `check_back_<street>`, and
+`check_back` for any street.
 
 ### Who the action was against
 
@@ -220,6 +268,7 @@ cell by how big the player usually raises with it.
 | **open_bb** | The open raise's `raises to N`, over this hand's big blind | Same value for everyone in the hand; `None` in a limped pot |
 | **pf_raise_bb** | This player's own *last* preflop raise-to, in big blinds | An opener who 4-bets ends above their open |
 | **bet_pot[street]** | This player's *first* `bet` on that street, over the pot it was made into | 1.0 is a pot-sized bet, above it is an overbet |
+| **pot_at[street]** | Chips in the middle when that street was dealt | Forced posts included, capped at `pot`; only the streets that were dealt; identical for everyone in the hand. The flop's is what an SPR is measured against |
 | **pot** | The final pot in chips: Σ `contributed` over everyone dealt in | Uncalled bets and bounties excluded; identical for everyone in the hand; short on an incomplete hand, like `net` |
 
 `pot>=500` and `pot_bb>=50` filter on it in chips and in that hand's big blinds.
@@ -270,6 +319,7 @@ positively or negatively.
 |---|---|---|
 | highest card | `ace_high` `king_high` `queen_high` `jack_high` `ten_high` `low` | exactly one; `low` is 9-high or below |
 | suits | `monotone` `twotone` `rainbow` `flush_possible` | all one suit / exactly two suits present / no suit repeated / three or more of one suit |
+| straights | `straight_possible` | three ranks inside one five-rank window, the ace playing high and low, so two hole cards can make a straight |
 | pairing | `paired` `double_paired` `trips` `unpaired` | any rank repeated; two different pairs; three of a rank |
 | connectivity | `connected` `three_connected` `disconnected` | two adjacent ranks (ace plays high and low); three in a row; neither |
 | rank mix | `all_broadway` `no_broadway` | every card T or above / every card 9 or below |
@@ -343,6 +393,17 @@ players show the bluffs they are proud of -- so no range view includes them.
 Across the fixture logs that is 157 show lines, 52 of them two-card shows from
 hands that ended before the river.
 
+### Holdings
+
+`cards.HAND_RANKING` orders the 169 classes strongest first by all-in equity
+against one random hand, the ordering every starting-hand chart reproduces.
+`hand_pct` is a class's place in it as a percentile: 0.6 is AA, 100 is 32o, so
+"a bottom-40% hand" is `hand_pct>=60`. It is a reference, not a claim about
+any spot: a 3-bet call that is bad six-handed can be fine heads-up.
+
+Filters: `hand=72` (both suits), `hand=72o`, `hand=77`, `hand!=AA`, and
+`hand_pct>=60`. A holding term matches only where the cards are known.
+
 ---
 
 ## Money
@@ -408,6 +469,200 @@ so they are memoized in `equity_cache`, the one derived table in the schema. It 
 disposable: drop it and the next request refills it, with identical numbers.
 
 ---
+
+## Hand review
+
+A *flag* is one hand this player should look at again, with the reason written
+out and the replay a click away. `review.py` mirrors this section, `THRESHOLDS`
+is the other copy of the numbers below, and `GET /players/{alias}/review`,
+`pnt review` and the chart's **Hand review** and **Bad beats** views read it.
+
+One row per (hand, flag). Mistakes and beats are two groups because they are two
+questions: the first is about the decision, the second only about the deck.
+
+| Group | Flags |
+|---|---|
+| **mistake** | `missed_bluff`, `missed_value`, `failed_bluff` |
+| **beat** | `suckout`, `cooler_pre`, `cooler_post` |
+
+**A flag is a prompt, not a verdict.** Nothing here knows the ranges, the table
+or the reads. It knows two hole cards on a board and where the chips went, and
+the row exists so a person can open the replay and judge.
+
+### What the flags cannot see
+
+Villains' cards are known only at showdown, so every flag that reads them --
+missed bluffs, missed value, postflop coolers -- is drawn from showdowns alone,
+and the hands where a live hand was mucked are *counted* in `skipped`, never
+silently dropped. The reviewed player's own cards are complete only for the
+hero; for anyone else `failed_bluff` is the bluffs that got shown, which is the
+sample most biased toward the ones that failed. `examined`, `showdowns` and
+`known_showdowns` ride on every answer, so the coverage is beside the count.
+
+### Thresholds
+
+| Name | Value | Where it is used |
+|---|---|---|
+| `bloated_pot_bb` | 15 | A checked-down pot worth looking at; the floor for a postflop cooler with no all-in |
+| `failed_bluff_pot_bb` | 15 | The pot a called bluff has to have been in |
+| `stacks_in_share` | 0.5 | Missed value: the final pot was under this share of the two effective stacks |
+| `suckout_equity` | 0.6 | At least this far ahead when the money went in |
+| `cooler_equity` | 0.5 | At most this far ahead, for a preflop cooler |
+| `deep_bb` | 120 | A 3-bet pot this deep or shallower plays for stacks with TPTK |
+| `premium` | QQ+, AKs, AKo | The preflop hands a cooler is measured on |
+
+### Three definitions the flags share
+
+**Air** is high card, a draw, or a pair that is entirely on the board. An
+underpair or bottom pair is a hand: checking it down is a thin-value question,
+not a missed bluff.
+
+**A stacks hand** is one worth playing 100bb for, by tier:
+
+| Tier | Where | What counts |
+|---|---|---|
+| `tptk_plus` | 4-bet pots, and 3-bet pots no deeper than `deep_bb` | An overpair, top pair top kicker, top two pair, or a set or better that needs both hole cards |
+| `two_pair_plus` | everywhere else -- limped, single-raised, and deeper 3-bet pots | Top two pair, or a set or better that needs both hole cards |
+
+"Needs both hole cards" is the test that keeps the board's own hands out: a set
+qualifies, one hole card to a paired board (trips, or a full house the board
+mostly made) does not. Everyone at the table can have that piece.
+
+**A dry board** has no `flush_possible`, no `straight_possible` and no `trips`
+among its texture tags, so the hands are what they look like. A five-card river
+almost always fails that test, so a hand is judged on the **earliest street the
+board was still dry** -- which is where the chance to get the stacks in was.
+
+### The flags
+
+| Flag | Population | Fires when | Notes |
+|---|---|---|---|
+| **missed_bluff** | Complete showdowns with a river dealt and every live hand known | The river checked through with two or more players acting on it; the final pot is at least `bloated_pot_bb`; **every** live hand is air | Flagged for each live player: they all passed up the same bet |
+| **missed_value** | The same, with no all-in in the hand | On the earliest dry street, this player **and** some villain both hold a stacks hand at the tier for that pot and effective stack, and the final pot came to less than `stacks_in_share` x 2 x the effective stack | Both sides get the flag on their own review |
+| **failed_bluff** | Complete hands this player's cards are known in, with a final pot of at least `failed_bluff_pot_bb` | They bet or raised postflop with air on that street's board, at least one player called or raised it, and they lost the hand | One row per hand, at the **last** such bet. A draw is a semi-bluff on the flop and turn; on the river it has missed, so it is air |
+| **suckout** | Their all-in showdown rows (`allin.py`) | Equity at least `suckout_equity` where the betting stopped, and they lost chips | A 55% flip that loses is a flip, not a beat, and a chop is neither |
+| **cooler_pre** | The same, all in preflop | A `premium` holding with equity at most `cooler_equity`, and they lost chips | |
+| **cooler_post** | Complete showdowns with every live hand known, that they lost | On the earliest dry street up to where the betting stopped: they held a stacks hand, a villain was **already ahead** there, and that villain won. With no all-in the pot must reach `bloated_pot_bb` | A villain who was behind there and got there later is the deck's doing, not a cooler |
+
+Each row also carries the effective stack in big blinds, the flop SPR, the pot
+type, and -- for a failed bluff -- the size of the bet and who answered it, with
+their archetype, their WTSD and whether they had bet or raised earlier in the
+hand. That last one is a heuristic for an uncapped range, and is labelled as one.
+
+### Marking a hand reviewed
+
+A flag says a hand is worth a look. A **mark** says you have taken it -- it is
+entered by hand, and it is the one thing on these pages that is *stored* rather
+than derived on every request. `pnt reviewed <game_id> <hand_number>` sets it,
+`--undo` clears it, `POST /hands/{hand_id}/reviewed` is the same write for the
+page, and every review row carries `reviewed` and `reviewed_at`.
+
+**The mark is on the hand, not on the flag or the player.** You watched a replay
+or you did not: a hand carrying two flags, or showing up on two players' reviews,
+is marked once and shows as marked everywhere.
+
+**It is keyed on `(game_id, hand_number)` -- the log's own name for the hand --
+never on `hand_id`.** `hand_id` is a rowid the importer hands out, and a rebuild
+deletes a game's hands before re-inserting them, so every id in that game moves;
+a mark keyed on one would come back pointing at a different hand. For the same
+reason `hand_reviews` has no foreign key to `hands`: a cascade would erase the
+marks on the rebuild that was supposed to preserve them.
+
+Alone among the layer-2 tables, marks are never thrown away -- a rebuild, a merge
+or a rename leaves them untouched -- because no log can re-derive a judgement you
+made. They are the same kind of row as an identity merge or a player note.
+
+`pnt review --unreviewed` lists only what is left, and the chart's **Hide
+reviewed** button does the same for the Hand review and Bad beats views.
+
+### Reproducing a flag on the chart
+
+Unlike a tag, a flag cannot be turned into a filter that finds exactly its hands:
+the spot language does not read the villain's cards. Each one is a **subset** of
+the hands its widest filter lists, and a test holds it to that:
+
+| Flag | Filter that contains it |
+|---|---|
+| `missed_bluff` | `wtsd,pot_bb>=15` |
+| `missed_value` | `wtsd` |
+| `failed_bluff` | `lost,pot_bb>=15` |
+| `suckout` | `wtsd,lost,jam` |
+| `cooler_pre`, `cooler_post` | `wtsd,lost` |
+
+### Judgement calls
+
+16. **Both sides of a missed-value hand are flagged.** The row says the money
+    did not go in, not whose fault that was.
+17. **One beat per hand**, tested `suckout`, then `cooler_pre`, then
+    `cooler_post`. A hand listed twice would read as two beats.
+18. **A chop is never a beat.** Every beat needs chips actually lost.
+19. **`suckout_equity` is 0.6, not 0.5.** Being 53% and losing is variance in the
+    ordinary sense, and calling it a bad beat makes the list useless.
+20. **Missed value and coolers are judged on the earliest dry street, not the
+    river.** Almost every river board has a straight or a flush available, so the
+    river would answer "no hand was ever safe" and flag nothing at all.
+21. **One hole card to a paired board is not a stacks hand.** Trips with a
+    kicker, or a full house the board mostly made, is a hand everyone can hold a
+    piece of -- and the pool's own hands say so: the first draft of this section
+    flagged trips against trips as missed value.
+22. **A failed bluff is judged at its last called street, and preflop bluffs are
+    out of scope.** A three-barrel bluff is one row, on the river; a light 3-bet
+    that got called is a preflop range question.
+23. **An unknown starting stack is unknown, not zero.** Effective stacks and SPR
+    are `None`, the hand is skipped for the flags that need them, and `skipped`
+    counts it. Re-importing the log repairs it.
+24. **A bluff a villain raised reads as `raised`**, from this player's last
+    aggressive action on that street alone. A bet, a raise over it and a re-raise
+    back is one row, not three.
+
+---
+
+## Biggest pots
+
+The one view that does not start with a player. `pots.py` mirrors this section,
+and `GET /pots`, `pnt pots` and the **Biggest pots** page read it.
+
+Two knobs, and the defaults are the whole idea: **pots over 2,000 chips in the
+last 7 days**, biggest first.
+
+| Name | Default | What it means |
+|---|---|---|
+| `days` | 7 | How far back the window reaches, from the clock at request time. None (`--all`, `all_time=1`) is all of history |
+| `min_pot` | 2000 | Chips a pot must reach to be listed |
+| `limit` | 50 | How many pots one answer carries |
+
+**The pot is `SUM(contributed)` over the hand's dealt-in players** -- every chip
+that stayed in the middle. Uncalled bets are not in it (the over-shove nobody
+matched never sat there) and neither are 7-2 bounties (they are a side bet, not
+the pot). That is `derive`'s `Facts.pot` exactly, evaluated in SQL so that finding
+the biggest pots in 9,000 hands does not cost 9,000 derivations: only the pots
+that clear the bar are loaded and derived, for the seat-by-seat figures.
+
+**The window is a string comparison against `hands.ts`**, which the parser stores
+as ISO-8601 UTC to the millisecond with a `Z`. The cutoff is rendered in that
+exact format. SQLite's own `datetime('now', '-7 days')` cannot be used: it renders
+`2026-09-09 07:45:01`, a space where every stored timestamp has a `T`. A space
+sorts *before* `T`, so a hand dealt at `2026-09-09T00:12:00.000Z` -- seven hours
+before that cutoff -- compares as later than it and leaks into the window. The
+bug would be almost a day of stale hands at the boundary, and nowhere else.
+
+**A capped list says so.** `over` counts every pot that cleared the bar and
+`hands` every hand in the window, so a list of 50 out of 200 is visibly a slice
+rather than quietly the whole of it.
+
+**A chopped pot names no winner.** Where two or more players collected, "winner
++13" would describe a pot everyone mostly got back; the row says *chopped* and
+lists who shared it. `winner` is otherwise the largest net, `loser` the smallest,
+and both are null in a hand where nobody finished up.
+
+**An incomplete hand is listed and labelled.** A log that stops mid-hand has only
+some of its chips on record, so its pot is short; `complete` is false and the row
+is marked, on the same principle as everywhere else -- counted and flagged, never
+silently dropped.
+
+`player` narrows to the hands one person was dealt into. It is the same list seen
+from one seat, not a different question: the pot, the winner and the seats are
+still the table's.
 
 ## Known judgement calls
 
