@@ -228,7 +228,7 @@ defaults to `~/Downloads/pokernow-logs`; set `PNT_LOG_DIR` to change it.
 | Background server (Windows) | |
 |---|---|
 | `pnt service status` | Whether it's up, and which database it has open |
-| `pnt service restart` | **Run after pulling code changes** |
+| `pnt service restart` | **Run after pulling code changes.** If an old server still holds the port, it names the process to end |
 | `pnt service log` | The last lines of `~\.pnt\server.log` |
 | `pnt service stop` / `start` | Stop until the next login, or start again |
 | `pnt service uninstall` | Remove it; the database is untouched |

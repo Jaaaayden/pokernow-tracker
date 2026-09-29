@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from pnt.ingest.csv_source import read_csv
@@ -73,6 +75,8 @@ def test_health_reports_a_total_parse(client):
     body = client.get("/health").json()
     assert body["hands"] == 549
     assert body["parse_misses"] == 0
+    # `pnt service restart` tells the new server from a stale one by this.
+    assert body["pid"] == os.getpid()
 
 
 def test_stats_endpoint(client):

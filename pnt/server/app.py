@@ -260,6 +260,9 @@ def health() -> dict:
         "entries": row["e"],
         "parse_misses": row["m"],
         "log_folder": str(log_folder.LOG_DIR) if SAVE_LOGS else None,
+        # Which process answered: `pnt service restart` tells the new server from
+        # one that outlived it on the same port.
+        "pid": os.getpid(),
     }
 
 

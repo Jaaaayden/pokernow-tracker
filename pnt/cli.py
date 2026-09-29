@@ -1120,10 +1120,25 @@ def serve(
     Lasts until the terminal closes. To keep it running in the background instead,
     use `pnt service install`.
     """
-    typer.echo(f"range chart: http://{host}:{port}/chart   api docs: http://{host}:{port}/docs")
     if importlib.util.find_spec("uvicorn") is None:  # pragma: no cover
         raise typer.BadParameter("server extras not installed. Run: pip install -e '.[server]'")
-    svc.run_server(db, host, port)
+    # A second server on the port would split requests with the first (see
+    # svc.bind): usually the background service, which is already doing this job.
+    busy = f"error: something already answers on http://{host}:{port}. "
+    if svc.port_in_use(host, port):
+        body = svc.health(host, port)
+        if body is not None and body.get("pid") is not None:
+            typer.echo(busy + f"The tracker is already running there (pid {body['pid']}; "
+                       "`pnt service status`).", err=True)  # fmt: skip
+        else:
+            typer.echo(busy + svc.port_holder_hint(port).capitalize() + ".", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"range chart: http://{host}:{port}/chart   api docs: http://{host}:{port}/docs")
+    try:
+        svc.run_server(db, host, port)
+    except OSError as exc:  # taken between the check and the bind
+        typer.echo(busy + f"({exc}) " + svc.port_holder_hint(port).capitalize() + ".", err=True)
+        raise typer.Exit(1) from exc
 
 
 def _svc(fn, *args, **kwargs):
@@ -1185,10 +1200,10 @@ def service_stop() -> None:
 
 
 @service_app.command("restart")
-def service_restart() -> None:
+def service_restart(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) -> None:
     """Restart it. Needed after pulling code changes: a running server keeps the old code."""
-    _svc(svc.restart)
-    typer.echo("restarted")
+    body = _svc(svc.restart, host=host, port=port)
+    typer.echo(f"restarted: pid {body['pid']}, {body['hands']} hands, db {body['db']}")
 
 
 @service_app.command("status")
@@ -1200,7 +1215,8 @@ def service_status(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) -
     if body is None:
         typer.echo(f"server: not answering on http://{host}:{port}")
     else:
-        typer.echo(f"server: up on http://{host}:{port}  {body['hands']} hands  db {body['db']}")
+        pid = body.get("pid", "? (older than this install: `pnt service restart`)")
+        typer.echo(f"server: up on http://{host}:{port}  pid {pid}  {body['hands']} hands  db {body['db']}")
     typer.echo(f"log:    {svc.LOG_FILE}")
 
 

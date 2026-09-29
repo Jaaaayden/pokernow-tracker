@@ -8,6 +8,7 @@ restarting a real task were checked by hand on Windows 11.
 from __future__ import annotations
 
 import copy
+import itertools
 import socket
 import subprocess
 import sys
@@ -151,6 +152,119 @@ def test_port_in_use_detects_a_listener():
         port = s.getsockname()[1]
         assert svc.port_in_use("127.0.0.1", port)
     assert not svc.port_in_use("127.0.0.1", port)
+
+
+def test_a_second_server_cannot_share_the_port():
+    """Two servers on one port split its requests between them.
+
+    uvicorn's own SO_REUSEADDR allows exactly that on Windows: after an update, an
+    old server left running went on answering beside the new one, and the pages
+    said the server was older than them however often the service restarted.
+    """
+    first = svc.bind("127.0.0.1", 0)
+    try:
+        first.listen()
+        port = first.getsockname()[1]
+        with pytest.raises(OSError):
+            svc.bind("127.0.0.1", port)
+        # Nor may an older server, binding the way uvicorn does, join it.
+        with socket.socket() as old:
+            old.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            with pytest.raises(OSError):
+                old.bind(("127.0.0.1", port))
+                old.listen()
+    finally:
+        first.close()
+    svc.bind("127.0.0.1", port).close()  # and the port is free again once it closes
+
+
+NETSTAT = """
+Active Connections
+
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    0.0.0.0:135            0.0.0.0:0              LISTENING       1240
+  TCP    127.0.0.1:52000        0.0.0.0:0              LISTENING       16084
+  TCP    127.0.0.1:52000        0.0.0.0:0              ABHÖREN         39440
+  TCP    127.0.0.1:52000        127.0.0.1:61234        ESTABLISHED     16084
+  TCP    127.0.0.1:520001       0.0.0.0:0              LISTENING       7
+  TCP    [::1]:52000            [::]:0                 LISTENING       16084
+"""
+
+
+def test_listening_pids_reads_netstat_in_any_language(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        svc.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, NETSTAT, "")
+    )
+    assert svc.listening_pids(52000) == [16084, 39440]
+    assert "Stop-Process -Id 16084, 39440" in svc.port_holder_hint(52000)
+
+
+def test_listening_pids_names_none_off_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert svc.listening_pids(52000) == []
+    assert "pnt serve" in svc.port_holder_hint(52000)
+
+
+@pytest.fixture
+def restarting(monkeypatch):
+    """svc.restart with the task and the clock faked; set `answers` to /health bodies."""
+    f = FakeTime()
+    calls = []
+    monkeypatch.setattr(svc, "stop", lambda name: calls.append("stop"))
+    monkeypatch.setattr(svc, "_await_stopped", lambda name, timeout: None)
+    monkeypatch.setattr(svc, "start", lambda name: calls.append("start"))
+    monkeypatch.setattr(svc.time, "sleep", f.sleep)
+    monkeypatch.setattr(svc.time, "monotonic", f.clock)
+    monkeypatch.setattr(svc, "listening_pids", lambda port: [16084])
+    state = {"answers": iter(())}
+    monkeypatch.setattr(svc, "health", lambda host, port: next(state["answers"]))
+    return state, calls
+
+
+def test_restart_returns_once_the_new_server_answers(restarting):
+    state, calls = restarting
+    old, new = {"pid": 1, "hands": 5, "db": "x"}, {"pid": 2, "hands": 5, "db": "x"}
+    state["answers"] = iter([old, None, None, new])
+    assert svc.restart() == new
+    assert calls == ["stop", "start"]
+
+
+def test_restart_names_a_server_that_outlived_it(restarting):
+    """The old server is not the task's: it keeps the port, and saying "restarted"
+    would leave its old code answering."""
+    state, _ = restarting
+    stray = {"pid": 16084, "hands": 5, "db": "x"}
+    state["answers"] = itertools.repeat(stray)
+    with pytest.raises(svc.ServiceError, match="Stop-Process -Id 16084"):
+        svc.restart()
+
+
+def test_restart_does_not_mistake_a_server_too_old_to_name_itself(restarting):
+    state, _ = restarting
+    state["answers"] = itertools.repeat({"hands": 5, "db": "x"})
+    with pytest.raises(svc.ServiceError, match="another server still answers"):
+        svc.restart()
+
+
+def test_restart_says_when_nothing_comes_back(restarting):
+    state, _ = restarting
+    state["answers"] = itertools.chain([{"pid": 1}], itertools.repeat(None))
+    with pytest.raises(svc.ServiceError, match="pnt service log"):
+        svc.restart()
+
+
+def test_serve_refuses_a_port_the_tracker_already_holds(monkeypatch):
+    from typer.testing import CliRunner
+
+    from pnt.cli import app
+
+    monkeypatch.setattr(svc, "port_in_use", lambda host, port: True)
+    monkeypatch.setattr(svc, "health", lambda host, port: {"pid": 4242})
+    monkeypatch.setattr(svc, "run_server", lambda *a, **k: pytest.fail("must not start"))
+    result = CliRunner().invoke(app, ["serve"])
+    assert result.exit_code == 1
+    assert "already running there (pid 4242" in result.output
 
 
 # ----------------------------------------------------------------- logging ---

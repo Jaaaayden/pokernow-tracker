@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -68,13 +69,57 @@ class ServiceError(RuntimeError):
 # ------------------------------------------------------------------ running ---
 
 
+def bind(host: str, port: int) -> socket.socket:
+    """The server's listening socket, which no second server can share.
+
+    uvicorn binds with SO_REUSEADDR, and on Windows that flag lets another process
+    listen on a port already in use -- silently, both binds succeed. Two servers
+    then share the port and Windows hands each request to either: after an update,
+    a page from the new server fetching data from an old one left running, which
+    reads as "the running server is older than this page" no matter how often the
+    service is restarted. SO_EXCLUSIVEADDRUSE refuses the second bind whichever
+    side asks for sharing. Elsewhere SO_REUSEADDR only lets a restart take a port
+    still in TIME_WAIT, which is wanted.
+    """
+    sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET)
+    try:
+        if sys.platform == "win32":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        raise
+    return sock
+
+
 def run_server(db: Path, host: str, port: int, **uvicorn_options) -> None:
-    """Run the API in this process until it stops. Shared by `pnt serve` and the task."""
+    """Run the API in this process until it stops. Shared by `pnt serve` and the task.
+
+    Raises OSError when the port is taken (see `bind`).
+    """
     # The app reads PNT_DB once, at import, so this must be set before uvicorn loads it.
     os.environ["PNT_DB"] = str(db)
     import uvicorn
 
-    uvicorn.run("pnt.server.app:app", host=host, port=port, **uvicorn_options)
+    sock = bind(host, port)
+    # What uvicorn.run does, but serving on our socket instead of binding its own.
+    config = uvicorn.Config("pnt.server.app:app", host=host, port=port, **uvicorn_options)
+    server = uvicorn.Server(config)
+    # uvicorn stays quiet about the address when handed a socket, so the log would
+    # lose the line that says where the server is. Config has set logging up by now.
+    logging.getLogger("uvicorn.error").info(
+        "Uvicorn running on http://%s:%d (Press CTRL+C to quit)", host, port
+    )
+    try:
+        server.run(sockets=[sock])
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sock.close()
+    if not server.started:
+        raise SystemExit(3)  # uvicorn's own STARTUP_FAILURE
 
 
 def port_in_use(host: str, port: int) -> bool:
@@ -380,15 +425,46 @@ def _await_stopped(name: str, timeout: float) -> None:
         time.sleep(0.5)
 
 
-def restart(name: str = TASK_NAME, *, timeout: float = 15.0) -> None:
-    """Stop, wait for the old instance to exit, start.
+def restart(
+    name: str = TASK_NAME,
+    *,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    timeout: float = 15.0,
+    answer_timeout: float = 30.0,
+) -> dict:
+    """Stop, wait for the old instance to exit, start, and check the new one answers.
 
     Waiting matters: the task ignores a start request while an instance is still
     running, so starting straight away would silently keep the old code.
+
+    So does the check. A server this task does not own -- `pnt serve` in a
+    terminal, or one left over from before an update -- outlives the restart and
+    keeps the port, the new instance waits for it, and the old code goes on
+    answering. The new instance is known by its pid in `/health`: a server too old
+    to report one is by definition not it. Returns the new server's `/health`.
     """
+    before = (health(host, port) or {}).get("pid")
     stop(name)
     _await_stopped(name, timeout)
     start(name)
+    deadline = time.monotonic() + answer_timeout
+    while True:
+        body = health(host, port)
+        if body is not None and body.get("pid") is not None and body["pid"] != before:
+            return body
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
+    if body is None:
+        raise ServiceError(
+            f"the service restarted but nothing answers on http://{host}:{port}: see `pnt service log`"
+        )
+    raise ServiceError(
+        f"another server still answers on http://{host}:{port}, so the service cannot "
+        f"take the port: {port_holder_hint(port)}. The service starts within "
+        f"{PORT_POLL_SECONDS:.0f}s of the port coming free."
+    )
 
 
 def uninstall(name: str = TASK_NAME) -> bool:
@@ -401,6 +477,47 @@ def uninstall(name: str = TASK_NAME) -> bool:
 
 
 # ------------------------------------------------------------------ status ---
+
+
+def listening_pids(port: int) -> list[int]:
+    """The processes listening on `port`, on Windows; elsewhere, none are named.
+
+    Read from `netstat -ano`, by the listening socket's 0.0.0.0:0 / [::]:0 remote
+    address rather than its state, which netstat prints in the system language.
+    """
+    if sys.platform != "win32":
+        return []
+    try:
+        out = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True, text=True, errors="replace", check=False,
+        ).stdout  # fmt: skip
+    except OSError:
+        return []
+    pids: list[int] = []
+    for line in out.splitlines():
+        parts = line.split()
+        if (
+            len(parts) >= 5
+            and parts[1].endswith(f":{port}")
+            and parts[2] in ("0.0.0.0:0", "[::]:0")
+            and parts[-1].isdigit()
+            and int(parts[-1]) not in pids
+        ):
+            pids.append(int(parts[-1]))
+    return pids
+
+
+def port_holder_hint(port: int) -> str:
+    """How to free the port: which process holds it, where one can be found."""
+    pids = listening_pids(port)
+    if not pids:
+        return "close any terminal running `pnt serve`, or end the process that holds it"
+    ids = ", ".join(str(p) for p in pids)
+    return (
+        f"it is held by pid {ids} -- a `pnt serve` in a terminal, or a server left over "
+        f"from before an update. End it with: Stop-Process -Id {ids} -Force"
+    )
 
 
 def health(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float = 2.0) -> dict | None:
