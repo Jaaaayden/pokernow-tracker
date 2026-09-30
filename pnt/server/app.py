@@ -189,6 +189,16 @@ class IngestRequest(BaseModel):
     )
 
 
+#: Who may show these pages in a frame: the extension (the side panel embeds the
+#: chart), these pages themselves, and PokerNow, under which the floating HUD's
+#: frame sits. Any other site could frame /players invisibly and steer a click
+#: onto merge or rename -- and that click, coming from the page itself, carries
+#: the write header.
+FRAME_ANCESTORS = "frame-ancestors 'self' chrome-extension: " + " ".join(
+    f"https://{h}" for h in ("www.pokernow.com", "pokernow.com", "www.pokernow.club", "pokernow.club")
+)
+
+
 def _page(name: str) -> HTMLResponse:
     """One of the static pages.
 
@@ -198,7 +208,7 @@ def _page(name: str) -> HTMLResponse:
     """
     return HTMLResponse(
         (STATIC / name).read_text(encoding="utf-8"),
-        headers={"Cache-Control": "no-store"},
+        headers={"Cache-Control": "no-store", "Content-Security-Policy": FRAME_ANCESTORS},
     )
 
 

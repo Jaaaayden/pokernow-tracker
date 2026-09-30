@@ -37,7 +37,7 @@
 
   async function health() {
     const h = await send({ type: "health" });
-    $("health").textContent = h.ok ? `connected · ${h.data.hands} hands` : "not reachable";
+    $("health").textContent = h.ok ? `connected · ${h.data.hands} hands` : `not reachable: ${h.error}`;
     $("health").className = h.ok ? "ok" : "bad";
   }
 

@@ -416,7 +416,7 @@
     }
     float.apply();
     const h = await send({ type: "health" });
-    setStatus(h.ok ? `connected · ${h.data.hands} hands in db` : `tracker not reachable at ${state.server}`);
+    setStatus(h.ok ? `connected · ${h.data.hands} hands in db` : `tracker not reachable at ${state.server}: ${h.error}`);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
       if (changes.server) state.server = changes.server.newValue.replace(/\/+$/, "");

@@ -629,3 +629,12 @@ def test_only_this_machine_may_be_named_as_host(client):
 
     assert TestClient(client.app, base_url="http://evil.example").get("/health").status_code == 400
     assert TestClient(client.app, base_url="http://localhost").get("/health").status_code == 200
+
+
+
+@pytest.mark.parametrize("path", ["/", "/players.html", "/chart", "/stats.html", "/allin.html", "/pots.html"])
+def test_pages_may_be_framed_only_by_the_extension_and_pokernow(client, path):
+    """Framed by any other site, /players could be clickjacked into a merge."""
+    csp = client.get(path).headers["content-security-policy"]
+    assert csp.startswith("frame-ancestors 'self' chrome-extension: ")
+    assert "https://www.pokernow.com" in csp and "*" not in csp

@@ -1774,7 +1774,11 @@
   // the message names a view (a tag chip opens the hands behind it in the view
   // that shows them, made hands or sizing): a made-hand view stays a made-hand
   // view as the hand moves.
+  // Only the HUD that embeds this page may steer it: the side panel, whose origin
+  // is the extension's, or a page of this server's own.
   addEventListener("message", (e) => {
+    if (parent === window || e.source !== parent) return;
+    if (!e.origin.startsWith("chrome-extension://") && e.origin !== location.origin) return;
     if (!e.data) return;
     if (e.data.type === "pnt-refresh") load({ quiet: true });
     if (e.data.type === "pnt-spot") {
