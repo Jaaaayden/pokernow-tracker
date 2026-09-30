@@ -91,7 +91,14 @@
   // New HUD or live data: the panel redraws its cards on the next report.
   function changed() {
     state.rev += 1;
-    setStatus(state.paused ? "paused" : `capturing · ${state.inserted} new`);
+    setStatus(capturing());
+  }
+  // With the time of the last good poll, so a quiet table (or a finished game)
+  // still shows capture is alive: the count alone sits at the same number.
+  function capturing() {
+    if (state.paused) return "paused";
+    const at = state.lastPoll ? ` · ${new Date(state.lastPoll).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "";
+    return `capturing · ${state.inserted} new${at}`;
   }
 
   // ---------------------------------------------------------------- capture --
@@ -180,6 +187,7 @@
       state.lastPoll = Date.now();
       state.lastError = null;
       state.backoffMs = 0;
+      if (state.hud) state.statusText = capturing();
       // The log can trail the table by a moment. A change that found no new
       // line yet gets a few more looks shortly after, rather than the next tick.
       if (poked && poked <= LOG_LAG_LOOKS && state.inserted === before) { state.poked = poked + 1; delay = LOG_LAG_MS; }

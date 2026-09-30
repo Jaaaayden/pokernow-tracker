@@ -43,7 +43,7 @@ function store(preloaded = []) {
     async ingest(entries) {
       let added = 0;
       for (const e of entries) if (!orders.has(e.order)) { orders.add(e.order); added++; }
-      return { new: added, offered: entries.length };
+      return { new: added, offered: entries.length, oldest: orders.size ? Math.min(...orders) : null };
     },
   };
 }
@@ -139,7 +139,25 @@ test("the walk stops at history already stored, such as a CSV import", async () 
   const db = store(ordersOf(lines).slice(0, 330));
   const r = await sync({ cursor: 0, walk: null }, ioFor(server, db));
   assert.equal(db.orders.size, 400);
-  assert.equal(r.pages, 3, "50 new, then 20 new in a full page, then a page already stored");
+  assert.equal(r.pages, 4, "50 new, 20 new in a full page, a page already stored, then nothing below the oldest");
+});
+
+test("a walk cut short by a reload is finished by the next page load", async () => {
+  // The first load stored the newest pages, then the tab reloaded: the new content
+  // script starts from nothing and meets only stored lines at the top.
+  const { server, lines } = fakePokerNow(900);
+  const db = store(ordersOf(lines).slice(250));
+  await sync({ cursor: 0, walk: null }, ioFor(server, db));
+  assert.deepEqual(sorted(db.orders), ordersOf(lines));
+});
+
+test("a server that does not report the oldest line keeps the old stop", async () => {
+  const { server, lines } = fakePokerNow(400);
+  const db = store(ordersOf(lines).slice(0, 330));
+  const bare = { ...ioFor(server, db), ingest: async (e) => { const { oldest, ...r } = await db.ingest(e); return r; } };
+  const r = await sync({ cursor: 0, walk: null }, bare);
+  assert.equal(db.orders.size, 400);
+  assert.equal(r.pages, 3);
 });
 
 test("a server that ignores before_at is an error, not a quiet stop", async () => {

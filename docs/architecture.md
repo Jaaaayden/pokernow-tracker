@@ -130,8 +130,9 @@ newest first, 50 lines per request. `created_at` is exactly the CSV export's
 on one row.
 
 Its `after_at` only *filters*: it returns the newest 50 lines above the value,
-never the next 50. So the extension pages backwards with `before_at` until it
-reaches lines already stored ([`pager.js`](../pnt/extension/pager.js)), pausing 3 s
+never the next 50. So the extension pages backwards with `before_at` until PokerNow
+has nothing older ([`pager.js`](../pnt/extension/pager.js)), jumping over any stretch
+already stored (a reload mid-walk, or a CSV import) rather than stopping at it, pausing 3 s
 between pages because PokerNow answers bursts with HTTP 429. The first load of a
 long game takes several minutes to walk its history. The HUD fills in as it goes,
 and the ⚙ settings' **history** row says when it is complete.

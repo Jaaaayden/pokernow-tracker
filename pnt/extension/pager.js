@@ -13,9 +13,12 @@
  *   - Requests in quick succession get HTTP 429.
  *
  * So one sync pass fetches the newest page above the cursor and, while pages come
- * back full, asks for `before_at=<oldest line so far>`. It stops at a short page
- * (nothing older is left above the cursor) or at a page that adds nothing
- * (everything older is already stored -- by an earlier pass, or a CSV import).
+ * back full, asks for `before_at=<oldest line so far>`. It stops at a short page:
+ * nothing older is left above the cursor. A page that adds nothing does not stop
+ * it. Stored lines say only that *some* history is stored -- a walk cut short by a
+ * reload stores the newest pages and none below them -- so the walk jumps to the
+ * oldest line the server holds for the game and carries on below it. When the
+ * stored lines reach the game's start, that costs one empty request.
  *
  * Plain script, like normalize.js: loaded on the page, and required by the node test.
  */
@@ -47,7 +50,7 @@
    * gap below them empty for good.
    *
    * io.fetchPage({after, before}) -> {entries: ascending by order, size: raw lines}
-   * io.ingest(entries)           -> {new}
+   * io.ingest(entries)           -> {new, oldest: oldest stored order for the game}
    * io.pause()                   -> resolves when the next request may go out
    */
   async function sync(state, io, { onPage } = {}) {
@@ -71,17 +74,25 @@
         throw new Error("/log ignored before_at; not walking further");
       }
 
-      const { new: added } = await io.ingest(entries);
+      const { new: added, oldest } = await io.ingest(entries);
       fresh += added;
       walk.top = Math.max(walk.top, entries[entries.length - 1].order);
       walk.before = entries[0].order;
       if (onPage) await onPage({ pages, fresh, added });
 
       if (size < PAGE_SIZE) break;
-      // A page of lines already stored means everything older is stored too. Not on
-      // the first page of a call, though: after a failure that struck once a page
-      // was stored, the retry fetches that same page again and it adds nothing.
-      if (added === 0 && pages > 1) break;
+      if (added === 0) {
+        // Everything here is stored: skip the rest of the stored stretch and go on
+        // below it. Assumes that stretch has no hole in it, which holds for what
+        // this walk and a CSV import leave behind.
+        if (oldest != null) {
+          if (oldest < walk.before) walk.before = oldest;
+        } else if (pages > 1) {
+          // A server too old to say. Not on the first page of a call: the retry
+          // after a failure fetches the page it had already stored.
+          break;
+        }
+      }
     }
     state.cursor = Math.max(state.cursor || 0, walk.top);
     state.walk = null;

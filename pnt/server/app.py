@@ -320,7 +320,12 @@ def ingest(req: IngestRequest) -> dict:
     conn = db()
     entries = [RawEntry(ord=e.order, at=e.at, entry=e.entry) for e in req.entries]
     offered, n_new = ingest_entries(conn, req.game_id, entries, req.source)
-    out = {"game_id": req.game_id, "offered": offered, "new": n_new}
+    # The oldest line stored for the game: the extension's history walk jumps to it
+    # when it meets stored lines, rather than assuming everything older is stored.
+    oldest = conn.execute(
+        "SELECT MIN(ord) FROM raw_entries WHERE game_id = ?", (req.game_id,)
+    ).fetchone()[0]
+    out = {"game_id": req.game_id, "offered": offered, "new": n_new, "oldest": oldest}
     if req.rebuild and n_new:
         out |= rebuild_game(conn, req.game_id)
         _save_log(conn, req.game_id)
