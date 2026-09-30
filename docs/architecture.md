@@ -194,6 +194,14 @@ terminal and no admin rights. It is built this way for these reasons:
   launcher) and no measurable CPU. The server only works when the extension posts.
   Stopping or restarting the task takes the launcher's child down with it, so
   nothing is left holding the port.
+- **Only this machine may call it, and only the extension may write.** There is no
+  auth, so there is no CORS either: the extension's background worker reads the
+  answers through its host permission, and allowing PokerNow's origins would only
+  have let PokerNow's own pages read every hand, hole cards included. The Host
+  header must name this machine (so a DNS-rebinding page is refused), and every
+  write needs an `x-pnt` header, which no page in another tab can add without a
+  preflight the server never grants. A script that posts must send it too. Game
+  IDs are checked against PokerNow's shape before they reach a file name.
 
 ### Why setup is one command
 

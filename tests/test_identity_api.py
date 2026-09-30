@@ -12,10 +12,8 @@ import pytest
 
 pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient
-
 from pnt.stats.queries import report
-from tests.conftest import ALL_LOGS
+from tests.conftest import ALL_LOGS, local_client
 
 
 @pytest.fixture()
@@ -41,7 +39,7 @@ def api(tmp_path, monkeypatch):
     for log in ALL_LOGS:
         import_csv(conn, log)
     conn.close()
-    return TestClient(app_module.app), path
+    return local_client(app_module.app), path
 
 
 @pytest.fixture()

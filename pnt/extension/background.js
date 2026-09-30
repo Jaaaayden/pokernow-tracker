@@ -39,9 +39,14 @@ async function settings() {
   return { ...DEFAULTS, ...s, server, hudMode: modeOf(s.hudMode) };
 }
 
-async function call(path, init) {
+// The tracker refuses a write without this header: a site in another tab can POST
+// to 127.0.0.1, but cannot add a custom header without a preflight the server
+// never grants (see app.py).
+const WRITE_HEADER = { "x-pnt": "1" };
+
+async function call(path, init = {}) {
   const { server } = await settings();
-  const r = await fetch(server + path, init);
+  const r = await fetch(server + path, { ...init, headers: { ...init.headers, ...WRITE_HEADER } });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
   return body;

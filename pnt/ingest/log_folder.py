@@ -11,6 +11,7 @@ be restarted to move it.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -34,7 +35,16 @@ def _lock_for(path: Path) -> threading.Lock:
         return _locks.setdefault(path.resolve(), threading.Lock())
 
 
+#: Every PokerNow game ID fits this, and it is the only shape allowed near a file
+#: name: an ID with `..` or a slash in it would put the log outside the folder. The
+#: extension reads IDs from the URL with the same pattern; the server checks it on
+#: the way in, and this is the last line of defence.
+GAME_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
 def log_path(folder: Path, game_id: str) -> Path:
+    if not GAME_ID.fullmatch(game_id):
+        raise ValueError(f"not a PokerNow game ID: {game_id!r}")
     return folder / f"poker_now_log_{game_id}.csv"
 
 

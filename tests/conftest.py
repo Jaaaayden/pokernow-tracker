@@ -35,6 +35,16 @@ STRADDLE_GAME = "pgldBYgodxANW2_YvaxBEJh-3"
 MISSED_BLINDS_GAME = "pgl7sRNQr64BIPFwmlFel-Le5"
 TRUNCATED_GAME = "pglkWn5b4Y8whHqWY3tVmrtW1"
 
+def local_client(app, **kwargs):
+    """A test client that calls the server the way the extension does.
+
+    The server answers only a Host naming this machine, and refuses a write without
+    the `x-pnt` header (see app.py); TestClient's defaults have neither.
+    """
+    from fastapi.testclient import TestClient
+
+    return TestClient(app, base_url="http://127.0.0.1", headers={"x-pnt": "1"}, **kwargs)
+
 
 @pytest.fixture(autouse=True)
 def _private_log_folder(tmp_path_factory, monkeypatch):

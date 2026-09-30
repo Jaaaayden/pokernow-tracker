@@ -7,6 +7,8 @@ with the unoptimized path:
   every hand in the database and discarding all but one player's rows.
 * the unfiltered `report` is memoized against a generation counter, because the
   HUD asks that exact question every 30 seconds and after every hand.
+* on a miss, both are assembled from per-game pieces keyed on each game's own
+  stamp, so the rebuild that follows every hand re-derives that one game.
 
 The danger in both is a wrong answer rather than a slow one, so every test here
 compares against the full derivation or forces an invalidation.
@@ -171,3 +173,84 @@ def test_an_in_memory_database_is_never_cached(tmp_path):
     assert rows
     assert not q._REPORT_CACHE, "an unidentifiable database must not be keyed"
     mem.close()
+
+
+# --- per-game pieces: a rebuild costs the game it touched ---------------------
+
+
+def _games_loaded(monkeypatch) -> list:
+    """Record the game of every `load_hands` call the caches make from here on."""
+    calls = []
+    real = q.load_hands
+
+    def load_hands(conn, game_id=None, *args, **kwargs):
+        calls.append(game_id)
+        return real(conn, game_id, *args, **kwargs)
+
+    monkeypatch.setattr(q, "load_hands", load_hands)
+    return calls
+
+
+def test_tallies_add_up_to_the_whole(db):
+    """What lets a lifetime report be assembled from per-game pieces."""
+    facts = [f for hand in q.load_hands(db) for f in q.derive(hand)]
+    by_game: dict[str, list] = {}
+    for f in facts:
+        by_game.setdefault(f.game_id, []).append(f)
+    assert len(by_game) == 3
+    total = q.Tally()
+    for part in by_game.values():
+        total += q.tally(part)
+    assert q.rates(total) == q.aggregate(facts)
+
+
+def test_a_rebuild_stamps_only_its_own_game(db):
+    stamps = dict(db.execute("SELECT game_id, derived_gen FROM games"))
+    rebuild_game(db, HU_GAME)
+    after = dict(db.execute("SELECT game_id, derived_gen FROM games"))
+    assert after[HU_GAME] == generation(db) > stamps[HU_GAME]
+    assert {g: s for g, s in after.items() if g != HU_GAME} == {g: s for g, s in stamps.items() if g != HU_GAME}
+
+
+def test_after_a_rebuild_the_report_derives_that_game_alone(db, monkeypatch):
+    """The HUD's lifetime report after a hand ends. It used to re-derive the whole
+    database -- three seconds on ten thousand hands -- once per hand."""
+    q.report(db)
+    calls = _games_loaded(monkeypatch)
+    rebuild_game(db, HU_GAME)
+    served = q.report(db)
+    assert calls == [HU_GAME]
+    q.clear_caches()
+    assert served == q.report(db)
+
+
+def test_after_a_rebuild_a_players_facts_derive_that_game_alone(db, monkeypatch):
+    before = q.facts_cached(db, "genericpoker")
+    games = {f.game_id for f in before}
+    assert HU_GAME in games and len(games) > 1
+    calls = _games_loaded(monkeypatch)
+    rebuild_game(db, HU_GAME)
+    after = q.facts_cached(db, "genericpoker")
+    assert calls == [HU_GAME]
+    assert after == q.facts_for(db, "genericpoker")
+
+
+def test_a_merge_regroups_the_tallies_without_deriving_anything(db, monkeypatch):
+    q.report(db)
+    calls = _games_loaded(monkeypatch)
+    merge_players(db, "onlybluffs", "genericpoker")
+    served = q.report(db)
+    assert calls == []
+    q.clear_caches()
+    assert served == q.report(db)
+
+
+def test_a_deleted_game_leaves_the_report_and_the_cache(db):
+    from pnt.ingest.importer import delete_game
+
+    q.report(db)
+    delete_game(db, HU_GAME)
+    served = q.report(db)
+    assert not any(key[1] == HU_GAME for key in q._GAME_TALLIES)
+    q.clear_caches()
+    assert served == q.report(db)

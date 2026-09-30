@@ -215,7 +215,7 @@ def test_the_cli_lists_pots_and_json(db, tmp_path):
 
 def test_the_endpoint_serves_the_page_to_browsers_and_json_to_everyone_else(tmp_path, monkeypatch):
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
-    from fastapi.testclient import TestClient
+    from tests.conftest import local_client
 
     monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
     import importlib
@@ -230,7 +230,7 @@ def test_the_endpoint_serves_the_page_to_browsers_and_json_to_everyone_else(tmp_
     for path in ALL_LOGS:
         import_csv(conn, path)
     conn.close()
-    client = TestClient(app_module.app)
+    client = local_client(app_module.app)
 
     page = client.get("/pots", headers={"Accept": "text/html"})
     assert page.status_code == 200 and "Biggest pots" in page.text

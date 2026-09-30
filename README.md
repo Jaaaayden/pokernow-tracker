@@ -239,6 +239,7 @@ defaults to `~/Downloads/pokernow-logs`; set `PNT_LOG_DIR` to change it.
 |---|---|
 | [`docs/guide.md`](docs/guide.md) | The full reference for every feature: filters, the HUD, tags, review, sync rules |
 | [`docs/architecture.md`](docs/architecture.md) | How it works inside: design, parser rules, live capture, the background server, tests |
+| [`docs/privacy.md`](docs/privacy.md) | What is stored, where it goes, and what each extension permission is for |
 | [`docs/findings.md`](docs/findings.md) | The PokerNow log format: identity, ordering, amounts, line vocabulary, traps |
 | [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Every stat, tag and review flag, defined exactly |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |

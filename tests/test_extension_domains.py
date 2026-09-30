@@ -31,11 +31,10 @@ def _content_script_matches() -> set[str]:
 
 def _preflight(origin: str):
     pytest.importorskip("fastapi")
-    from fastapi.testclient import TestClient
-
     from pnt.server.app import app
+    from tests.conftest import local_client
 
-    return TestClient(app).options(
+    return local_client(app).options(
         "/ingest", headers={"Origin": origin, "Access-Control-Request-Method": "POST"}
     )
 
@@ -46,8 +45,11 @@ def test_content_script_loads_on_every_pokernow_host(host):
 
 
 @pytest.mark.parametrize("host", HOSTS)
-def test_server_accepts_every_pokernow_host(host):
-    assert _preflight(host).headers.get("access-control-allow-origin") == host
+def test_server_gives_pokernow_pages_no_access(host):
+    """The page never calls the server: the background worker does, and its host
+    permission needs no CORS. Allowing these origins would only have let PokerNow's
+    own pages read every hand in the database, hole cards included."""
+    assert "access-control-allow-origin" not in _preflight(host).headers
 
 
 def test_server_still_refuses_other_origins():
@@ -69,6 +71,9 @@ def test_the_extension_ships_inside_the_package():
     )
     for name in shipped:
         assert (EXTENSION_DIR / name).is_file(), f"{name} missing from {EXTENSION_DIR}"
+    manifest = json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))
+    for icon in {**manifest["icons"], **manifest["action"]["default_icon"]}.values():
+        assert (EXTENSION_DIR / icon).is_file(), f"{icon} missing from {EXTENSION_DIR}"
     # Every script the content script relies on must be loaded ahead of it.
     manifest = json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))
     js = manifest["content_scripts"][0]["js"]

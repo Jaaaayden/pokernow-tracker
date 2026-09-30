@@ -650,7 +650,8 @@
   }
   const getJson = (url) => sendJson(url);
   const postJson = (url, body) => sendJson(url, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    // x-pnt: the server refuses writes without it (see app.py).
+    method: "POST", headers: { "Content-Type": "application/json", "x-pnt": "1" }, body: JSON.stringify(body),
   });
 
   async function loadPlayers() {

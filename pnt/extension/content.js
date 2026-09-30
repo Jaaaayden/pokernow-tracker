@@ -328,7 +328,7 @@
           .box.compact { resize: horizontal; }
           iframe { display: block; flex: 1; width: 100%; min-height: 0; border: 0; background: #141413; }
         </style>
-        <div class="box"><iframe title="PokerNow Tracker"></iframe></div>`;
+        <div class="box"><iframe title="Tracker for PokerNow"></iframe></div>`;
       box = root.querySelector(".box");
       frame = root.querySelector("iframe");
       const size = read("pnt-float-size");

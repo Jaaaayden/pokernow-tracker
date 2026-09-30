@@ -133,7 +133,12 @@ CREATE TABLE IF NOT EXISTS games (
     bb         INTEGER,
     ante       INTEGER DEFAULT 0,
     variant    TEXT DEFAULT 'nlhe',
-    hero_pn_id TEXT
+    hero_pn_id TEXT,
+    -- The derivation generation this game's hands were last rebuilt at (see
+    -- conn.generation). The global counter says *that* something changed; this says
+    -- which game, so a cache can re-derive that game alone. hand_id cannot serve:
+    -- a rebuild may hand the same ids back out.
+    derived_gen INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS hands (

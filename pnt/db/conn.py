@@ -43,6 +43,10 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # everyone still in. Existing rows default to complete; `pnt rebuild` corrects
     # the handful that are not.
     ("hands", "complete", "INTEGER NOT NULL DEFAULT 1"),
+    # Per-game derivation stamp, so caches re-derive only the game a rebuild touched.
+    # Zero on existing games until their next rebuild, which is safe: the caches it
+    # keys live in one process, and every rebuild made from here on stamps.
+    ("games", "derived_gen", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
@@ -83,7 +87,7 @@ def writing(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
 
 #: Key in `meta` holding the derivation generation.
-_GENERATION = "derivation"
+GENERATION_KEY = "derivation"
 
 
 def generation(conn: sqlite3.Connection) -> int | None:
@@ -98,7 +102,7 @@ def generation(conn: sqlite3.Connection) -> int | None:
     treat None as "do not cache", which is slow but never wrong.
     """
     try:
-        row = conn.execute("SELECT value FROM meta WHERE key = ?", (_GENERATION,)).fetchone()
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (GENERATION_KEY,)).fetchone()
     except sqlite3.OperationalError:
         return None
     return row[0] if row else 0
@@ -111,7 +115,7 @@ def bump_generation(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO meta (key, value) VALUES (?, 1)"
         " ON CONFLICT(key) DO UPDATE SET value = value + 1",
-        (_GENERATION,),
+        (GENERATION_KEY,),
     )
 
 

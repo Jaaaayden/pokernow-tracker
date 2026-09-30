@@ -19,7 +19,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..db.conn import bump_generation, writing
+from ..db.conn import GENERATION_KEY, bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
 from ..logfmt.parser import ParsedHand, parse
 from .csv_source import RawEntry, game_id_from_filename, read_csv
@@ -410,6 +410,12 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
             [(game_id, o, e, r) for o, e, r in result.misses],
         )
         bump_generation(conn)
+        # Stamped in the same transaction: a cache keyed on it can never see new
+        # hands under an old stamp.
+        conn.execute(
+            "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
+            (GENERATION_KEY, game_id),
+        )
 
     return {
         "game_id": game_id,

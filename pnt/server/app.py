@@ -21,11 +21,13 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Path as FastApiPath
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pnt.db.conn import connect
 from pnt.ingest import log_folder, sync
@@ -115,22 +117,53 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="PokerNow Tracker", version="0.1.0", lifespan=_lifespan)
 
-# The content script runs on PokerNow and posts here. Restricted to those origins:
-# this server is a local database with no auth, so it should not be callable from
-# arbitrary pages the browser happens to have open. Games are served from
-# pokernow.com; the pokernow.club addresses this was first built against are kept
-# in case links still use them. Keep in step with extension/manifest.json.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://www.pokernow.com",
-        "https://pokernow.com",
-        "https://www.pokernow.club",
-        "https://pokernow.club",
-    ],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
+# This is a local database with no auth, so what reaches it is limited three ways.
+#
+# * No CORS at all. The extension's background worker is the only other caller,
+#   and its host permission lets it read the answers without CORS. An allowlist
+#   for PokerNow's origins would only have let PokerNow's own pages read every
+#   hand stored here, hole cards included.
+# * The Host header must name this machine. A page on a domain that re-points
+#   itself at 127.0.0.1 (DNS rebinding) is then refused rather than served.
+# * Every write carries WRITE_HEADER. CORS does not stop a cross-site POST from
+#   being *sent*, only its answer from being read. A body-less POST (/rebuild)
+#   needs no content type at all, and FastAPI before its strict content-type
+#   check parsed a body sent with none as JSON, which any open tab can send. A
+#   custom header cannot be sent cross-site without a CORS preflight, which this
+#   server never grants, so it holds whatever FastAPI does. A foreign Origin is
+#   refused too.
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+#: `pnt serve --host` names one more address the server may be reached by.
+ALLOWED_HOSTS = LOCAL_HOSTS + [
+    h for h in [os.environ.get("PNT_HOST", "")] if h and h not in LOCAL_HOSTS and h not in ("0.0.0.0", "::")
+]
+WRITE_HEADER = "x-pnt"
+_READS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _trusted_origin(origin: str) -> bool:
+    """The extension, or one of this server's own pages."""
+    parts = urlsplit(origin)
+    return parts.scheme == "chrome-extension" or parts.hostname in ALLOWED_HOSTS
+
+
+@app.middleware("http")
+async def _writes_from_here_only(request: Request, call_next):
+    if request.method not in _READS:
+        origin = request.headers.get("origin")
+        if WRITE_HEADER not in request.headers or (origin is not None and not _trusted_origin(origin)):
+            return JSONResponse(
+                {"detail": f"writes need the {WRITE_HEADER} header and a local origin"},
+                status_code=403,
+            )
+    return await call_next(request)
+
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+#: A PokerNow game ID, as `log_folder.GAME_ID`: the one shape allowed near a file name.
+GAME_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+GameId = Annotated[str, FastApiPath(pattern=GAME_ID_PATTERN)]
 
 
 def db():
@@ -144,7 +177,7 @@ class Entry(BaseModel):
 
 
 class IngestRequest(BaseModel):
-    game_id: str
+    game_id: str = Field(pattern=GAME_ID_PATTERN)
     entries: list[Entry]
     source: str = "extension"
     rebuild: bool = Field(
@@ -285,7 +318,7 @@ def ingest(req: IngestRequest) -> dict:
 
 
 @app.post("/rebuild/{game_id}")
-def rebuild(game_id: str) -> dict:
+def rebuild(game_id: GameId) -> dict:
     conn = db()
     out = rebuild_game(conn, game_id)
     _save_log(conn, game_id)
@@ -723,7 +756,7 @@ def notes(game: str = Query(None, description="Restrict to one game_id.")) -> li
 
 
 @app.get("/hud/{game_id}")
-def hud(game_id: str) -> dict:
+def hud(game_id: GameId) -> dict:
     """Stats for everyone currently at a table, keyed by PokerNow ID.
 
     Keyed by `pn_id` rather than seat on purpose: the overlay must re-resolve
@@ -779,7 +812,7 @@ def hud(game_id: str) -> dict:
 
 @app.get("/live/{game_id}")
 def live(
-    game_id: str,
+    game_id: GameId,
     min_hands: Annotated[
         int, Query(alias="min", ge=1, description="hands a spot needs before it counts")
     ] = 1,

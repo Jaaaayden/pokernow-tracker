@@ -101,6 +101,8 @@ def run_server(db: Path, host: str, port: int, **uvicorn_options) -> None:
     """
     # The app reads PNT_DB once, at import, so this must be set before uvicorn loads it.
     os.environ["PNT_DB"] = str(db)
+    # And the Host it may be reached by beyond 127.0.0.1 and localhost (see app.py).
+    os.environ["PNT_HOST"] = host
     import uvicorn
 
     sock = bind(host, port)

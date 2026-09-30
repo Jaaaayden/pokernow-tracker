@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 
 from pnt.ingest.csv_source import read_csv
-from tests.conftest import ALL_LOGS, HU, HU_GAME
+from tests.conftest import ALL_LOGS, HU, HU_GAME, local_client
 
 fastapi = pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
@@ -29,7 +30,7 @@ def client(tmp_path, monkeypatch):
     for path in ALL_LOGS:
         import_csv(conn, path)
     conn.close()
-    return TestClient(app_module.app)
+    return local_client(app_module.app)
 
 
 def test_live_endpoint_is_quiet_between_hands_and_validates_min(client):
@@ -573,3 +574,58 @@ def test_session_hands_carry_play_marks_and_notes(client):
     mine = next(r for r in again if r["hand_id"] == hand["hand_id"])
     assert mine["reviewed"] and mine["reviewed_at"] and mine["note"] == "fold the river"
     assert sum(r["reviewed"] for r in again) == 1
+
+
+
+# --- who may call it ------------------------------------------------------------
+
+
+def test_a_game_id_that_is_not_one_is_refused(client):
+    """The ID names a file in the log folder, so `..` or a slash would escape it."""
+    assert client.post("/ingest", json={"game_id": r"..\..\escape", "entries": []}).status_code == 422
+    assert client.post("/ingest", json={"game_id": "../escape", "entries": []}).status_code == 422
+    assert client.post("/rebuild/..%5Cescape").status_code == 422
+    assert client.get("/hud/a.b").status_code == 422
+    assert client.get("/live/a.b").status_code == 422
+
+    from pnt.ingest.log_folder import log_path
+
+    with pytest.raises(ValueError):
+        log_path(Path("logs"), "../escape")
+
+
+def test_writes_need_the_header(client):
+    """A page in any other tab can send a POST to 127.0.0.1; CORS only hides the
+    answer. A body-less POST needs no content type, and a no-cors fetch of a Blob
+    sends none, so the header -- which no page can add cross-site -- is what
+    stops both, whatever FastAPI's content-type handling does."""
+    body = json.dumps({"game_id": "csrf-probe", "entries": []})
+    bare = local_client(client.app)
+    bare.headers.pop("x-pnt")
+    assert bare.post("/ingest", content=body).status_code == 403
+    assert bare.post("/rebuild/csrf-probe").status_code == 403
+    assert bare.get("/health").status_code == 200  # reads need nothing
+    assert client.post("/ingest", json=json.loads(body)).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "origin, status",
+    [
+        ("https://evil.example", 403),
+        ("https://www.pokernow.com", 403),
+        ("null", 403),
+        ("chrome-extension://abcdefghijklmnop", 200),
+        ("http://127.0.0.1:52000", 200),  # the server's own pages
+    ],
+)
+def test_writes_from_a_foreign_origin_are_refused(client, origin, status):
+    r = client.post("/ingest", json={"game_id": "origin-probe", "entries": []}, headers={"origin": origin})
+    assert r.status_code == status
+
+
+def test_only_this_machine_may_be_named_as_host(client):
+    """A DNS-rebinding page reaches 127.0.0.1 under its own name, and is refused."""
+    from fastapi.testclient import TestClient
+
+    assert TestClient(client.app, base_url="http://evil.example").get("/health").status_code == 400
+    assert TestClient(client.app, base_url="http://localhost").get("/health").status_code == 200

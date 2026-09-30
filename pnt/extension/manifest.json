@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "PokerNow Tracker",
+  "name": "Tracker for PokerNow",
   "version": "0.1.0",
-  "description": "Streams the live PokerNow hand log into the local tracker and shows per-player stats and range charts in a side panel.",
+  "description": "Hand history, a live HUD and range charts for PokerNow games. Your hands stay on your computer. Not affiliated with PokerNow.",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "permissions": ["storage", "sidePanel"],
   "host_permissions": [
     "http://127.0.0.1/*",
@@ -38,5 +39,8 @@
   ],
   "side_panel": { "default_path": "sidepanel.html" },
   "options_page": "popup.html",
-  "action": { "default_title": "PokerNow Tracker" }
+  "action": {
+    "default_title": "Tracker for PokerNow",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  }
 }
