@@ -218,18 +218,21 @@
   /* --- side by side: the list on the left, the replay on the right ---
      The replay pane sticks to the top of the window and scrolls on its own, so
      clicking down a list never moves the page. The page widens to make room.
-     Narrow (the extension side panel, a small window) it stacks again. */
+     Narrow (the extension side panel, a small window) it stacks again. The
+     review views and the drill-down list under the charts share the one switch. */
   body.wide main { max-width: 1400px; }
-  #review.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
-  #review.split #review-count { grid-column: 1 / -1; }
-  #review.split .hand-rows.tall { max-height: calc(100vh - 140px); }
-  #review.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 16px; border-top: 0;
+  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
+  #review.split #review-count, #hands.split .card-head { grid-column: 1 / -1; }
+  #review.split .hand-rows.tall, #hands.split .hand-rows { max-height: calc(100vh - 140px); }
+  #review.split .replay, #hands.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 16px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); overflow-y: auto; }
+  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   @media (max-width: 900px) {
     body.wide main { max-width: 960px; }
-    #review.split { display: block; }
+    #review.split, #hands.split { display: block; }
     #review.split .hand-rows.tall { max-height: 560px; }
-    #review.split .replay { position: static; margin-top: 12px; padding: 12px 0 0; border-left: 0;
+    #hands.split .hand-rows { max-height: 360px; }
+    #review.split .replay, #hands.split .replay { position: static; margin-top: 12px; padding: 12px 0 0; border-left: 0;
       border-top: 1px solid var(--grid); max-height: none; }
   }
 
@@ -436,6 +439,7 @@
           <option value="newest">newest first</option>
           <option value="pot">biggest pot first</option>
         </select>
+        <button id="hands-split" aria-pressed="false" title="list on the left, replay on the right">Side by side</button>
         <button id="hands-close">Close</button>
       </span>
     </div>
@@ -1314,8 +1318,8 @@
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
     $("hands-count").textContent = "";
-    $("replay").classList.add("hidden");
-    pntReplay.cancel($("replay"));
+    resetReplay($("replay"), true);
+    applyLayout();
     const list = $("hand-rows");
     list.replaceChildren(message("loading…"));
     state.handIds = ids; // remembered so a change of order re-lists the same set
@@ -1562,10 +1566,11 @@
   // ---- side by side ------------------------------------------------------
   // In the split layout the replay pane is always there, so the right half does
   // not collapse before a hand is picked.
-  function resetReplay() {
-    const box = $("review-replay");
+  // `box` and `shown` default to the review views'; the drill-down list passes
+  // its own pane, shown whenever the list is.
+  function resetReplay(box = $("review-replay"), shown = isListView(state.by)) {
     pntReplay.cancel(box); // the rows are new: a replay still loading is for one of the old
-    if (state.split && isListView(state.by)) {
+    if (state.split && shown) {
       box.classList.remove("hidden");
       box.replaceChildren(message("click a hand to replay it · ↑ ↓ to step through"));
     } else {
@@ -1575,9 +1580,12 @@
 
   function applyLayout() {
     const split = state.split && isListView(state.by);
+    const handsSplit = state.split && !$("hands").classList.contains("hidden");
     $("review").classList.toggle("split", split);
-    document.body.classList.toggle("wide", split);
+    $("hands").classList.toggle("split", handsSplit);
+    document.body.classList.toggle("wide", split || handsSplit);
     $("review-split").setAttribute("aria-pressed", state.split);
+    $("hands-split").setAttribute("aria-pressed", state.split);
   }
 
   // ---- marking a hand reviewed, and noting what went wrong ----------------
@@ -1779,6 +1787,7 @@
     $("hands").classList.add("hidden");
     $("hand-rows").replaceChildren();
     $("replay").classList.add("hidden");
+    applyLayout();
   }
 
   // ---- postflop strip ------------------------------------------------------
@@ -1900,21 +1909,27 @@
   $("session-sat").addEventListener("click", () => {
     state.satOut = !state.satOut; writeUrl(); load();
   });
-  $("review-split").addEventListener("click", () => {
+  // One switch for both lists: the review views' and the drill-down's.
+  function toggleSplit() {
     state.split = !state.split;
     try { localStorage.setItem(LAYOUT_KEY, state.split ? "split" : "stacked"); } catch { /* this visit only */ }
     applyLayout();
     // A replay already open stays open; with none, the pane shows its placeholder
     // (or goes away again when leaving the split).
     if (!$("review-rows").querySelector(".hand-row[aria-pressed=true]")) resetReplay();
-  });
-  // Up and down step through the list, replaying each hand as they land on it.
-  $("review-rows").addEventListener("keydown", (e) => {
+    if (!$("hands").classList.contains("hidden") && !$("hand-rows").querySelector(".hand-row[aria-pressed=true]")) {
+      resetReplay($("replay"), true);
+    }
+  }
+  $("review-split").addEventListener("click", toggleSplit);
+  $("hands-split").addEventListener("click", toggleSplit);
+  // Up and down step through a list, replaying each hand as they land on it.
+  for (const id of ["review-rows", "hand-rows"]) $(id).addEventListener("keydown", (e) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     if (e.target.closest("textarea")) return;
-    const rows = [...$("review-rows").querySelectorAll(".hand-row")];
+    const rows = [...$(id).querySelectorAll(".hand-row")];
     if (!rows.length) return;
-    const cur = rows.indexOf(e.target.closest(".hand-row") || $("review-rows").querySelector(".hand-row[aria-pressed=true]"));
+    const cur = rows.indexOf(e.target.closest(".hand-row") || $(id).querySelector(".hand-row[aria-pressed=true]"));
     const next = rows[cur < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, cur + (e.key === "ArrowDown" ? 1 : -1)))];
     e.preventDefault();
     next.focus();
@@ -2073,6 +2088,7 @@
   $("kind").value = state.kind;
   if (state.order) $("review-sort").value = state.order;
   $("review-split").setAttribute("aria-pressed", state.split);
+  $("hands-split").setAttribute("aria-pressed", state.split);
   $("session-played").setAttribute("aria-pressed", state.played);
   $("session-sat").setAttribute("aria-pressed", state.satOut);
   $("review-seen").setAttribute("aria-pressed", state.hideSeen);
