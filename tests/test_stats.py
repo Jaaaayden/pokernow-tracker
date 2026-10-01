@@ -164,3 +164,29 @@ def test_filter_vocabulary_covers_every_term():
     # covers must be a documented term in its own right so the row can be found.
     for key in DECIDED:
         assert key in documented, f"{key} is missing from filters.VOCABULARY"
+
+
+def test_every_chart_chip_is_a_working_filter():
+    """The range chart's quick-select chips write terms into the spot box; a chip
+    whose term the server rejects would only ever show an error."""
+    import re
+    from pathlib import Path
+
+    from pnt.stats.derive import SIZE_BUCKETS
+
+    page = (Path(__file__).parent.parent / "pnt/server/static/chart.html").read_text(encoding="utf-8")
+
+    def block(name: str) -> str:
+        start = page.index(f"const {name} = [")
+        return page[start:page.index("];", start)]
+
+    # A chip is ["label", "term", ...]; a term has no spaces, which skips the
+    # row headings, ["Flop", "what they did ...", [...]].
+    pair = re.compile(r'\["[^"]+", "([^" ]+)"')
+    chips = [t for name in ("PRESETS", "POT_TYPES", "ACTION_ROWS") for t in pair.findall(block(name))]
+    for key in pair.findall(block("LINES")):
+        chips += [key, *(f"{key}={b}" for b in SIZE_BUCKETS)]
+    chips += [f"flop={tag}" for tag in pair.findall(block("TEXTURES"))]
+    assert len(chips) > 50
+    for term in chips:
+        parse_filter(term)

@@ -109,14 +109,13 @@
   .hand-row .street { min-width: 4.5em; color: var(--ink-2); }
   .hand-row .vs { min-width: 9em; color: var(--ink-2); }
   .hand-row .board { min-width: 10em; color: var(--ink-2); }
-  .hand-row .board .rest { color: var(--muted); }
+  .hand-row .board .rest { opacity: .55; margin-left: 4px; }
   .hand-row .eq { min-width: 4.5em; }
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
   .hand-row .money { min-width: 6em; margin-left: auto; text-align: right; }
   .hand-row .money small { color: var(--muted); }
   .hand-row .up { color: var(--up); }
   .hand-row .down { color: var(--down); }
-  .cards { font-family: ui-monospace, Consolas, monospace; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
@@ -209,7 +208,7 @@
   const $ = (id) => document.getElementById(id);
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  const { pretty } = pntReplay;
+  const { pretty, cardsEl } = pntReplay;
 
   const STREETS = ["preflop", "flop", "turn", "river"];
   const STREET_HEAD = { preflop: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
@@ -525,20 +524,20 @@
       b.type = "button"; b.className = "hand-row"; b.dataset.hand = h.hand_id;
       b.setAttribute("aria-pressed", "false");
       const span = (cls, text, title) => {
-        const s = document.createElement("span"); s.className = cls; s.textContent = text;
+        const s = document.createElement("span"); s.className = cls; s.append(text);
         if (title) s.title = title;
         b.appendChild(s); return s;
       };
       span("num", `#${h.hand_number}`, [h.game_id, h.ts].filter(Boolean).join(" · "));
       span("street", h.street, "where the betting stopped");
-      span("hole cards", pretty(h.hole_cards));
-      span("vs cards", "vs " + h.villains.map(v => `${v.player} ${pretty(v.cards)}`).join(", "));
-      const board = span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop",
+      span("hole", cardsEl(h.hole_cards));
+      const vs = span("vs", "vs ");
+      h.villains.forEach((v, i) => vs.append(i ? ", " : "", `${v.player} `, cardsEl(v.cards)));
+      const board = span("board", h.board.length ? cardsEl(h.board) : "no flop",
         h.run_count > 1 ? "ran twice" : "");
       const rest = h.full_board.slice(h.board.length);
       if (rest.length) {
-        const r = document.createElement("span"); r.className = "rest";
-        r.textContent = (h.board.length ? " " : "") + pretty(rest.join(""));
+        const r = cardsEl(rest); r.classList.add("rest");
         r.title = "dealt after the betting stopped";
         board.appendChild(r);
       }

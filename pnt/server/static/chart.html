@@ -150,10 +150,11 @@
   .hand-row:hover, .hand-row[aria-pressed=true] { background: var(--mid); }
   .hand-row .num { min-width: 4.5em; color: var(--muted); }
   .hand-row .pos { min-width: 3.2em; color: var(--ink-2); }
-  .hand-row .vs { min-width: 6em; max-width: 11em; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--ink-2); }
-  .hand-row .hole { min-width: 4em; }
-  .hand-row .board { min-width: 9em; color: var(--ink-2); }
+  /* The name ellipsizes; the villain's cards beside it never do. */
+  .hand-row .vs { min-width: 6em; display: inline-flex; align-items: baseline; gap: 4px; color: var(--ink-2); }
+  .hand-row .vs .vn { max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hand-row .hole { min-width: 4.6em; }
+  .hand-row .board { min-width: 10.5em; color: var(--ink-2); }
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
   .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
@@ -190,7 +191,6 @@
   /* The list views' on/off switches (Played only, Hide reviewed, Side by side). */
   #reviewctl > button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   .kinds button small { opacity: .8; margin-left: 4px; }
-  .cards { font-family: ui-monospace, Consolas, monospace; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
@@ -295,6 +295,10 @@
     th, td { padding: 3px 5px; }
     th { font-size: 10px; }
     .hand-row { gap: 1px 8px; padding: 4px 2px; font-size: 11px; }
+    /* The card columns give up their alignment rather than crush the size
+       note into a column a word wide; it wraps to a line of its own instead. */
+    .hand-row .hole, .hand-row .board { min-width: 0; }
+    .hand-row .sizes { min-width: 12em; }
     .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
     .kinds button { padding: 1px 6px; }
     .replay { font-size: 11px; }
@@ -344,7 +348,9 @@
     </select>
   </div>
   <div class="presets" id="presets"></div>
+  <div class="lines" id="pottype"></div>
   <div class="lines" id="lines"></div>
+  <div class="lines" id="actions"></div>
   <div class="lines" id="jams"></div>
   <div class="presets textures" id="textures"><span class="lbl">Flop</span></div>
 
@@ -449,13 +455,17 @@
     ["Opened, single-raised pot", "opener,srp"],
     ["Opened 4bb+", "opener,open_bb>=4,srp"],
     ["Opened 2–3bb", "opener,open_bb<=3,srp"],
+    ["Limped", "limp"],
     ["3-bet", "3bet"],
     ["Faced a 3-bet", "faced_3bet"],
+    ["Called a 3-bet", "faced_3bet_any=call"],
+    ["Folded to a 3-bet", "folded_to_3bet"],
     ["Facing an open", "faced_open"],
     ["Called an open", "called_open"],
     ["Squeezed", "called_open,faced_3bet_any"],
     ["4-bet", "4bet"],
     ["Facing a 4-bet", "faced_4bet"],
+    ["5-bet", "5bet"],
     ["Went to showdown", "wtsd"],
     ["Button", "position=BTN"],
     ["Big blind", "position=BB"],
@@ -466,7 +476,7 @@
   const SIZES = [["<½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
   // The size words, the bucket rule and card formatting live with the replay
   // renderer (replay.js), which the all-in page shares.
-  const { SIZE_LABEL, pretty } = pntReplay;
+  const { SIZE_LABEL, pretty, cardsEl } = pntReplay;
   const SHORT_SIZE = Object.fromEntries(SIZES.map(([t, b]) => [b, t]));
 
   // Postflop line chips: one row per street, each holding at most one term, so
@@ -475,6 +485,20 @@
     ["C-bet flop", "cbet_flop", "preflop aggressor bet the flop"],
     ["C-bet turn", "cbet_turn", "flop aggressor bet the turn"],
     ["River bet", "bet_river", "their first river bet"],
+    ["Faced c-bet", "faced_cbet_flop", "faced a flop c-bet, by its size"],
+  ];
+  // Pot type: one of these at a time, since a pot is only ever one of them.
+  const POT_TYPES = [["limped", "limped"], ["single-raised", "srp"], ["3-bet pot", "3bet_pot"], ["4-bet pot+", "4bet_pot"]];
+  // What they did after the flop, as toggles that compose with everything
+  // above. These are the spots the player tags open, so a tag sent from the
+  // HUD lights the chips it is made of.
+  const ACTION_ROWS = [
+    ["Flop", "what they did facing, or holding, the flop initiative", [
+      ["c-bet chance", "cbet_flop_opp"], ["called c-bet", "called_cbet_flop"], ["raised c-bet", "raised_cbet_flop"],
+      ["led out", "donk_flop"], null, ["checked back", "check_back"]]],
+    ["River", "how the river went for them", [
+      ["faced a bet", "faced_bet_river"], ["called", "called_bet_river"], ["folded", "folded_to_bet_river"],
+      ["bet/raised last", "aggressor_river"], null, ["showdown", "wtsd"], ["won showdown", "won_sd"]]],
   ];
   const KIND_SPOT = { cbet: "c-bet chances", bet: "bets", faced_cbet: "c-bets faced" };
   const KIND_NOTE = {
@@ -513,6 +537,15 @@
     const cur = terms();
     const pressed = cur.includes(term);
     const next = cur.filter(t => t !== key && !t.startsWith(key + "="));
+    if (!pressed) next.push(term);
+    $("filter").value = next.join(",");
+  }
+  // Replace any of `group`'s terms with `term`, or clear them when `term` was
+  // the one already pressed.
+  function setOneOf(group, term) {
+    const cur = terms();
+    const pressed = cur.includes(term);
+    const next = cur.filter(t => !group.includes(t));
     if (!pressed) next.push(term);
     $("filter").value = next.join(",");
   }
@@ -1246,18 +1279,24 @@
   function handRowButton(h, list, replayBox, opts = {}) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
-    const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; b.appendChild(s); return s; };
+    const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.append(text); b.appendChild(s); return s; };
     if (opts.kind) span("kind", opts.kind.text).dataset.group = opts.kind.group;
     span("num", `#${h.hand_number}`);
     // Whether they closed the action, not where they sat: every postflop stat
     // on these pages is defined against an aggressor, not against a seat.
     span("pos", h.ip == null ? "–" : h.ip ? "IP" : "OOP");
     // One name plus a count. The row is a wrapping flexbox and three names
-    // break it; the full list is in the tooltip.
-    span("vs", opts.vs ?? (h.vs?.length
-      ? `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` : ""));
-    span("hole cards", h.hole_cards ? pretty(h.hole_cards) : "?? ??");
-    span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop");
+    // break it; the full list is in the tooltip. A review row adds the
+    // villain's cards when they were shown.
+    const vs = opts.vs ?? (h.vs?.length ? { name: `vs ${h.vs[0]}${h.vs.length > 1 ? ` +${h.vs.length - 1}` : ""}` } : null);
+    const vsEl = span("vs", "");
+    if (vs) {
+      const n = document.createElement("span"); n.className = "vn"; n.textContent = vs.name;
+      vsEl.appendChild(n);
+      if (vs.cards) vsEl.appendChild(cardsEl(vs.cards));
+    }
+    span("hole", h.hole_cards ? cardsEl(h.hole_cards) : "?? ??");
+    span("board", h.board.length ? cardsEl(h.board) : "no flop");
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
     span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
     span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
@@ -1336,7 +1375,7 @@
       const v = h.villains[0];
       const row = handRowButton(h, list, $("review-replay"), {
         kind: { text: KIND_LABEL[h.kind], group: h.group },
-        vs: v ? `vs ${v.player}${v.cards ? " " + pretty(v.cards) : ""}${h.villains.length > 1 ? ` +${h.villains.length - 1}` : ""}` : "",
+        vs: v ? { name: `vs ${v.player}${h.villains.length > 1 ? ` +${h.villains.length - 1}` : ""}`, cards: v.cards } : null,
         sizes: reviewDetail(h),
         why: h.why,
         title: reviewTitle(h),
@@ -1738,6 +1777,34 @@
       row.appendChild(b);
     }
     $("lines").appendChild(row);
+  }
+  {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "Pot";
+    lbl.title = "how many times it was raised preflop";
+    row.appendChild(lbl);
+    const group = POT_TYPES.map(([, term]) => term);
+    for (const [text, term] of POT_TYPES) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = term;
+      b.dataset.term = term;
+      b.addEventListener("click", () => { setOneOf(group, term); apply(); });
+      row.appendChild(b);
+    }
+    $("pottype").appendChild(row);
+  }
+  for (const [name, what, chips] of ACTION_ROWS) {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = name; lbl.title = what;
+    row.appendChild(lbl);
+    for (const c of chips) {
+      if (!c) { const s = document.createElement("span"); s.className = "sep"; row.appendChild(s); continue; }
+      const [text, term] = c;
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = term;
+      b.dataset.term = term;
+      b.addEventListener("click", () => { toggleTerm(term); apply(); });
+      row.appendChild(b);
+    }
+    $("actions").appendChild(row);
   }
   for (const [name, key, what] of JAM_ROWS) {
     const row = document.createElement("div"); row.className = "presets";
