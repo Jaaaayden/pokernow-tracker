@@ -85,7 +85,6 @@
     color: var(--muted); white-space: nowrap; }
   .pot-row .tag.allin { border-color: var(--accent); color: var(--accent); }
   .pot-row .tag.short { border-color: var(--down); color: var(--down); }
-  .cards { font-family: ui-monospace, Consolas, monospace; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
@@ -151,7 +150,7 @@
   const $ = (id) => document.getElementById(id);
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  const { pretty } = pntReplay;
+  const { pretty, cardsEl } = pntReplay;
 
   const DAYS = ["1", "7", "30", "all"];
   const state = { days: "7", minPot: 2000, player: "", unit: "chips", data: null };
@@ -280,7 +279,7 @@
     // Every pot is read against the biggest one in the window.
     b.style.setProperty("--share", `${Math.max(2, Math.round(100 * h.pot / top))}%`);
     const span = (cls, text, title) => {
-      const s = document.createElement("span"); s.className = cls; s.textContent = text;
+      const s = document.createElement("span"); s.className = cls; s.append(text);
       if (title) s.title = title;
       b.appendChild(s); return s;
     };
@@ -319,7 +318,7 @@
       `${s.player} ${s.net > 0 ? "+" : ""}${s.net.toLocaleString()}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
     ).join("\n");
 
-    span("board cards", h.board.length ? pretty(h.board.join("")) : "no flop",
+    span("board", h.board.length ? cardsEl(h.board) : "no flop",
       h.run_count > 1 ? "ran twice; run one shown" : "");
 
     const tags = document.createElement("span");
