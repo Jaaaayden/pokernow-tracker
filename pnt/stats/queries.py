@@ -355,19 +355,25 @@ class _PlayerFacts:
 #: One player's `Facts`, per (database, alias, game). This one *is* a cache of
 #: Facts, which the tallies refuse to be -- but for a handful of players, not the
 #: whole database: the live view asks for everyone at the table on every poll, and
-#: a table seats ten. Capped so an evening across several tables cannot grow it
-#: without bound. Kept per game underneath, like the tallies, so a rebuild costs
-#: the one game it touched.
+#: a table seats ten -- and the chart, on every tab, for one player across all
+#: games or one session. Capped so an evening across several tables cannot grow it
+#: without bound; the least recently used goes first, so paging through sessions
+#: on the chart does not push out the whole-history entries the HUD keeps asking
+#: for. Kept per game underneath, like the tallies, so a rebuild costs the one
+#: game it touched.
 _FACTS_CACHE: dict[tuple[str, str, str | None], _PlayerFacts] = {}
-_FACTS_CACHE_MAX = 16
+_FACTS_CACHE_MAX = 32
 
 
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
     database behind this module's back."""
+    from .review import _REVIEW_CACHE  # review imports this module
+
     _REPORT_CACHE.clear()
     _GAME_TALLIES.clear()
     _FACTS_CACHE.clear()
+    _REVIEW_CACHE.clear()
 
 
 def _game_stamps(conn: sqlite3.Connection, game_id: str | None = None) -> dict[str, int] | None:
@@ -439,8 +445,9 @@ def facts_cached(
     if stamps is None:
         return facts_for(conn, alias, game_id)
     key = (path, alias, game_id)
-    hit = _FACTS_CACHE.get(key)
+    hit = _FACTS_CACHE.pop(key, None)  # re-inserted below: last in is last out
     if hit is not None and hit.gen == gen:
+        _FACTS_CACHE[key] = hit
         return hit.facts
 
     ids = identities_of(conn, alias)
@@ -471,7 +478,7 @@ def facts_cached(
     # facts_for's order: by hand, oldest first, and within a hand as derived.
     facts = sorted((f for _, piece in fresh.values() for f in piece), key=lambda f: order[f.hand_id])
 
-    if key not in _FACTS_CACHE and len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
+    if len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
         _FACTS_CACHE.pop(next(iter(_FACTS_CACHE)))
     _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
     return facts

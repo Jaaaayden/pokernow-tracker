@@ -254,3 +254,81 @@ def test_a_deleted_game_leaves_the_report_and_the_cache(db):
     assert not any(key[1] == HU_GAME for key in q._GAME_TALLIES)
     q.clear_caches()
     assert served == q.report(db)
+
+
+# ---- the review list ----------------------------------------------------
+# Cached like the report, but its rows also carry marks, notes and flags, which
+# change without a rebuild: those must never be served from the cache.
+
+
+def _review_fresh(db, alias, **kw):
+    from pnt.stats import review as rv
+
+    q.clear_caches()
+    return rv.review_hand_list(db, alias, **kw)
+
+
+def test_the_review_list_is_derived_once_per_generation(db, monkeypatch):
+    from pnt.stats import review as rv
+
+    first = rv.review_hand_list(db, "genericpoker")
+    calls = []
+    real = rv.load_hands
+    monkeypatch.setattr(rv, "load_hands", lambda *a, **k: calls.append(a) or real(*a, **k))
+    again = rv.review_hand_list(db, "genericpoker")
+    assert calls == [], "a second ask in the same generation must not re-derive"
+    assert again == first == _review_fresh(db, "genericpoker")
+
+
+def test_a_filtered_review_list_matches_the_uncached_one(db):
+    from pnt.stats import review as rv
+    from pnt.stats.filters import parse_filter
+
+    pred = parse_filter("srp", q.display_names(db))
+    rv.review_hand_list(db, "genericpoker")  # warm, unfiltered
+    served = rv.review_hand_list(db, "genericpoker", predicate=pred)
+    assert served == _review_fresh(db, "genericpoker", predicate=pred)
+
+
+def test_marks_notes_and_flags_show_without_a_rebuild(db):
+    from pnt.stats import review as rv
+
+    rows = rv.review_hand_list(db, "genericpoker")["hands"]
+    assert rows, "the fixture must flag something for this test to mean anything"
+    gid, n = rows[0]["game_id"], rows[0]["hand_number"]
+    before = generation(db)
+    rv.mark_reviewed(db, gid, n)
+    rv.set_note(db, gid, n, "checked")
+    rv.set_flag(db, gid, n)
+    assert generation(db) == before, "the premise: these writes do not bump the generation"
+
+    row = next(r for r in rv.review_hand_list(db, "genericpoker")["hands"]
+               if (r["game_id"], r["hand_number"]) == (gid, n))
+    assert row["reviewed"] and row["note"] == "checked" and row["flagged"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda db: rebuild_game(db, HU_GAME),
+        lambda db: merge_players(db, "onlybluffs", "genericpoker"),
+    ],
+    ids=["rebuild", "merge"],
+)
+def test_the_review_list_follows_a_change(db, change):
+    from pnt.stats import review as rv
+
+    rv.review_hand_list(db, "genericpoker")
+    change(db)
+    served = rv.review_hand_list(db, "genericpoker")
+    assert served == _review_fresh(db, "genericpoker")
+
+
+def test_a_rename_is_visible_in_the_next_review_list(db):
+    from pnt.stats import review as rv
+
+    rv.review_hand_list(db, "genericpoker")
+    rename_player(db, "genericpoker", "gp")
+    with pytest.raises(ValueError, match="unknown alias"):
+        rv.review_hand_list(db, "genericpoker")
+    assert rv.review_hand_list(db, "gp")["player"] == "gp"
