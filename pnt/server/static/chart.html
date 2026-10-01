@@ -604,7 +604,7 @@
     sel.value = opt ? opt.value : "";
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
-                  table: false, data: null, handRows: null, handSort: "newest", handIds: null,
+                  table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
                   game: null, games: null, played: true, satOut: false, session: null, manual: null, split: false };
 
@@ -731,8 +731,17 @@
     syncChips(); // the dropdown can only show a vs= term once it has the names
   }
 
+  // Bumped by every load. Loads overlap -- the HUD posts a spot each time the
+  // action moves, and a view can be switched while the last one is in flight --
+  // so a response that lands after a newer load began is dropped: drawn, it put
+  // one view's data under another view's renderer. Nor does it touch a cache:
+  // an older answer landing last would replace a newer one there.
+  let loadSeq = 0;
   async function load({ quiet = false } = {}) {
     if (!state.player) return;
+    const seq = ++loadSeq;
+    const live = () => seq === loadSeq;
+    const view = state.by;
     if (!quiet) $("card").classList.add("loading");
     $("err").classList.add("hidden");
     state.handRows = null; // the hand set may have grown or changed
@@ -740,57 +749,66 @@
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
     try {
-      if (state.by === SESSION_VIEW) {
-        state.data = await loadSession(quiet);
-      } else if (state.by === MANUAL_VIEW) {
+      let data;
+      if (view === SESSION_VIEW) {
+        data = await loadSession(quiet, live);
+      } else if (view === MANUAL_VIEW) {
         const key = `${state.player}|${state.filter}`;
         if (!quiet && state.manual?.key === key) {
-          state.data = state.manual.data;
+          data = state.manual.data;
         } else {
-          state.data = await getJson(`/players/${player}/flagged?` + q);
-          state.manual = { key, data: state.data };
+          data = await getJson(`/players/${player}/flagged?` + q);
+          if (live()) state.manual = { key, data };
         }
-      } else if (isReview(state.by)) {
+      } else if (isReview(view)) {
         // One request serves both views: switching between them re-renders
         // rather than re-fetching, unless the HUD said there are new hands.
         const key = `${state.player}|${state.filter}`;
         if (!quiet && state.review?.key === key) {
-          state.data = state.review.data;
+          data = state.review.data;
         } else {
-          state.data = await getJson(`/players/${player}/review?` + q);
-          if (!("counts" in state.data)) {
+          data = await getJson(`/players/${player}/review?` + q);
+          if (!("counts" in data)) {
             throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
           }
-          state.review = { key, data: state.data };
+          if (live()) state.review = { key, data };
         }
-      } else if (state.by === "sizing") {
+      } else if (view === "sizing") {
         q.set("street", state.street); q.set("kind", state.kind);
-        state.data = await getJson(`/players/${player}/sizing?` + q);
+        data = await getJson(`/players/${player}/sizing?` + q);
       } else {
-        q.set("by", state.by);
-        state.data = await getJson(`/players/${player}/range?` + q);
-        const probe = state.data.cells ? Object.values(state.data.cells)[0] : state.data.classes?.[0];
+        q.set("by", view);
+        data = await getJson(`/players/${player}/range?` + q);
+        const probe = data.cells ? Object.values(data.cells)[0] : data.classes?.[0];
         if (probe && !("hand_ids" in probe)) {
           throw new Error("the running server is older than this page (no hand ids in its data): restart `pnt service` (or `pnt serve`)");
         }
       }
+      if (!live()) return;
+      state.data = data;
+      state.dataView = view;
       render();
-      loadStrip();
+      loadStrip(live);
     } catch (e) {
+      if (!live()) return;
       $("err").textContent = String(e.message || e);
       $("err").classList.remove("hidden");
+      // The strip above the card still describes the spot before this one.
+      $("strip").classList.add("hidden");
     } finally {
-      $("card").classList.remove("loading");
+      if (live()) $("card").classList.remove("loading");
     }
   }
 
   // The player's games, newest first, for the session picker. Fetched once per
   // player; a quiet reload (the HUD saying there are new hands) asks again, since
-  // a new game may just have started.
-  async function loadGames(quiet) {
-    if (quiet || state.games?.player !== state.player) {
-      const rows = await getJson(`/players/${encodeURIComponent(state.player)}/games`);
-      state.games = { player: state.player, rows };
+  // a new game may just have started. False when a newer load has taken over.
+  async function loadGames(quiet, live) {
+    const player = state.player;
+    if (quiet || state.games?.player !== player) {
+      const rows = await getJson(`/players/${encodeURIComponent(player)}/games`);
+      if (!live()) return false;
+      state.games = { player, rows };
     }
     const rows = state.games.rows;
     // A game the player was not in -- another player's session in the URL, or
@@ -808,6 +826,7 @@
       sel.appendChild(o);
     }
     sel.value = state.game ?? "";
+    return true;
   }
   const SESSION_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -815,8 +834,8 @@
   // onto the row: one list, so a flagged hand is never shown twice. With Sat out
   // on, the hands they were not dealt into join it. Every filter describes their
   // own spot, so a filtered session has none of those.
-  async function loadSession(quiet) {
-    await loadGames(quiet);
+  async function loadSession(quiet, live) {
+    if (!await loadGames(quiet, live)) return null;
     const satOut = state.satOut && !!state.game && !state.filter;
     const key = `${state.player}|${state.filter}|${state.game}|${satOut}`;
     if (!quiet && state.session?.key === key) return state.session.data;
@@ -831,6 +850,7 @@
           satOut ? getJson(`/players/${player}/sat-out?` + q) : { hands: [] },
         ])
       : [{ hands: [] }, { hands: [] }, { hands: [] }];
+    if (!live()) return null;
     if (hands.hands.length && !("reviewed" in hands.hands[0])) {
       throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
     }
@@ -888,6 +908,9 @@
   function render() {
     const d = state.data;
     const view = state.by;
+    // The view was switched and its data is still loading: what is held is the
+    // last view's, in that view's shape. The load renders when it lands.
+    if (!d || state.dataView !== view) return;
     const review = isListView(view);
     const table = state.table && !review;
     if (view === SESSION_VIEW) renderSessionTiles(d);
@@ -1271,28 +1294,38 @@
     if (state.handRows?.key === key) return state.handRows.rows;
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
+    const asked = loadSeq;
     const body = await getJson(`/players/${encodeURIComponent(state.player)}/hands?` + q);
     // Checked before caching, so a stale answer is never memoized for the session.
     if (body.hands.length && !("ip" in body.hands[0])) {
       throw new Error("the running server is older than this page: restart `pnt service`");
     }
-    state.handRows = { key, rows: body.hands };
+    // A load since this was asked may mean new hands: these rows are kept for
+    // this list only, not for the next one.
+    if (asked === loadSeq) state.handRows = { key, rows: body.hands };
     return body.hands;
   }
 
+  // Bumped by every open and close of the list: a cell clicked after another, or
+  // the list closed by a new spot or view, outdates the rows still being fetched.
+  let handsSeq = 0;
   async function openHands(title, ids) {
+    const seq = ++handsSeq;
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
     $("hands-count").textContent = "";
     $("replay").classList.add("hidden");
+    pntReplay.cancel($("replay"));
     const list = $("hand-rows");
     list.replaceChildren(message("loading…"));
     state.handIds = ids; // remembered so a change of order re-lists the same set
     try {
       const rows = await handRows();
+      if (seq !== handsSeq) return;
       const want = ids ? new Set(ids) : null;
       renderHandRows(want ? rows.filter(r => want.has(r.hand_id)) : rows);
     } catch (e) {
+      if (seq !== handsSeq) return;
       list.replaceChildren(message(String(e.message || e), "err"));
     }
     $("hands").scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -1531,6 +1564,7 @@
   // not collapse before a hand is picked.
   function resetReplay() {
     const box = $("review-replay");
+    pntReplay.cancel(box); // the rows are new: a replay still loading is for one of the old
     if (state.split && isListView(state.by)) {
       box.classList.remove("hidden");
       box.replaceChildren(message("click a hand to replay it · ↑ ↓ to step through"));
@@ -1559,6 +1593,7 @@
   // many carry a note. Read off state rather than passed in, so a toggle can
   // refresh it without a render.
   function setReviewCount() {
+    if (state.dataView !== state.by) return; // see render()
     const all = listRows(state.by);
     const n = listedReview(all).length;
     const seen = all.filter(h => h.reviewed).length;
@@ -1739,6 +1774,8 @@
   }
 
   function closeHands() {
+    handsSeq++;
+    pntReplay.cancel($("replay"));
     $("hands").classList.add("hidden");
     $("hand-rows").replaceChildren();
     $("replay").classList.add("hidden");
@@ -1747,14 +1784,16 @@
   // ---- postflop strip ------------------------------------------------------
   // The same spot, read as frequencies: how often they c-bet it, fold to one,
   // raise one, or lead into it. Sample sizes are in the tooltips.
-  async function loadStrip() {
+  // `live` is the load's: a strip for a spot since left is not drawn.
+  async function loadStrip(live) {
     const el = $("strip");
     try {
       const q = new URLSearchParams();
       if (state.filter) q.set("filter", state.filter);
-      renderStrip(await getJson(`/players/${encodeURIComponent(state.player)}/stats?` + q));
+      const s = await getJson(`/players/${encodeURIComponent(state.player)}/stats?` + q);
+      if (live()) renderStrip(s);
     } catch {
-      el.classList.add("hidden"); // an older server has no per-player stats
+      if (live()) el.classList.add("hidden"); // an older server has no per-player stats
     }
   }
 
@@ -1808,12 +1847,18 @@
   }
 
   // ---- wiring ----------------------------------------------------------
+  // What the list views keep between visits. A quiet reload only fetches the view
+  // on show, so new hands leave the others' copies behind.
+  function dropCaches() {
+    state.review = null;
+    state.session = null;
+    state.manual = null;
+    state.games = null; // a new game may have started
+  }
   function apply() {
     state.player = $("player").value;
     state.filter = $("filter").value.trim();
-    state.review = null; // Apply always asks the server again
-    state.session = null;
-    state.manual = null;
+    dropCaches(); // Apply always asks the server again
     syncChips();
     closeHands();
     writeUrl();
@@ -1978,14 +2023,31 @@
   // view as the hand moves.
   // Only the HUD that embeds this page may steer it: the side panel, whose origin
   // is the extension's, or a page of this server's own.
-  addEventListener("message", (e) => {
+  //
+  // The player list is fetched once, so a player who sat down since is not in it:
+  // it is asked for again, once per name until the next refresh. Still missing,
+  // they have no hands recorded, and the spot is not put on whoever is showing.
+  let spotSeq = 0;
+  const looked = new Set();
+  const listed = (p) => [...$("player").options].some(o => o.value === p);
+  addEventListener("message", async (e) => {
     if (parent === window || e.source !== parent) return;
     if (!e.origin.startsWith("chrome-extension://") && e.origin !== location.origin) return;
     if (!e.data) return;
-    if (e.data.type === "pnt-refresh") load({ quiet: true });
+    if (e.data.type === "pnt-refresh") { looked.clear(); dropCaches(); load({ quiet: true }); }
     if (e.data.type === "pnt-spot") {
+      const seq = ++spotSeq;
       const player = e.data.player;
-      if (player && [...$("player").options].some(o => o.value === player)) $("player").value = player;
+      if (player && !listed(player) && !looked.has(player)) {
+        looked.add(player);
+        try { await loadPlayers(); } catch { /* the list as it was */ }
+        if (seq !== spotSeq) return; // a later spot has been applied meanwhile
+      }
+      if (player && !listed(player)) {
+        showErr(new Error(`no hands recorded for ${player} yet`));
+        return;
+      }
+      if (player) $("player").value = player;
       $("filter").value = e.data.filter || "";
       state.player = $("player").value;
       state.filter = $("filter").value.trim();
