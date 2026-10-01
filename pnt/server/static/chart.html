@@ -154,6 +154,7 @@
   .hand-row .vs { min-width: 6em; display: inline-flex; align-items: baseline; gap: 4px; color: var(--ink-2); }
   .hand-row .vs .vn { max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hand-row .hole { min-width: 4.6em; }
+  .hand-row[data-sat-out] .hole, .hand-row[data-sat-out] .net { color: var(--muted); }
   .hand-row .board { min-width: 10.5em; color: var(--ink-2); }
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
   .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
@@ -188,8 +189,9 @@
   .kinds { display: inline-flex; flex-wrap: wrap; gap: 4px; }
   .kinds button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .kinds button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: transparent; }
-  /* The list views' on/off switches (Played only, Hide reviewed, Side by side). */
+  /* The list views' on/off switches (Played only, Sat out, Hide reviewed, Side by side). */
   #reviewctl > button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  #reviewctl > button:disabled { opacity: .45; cursor: default; }
   .kinds button small { opacity: .8; margin-left: 4px; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
@@ -390,6 +392,7 @@
         <span class="kinds" id="review-kinds" role="group" aria-label="Which flags"></span>
         <select id="session-game" class="hidden" aria-label="Session"></select>
         <button id="session-played" class="hidden" aria-pressed="true" title="leave out the hands that were only a preflop fold">Played only</button>
+        <button id="session-sat" class="hidden" aria-pressed="false" title="also list the hands of this session they were not dealt into">Sat out</button>
         <select id="review-sort" aria-label="Order">
           <option value="hand">hand order</option>
           <option value="newest">newest first</option>
@@ -591,7 +594,7 @@
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
                   table: false, data: null, handRows: null, handSort: "newest", handIds: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
-                  game: null, games: null, played: true, session: null, split: false };
+                  game: null, games: null, played: true, satOut: false, session: null, split: false };
 
   // The side-by-side layout is a per-viewer setting, kept in this browser only.
   // Storage can be missing or throw (private windows, blocked site data), and the
@@ -621,7 +624,7 @@
   const orderOf = (view) => ORDERS[view].includes(state.order) ? state.order : ORDERS[view][0];
   const REVIEW_NOTE = {
     review: "A flag is a prompt to open the replay, not a verdict. Missed bluffs and missed value need every live hand shown, so they come from showdowns only; a failed bluff also counts bluffs given up on before showdown.",
-    session: "Every hand of the session, in the order it was dealt. Flagged hands carry their flag; tick a hand off or write on it as you go.",
+    session: "Every hand of the session, in the order it was dealt. Flagged hands carry their flag; tick a hand off or write on it as you go. Sat out adds the hands played while they were away from the table.",
     beats: "Bookkeeping. Suckouts and preflop coolers are all-in showdowns with every hand shown, their equity taken where the betting stopped; a postflop cooler is a stacks hand already behind on a dry board.",
   };
 
@@ -634,6 +637,7 @@
     state.order = ORDER_NAMES.includes(q.get("order")) ? q.get("order") : null;
     state.game = q.get("game") || null;
     state.played = q.get("played") !== "all";
+    state.satOut = q.get("sat") === "show";
     state.hide = new Set((q.get("hide") || "").split(",").filter(k => ALL_KINDS.includes(k)));
     state.hideSeen = q.get("seen") === "hide";
     const c = q.get("color") === "freq" ? "pfr" : q.get("color");
@@ -656,6 +660,7 @@
     if (state.by === SESSION_VIEW) {
       if (state.game) q.set("game", state.game);
       if (!state.played) q.set("played", "all");
+      if (state.satOut) q.set("sat", "show");
     }
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
@@ -783,18 +788,25 @@
   const SESSION_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   // Every hand of one game, with the flags the review views would give it merged
-  // onto the row: one list, so a flagged hand is never shown twice.
+  // onto the row: one list, so a flagged hand is never shown twice. With Sat out
+  // on, the hands they were not dealt into join it. Every filter describes their
+  // own spot, so a filtered session has none of those.
   async function loadSession(quiet) {
     await loadGames(quiet);
-    const key = `${state.player}|${state.filter}|${state.game}`;
+    const satOut = state.satOut && !!state.game && !state.filter;
+    const key = `${state.player}|${state.filter}|${state.game}|${satOut}`;
     if (!quiet && state.session?.key === key) return state.session.data;
     const player = encodeURIComponent(state.player);
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
     if (state.game) q.set("game", state.game);
-    const [hands, review] = state.game
-      ? await Promise.all([getJson(`/players/${player}/hands?` + q), getJson(`/players/${player}/review?` + q)])
-      : [{ hands: [] }, { hands: [] }];
+    const [hands, review, away] = state.game
+      ? await Promise.all([
+          getJson(`/players/${player}/hands?` + q),
+          getJson(`/players/${player}/review?` + q),
+          satOut ? getJson(`/players/${player}/sat-out?` + q) : { hands: [] },
+        ])
+      : [{ hands: [] }, { hands: [] }, { hands: [] }];
     if (hands.hands.length && !("reviewed" in hands.hands[0])) {
       throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
     }
@@ -804,7 +816,12 @@
       flags.get(r.hand_id).push({ kind: r.kind, label: KIND_LABEL[r.kind] || r.label, group: r.group, why: r.why });
     }
     for (const h of hands.hands) h.flags = flags.get(h.hand_id) || [];
-    const data = { player: state.player, filter: state.filter, game: state.game, hands: hands.hands };
+    for (const h of away.hands) h.flags = [];
+    // Newest first, like the server's own order, which the "newest" order keeps.
+    const all = away.hands.length
+      ? [...hands.hands, ...away.hands].sort((a, b) => (b.ts || "").localeCompare(a.ts || "") || b.hand_number - a.hand_number)
+      : hands.hands;
+    const data = { player: state.player, filter: state.filter, game: state.game, hands: all };
     state.session = { key, data };
     return data;
   }
@@ -930,15 +947,17 @@
     setRaiseKey("biggest pot flagged", `${rows.length} flagged · ${d.skipped.cards_unknown} showdowns mucked${skipped}`);
   }
 
+  // Their own hands only: the ones they sat out are listed, never counted.
   function renderSessionTiles(d) {
     setTileKeys("hands dealt", "hands played", "net");
-    const net = d.hands.reduce((s, h) => s + (h.net_bb ?? 0), 0);
-    $("t-hands").textContent = d.hands.length;
-    $("t-known").textContent = d.hands.filter(played).length;
-    $("t-cov").textContent = d.hands.length ? fmtBb(net) : "–";
-    $("t-raise").textContent = d.hands.filter(h => h.flags.length).length;
-    const seen = d.hands.filter(h => h.reviewed).length;
-    setRaiseKey("flagged for review", `${seen} of ${d.hands.length} marked reviewed`);
+    const mine = d.hands.filter(h => !h.sat_out);
+    const net = mine.reduce((s, h) => s + (h.net_bb ?? 0), 0);
+    $("t-hands").textContent = mine.length;
+    $("t-known").textContent = mine.filter(played).length;
+    $("t-cov").textContent = mine.length ? fmtBb(net) : "–";
+    $("t-raise").textContent = mine.filter(h => h.flags.length).length;
+    const seen = mine.filter(h => h.reviewed).length;
+    setRaiseKey("flagged for review", `${seen} of ${mine.length} marked reviewed`);
   }
 
   // value -> [fillColor, deep?] for the current color mode
@@ -1252,7 +1271,8 @@
       bits.push((h.ip ? "in position" : "out of position")
         + (h.pos_players > 2 ? ` · acts ${h.pos_order + 1} of ${h.pos_players} postflop` : ""));
     }
-    if (h.vs?.length) bits.push("vs " + h.vs.join(", "));
+    if (h.sat_out) bits.push("not dealt in · played by " + h.vs.join(", "));
+    else if (h.vs?.length) bits.push("vs " + h.vs.join(", "));
     for (const [st, who] of Object.entries(h.vs_cbet || {})) bits.push(`${st}: ${who} c-bet at them`);
     for (const [st, who] of Object.entries(h.led_into || {})) bits.push(`${st}: could lead into ${who}`);
     return bits.join("\n");
@@ -1295,7 +1315,8 @@
       vsEl.appendChild(n);
       if (vs.cards) vsEl.appendChild(cardsEl(vs.cards));
     }
-    span("hole", h.hole_cards ? cardsEl(h.hole_cards) : "?? ??");
+    span("hole", h.hole_cards ? cardsEl(h.hole_cards) : h.sat_out ? "sat out" : "?? ??");
+    if (h.sat_out) b.dataset.satOut = "";
     span("board", h.board.length ? cardsEl(h.board) : "no flop");
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
     span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
@@ -1394,12 +1415,19 @@
     $("session-game").classList.toggle("hidden", !session);
     $("session-played").classList.toggle("hidden", !session);
     $("session-played").setAttribute("aria-pressed", state.played);
+    $("session-sat").classList.toggle("hidden", !session);
+    $("session-sat").setAttribute("aria-pressed", state.satOut);
+    $("session-sat").disabled = !!state.filter;
+    $("session-sat").title = state.filter
+      ? "a filter keeps to the hands they played: clear it to see the ones they sat out"
+      : "also list the hands of this session they were not dealt into";
   }
 
   // A hand counts as played when they put chips in by choice or saw a flop; a
-  // flagged hand is always listed, whatever it was.
-  const played = (h) => h.vpip || h.saw_flop;
-  const sessionRows = (d) => d.hands.filter(h => !state.played || played(h) || h.flags.length);
+  // flagged hand is always listed, whatever it was, and so is one they sat out
+  // (Sat out is the switch for those).
+  const played = (h) => !h.sat_out && (h.vpip || h.saw_flop);
+  const sessionRows = (d) => d.hands.filter(h => h.sat_out || !state.played || played(h) || h.flags.length);
   const listRows = (view) => view === SESSION_VIEW ? sessionRows(state.data) : reviewRows(state.data, view);
 
   function renderSession(d) {
@@ -1419,7 +1447,13 @@
     }
     for (const h of rows.slice(0, HAND_LIMIT)) {
       const f = h.flags[0];
+      // A hand they sat out names who played it and who won, in place of their own result.
+      const away = h.sat_out ? {
+        vs: { name: h.vs.length > 2 ? `${h.vs[0]} +${h.vs.length - 1}` : h.vs.join(" · ") },
+        sizes: h.winner ? `${h.winner} won${h.winner_bb != null ? ` ${h.winner_bb} bb` : ""}` : "",
+      } : {};
       const row = handRowButton(h, list, $("review-replay"), {
+        ...away,
         kind: f ? { text: f.label, group: f.group } : null,
         why: h.flags.map(x => x.why).filter(Boolean).join(" · ") || undefined,
         title: h.flags.length > 1 ? "flagged: " + h.flags.map(x => x.label).join(", ") : "",
@@ -1720,6 +1754,9 @@
   $("session-played").addEventListener("click", () => {
     state.played = !state.played; writeUrl(); if (state.data && state.by === SESSION_VIEW) render();
   });
+  $("session-sat").addEventListener("click", () => {
+    state.satOut = !state.satOut; writeUrl(); load();
+  });
   $("review-split").addEventListener("click", () => {
     state.split = !state.split;
     try { localStorage.setItem(LAYOUT_KEY, state.split ? "split" : "stacked"); } catch { /* this visit only */ }
@@ -1877,6 +1914,7 @@
   if (state.order) $("review-sort").value = state.order;
   $("review-split").setAttribute("aria-pressed", state.split);
   $("session-played").setAttribute("aria-pressed", state.played);
+  $("session-sat").setAttribute("aria-pressed", state.satOut);
   $("review-seen").setAttribute("aria-pressed", state.hideSeen);
   syncChips();
   document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));

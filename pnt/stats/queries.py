@@ -622,6 +622,58 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
     return rows
 
 
+def sat_out_list(
+    conn: sqlite3.Connection, alias: str, game_id: str, names: Mapping[str, str] | None = None
+) -> list[dict]:
+    """The hands of one game a player was not dealt into, newest first.
+
+    The session view lists them beside `hand_list`'s rows, so they carry the same
+    keys -- with nothing of the player's own (no cards, no seat, no result) and
+    `sat_out` set. `vs` is everyone who was dealt in, and `winner` whoever took
+    the most from the pot. Raises ValueError on an unknown alias.
+    """
+    ids = set(identities_of(conn, alias))
+    lookup = names or {}
+    rows = []
+    for h in load_hands(conn, game_id):
+        if ids & h.players.keys():
+            continue
+        # Seat order from the button, so the names read the way the table sat.
+        seated = sorted(h.players.values(), key=lambda p: (p.seats_from_button is None, p.seats_from_button or 0))
+        top = max(seated, key=lambda p: p.collected - p.contributed, default=None)
+        won = top.collected - top.contributed if top else 0
+        rows.append(
+            {
+                "hand_id": h.hand_id,
+                "game_id": h.game_id,
+                "hand_number": h.hand_number,
+                "ts": h.ts,
+                "position": None,
+                "players": h.n_dealt_in,
+                "hole_cards": None,
+                "board": list(h.board),
+                "net_bb": None,
+                "pot": sum(p.contributed for p in h.players.values()),
+                "bb": h.bb,
+                "wtsd": False,
+                "vpip": False,
+                "saw_flop": h.saw_flop,
+                "bet_size": {},
+                "ip": None,
+                "pos_order": None,
+                "pos_players": None,
+                "vs": [lookup.get(p.pn_id, p.pn_id) for p in seated],
+                "vs_cbet": {},
+                "led_into": {},
+                "sat_out": True,
+                "winner": lookup.get(top.pn_id, top.pn_id) if top and won > 0 else None,
+                "winner_bb": round(won / h.bb, 1) if top and won > 0 and h.bb else None,
+            }
+        )
+    rows.sort(key=lambda r: (r["ts"] or "", r["hand_id"]), reverse=True)
+    return rows
+
+
 def player_games(conn: sqlite3.Connection, alias: str) -> list[dict]:
     """Every game one player was dealt into, newest first: the sessions to pick from.
 
