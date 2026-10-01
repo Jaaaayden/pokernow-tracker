@@ -27,6 +27,7 @@ and its cache.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
@@ -737,6 +738,90 @@ def set_note(
     return note_of(conn, game_id, hand_number)
 
 
+# A manual flag is the third judgement on a hand: "look at this one later",
+# usually set from the HUD's 🚩 a moment after the hand ended. It is the queue the
+# Manual review tab lists, and it is independent of the mark -- flagging a hand
+# does not mark it, and marking it does not take the flag away, so the tab can
+# hide reviewed hands the way the others do.
+#
+# It is checked against the raw log, not against `hands`: the HUD flags a hand
+# seconds after its ending line arrives, often before the rebuild that derives it.
+
+_ENDING = re.compile(r"^-- ending hand #(\d+) --$")
+
+
+def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
+    """Raise unless the database has that hand, derived or still only raw lines."""
+    if conn.execute(
+        "SELECT 1 FROM hands WHERE game_id = ? AND hand_number = ?", (game_id, hand_number)
+    ).fetchone() is not None:
+        return
+    if conn.execute(
+        "SELECT 1 FROM raw_entries WHERE game_id = ? AND entry LIKE ?",
+        (game_id, f"-- starting hand #{hand_number} %"),
+    ).fetchone() is None:
+        raise ValueError(f"no hand #{hand_number} in game {game_id}")
+
+
+def last_ended_hand(conn: sqlite3.Connection, game_id: str) -> int | None:
+    """The number of the newest hand of a game whose ending line has arrived."""
+    for row in conn.execute(
+        "SELECT entry FROM raw_entries WHERE game_id = ? AND entry LIKE '-- ending hand #%'"
+        " ORDER BY ord DESC LIMIT 5",
+        (game_id,),
+    ):
+        m = _ENDING.match(row["entry"])
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def flagged_hands(conn: sqlite3.Connection, game_id: str | None = None) -> dict[tuple[str, int], str]:
+    """(game_id, hand_number) -> when it was flagged, for one game or all of them."""
+    sql = "SELECT game_id, hand_number, flagged_at FROM hand_flags"
+    args: tuple = ()
+    if game_id is not None:
+        sql += " WHERE game_id = ?"
+        args = (game_id,)
+    return {(r["game_id"], r["hand_number"]): r["flagged_at"] for r in conn.execute(sql, args)}
+
+
+def is_flagged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM hand_flags WHERE game_id = ? AND hand_number = ?",
+        (game_id, hand_number),
+    ).fetchone() is not None
+
+
+def set_flag(
+    conn: sqlite3.Connection, game_id: str, hand_number: int, flagged: bool = True
+) -> str | None:
+    """Flag one hand for manual review, or clear the flag. Returns the timestamp, or None.
+
+    Idempotent both ways, like `mark_reviewed`: flagging again keeps the first
+    time. Raises ValueError when flagging a hand the log does not have; clearing
+    does not check.
+    """
+    if flagged:
+        _require_logged(conn, game_id, hand_number)
+    with writing(conn):
+        if not flagged:
+            conn.execute(
+                "DELETE FROM hand_flags WHERE game_id = ? AND hand_number = ?",
+                (game_id, hand_number),
+            )
+            return None
+        conn.execute(
+            "INSERT INTO hand_flags (game_id, hand_number, flagged_at) VALUES (?, ?, ?)"
+            " ON CONFLICT(game_id, hand_number) DO NOTHING",
+            (game_id, hand_number, datetime.now(UTC).isoformat(timespec="seconds")),
+        )
+    return conn.execute(
+        "SELECT flagged_at FROM hand_flags WHERE game_id = ? AND hand_number = ?",
+        (game_id, hand_number),
+    ).fetchone()[0]
+
+
 # ------------------------------------------------------------------- read ---
 
 
@@ -819,6 +904,7 @@ def review_hand_list(
     names = display_names(conn)
     marks = reviewed_marks(conn, game_id)
     notes = hand_notes(conn, game_id)
+    flags = flagged_hands(conn, game_id)
 
     def keep(f: Facts) -> bool:
         return predicate is None or predicate(f)
@@ -852,6 +938,8 @@ def review_hand_list(
                 "reviewed_at": marks.get((hand.game_id, hand.hand_number)),
                 "note": note.get("note"),
                 "noted_at": note.get("noted_at"),
+                "flagged": (hand.game_id, hand.hand_number) in flags,
+                "flagged_at": flags.get((hand.game_id, hand.hand_number)),
                 "kind": r.kind,
                 "label": KIND_LABELS[r.kind],
                 "group": KINDS[r.kind],

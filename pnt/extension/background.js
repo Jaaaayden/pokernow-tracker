@@ -72,6 +72,14 @@ const handlers = {
   live: ({ game_id, min, known }) =>
     call(`/live/${encodeURIComponent(game_id)}?min=${count(min, 1, 1)}&known=${count(known, DEFAULTS.liveKnown, 0)}`),
 
+  // The HUD's 🚩: flag a hand for the chart's Manual review tab, or clear the flag.
+  flag: ({ game_id, hand_number, flagged }) =>
+    call(`/games/${encodeURIComponent(game_id)}/hands/${count(hand_number, 0, 0)}/flag`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ flagged: !!flagged }),
+    }),
+
   // The content script reports here -- counters, status text, and the HUD and
   // live payloads -- and the side panel and settings page read it back.
   status: async (msg, sender) => {

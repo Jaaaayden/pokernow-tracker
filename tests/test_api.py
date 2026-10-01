@@ -34,7 +34,8 @@ def client(tmp_path, monkeypatch):
 
 
 def test_live_endpoint_is_quiet_between_hands_and_validates_min(client):
-    assert client.get(f"/live/{HU_GAME}").json() == {"game_id": HU_GAME, "hand": None}
+    quiet = client.get(f"/live/{HU_GAME}").json()
+    assert quiet["hand"] is None and quiet["previous"]["flagged"] is False
     assert client.get("/live/nope").json()["hand"] is None
     assert client.get(f"/live/{HU_GAME}", params={"min": 0}).status_code == 422
     assert client.get(f"/live/{HU_GAME}", params={"known": -1}).status_code == 422
@@ -507,6 +508,48 @@ def test_marking_a_hand_reviewed_round_trips_and_reaches_the_review(client):
     cleared = client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": False}).json()
     assert cleared["reviewed"] is False and cleared["reviewed_at"] is None
     assert client.get("/reviewed").json() == []
+
+
+def test_flagging_a_hand_round_trips_and_lands_on_manual_review(client):
+    """The HUD's flag writes by (game_id, hand_number); the hand then shows on the
+    player's Manual review list, and as `flagged` on every other list."""
+    assert client.get("/players/genericpoker/flagged").json()["hands"] == []
+    hand = client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"][0]
+    assert hand["flagged"] is False and hand["flagged_at"] is None
+
+    out = client.post(f"/games/{HU_GAME}/hands/{hand['hand_number']}/flag", json={"flagged": True}).json()
+    assert out["flagged"] and out["flagged_at"]
+    assert client.get("/flagged").json() == [
+        {"game_id": HU_GAME, "hand_number": hand["hand_number"], "flagged_at": out["flagged_at"]}
+    ]
+    previous = client.get(f"/live/{HU_GAME}").json()["previous"]
+    assert previous["flagged"] == (previous["hand_number"] == hand["hand_number"])
+
+    listed = client.get("/players/genericpoker/flagged").json()["hands"]
+    assert [h["hand_id"] for h in listed] == [hand["hand_id"]]
+    assert listed[0]["flagged"] and listed[0]["flagged_at"] == out["flagged_at"]
+    # A mark and a note ride along, as on every list.
+    client.post(f"/hands/{hand['hand_id']}/reviewed", json={"reviewed": True})
+    client.post(f"/hands/{hand['hand_id']}/note", json={"note": "turn sizing?"})
+    again = client.get("/players/genericpoker/flagged").json()["hands"][0]
+    assert again["reviewed"] and again["note"] == "turn sizing?" and again["flagged"]
+    # A spot the hand is not in leaves it off.
+    assert client.get("/players/genericpoker/flagged", params={"filter": "pot>=99999999"}).json()["hands"] == []
+    review = client.get("/players/genericpoker/review").json()["hands"]
+    assert review and all("flagged" in h for h in review)
+
+    cleared = client.post(f"/games/{HU_GAME}/hands/{hand['hand_number']}/flag", json={"flagged": False}).json()
+    assert cleared == {"game_id": HU_GAME, "hand_number": hand["hand_number"], "flagged": False, "flagged_at": None}
+    assert client.get("/players/genericpoker/flagged").json()["hands"] == []
+    # Unflagging keeps the mark and the note: three separate judgements.
+    kept = [h for h in client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"]
+            if h["hand_id"] == hand["hand_id"]][0]
+    assert kept["reviewed"] and kept["note"] == "turn sizing?"
+
+
+def test_flagging_an_unknown_hand_is_a_404(client):
+    assert client.post(f"/games/{HU_GAME}/hands/999999/flag", json={"flagged": True}).status_code == 404
+    assert client.post("/games/nosuchgame/hands/1/flag", json={"flagged": True}).status_code == 404
 
 
 def test_marking_an_unknown_hand_is_a_404(client):

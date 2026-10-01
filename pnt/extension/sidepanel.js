@@ -34,6 +34,7 @@
     follow: true,       // the chart follows the live spot
     compact: false,     // the stats table only: no tags, spot lines or chart
     sentSpots: [],      // the last few spots posted into the chart, to tell an echo from an edit
+    flagged: null,      // {game, n, flagged}: what the 🚩 last wrote, ahead of /live
   };
   let selected = null, pinned = null;
   let heldAt = null; // the moment a card was clicked at; see followSpot
@@ -106,6 +107,7 @@
     $("main").hidden = !snap;
     $("pause").hidden = !snap;
     if (!snap) {
+      $("flag").hidden = true;
       $("live").textContent = "";
       setStatus("");
       return;
@@ -132,6 +134,7 @@
       render();
       followSpot();
     }
+    paintFlag();
   }
 
   function setStatus(text) { $("st").textContent = text; $("st").title = text; }
@@ -143,6 +146,42 @@
     } catch (e) {
       setStatus(`the game tab did not answer: ${e.message || e}`);
     }
+  });
+
+  // ------------------------------------------------------------------ flag --
+  // 🚩 flags the hand that last ended for the chart's Manual review tab; pressed
+  // means flagged, and a second click clears it. /live says which hand that is and
+  // whether it is flagged, but it is read again only when new lines arrive, so
+  // what the button last wrote stands in for it until /live names the same hand.
+  function previousHand() {
+    const p = state.live?.previous;
+    if (!p || !state.snap) return null;
+    const mine = state.flagged;
+    const flagged = mine && mine.game === state.snap.game && mine.n === p.hand_number ? mine.flagged : p.flagged;
+    return { n: p.hand_number, flagged };
+  }
+  function paintFlag() {
+    const p = previousHand();
+    $("flag").hidden = !p;
+    if (!p) return;
+    $("flag-n").textContent = `#${p.n}`;
+    $("flag").setAttribute("aria-pressed", String(p.flagged));
+    $("flag").title = p.flagged
+      ? `hand #${p.n} is flagged for manual review — click to unflag`
+      : `flag hand #${p.n}, the last to finish, for manual review in the chart`;
+  }
+  $("flag").addEventListener("click", async () => {
+    const p = previousHand();
+    if (!p || $("flag").disabled) return;
+    const game = state.snap.game;
+    $("flag").disabled = true;
+    const r = await send({ type: "flag", game_id: game, hand_number: p.n, flagged: !p.flagged });
+    $("flag").disabled = false;
+    if (!r.ok) { setStatus(`could not flag hand #${p.n}: ${r.error}`); return; }
+    state.flagged = { game, n: p.n, flagged: r.data.flagged };
+    paintFlag();
+    // An open chart may be on its Manual review tab: it fetches again, quietly.
+    if (isOpen()) $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, origin());
   });
 
   // The settings that used to be the toolbar popup; the toolbar icon opens this panel now.

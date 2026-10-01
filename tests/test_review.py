@@ -740,3 +740,51 @@ def test_the_cli_marks_lists_and_filters(db, tmp_path):
     assert "nothing marked" in runner.invoke(cli.app, ["reviewed", "--db", path]).output
     assert runner.invoke(cli.app, ["reviewed", THREE_GAME, "99999", "--db", path]).exit_code != 0
     assert runner.invoke(cli.app, ["reviewed", THREE_GAME, "--db", path]).exit_code != 0
+
+
+# --- manual flags -----------------------------------------------------------
+
+
+def test_a_flag_survives_the_rebuild_and_is_idempotent_both_ways(db):
+    from pnt.ingest.importer import rebuild_game
+
+    first = rv.set_flag(db, HU_GAME, 53)
+    assert first and rv.set_flag(db, HU_GAME, 53) == first
+    rebuild_game(db, HU_GAME)
+    assert rv.flagged_hands(db) == {(HU_GAME, 53): first}
+    assert rv.set_flag(db, HU_GAME, 53, flagged=False) is None
+    assert rv.set_flag(db, HU_GAME, 53, flagged=False) is None  # no-op, not an error
+    assert not rv.is_flagged(db, HU_GAME, 53)
+
+
+def test_flagging_a_hand_that_is_not_there_raises_but_clearing_one_does_not(db):
+    with pytest.raises(ValueError, match="no hand #99999"):
+        rv.set_flag(db, HU_GAME, 99999)
+    with pytest.raises(ValueError):
+        rv.set_flag(db, "nosuchgame", 1)
+    assert rv.set_flag(db, "nosuchgame", 1, flagged=False) is None
+
+
+def test_a_flag_is_independent_of_the_mark(db):
+    game, number = _flagged(db)
+    rv.set_flag(db, game, number)
+    rv.mark_reviewed(db, game, number)
+    rv.mark_reviewed(db, game, number, reviewed=False)
+    assert rv.is_flagged(db, game, number)
+    rv.mark_reviewed(db, game, number)
+    rv.set_flag(db, game, number, flagged=False)
+    assert rv.is_reviewed(db, game, number)
+
+
+def test_every_review_row_carries_the_flag(db):
+    game, number = _flagged(db)
+    at = rv.set_flag(db, game, number)
+    for h in rv.review_hand_list(db, "genericpoker")["hands"]:
+        mine = (h["game_id"], h["hand_number"]) == (game, number)
+        assert h["flagged"] == mine and h["flagged_at"] == (at if mine else None)
+
+
+def test_the_last_ended_hand_is_read_from_the_raw_log(db):
+    last = db.execute("SELECT MAX(hand_number) FROM hands WHERE game_id = ?", (HU_GAME,)).fetchone()[0]
+    assert rv.last_ended_hand(db, HU_GAME) == last
+    assert rv.last_ended_hand(db, "nosuchgame") is None

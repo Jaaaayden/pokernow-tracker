@@ -17,18 +17,21 @@
     --ring: rgba(11,11,11,0.10);
     --mid: #f0efec;
     --accent: #2a78d6;
+    --flag: #c4372f;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --flag: #e66e6d;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --flag: #e66e6d;
   }
   * { box-sizing: border-box; }
   /* Thin scrollbars in the theme's own greys, with no track and no arrow buttons.
@@ -163,17 +166,25 @@
   .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
     color: var(--ink-2); white-space: nowrap; }
   .hand-row .kind[data-group=beat] { border-color: var(--accent); color: var(--accent); }
+  .hand-row .kind[data-group=manual] { border-color: var(--flag); color: var(--flag); }
   .hand-row .why { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }
   /* A flagged row, its "reviewed" mark and its note. Both buttons sit beside the
      row, not in it: the row is itself a button, and a button may not contain
      another. The note runs full width underneath, in the second column. */
   .rev-row { display: flex; align-items: flex-start; gap: 6px; border-bottom: 1px solid var(--grid); }
   .rev-row .marks { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  /* With the 🚩 there are three: ✓ and 🚩 side by side, ✎ under the ✓, so the row
+     is no taller than with two. */
+  .rev-row .marks.three { display: grid; grid-template-columns: repeat(2, 22px); }
   .rev-body { flex: 1; min-width: 0; }
   .rev-row .hand-row { width: 100%; border-bottom: 0; }
   .rev-row .marks button { width: 22px; height: 22px; padding: 0; line-height: 1;
     border-radius: 6px; color: var(--muted); font-size: 12px; }
   .rev-row .marks button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  /* The 🚩 is an emoji, so it is greyed rather than recoloured until it is set. */
+  .rev-row .marks button.flag { filter: grayscale(1); opacity: .45; font-size: 11px; overflow: hidden; }
+  .rev-row .marks button.flag:hover { opacity: .8; }
+  .rev-row .marks button.flag[aria-pressed=true] { filter: none; opacity: 1; border-color: var(--flag); }
   /* Marked rows stay in place and step back, so the list keeps its shape. A note
      never fades: it is the one thing on the row you wrote yourself. */
   .rev-row[data-reviewed=true] .hand-row { opacity: .5; }
@@ -336,6 +347,7 @@
       <button data-view="made" aria-pressed="false">Made hands</button>
       <button data-view="sizing" aria-pressed="false">Sizing</button>
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Hand review</button>
+      <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Manual review</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
     </span>
@@ -594,7 +606,7 @@
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
                   table: false, data: null, handRows: null, handSort: "newest", handIds: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
-                  game: null, games: null, played: true, satOut: false, session: null, split: false };
+                  game: null, games: null, played: true, satOut: false, session: null, manual: null, split: false };
 
   // The side-by-side layout is a per-viewer setting, kept in this browser only.
   // Storage can be missing or throw (private windows, blocked site data), and the
@@ -608,10 +620,12 @@
   const REVIEW_VIEWS = ["review", "beats"];
   const isReview = (view) => REVIEW_VIEWS.includes(view);
   // The session view lists every hand of one game, flagged or not, with the same
-  // marks and notes as the review views. Those three are the "list views".
+  // marks and notes as the review views. The manual view lists the hands flagged
+  // by hand with 🚩, from the HUD or from a row here. Those four are the "list views".
   const SESSION_VIEW = "session";
-  const isListView = (view) => isReview(view) || view === SESSION_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS, SESSION_VIEW];
+  const MANUAL_VIEW = "manual";
+  const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
+  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -619,11 +633,13 @@
   const KIND_LABEL = Object.fromEntries(Object.values(REVIEW_KINDS).flat());
   const ALL_KINDS = Object.keys(KIND_LABEL);
   // The first order of each view is its default.
-  const ORDERS = { review: ["newest", "pot"], beats: ["newest", "pot", "swing"], session: ["hand", "newest", "pot", "swing"] };
+  const ORDERS = { review: ["newest", "pot"], beats: ["newest", "pot", "swing"], session: ["hand", "newest", "pot", "swing"],
+                   manual: ["newest", "pot", "swing"] };
   const ORDER_NAMES = ORDERS.session;
   const orderOf = (view) => ORDERS[view].includes(state.order) ? state.order : ORDERS[view][0];
   const REVIEW_NOTE = {
     review: "A flag is a prompt to open the replay, not a verdict. Missed bluffs and missed value need every live hand shown, so they come from showdowns only; a failed bluff also counts bluffs given up on before showdown.",
+    manual: "The hands you flagged with 🚩: in the HUD, right after a hand ends, or on any row of the other lists. A hand flagged from the HUD shows up once it has been rebuilt, a few seconds after it ends. Clear the 🚩 to take it off the list.",
     session: "Every hand of the session, in the order it was dealt. Flagged hands carry their flag; tick a hand off or write on it as you go. Sat out adds the hands played while they were away from the table.",
     beats: "Bookkeeping. Suckouts and preflop coolers are all-in showdowns with every hand shown, their equity taken where the betting stopped; a postflop cooler is a stacks hand already behind on a dry board.",
   };
@@ -726,6 +742,14 @@
     try {
       if (state.by === SESSION_VIEW) {
         state.data = await loadSession(quiet);
+      } else if (state.by === MANUAL_VIEW) {
+        const key = `${state.player}|${state.filter}`;
+        if (!quiet && state.manual?.key === key) {
+          state.data = state.manual.data;
+        } else {
+          state.data = await getJson(`/players/${player}/flagged?` + q);
+          state.manual = { key, data: state.data };
+        }
       } else if (isReview(state.by)) {
         // One request serves both views: switching between them re-renders
         // rather than re-fetching, unless the HUD said there are new hands.
@@ -858,7 +882,7 @@
   }
   const TITLE = {
     preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
-    review: "Hands to review", beats: "Bad beats", session: "Session",
+    review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
   };
 
   function render() {
@@ -867,6 +891,7 @@
     const review = isListView(view);
     const table = state.table && !review;
     if (view === SESSION_VIEW) renderSessionTiles(d);
+    else if (view === MANUAL_VIEW) renderManualTiles(d);
     else if (review) renderReviewTiles(d, view);
     else if (view === "sizing") renderSizingTiles(d);
     else renderRangeTiles(d);
@@ -887,6 +912,7 @@
     $("review").classList.toggle("hidden", !review);
     applyLayout();
     if (view === SESSION_VIEW) { renderSession(d); return; }
+    if (view === MANUAL_VIEW) { renderManual(d); return; }
     if (review) { renderReview(d, view); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "");
@@ -958,6 +984,18 @@
     $("t-raise").textContent = mine.filter(h => h.flags.length).length;
     const seen = mine.filter(h => h.reviewed).length;
     setRaiseKey("flagged for review", `${seen} of ${mine.length} marked reviewed`);
+  }
+
+  function renderManualTiles(d) {
+    setTileKeys("hands flagged", "marked reviewed", "net");
+    const rows = manualRows(d);
+    const net = rows.reduce((s, h) => s + (h.net_bb ?? 0), 0);
+    $("t-hands").textContent = rows.length;
+    $("t-known").textContent = rows.filter(h => h.reviewed).length;
+    $("t-cov").textContent = rows.length ? fmtBb(net) : "–";
+    const last = rows.map(h => h.flagged_at || "").sort().pop();
+    $("t-raise").textContent = last ? last.slice(0, 10) : "–";
+    setRaiseKey("last flagged", `${rows.filter(h => h.note).length} with a note`);
   }
 
   // value -> [fillColor, deep?] for the current color mode
@@ -1424,11 +1462,14 @@
   }
 
   // A hand counts as played when they put chips in by choice or saw a flop; a
-  // flagged hand is always listed, whatever it was, and so is one they sat out
-  // (Sat out is the switch for those).
+  // flagged hand -- by a rule or with 🚩 -- is always listed, whatever it was, and
+  // so is one they sat out (Sat out is the switch for those).
   const played = (h) => !h.sat_out && (h.vpip || h.saw_flop);
-  const sessionRows = (d) => d.hands.filter(h => h.sat_out || !state.played || played(h) || h.flags.length);
-  const listRows = (view) => view === SESSION_VIEW ? sessionRows(state.data) : reviewRows(state.data, view);
+  const sessionRows = (d) => d.hands.filter(h => h.sat_out || !state.played || played(h) || h.flags.length || h.flagged);
+  // A manual row leaves the list as soon as its 🚩 is cleared.
+  const manualRows = (d) => d.hands.filter(h => h.flagged);
+  const listRows = (view) => view === SESSION_VIEW ? sessionRows(state.data)
+    : view === MANUAL_VIEW ? manualRows(state.data) : reviewRows(state.data, view);
 
   function renderSession(d) {
     $("review-kinds").replaceChildren();
@@ -1454,9 +1495,32 @@
       } : {};
       const row = handRowButton(h, list, $("review-replay"), {
         ...away,
-        kind: f ? { text: f.label, group: f.group } : null,
+        kind: f ? { text: f.label, group: f.group } : h.flagged ? { text: "Flagged", group: "manual" } : null,
         why: h.flags.map(x => x.why).filter(Boolean).join(" · ") || undefined,
         title: h.flags.length > 1 ? "flagged: " + h.flags.map(x => x.label).join(", ") : "",
+      });
+      list.appendChild(reviewedRow(h, row));
+    }
+  }
+
+  function renderManual(d) {
+    $("review-kinds").replaceChildren();
+    syncListControls(MANUAL_VIEW);
+    const all = manualRows(d);
+    const rows = orderReview(listedReview(all), MANUAL_VIEW);
+    const list = $("review-rows");
+    list.replaceChildren();
+    resetReplay();
+    setReviewCount();
+    if (!rows.length) {
+      list.appendChild(message(state.hideSeen && all.length ? "every flagged hand here is reviewed"
+        : state.filter ? "nothing flagged in this spot"
+        : "nothing flagged yet: press 🚩 in the HUD after a hand you want to look at again"));
+      return;
+    }
+    for (const h of rows.slice(0, HAND_LIMIT)) {
+      const row = handRowButton(h, list, $("review-replay"), {
+        title: h.flagged_at ? `flagged ${h.flagged_at.slice(0, 10)}` : "",
       });
       list.appendChild(reviewedRow(h, row));
     }
@@ -1513,7 +1577,7 @@
   // The session view and the review views hold their own copies of a hand, so a
   // mark made in one is carried into the other.
   function applyToHand(hand_id, fields) {
-    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands])) {
+    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands])) {
       for (const other of hands || []) {
         if (other.hand_id === hand_id) Object.assign(other, fields);
       }
@@ -1542,6 +1606,13 @@
     pen.type = "button";
     pen.className = "note";
     pen.textContent = "✎";
+    // Rows from a server too old to know about flags get no 🚩.
+    const flag = "flagged" in h ? document.createElement("button") : null;
+    if (flag) {
+      flag.type = "button";
+      flag.className = "flag";
+      flag.textContent = "🚩";
+    }
 
     const paint = () => {
       wrap.dataset.reviewed = String(!!h.reviewed);
@@ -1558,8 +1629,33 @@
       pen.setAttribute("aria-label", `note on hand ${h.hand_number}`);
       note.textContent = h.note || "";
       note.classList.toggle("empty", !h.note);
+      if (flag) {
+        flag.setAttribute("aria-pressed", String(!!h.flagged));
+        flag.title = h.flagged
+          ? `flagged for manual review ${(h.flagged_at || "").slice(0, 10)} — click to unflag`
+          : "flag this hand for manual review";
+        flag.setAttribute("aria-label", `hand ${h.hand_number} flagged for manual review`);
+      }
     };
     paint();
+
+    flag?.addEventListener("click", async () => {
+      flag.disabled = true;
+      try {
+        const out = await postJson(`/games/${encodeURIComponent(h.game_id)}/hands/${h.hand_number}/flag`, { flagged: !h.flagged });
+        applyToHand(h.hand_id, { flagged: out.flagged, flagged_at: out.flagged_at });
+        // The manual list is now out of date wherever it is not on show.
+        if (state.by !== MANUAL_VIEW) state.manual = null;
+        // On the manual view an unflagged row leaves the list, which needs the
+        // render; elsewhere the row is repainted in place, so a replay stays open.
+        if (state.by === MANUAL_VIEW) { render(); return; }
+        paint();
+      } catch (e) {
+        showErr(e);
+      } finally {
+        flag.disabled = false;
+      }
+    });
 
     mark.addEventListener("click", async () => {
       mark.disabled = true;
@@ -1635,7 +1731,8 @@
       box.addEventListener("blur", () => save(box));
     });
 
-    marks.append(mark, pen);
+    if (flag) { marks.classList.add("three"); marks.append(mark, flag, pen); }
+    else marks.append(mark, pen);
     body.append(row, note);
     wrap.append(marks, body);
     return wrap;
@@ -1716,6 +1813,7 @@
     state.filter = $("filter").value.trim();
     state.review = null; // Apply always asks the server again
     state.session = null;
+    state.manual = null;
     syncChips();
     closeHands();
     writeUrl();

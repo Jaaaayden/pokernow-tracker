@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS hand_notes (
     PRIMARY KEY (game_id, hand_number)
 ) WITHOUT ROWID;
 
+-- The hands you flagged for a second look, usually from the HUD's 🚩 a moment
+-- after the hand ended: the queue the Manual review tab lists. Kept and keyed
+-- like a mark, for the same reasons, and independent of it -- a flag says "look
+-- at this", a mark says "I have". Unlike a mark it may name a hand the rebuild
+-- has not reached yet: the HUD flags a hand seconds after it ends, so a flag is
+-- checked against the raw log rather than against `hands`.
+CREATE TABLE IF NOT EXISTS hand_flags (
+    game_id     TEXT NOT NULL,
+    hand_number INTEGER NOT NULL,
+    flagged_at  TEXT NOT NULL,
+    PRIMARY KEY (game_id, hand_number)
+) WITHOUT ROWID;
+
 -- ---------------------------------------------------------------- layer 2 ----
 
 CREATE TABLE IF NOT EXISTS games (

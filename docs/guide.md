@@ -306,6 +306,12 @@ box on the game page. Drag it by its header and resize it from its bottom-right
 corner. It remembers where you left it. Its ✕ hides it, and the toolbar icon brings
 it back. Switch back to *Side panel* in the same place.
 
+**Flag the last hand.** Once a hand has finished, the header shows **🚩 #N** for
+it, greyed out. Press it to flag that hand for the chart's **Manual review** tab
+(see [Flagging hands yourself](#flagging-hands-yourself)), and it turns red. Press it
+again to unflag. It always names the last hand to *finish*, so during a hand it
+points at the one before.
+
 **Compact.** The – in the header strips the HUD down to one table: a row per player
 with the same figures (this session, then lifetime in grey) and no tags, spot lines
 or chart. When floating, the box shrinks to fit the table. The + brings everything
@@ -450,6 +456,24 @@ The two are independent. Unticking a hand you want to look at again keeps what y
 wrote about it, and a note on a hand you have *not* finished with ("check the turn
 sizing here") is the ordinary case. Writing a note again replaces it.
 
+### Flagging hands yourself
+
+The rules only catch some mistakes. When a hand feels wrong at the table, press
+**🚩** in the HUD right after it ends. The chart's **Manual review** view
+([http://127.0.0.1:52000/chart?by=manual](http://127.0.0.1:52000/chart?by=manual))
+lists every hand you flagged that the player on show was dealt into, newest first,
+with the same check box and pencil as the other lists. A hand flagged from the HUD
+shows up a few seconds later, once the tracker has rebuilt it. Every row on the
+other lists has a 🚩 too, so you can flag a hand from Hand review or Session as
+well. Clear the 🚩 to take a hand off the list.
+
+A flag is the third thing on a hand, next to the mark and the note, and it is
+independent of both. Marking a flagged hand reviewed keeps it on Manual review, so
+**Hide reviewed** works there the same way it does on the other lists. Flags
+survive `pnt rebuild`. `GET /players/{alias}/flagged` returns the list,
+`GET /flagged` returns every flag, and
+`POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one.
+
 ### Going through a whole session
 
 Flags only catch some mistakes. The chart's **Session** view
@@ -463,7 +487,7 @@ session's hands against him. `GET /players/{alias}/games` lists a player's games
 and `GET /players/{alias}/hands?game=<id>` lists the rows with their marks and notes.
 
 **Side by side** puts the list on the left and the replay on the right, where it
-stays in place while you scroll. It works in Hand review, Bad beats and Session. The
+stays in place while you scroll. It works in Hand review, Manual review, Bad beats and Session. The
 ↑ and ↓ keys step to the previous and next hand and replay it. The setting is kept
 in this browser. Below 900px wide, including the extension's side panel, the replay
 goes back under the list.
