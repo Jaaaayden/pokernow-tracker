@@ -53,6 +53,7 @@ from pnt.stats.queries import (
     player_games,
     positional_report,
     report,
+    sat_out_list,
 )
 from pnt.stats.ranges import composition, range_grid, sizing_tells
 from pnt.stats.review import hand_notes, mark_reviewed, review_hand_list, reviewed_marks, set_note
@@ -599,8 +600,12 @@ def player_hands(
     conn = db()
     facts = _spot_facts(alias, filter, game, conn)
     rows = hand_list(facts, display_names(conn))
-    # The marks and notes the review rows carry, so any hand -- flagged or not --
-    # can be ticked off and written on from the session view.
+    return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
+
+
+def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
+    """Rows with the marks and notes the review rows carry, so any hand -- flagged
+    or not -- can be ticked off and written on from the session view."""
     marks = reviewed_marks(conn, game)
     notes = hand_notes(conn, game)
     for r in rows:
@@ -612,7 +617,21 @@ def player_hands(
             note=note.get("note"),
             noted_at=note.get("noted_at"),
         )
-    return {"player": alias, "filter": filter, "hands": rows}
+    return rows
+
+
+@app.get("/players/{alias}/sat-out")
+def player_sat_out(alias: str, game: str) -> dict:
+    """The hands of one game the player was not dealt into: the session view's "Sat out".
+
+    No filter: every filter describes the player's own spot, and they had none here.
+    """
+    conn = db()
+    try:
+        rows = sat_out_list(conn, alias, game, display_names(conn))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"player": alias, "game": game, "hands": _with_marks(conn, rows, game)}
 
 
 @app.get("/players/{alias}/games")

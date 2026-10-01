@@ -579,6 +579,25 @@ def test_session_hands_carry_play_marks_and_notes(client):
     assert sum(r["reviewed"] for r in again) == 1
 
 
+def test_sat_out_lists_the_rest_of_the_session(client):
+    """A player's hands and the hands they sat out are the whole game, with no overlap."""
+    game = "pglSdQtyFGypDbrqD5IhXXlYz"  # chugnuts was dealt into 20 of its 233 hands
+    mine = client.get("/players/chugnuts/hands", params={"game": game}).json()["hands"]
+    away = client.get("/players/chugnuts/sat-out", params={"game": game}).json()["hands"]
+    numbers = sorted(h["hand_number"] for h in mine + away)
+    assert numbers == list(range(1, len(numbers) + 1)) and len(numbers) == 233
+    assert len(mine) == 20
+    assert [h["ts"] for h in away] == sorted((h["ts"] for h in away), reverse=True)
+    for h in away:
+        assert h["sat_out"] and h["hole_cards"] is None and h["net_bb"] is None
+        assert "chugnuts" not in h["vs"] and len(h["vs"]) == h["players"]
+        assert {"reviewed", "note"} <= set(h)
+    # Whoever came out ahead, by how much: the final hand's 2,934 pot went to genericpoker.
+    last = away[0]
+    assert last["hand_number"] == 233 and last["winner"] == "genericpoker" and last["winner_bb"] > 0
+    assert client.get("/players/ghost/sat-out", params={"game": game}).status_code == 404
+
+
 
 # --- who may call it ------------------------------------------------------------
 
