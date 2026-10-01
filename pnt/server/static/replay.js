@@ -51,8 +51,13 @@
   }
 
   // Fetch one hand and render it into `box`, which is unhidden first so the
-  // "loading…" line shows where the replay is about to appear.
+  // "loading…" line shows where the replay is about to appear. Only the box's
+  // latest request is drawn: stepping through a list with the arrow keys asks
+  // for several hands at once, and they need not come back in order.
+  let seq = 0;
   async function show(box, id) {
+    const req = String(++seq);
+    box.dataset.replayReq = req;
     box.classList.remove("hidden");
     box.replaceChildren(message("loading…"));
     try {
@@ -61,11 +66,14 @@
         const body = await r.json().catch(() => ({}));
         throw new Error(body.detail || `${r.status} ${r.statusText}`);
       }
-      render(box, await r.json());
+      const d = await r.json();
+      if (box.dataset.replayReq === req) render(box, d);
     } catch (e) {
-      box.replaceChildren(message(String(e.message || e), "err"));
+      if (box.dataset.replayReq === req) box.replaceChildren(message(String(e.message || e), "err"));
     }
   }
+  // Drop whatever `box` is still fetching, for a page that clears or hides it.
+  const cancel = (box) => { delete box.dataset.replayReq; };
 
   function render(box, d) {
     box.replaceChildren();
@@ -145,5 +153,5 @@
     }
   }
 
-  window.pntReplay = { pretty, cardsEl, bucketOf, SIZE_LABEL, show, render };
+  window.pntReplay = { pretty, cardsEl, bucketOf, SIZE_LABEL, show, cancel, render };
 })();

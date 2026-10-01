@@ -264,7 +264,11 @@
     return `${n} ${OPP_NOUN[opp.replace(/_(flop|turn|river)$/, "")] || "chances"}`;
   }
 
+  // Bumped by every load: an answer for controls since changed is dropped, so a
+  // slow load cannot land after a quicker, newer one and be what is left on show.
+  let loadSeq = 0;
   async function load() {
+    const seq = ++loadSeq;
     $("card").classList.add("loading");
     $("err").classList.add("hidden");
     const q = new URLSearchParams({ min_hands: state.min });
@@ -275,17 +279,20 @@
         const body = await r.json().catch(() => ({}));
         throw new Error(body.detail || `${r.status} ${r.statusText}`);
       }
-      state.rows = await r.json();
+      const rows = await r.json();
+      if (seq !== loadSeq) return;
+      state.rows = rows;
       if (state.rows.length && !("raise_cbet_flop" in state.rows[0])) {
         throw new Error("the running server is older than this page: restart `pnt service`");
       }
       render();
     } catch (e) {
+      if (seq !== loadSeq) return;
       $("err").textContent = String(e.message || e);
       $("err").classList.remove("hidden");
       $("table").replaceChildren();
     } finally {
-      $("card").classList.remove("loading");
+      if (seq === loadSeq) $("card").classList.remove("loading");
     }
   }
 
