@@ -48,7 +48,6 @@ from pnt.stats.queries import (
     aggregate,
     display_names,
     facts_cached,
-    facts_for,
     hand_list,
     player_games,
     positional_report,
@@ -551,7 +550,9 @@ def _spot_facts(
     # The name map is what lets `vs=henry` name a person rather than an ID.
     pred = _predicate(conn, filter)
     try:
-        facts = facts_for(conn, alias, game)
+        # Cached: every tab of the chart asks for the same player's hands, and
+        # deriving them afresh cost seconds per click on a 10,000-hand player.
+        facts = facts_cached(conn, alias, game)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return [f for f in facts if pred(f)] if pred is not None else facts

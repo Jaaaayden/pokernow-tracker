@@ -33,7 +33,7 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from ..db.conn import writing
+from ..db.conn import generation, path_of, writing
 from ..logfmt.events import PREFLOP, RIVER
 from .allin import AllInRow, allin_rows, decision_street
 from .cards import (
@@ -887,59 +887,70 @@ def _made_dict(mh: MadeHand | None, hole: str | None, board: Collection[str]) ->
     return {"cls": mh.cls, "detail": mh.detail, "label": describe(hole, board)}
 
 
-def review_hand_list(
-    conn: sqlite3.Connection,
-    alias: str,
-    game_id: str | None = None,
-    predicate: Callable[[Facts], bool] | None = None,
-) -> dict:
-    """One player's flagged hands, newest first, with the population they came from.
+@dataclass
+class _ReviewBase:
+    """What `review_hand_list` needs of `review_rows`, before any filter or mark.
 
-    Rows carry every field of `queries.hand_list` so the page renders them with
-    the same code, plus the flag, whether the hand has been marked reviewed, and
-    whatever you wrote down about it. Raises ValueError on an unknown alias.
+    Built once per generation and kept: every row's payload is already assembled,
+    so a request applies its filter and reads the marks, notes and 🚩 flags --
+    which change without a rebuild -- and nothing else. Only the reviewed
+    player's facts are held, not the table's, nor the hands themselves: those
+    are most of what deriving a 10,000-hand history costs in memory.
     """
+
+    #: Each of the player's seats: (their facts, the hand complete, every live hand shown).
+    seats: list[tuple[Facts, bool, bool]]
+    #: Each flag, newest first: (the flagged player's facts, the row without marks).
+    rows: list[tuple[Facts, dict]]
+    #: The facts of each seat a rule skipped for an unknown stack.
+    stack_unknown: list[Facts]
+
+
+#: `_ReviewBase` per (database, alias, game), with the generation it was derived
+#: at -- the contract of `queries.report()`'s cache. The chart asks again on every
+#: switch between its list tabs and every change of filter, which re-derived the
+#: player's whole history each time: seconds on a 10,000-hand player. Least
+#: recently used goes first.
+_REVIEW_CACHE: dict[tuple[str, str, str | None], tuple[int, _ReviewBase]] = {}
+_REVIEW_CACHE_MAX = 8
+
+
+def _review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _ReviewBase:
+    gen = generation(conn)
+    path = path_of(conn)
+    cacheable = gen is not None and bool(path)
+    key = (path, alias, game_id)
+    hit = _REVIEW_CACHE.pop(key, None) if cacheable else None  # re-inserted: last in is last out
+    if hit is None or hit[0] != gen:
+        hit = (gen, _build_review_base(conn, alias, game_id))
+    if cacheable:
+        if len(_REVIEW_CACHE) >= _REVIEW_CACHE_MAX:
+            _REVIEW_CACHE.pop(next(iter(_REVIEW_CACHE)))
+        _REVIEW_CACHE[key] = hit
+    return hit[1]
+
+
+def _build_review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _ReviewBase:
     rows, stack_unknown, facts_by_hand, hands = review_rows(conn, alias, game_id)
     ids = set(identities_of(conn, alias))
     names = display_names(conn)
-    marks = reviewed_marks(conn, game_id)
-    notes = hand_notes(conn, game_id)
-    flags = flagged_hands(conn, game_id)
 
-    def keep(f: Facts) -> bool:
-        return predicate is None or predicate(f)
-
-    mine = [
-        (hands[hid], f) for hid, fs in facts_by_hand.items() for pid, f in fs.items()
-        if pid in ids and keep(f)
-    ]
-    examined = [(h, f) for h, f in mine if h.complete]
-    showdowns = [(h, f) for h, f in examined if f.wtsd]
-    known = [(h, f) for h, f in showdowns if all(p.hole_cards for p in _live(h))]
-    skipped = {
-        "cards_unknown": len(showdowns) - len(known),
-        "stack_unknown": sum(1 for hid, pid in stack_unknown if keep(facts_by_hand[hid][pid])),
-    }
+    seats = []
+    for hid, fs in facts_by_hand.items():
+        h = hands[hid]
+        for pid, f in fs.items():
+            if pid in ids:
+                known = h.complete and f.wtsd and all(p.hole_cards for p in _live(h))
+                seats.append((f, h.complete, known))
 
     out = []
-    counts = dict.fromkeys(KINDS, 0)
     for r in rows:
         f = facts_by_hand[r.hand_id][r.pn_id]
-        if not keep(f):
-            continue
-        counts[r.kind] += 1
         hand = hands[r.hand_id]
         board = board_at(hand.board, r.street) or hand.board
-        note = notes.get((hand.game_id, hand.hand_number)) or {}
         d = hand_list([f], names)[0]
         d.update(
             {
-                "reviewed": (hand.game_id, hand.hand_number) in marks,
-                "reviewed_at": marks.get((hand.game_id, hand.hand_number)),
-                "note": note.get("note"),
-                "noted_at": note.get("noted_at"),
-                "flagged": (hand.game_id, hand.hand_number) in flags,
-                "flagged_at": flags.get((hand.game_id, hand.hand_number)),
                 "kind": r.kind,
                 "label": KIND_LABELS[r.kind],
                 "group": KINDS[r.kind],
@@ -973,13 +984,69 @@ def review_hand_list(
                 "method": r.method,
             }
         )
+        out.append((f, d))
+
+    return _ReviewBase(
+        seats=seats,
+        rows=out,
+        stack_unknown=[facts_by_hand[hid][pid] for hid, pid in stack_unknown],
+    )
+
+
+def review_hand_list(
+    conn: sqlite3.Connection,
+    alias: str,
+    game_id: str | None = None,
+    predicate: Callable[[Facts], bool] | None = None,
+) -> dict:
+    """One player's flagged hands, newest first, with the population they came from.
+
+    Rows carry every field of `queries.hand_list` so the page renders them with
+    the same code, plus the flag, whether the hand has been marked reviewed, and
+    whatever you wrote down about it. Raises ValueError on an unknown alias.
+    """
+    base = _review_base(conn, alias, game_id)
+    marks = reviewed_marks(conn, game_id)
+    notes = hand_notes(conn, game_id)
+    flags = flagged_hands(conn, game_id)
+
+    def keep(f: Facts) -> bool:
+        return predicate is None or predicate(f)
+
+    examined = [(f, known) for f, complete, known in base.seats if complete and keep(f)]
+    showdowns = [known for f, known in examined if f.wtsd]
+    skipped = {
+        "cards_unknown": showdowns.count(False),
+        "stack_unknown": sum(1 for f in base.stack_unknown if keep(f)),
+    }
+
+    out = []
+    counts = dict.fromkeys(KINDS, 0)
+    for f, row in base.rows:
+        if not keep(f):
+            continue
+        counts[row["kind"]] += 1
+        key = (row["game_id"], row["hand_number"])
+        note = notes.get(key) or {}
+        # Copied: the cached row is shared with every later request.
+        d = dict(row)
+        d.update(
+            {
+                "reviewed": key in marks,
+                "reviewed_at": marks.get(key),
+                "note": note.get("note"),
+                "noted_at": note.get("noted_at"),
+                "flagged": key in flags,
+                "flagged_at": flags.get(key),
+            }
+        )
         out.append(d)
 
     return {
         "player": alias,
         "examined": len(examined),
         "showdowns": len(showdowns),
-        "known_showdowns": len(known),
+        "known_showdowns": showdowns.count(True),
         "counts": counts,
         # Listed rows already marked, and listed rows carrying a note. Counted
         # over rows, not hands, so they can be read straight against the flag
