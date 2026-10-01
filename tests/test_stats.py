@@ -164,3 +164,15 @@ def test_filter_vocabulary_covers_every_term():
     # covers must be a documented term in its own right so the row can be found.
     for key in DECIDED:
         assert key in documented, f"{key} is missing from filters.VOCABULARY"
+
+
+def test_conflict_groups_name_real_terms():
+    """The `?` panel drops a term that contradicts a later one, by these groups; a
+    misspelt member would silently never conflict."""
+    from pnt.stats.cards import TEXTURE_TAGS
+    from pnt.stats.filters import EXCLUSIVE, FLAGS, TEXTURE_FAMILIES
+
+    for group in EXCLUSIVE:
+        assert set(group) <= set(FLAGS), group
+    for family in TEXTURE_FAMILIES:
+        assert set(family) <= set(TEXTURE_TAGS), family

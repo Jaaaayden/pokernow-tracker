@@ -404,6 +404,22 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
 )
 
 
+#: Flags no hand can match together. The `?` panel drops the earlier of two such
+#: terms when the later one is typed, so `srp,...,3bet_pot` keeps `3bet_pot`.
+EXCLUSIVE: tuple[tuple[str, ...], ...] = (
+    ("limped", "srp", "3bet_pot", "4bet_pot"),
+    ("won", "lost"),
+    ("vpip", "no_vpip"),
+)
+
+#: Texture tags no one board carries two of. The rest overlap on purpose (see
+#: `cards.board_texture`), so `flop=monotone,flop=ace_high` is a real spot.
+TEXTURE_FAMILIES: tuple[tuple[str, ...], ...] = (
+    ("ace_high", "king_high", "queen_high", "jack_high", "ten_high", "low"),
+    ("monotone", "twotone", "rainbow"),
+)
+
+
 _SIZE_WORDS = {
     "small": "under ½ pot",
     "medium": "½ to ¾ pot",
@@ -431,6 +447,8 @@ def vocabulary() -> dict:
         "decided": list(DECIDED),
         "sizes": {b: _SIZE_WORDS[b] for b in SIZE_BUCKETS},
         "textures": list(TEXTURE_TAGS),
+        "exclusive": [list(g) for g in EXCLUSIVE],
+        "texture_families": [list(g) for g in TEXTURE_FAMILIES],
     }
 
 
