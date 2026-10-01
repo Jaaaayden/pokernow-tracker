@@ -17,6 +17,7 @@ from ..logfmt.parser import DEAD_POSTS, ParsedHand, parse, position_name
 from .derive import HandAction, HandPlayerRow, HandRow
 from .nodes import nodes_for, resolve, street_of_board
 from .queries import facts_cached, identity_map
+from .review import is_flagged, last_ended_hand
 
 
 def live_entries(conn: sqlite3.Connection, game_id: str) -> list[RawEntry]:
@@ -171,15 +172,25 @@ def to_act(parsed: ParsedHand) -> str | None:
     return None
 
 
+def previous_hand(conn: sqlite3.Connection, game_id: str) -> dict | None:
+    """The last hand to end in a game, as {"hand_number", "flagged"}, or None."""
+    n = last_ended_hand(conn, game_id)
+    return None if n is None else {"hand_number": n, "flagged": is_flagged(conn, game_id, n)}
+
+
 def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_known: int = 5) -> dict:
     """The `/live/{game}` payload: the hand in progress, everyone's node, and the
     closest spot with data behind it for everyone still in.
 
     `min_known` is the shown hands a spot narrowed to this board's texture must
-    keep to stay narrowed; see `nodes.resolve`."""
+    keep to stay narrowed; see `nodes.resolve`.
+
+    `previous` is the newest hand whose ending line has arrived -- the one the
+    HUD's 🚩 flags for manual review -- and whether it is flagged already, or None
+    before the first hand ends. It is there between hands too."""
     parsed = live_hand(conn, game_id)
     if parsed is None:
-        return {"game_id": game_id, "hand": None}
+        return {"game_id": game_id, "hand": None, "previous": previous_hand(conn, game_id)}
 
     row = hand_row(parsed)
     street = current_street(parsed)
@@ -241,4 +252,5 @@ def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_kno
         "to_act": who,
         "hero": hero,
         "players": players,
+        "previous": previous_hand(conn, game_id),
     }

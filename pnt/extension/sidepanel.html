@@ -17,6 +17,11 @@
     align-items: center; gap: 2px 6px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.1); }
   .head b { font-weight: 600; }
   .head .st { color: #c3c2b7; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
+  /* The 🚩 greys out until the hand is flagged, so a glance says which it is. */
+  .head .flag { white-space: nowrap; font-variant-numeric: tabular-nums; filter: grayscale(1); opacity: .7; }
+  .head .flag:hover { opacity: 1; }
+  .head .flag[aria-pressed="true"] { filter: none; opacity: 1; background: rgba(227,73,72,.3); }
+  .head .flag span { margin-left: 2px; font-size: 10px; }
   .head .live { flex-basis: 100%; order: 9; color: #c3c2b7; font-variant-numeric: tabular-nums; }
   .head .live:empty { display: none; }
   /* On the game page (float mode) the header is what the box is dragged by. */
@@ -97,6 +102,7 @@
   <div class="head">
     <b>PNT</b>
     <span class="st" id="st"></span>
+    <button id="flag" class="flag" aria-pressed="false" hidden>🚩<span id="flag-n"></span></button>
     <button id="pause" title="pause capture" hidden>⏸</button>
     <button id="compact" title="compact: one line of stats per player, no tags or chart">–</button>
     <button id="gear" title="settings" aria-pressed="false">⚙</button>

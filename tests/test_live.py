@@ -108,9 +108,38 @@ def test_to_act_after_a_straddle_starts_left_of_the_straddler():
 
 
 def test_live_hand_is_none_between_hands(db):
+    last = db.execute("SELECT MAX(hand_number) FROM hands WHERE game_id = ?", (HU_GAME,)).fetchone()[0]
     assert live_hand(db, HU_GAME) is None
-    assert snapshot(db, HU_GAME) == {"game_id": HU_GAME, "hand": None}
+    # Between hands there is still a hand to flag: the one that just ended.
+    assert snapshot(db, HU_GAME) == {
+        "game_id": HU_GAME, "hand": None, "previous": {"hand_number": last, "flagged": False},
+    }
     assert snapshot(db, "no-such-game")["hand"] is None
+    assert snapshot(db, "no-such-game")["previous"] is None
+
+
+def test_the_previous_hand_can_be_flagged_before_it_is_rebuilt(tmp_path):
+    """The HUD's flag button marks the hand that just ended, seconds before the
+    rebuild derives it: the flag is checked against the raw lines and kept through it."""
+    from pnt.stats import review as rv
+
+    conn = connect(tmp_path / "live.sqlite")
+    entries, start, _ = _hand_entries(HU, HU_GAME, 18)
+    ingest_entries(conn, HU_GAME, entries[: start + 3], source="test")
+    assert conn.execute("SELECT COUNT(*) FROM hands").fetchone()[0] == 0
+
+    snap = snapshot(conn, HU_GAME)
+    assert snap["hand_number"] == 18 and snap["previous"] == {"hand_number": 17, "flagged": False}
+    assert rv.set_flag(conn, HU_GAME, 17)
+    assert snapshot(conn, HU_GAME)["previous"] == {"hand_number": 17, "flagged": True}
+    # Hand 18 has started but not ended: it can be flagged, and is not "previous".
+    assert rv.set_flag(conn, HU_GAME, 18)
+    with pytest.raises(ValueError, match="no hand #19"):
+        rv.set_flag(conn, HU_GAME, 19)
+
+    rebuild_game(conn, HU_GAME)
+    assert rv.flagged_hands(conn, HU_GAME).keys() == {(HU_GAME, 17), (HU_GAME, 18)}
+    conn.close()
 
 
 def test_snapshot_of_a_hand_cut_before_the_3bet(tmp_path):

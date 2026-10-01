@@ -848,6 +848,26 @@ document, not a log, and one that strips to nothing is a deletion. `noted_at` is
 therefore when it was *last* written, where `reviewed_at` is when the hand was
 *first* marked.
 
+**A manual flag is the third judgement** (`hand_flags`): "look at this one later",
+set with the HUD's 🚩 for the hand that just ended, or with the 🚩 beside any list
+row. It is keyed, kept and made idempotent like the mark (`flagged_at` is when it was
+*first* set), and is independent of both the mark and the note. The Manual review
+tab lists the flagged hands; `GET /players/{alias}/flagged` serves it, and
+`POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one. Two things
+differ from the mark:
+
+- **It is addressed by `(game_id, hand_number)`, not `hand_id`.** The HUD flags a
+  hand seconds after its ending line arrives, often before the rebuild has derived
+  it, so there is no `hand_id` yet.
+- **It is checked against the raw log.** A flag is accepted for any hand with a
+  `-- starting hand #N` line in `raw_entries`, derived or not. The Manual review
+  list still shows only derived hands, so a fresh flag appears there once the
+  rebuild lands.
+
+The HUD finds "the previous hand" in `/live`'s `previous` field: the newest
+`-- ending hand #N --` line in the raw log, with whether it is flagged. It is
+present between hands as well as during one.
+
 `pnt review --unreviewed` lists only what is left, and the chart's **Hide
 reviewed** button does the same for the Hand review and Bad beats views. Notes are
 never hidden: they are the one thing on the row you wrote yourself.

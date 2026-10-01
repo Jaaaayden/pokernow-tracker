@@ -56,7 +56,15 @@ from pnt.stats.queries import (
     sat_out_list,
 )
 from pnt.stats.ranges import composition, range_grid, sizing_tells
-from pnt.stats.review import hand_notes, mark_reviewed, review_hand_list, reviewed_marks, set_note
+from pnt.stats.review import (
+    flagged_hands,
+    hand_notes,
+    mark_reviewed,
+    review_hand_list,
+    reviewed_marks,
+    set_flag,
+    set_note,
+)
 from pnt.stats.tags import tags_for
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
@@ -604,10 +612,11 @@ def player_hands(
 
 
 def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
-    """Rows with the marks and notes the review rows carry, so any hand -- flagged
-    or not -- can be ticked off and written on from the session view."""
+    """Rows with the marks, notes and manual flags the review rows carry, so any
+    hand -- flagged or not -- can be ticked off and written on from the session view."""
     marks = reviewed_marks(conn, game)
     notes = hand_notes(conn, game)
+    flags = flagged_hands(conn, game)
     for r in rows:
         key = (r["game_id"], r["hand_number"])
         note = notes.get(key) or {}
@@ -616,8 +625,29 @@ def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
             reviewed_at=marks.get(key),
             note=note.get("note"),
             noted_at=note.get("noted_at"),
+            flagged=key in flags,
+            flagged_at=flags.get(key),
         )
     return rows
+
+
+@app.get("/players/{alias}/flagged")
+def player_flagged(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The hands of one player's you flagged for manual review, newest first.
+
+    A flagged hand the rebuild has not reached yet is not listed until it has:
+    there is no row to draw before then.
+    """
+    conn = db()
+    flags = flagged_hands(conn, game)
+    facts = _spot_facts(alias, filter, game, conn)
+    facts = [f for f in facts if (f.game_id, f.hand_number) in flags]
+    rows = hand_list(facts, display_names(conn))
+    return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
 
 
 @app.get("/players/{alias}/sat-out")
@@ -750,6 +780,34 @@ def reviewed(game: str = Query(None, description="Restrict to one game_id.")) ->
     return [
         {"game_id": g, "hand_number": n, "reviewed_at": at}
         for (g, n), at in sorted(marks.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+    ]
+
+
+class FlagRequest(BaseModel):
+    flagged: bool = True
+
+
+@app.post("/games/{game_id}/hands/{hand_number}/flag")
+def write_flag(game_id: GameId, hand_number: int, req: Annotated[FlagRequest, Body()]) -> dict:
+    """Flag one hand for manual review, or clear the flag.
+
+    Addressed by the log's own (game_id, hand_number) rather than a hand_id: the
+    HUD flags the hand that just ended, which the rebuild may not have derived yet.
+    """
+    try:
+        at = set_flag(db(), game_id, hand_number, req.flagged)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"game_id": game_id, "hand_number": hand_number, "flagged": at is not None, "flagged_at": at}
+
+
+@app.get("/flagged")
+def flagged(game: str = Query(None, description="Restrict to one game_id.")) -> list[dict]:
+    """Every hand flagged for manual review, newest flag first."""
+    flags = flagged_hands(db(), game)
+    return [
+        {"game_id": g, "hand_number": n, "flagged_at": at}
+        for (g, n), at in sorted(flags.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
     ]
 
 
