@@ -178,7 +178,7 @@ and open a new terminal. On Windows, use the python.org installer rather than th
 Microsoft Store build, which sandboxes the files a background server needs.
 
 ```bash
-pipx install git+https://github.com/Jaaaayden/pokernow-tracker
+pipx install https://github.com/Jaaaayden/pokernow-tracker/archive/refs/heads/main.zip
 pnt setup
 ```
 
