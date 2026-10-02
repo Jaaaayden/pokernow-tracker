@@ -79,6 +79,10 @@ def test_health_reports_a_total_parse(client):
     assert body["parse_misses"] == 0
     # `pnt service restart` tells the new server from a stale one by this.
     assert body["pid"] == os.getpid()
+    # The loaded extension reloads itself when this changes under it.
+    from pnt.update import extension_build
+
+    assert body["extension_build"] == extension_build()
 
 
 def test_stats_endpoint(client):
