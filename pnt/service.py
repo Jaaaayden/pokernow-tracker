@@ -418,6 +418,12 @@ def stop(name: str = TASK_NAME) -> None:
         _check(_schtasks("/End", "/TN", name), "stop the task")
 
 
+def stop_and_wait(name: str = TASK_NAME, timeout: float = 15.0) -> None:
+    """Stop, and return only once the old instance has exited and let go of its files."""
+    stop(name)
+    _await_stopped(name, timeout)
+
+
 def _await_stopped(name: str, timeout: float) -> None:
     """Block until the task has no running instance."""
     deadline = time.monotonic() + timeout

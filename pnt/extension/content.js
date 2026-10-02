@@ -158,6 +158,7 @@
   }
 
   async function loop() {
+    if (orphaned()) return retire();
     if (state.paused) return schedule();
     const poked = state.poked;
     state.poked = 0;
@@ -220,6 +221,17 @@
     timer = setTimeout(loop, ms);
   }
 
+  // The extension was reloaded (by hand, or by itself after `pnt update`) and
+  // this script can no longer reach it. The worker injects a fresh one, so this
+  // one stops polling and takes its box off the page rather than run alongside.
+  const orphaned = () => !chrome.runtime?.id;
+  let observer = null;
+  function retire() {
+    clearTimeout(timer);
+    observer?.disconnect();
+    float.remove();
+  }
+
   // ------------------------------------------------------------ table watch --
   // A change on the table asks for a poll now rather than at the next tick;
   // watch.js says what counts as a change. Never on top of a running poll (that
@@ -238,6 +250,7 @@
     let last = null, settle = null;
     const check = () => {
       settle = null;
+      if (orphaned()) return retire();
       // Who is to act goes to the panel now, not after the log: the chart can
       // move to them while the poll is still out, backing off, or walking history.
       const acting = PNT.tableActing(document);
@@ -250,8 +263,8 @@
     };
     // Class and text changes only: the shot clock moves by inline style many
     // times a second, and must not wake anything. One look per burst of changes.
-    new MutationObserver(() => { if (!settle) settle = setTimeout(check, SETTLE_MS); })
-      .observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+    observer = new MutationObserver(() => { if (!settle) settle = setTimeout(check, SETTLE_MS); });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
     check();
   }
 
@@ -324,7 +337,11 @@
       if (host) return;
       const t = await send({ type: "tab" });
       if (host || state.hudMode !== "float") return; // unmounted or remounted meanwhile
+      // One left behind by a script the extension's reload orphaned, if it has
+      // not yet noticed and removed it itself.
+      for (const old of document.querySelectorAll("[data-pnt-float]")) old.remove();
       host = document.createElement("div");
+      host.setAttribute("data-pnt-float", "");
       const root = host.attachShadow({ mode: "closed" });
       root.innerHTML = `
         <style>
@@ -403,6 +420,7 @@
     return {
       apply: () => (state.hudMode === "float" ? mount() : unmount()),
       toggle: () => setShown(host?.style.display === "none"),
+      remove: unmount,
     };
   })();
 

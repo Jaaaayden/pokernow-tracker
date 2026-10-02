@@ -196,9 +196,27 @@ and prints the extension folder.
    pots and players.
 
 On Windows the server starts at every login and restarts itself if it crashes.
-**After updating the code, run `pnt service restart`**, because a running server
-keeps the old code. On macOS and Linux, run `pnt serve` yourself, or put it under
-launchd or systemd.
+On macOS and Linux, run `pnt serve` yourself, or put it under launchd or systemd.
+
+### Updating
+
+```bash
+pnt update
+```
+
+This stops the server, reinstalls from wherever you installed from, and starts the
+server again on the new code. The extension notices the new files and reloads
+itself within a minute. If you use the side panel, Chrome closes it when the
+extension reloads, so click the icon to open it again.
+
+Installed before `pnt update` existed? Update by hand this one time, then reload
+the extension at `chrome://extensions`:
+
+```bash
+pnt service stop
+pipx install --force https://github.com/Jaaaayden/pokernow-tracker/archive/refs/heads/main.zip
+pnt service start
+```
 
 ### Commands
 
@@ -220,6 +238,7 @@ pnt alias list                               # the player names you can query
 pnt alias merge onlybluffs genericpoker      # one person, two devices
 pnt redact --out pnt/logs                    # copies you can publish
 pnt where                                    # which database, log folder and extension
+pnt update                                   # the latest code; the extension follows on its own
 ```
 
 Commands that take a player take an **alias** from `pnt alias list`. The log folder
@@ -228,7 +247,7 @@ defaults to `~/Downloads/pokernow-logs`; set `PNT_LOG_DIR` to change it.
 | Background server (Windows) | |
 |---|---|
 | `pnt service status` | Whether it's up, and which database it has open |
-| `pnt service restart` | **Run after pulling code changes.** If an old server still holds the port, it names the process to end |
+| `pnt service restart` | Run after `git pull` in a checkout (`pnt update` restarts it for you). If an old server still holds the port, it names the process to end |
 | `pnt service log` | The last lines of `~\.pnt\server.log` |
 | `pnt service stop` / `start` | Stop until the next login, or start again |
 | `pnt service uninstall` | Remove it; the database is untouched |

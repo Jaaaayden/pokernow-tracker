@@ -55,7 +55,11 @@ async function call(path, init = {}) {
 const handlers = {
   settings: () => settings(),
 
-  health: () => call("/health"),
+  health: async () => {
+    const h = await call("/health");
+    checkBuild(h);
+    return h;
+  },
 
   ingest: ({ game_id, entries, rebuild = true }) =>
     call("/ingest", {
@@ -100,9 +104,9 @@ const handlers = {
 //
 // A game tab is known by its URL, not by its content script reporting in: after
 // the extension is reloaded, a game tab already open has no working content
-// script until it is reloaded too, and the icon must still open the panel there
-// (which then says to reload). The URL is visible for these sites only, through
-// host_permissions.
+// script until one is injected again (see self-update), which can fail, and the
+// icon must still open the panel there (which then says to reload). The URL is
+// visible for these sites only, through host_permissions.
 const sidePanel = chrome.sidePanel;
 const GAME_URLS = [
   "https://www.pokernow.com/games/*", "https://pokernow.com/games/*",
@@ -146,7 +150,44 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status === "loading" || info.url) applyTab(tabId, isGame(tab.url));
 });
 
+// ---------------------------------------------------------- self-update --
+// `pnt update` replaces these files in place, and Chrome goes on running the copy
+// it loaded until the extension is reloaded. The server reports a hash of the
+// files it shipped with, and the first one this instance hears is taken as its
+// own: session storage is emptied by a reload and by a browser restart, the two
+// times Chrome reads the files afresh. A different hash after that means the
+// files changed underneath, so it reloads, and takes the new hash as its own.
+const BUILD_CHECK_MS = 60_000;
+let buildCheckedAt = 0;
+async function checkBuild(health) {
+  buildCheckedAt = Date.now();
+  const build = health?.extension_build;
+  if (!build) return; // a server older than the check
+  const { build: mine } = await chrome.storage.session.get("build");
+  if (!mine) await chrome.storage.session.set({ build });
+  else if (mine !== build) chrome.runtime.reload();
+}
+// On any message, at most once a minute: a table being played messages every few
+// seconds, and an idle extension has nothing to update for.
+function checkBuildSoon() {
+  if (Date.now() - buildCheckedAt < BUILD_CHECK_MS) return;
+  buildCheckedAt = Date.now();
+  call("/health").then(checkBuild, () => {});
+}
+checkBuildSoon();
+
+// A reload leaves every open game tab with a content script that can no longer
+// reach this worker (it notices, and stops: content.js). Without a fresh one the
+// table would go uncaptured until the page was reloaded by hand.
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  if (reason !== "install" && reason !== "update") return;
+  const files = chrome.runtime.getManifest().content_scripts.flatMap((c) => c.js);
+  const tabs = await chrome.tabs.query({ url: GAME_URLS }).catch(() => []);
+  for (const t of tabs) chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  checkBuildSoon();
   const h = handlers[msg?.type];
   if (!h) { sendResponse({ ok: false, error: `unknown message ${msg?.type}` }); return false; }
   h(msg, sender).then(

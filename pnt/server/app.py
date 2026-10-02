@@ -65,10 +65,15 @@ from pnt.stats.review import (
     set_note,
 )
 from pnt.stats.tags import tags_for
+from pnt.update import EXTENSION_DIR, extension_build
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
-ICONS = Path(__file__).parents[1] / "extension" / "icons"
+ICONS = EXTENSION_DIR / "icons"
+#: The extension files this server shipped with, read once: `pnt update` replaces
+#: them only while the server is stopped. A loaded extension that sees this change
+#: reloads itself to match (see pnt/update.py).
+EXTENSION_BUILD = extension_build()
 
 #: Live capture also keeps each game's CSV in the log folder, so the folder stays a
 #: running record: every game in the database, as a file `pnt import` could rebuild
@@ -325,6 +330,7 @@ def health() -> dict:
         # Which process answered: `pnt service restart` tells the new server from
         # one that outlived it on the same port.
         "pid": os.getpid(),
+        "extension_build": EXTENSION_BUILD,
     }
 
 

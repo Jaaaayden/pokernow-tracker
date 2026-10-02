@@ -7,12 +7,14 @@ import glob as globlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import typer
 
 from . import service as svc
+from . import update as upd
 from .db.conn import DEFAULT_DB, connect
 from .ingest import fetch as fetchmod
 from .ingest import sync as syncmod
@@ -366,7 +368,7 @@ def backfill(
 
 #: The unpacked Chrome extension, shipped inside the package so that a pip or
 #: pipx install has one to load. `pnt extension` prints this path.
-EXTENSION_DIR = Path(__file__).parent / "extension"
+EXTENSION_DIR = upd.EXTENSION_DIR
 
 
 @app.command()
@@ -460,6 +462,64 @@ def setup(
     typer.echo(f"    {EXTENSION_DIR}")
     typer.echo("")
     typer.echo(f"Then open a PokerNow game. Charts: http://{host}:{port}/chart  ({hands} hands)")
+
+
+@app.command("update")
+def update_cmd(
+    source: str | None = typer.Option(
+        None, "--from", help="Install from this URL, archive or folder instead of where it came from."
+    ),
+    host: str = svc.DEFAULT_HOST,
+    port: int = svc.DEFAULT_PORT,
+) -> None:
+    """Update to the latest code: reinstall it and restart the server.
+
+    The extension follows on its own: it reloads once it sees the server's copy of
+    its files change. One that predates this command cannot, and needs reloading by
+    hand at chrome://extensions this once.
+    """
+    root = upd.checkout_root()
+    if root is not None and source is None:
+        typer.echo(
+            f"error: this runs from a source checkout ({root}). Update it with `git pull`,"
+            " then `pnt service restart`.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    source = source or upd.installed_source() or upd.DEFAULT_SOURCE
+
+    # Stopped first: a running server could import a module halfway through being
+    # replaced, and holds files Windows will not let pip overwrite.
+    managed = sys.platform == "win32" and _svc(svc.task_state) is not None
+    if managed:
+        typer.echo("stopping the server")
+        _svc(svc.stop_and_wait)
+
+    typer.echo(f"installing from {source}")
+    if sys.platform == "win32":
+        typer.echo("(a pip warning about a temporary directory is expected: it is the old pnt.exe)")
+    try:
+        upd.install(source)
+    except upd.UpdateError as exc:
+        if managed:
+            _svc(svc.start)  # pip rolls back a failed install, so this is the old code
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if managed:
+        # A fresh interpreter, so the restart runs the code just installed.
+        result = subprocess.run(
+            [sys.executable, "-m", "pnt.cli", "service", "restart", "--host", host, "--port", str(port)],
+            check=False,
+        )
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
+    else:
+        typer.echo("updated. Restart `pnt serve` to run the new code.")
+    typer.echo(
+        "The extension reloads itself within a minute; reopen the side panel if it closes."
+        " If the HUD still runs the old version, reload it once at chrome://extensions."
+    )
 
 
 @app.command()
