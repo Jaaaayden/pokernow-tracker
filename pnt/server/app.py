@@ -68,6 +68,7 @@ from pnt.stats.tags import tags_for
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
+ICONS = Path(__file__).parents[1] / "extension" / "icons"
 
 #: Live capture also keeps each game's CSV in the log folder, so the folder stays a
 #: running record: every game in the database, as a file `pnt import` could rebuild
@@ -228,6 +229,16 @@ def index() -> HTMLResponse:
     typing its path -- fine for whoever built it, useless for anyone else.
     """
     return _page("index.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    """The extension's chip icon, so these pages' tabs carry it too.
+
+    Browsers ask for /favicon.ico on their own; without this route every tab
+    showed the default globe. A PNG under the .ico name is fine for them.
+    """
+    return Response((ICONS / "icon32.png").read_bytes(), media_type="image/png")
 
 
 @app.get("/players.html", include_in_schema=False)
