@@ -49,6 +49,21 @@ def test_size_bucket_edges():
     assert size_bucket(101, 100) == "overbet"
 
 
+def test_blocker_edge_is_a_fifth_in_integers():
+    """Under a fifth of the pot is a blocker, the edge rounded down to a chip as
+    every other edge is -- `pot // 5`, which `0.2 * pot` does not always agree with."""
+    assert size_bucket(3, 20) == "blocker"
+    assert size_bucket(4, 20) == "small"
+    assert size_bucket(10, 100) == "blocker" and size_bucket(20, 100) == "small"
+    assert size_bucket(4, 21) == "small", "21 // 5 is 4"
+    assert size_bucket(1, 4) == "small", "4 // 5 is 0: a tiny pot has no blocker"
+    assert SIZE_BUCKETS[0] == "blocker"
+    # Every edge in order, on a pot where none of them coincide.
+    assert [size_bucket(a, 200) for a in (39, 40, 99, 100, 149, 150, 200, 201)] == [
+        "blocker", "small", "small", "medium", "medium", "large", "large", "overbet",
+    ]
+
+
 def test_donk_then_cbet_in_a_single_raised_pot(hu):
     chris, gp = hu[10][CHRIS], hu[10][GP]
     assert gp.donk == {"flop": True} and gp.donk_opp == {"flop": True}

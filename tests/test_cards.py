@@ -9,12 +9,16 @@ from pnt.stats.cards import (
     DRAW_DETAILS,
     HAND_RANKING,
     MADE_CLASSES,
+    MADE_GROUPS,
+    MADE_LEAVES,
     TEXTURE_TAGS,
     board_at,
     board_texture,
     grid_labels,
     hand_class,
     hand_pct,
+    leaf_of,
+    made_at,
     made_class,
     made_hand,
     parse_cards,
@@ -170,3 +174,31 @@ def test_board_at_is_the_prefix_dealt_by_that_street():
     assert board_at(board[:3], "turn") is None
     assert board_at((), "flop") is None
     assert board_at((), "preflop") == ()
+
+
+def test_made_leaves_flatten_every_class():
+    """One flat list, strongest first: every class once, with pair, trips and draw
+    opened into their details, each leaf in exactly one group."""
+    flat = [leaf for cls in MADE_CLASSES for leaf in MADE_GROUPS[cls]]
+    assert flat == list(MADE_LEAVES), "the groups, in class order, are the leaves in order"
+    assert len(set(MADE_LEAVES)) == len(MADE_LEAVES)
+    assert MADE_GROUPS["draw"] == DRAW_DETAILS
+    assert MADE_LEAVES.index("set") < MADE_LEAVES.index("trips") < MADE_LEAVES.index("two_pair")
+    assert MADE_LEAVES.index("top_pair") < MADE_LEAVES.index("pocket_pair") < MADE_LEAVES.index("middle_pair")
+    for hole, board, cls, detail in [*DRAW_CASES, ("9d9s", ["Jc", "9h", "7d"], "trips", "set")]:
+        mh = made_hand(hole, board)
+        assert leaf_of(mh) == (detail or cls)
+        assert leaf_of(mh) in MADE_GROUPS[mh.cls]
+
+
+def test_made_at_reads_the_board_of_that_street():
+    board = ("Jc", "9h", "7d", "9c", "Qh")  # HU hand 92
+    assert made_at("9dAs", board, "flop") == ("pair", "middle_pair")
+    assert made_at("9dAs", board, "turn") == ("trips", "trips")
+    assert made_at("9dAs", board, "river") == made_hand("9dAs", board)
+    assert made_at("9dAs", board, "preflop") is None
+    assert made_at("9dAs", board[:3], "turn") is None, "the turn was never dealt"
+    # A flop draw that got there: a draw when it was played, a flush once it hit.
+    flush = ("Kh", "9h", "2c", "7h", "3s")
+    assert leaf_of(made_at("Ah8h", flush, "flop")) == "flush_draw"
+    assert leaf_of(made_at("Ah8h", flush, "turn")) == "flush"

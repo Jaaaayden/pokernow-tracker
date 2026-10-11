@@ -317,9 +317,9 @@ def counts(facts: Iterable[Facts]) -> Counter:
                 c[f"{name}.hits"] += s in hit
         if f.wtsd:
             # The sizing tell: strong share of shown first bets, small (under 3/4
-            # pot) against big.
+            # pot, blockers included) against big.
             for street, bucket in f.bet_size.items():
-                side = "small" if bucket in ("small", "medium") else "big"
+                side = "small" if bucket in ("blocker", "small", "medium") else "big"
                 c[f"size_tell.{side}.n"] += 1
                 c[f"size_tell.{side}.hits"] += s == "strong"
                 c[f"size_tell.street.{street}"] += 1

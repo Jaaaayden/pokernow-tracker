@@ -492,7 +492,7 @@
 
   // Bet-size buckets; see "Bet size buckets" in SPEC.md. PokerNow's 1/2, 3/4 and
   // pot buttons each start a bucket.
-  const SIZES = [["<½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
+  const SIZES = [["<⅕", "blocker"], ["⅕–½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
   // The size words, the bucket rule and card formatting live with the replay
   // renderer (replay.js), which the all-in page shares.
   const { SIZE_LABEL, pretty, cardsEl } = pntReplay;

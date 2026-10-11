@@ -84,13 +84,57 @@
   // --- Templates. A vocabulary term is literals and parameter slots:
   // `cbet_<street>=SIZE` is "cbet_", street, "=", SIZE. A trailing `>=N` is an
   // operator slot then a number, since every comparison takes any operator.
-  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME)/;
+  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|ANSWER|FLAG)/;
   const OP_WORDS = { ">=": "at least", "<=": "at most", "=": "exactly", ">": "more than", "<": "less than" };
   const PICK = {
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
+    MADE: "pick a made hand", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
   };
+
+  // The two pattern slots read differently on one street (`line_flop=`) and on
+  // all three (`line=`, flop/turn/river split by `/`), so their hint and their
+  // ready-made patterns depend on which template is being filled. Picking one
+  // fills it in; typing over it is just as good, since the slot is free text.
+  const PATTERN_HINT = {
+    LINE: "their own actions on {where}: x check, b bet, c call, r raise, f fold."
+      + " * is any number of actions (x* = checked, then anything); ? is exactly one, whichever it was"
+      + " (x? = xc, xf or xr); - on its own = did not act",
+    SEQ: "everyone's actions on {where}, in order: THEIRS in capitals (X B C R F), everyone else's in lower case."
+      + " * is any number of actions (xB* = checked to them, they bet, then anything); ? is exactly one,"
+      + " whichever it was (xB? = xBc or xBf); - on its own = not in the hand; case matters",
+  };
+  const PATTERNS = {
+    LINE: [
+      ["x", "checked"], ["xc", "check-called"], ["xf", "check-folded"], ["xr*", "check-raised"],
+      ["b", "bet"], ["bc", "bet, called a raise"], ["bf", "bet, folded to a raise"], ["c", "called"],
+    ],
+    LINE_ALL: [
+      ["xc/xc/xc", "check-called every street"], ["c/c/c", "called every street"], ["b/b/b", "bet every street"],
+      ["b/x/b", "bet, checked the turn, bet the river"], ["b/x/", "bet the flop, checked the turn"],
+      ["x/b/", "checked the flop, bet the turn"], ["xr*//", "check-raised the flop"],
+    ],
+    SEQ: [
+      ["xB*", "checked to them, they bet"], ["xBr*", "…and got check-raised"], ["xBrF", "…and folded to it"],
+      ["*Br*", "their bet got raised"], ["Xb*", "they checked, someone bet"], ["XbR*", "they check-raised"],
+      ["bC*", "they called a bet"], ["bR*", "they raised a bet"],
+    ],
+    SEQ_ALL: [
+      ["xB*/xB*/", "bet flop and turn after a check"], ["Bc/Bc/Bc", "bet every street, called each time"],
+      ["Xb*/Xb*/", "checked and faced a bet on flop and turn"], ["xBr*//", "got check-raised on the flop"],
+    ],
+  };
+  const allStreets = (t) => !t.segs.some((s) => s.slot === "street");
+  function pickText(t, kind) {
+    if (kind === "MADE" && t.segs.some((s, j) => s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[j - 1]?.lit ?? ""))) {
+      return "pick a made hand; after one, click more to match any of them";
+    }
+    if (!PATTERN_HINT[kind]) return PICK[kind];
+    const where = allStreets(t) ? "each street, flop/turn/river split by / (empty = any)" : "that street";
+    return "type " + PATTERN_HINT[kind].replace("{where}", where);
+  }
+  const patterns = (t, kind) => PATTERNS[allStreets(t) ? `${kind}_ALL` : kind] ?? [];
 
   function segments(term) {
     const segs = [];
@@ -116,6 +160,9 @@
       case "DECISION": return plain(vocab.decisions);
       case "op": return vocab.operators.map((o) => [o, OP_WORDS[o]]);
       case "NAME": return plain(names);
+      case "MADE": return Object.entries(vocab.made).map(([v, d]) => (d ? [v, d] : [v]));
+      case "ANSWER": return plain(vocab.answers);
+      case "FLAG": return plain(vocab.flags);
       default: return null;
     }
   }
@@ -137,14 +184,29 @@
         continue;
       }
       const opts = options(s.slot);
-      const inSlot = { state: "slot", i, at: pos, partial: rest };
-      if (!opts) return inSlot; // a number or a hand: the rest of the term is the value
+      if (!opts) return { state: "slot", i, at: pos, partial: rest }; // a number or a hand: the rest is the value
       const vals = opts.map(([v]) => v.toLowerCase());
-      // `>` could still become `>=`, and `UTG` `UTG+1`: stay in the slot.
-      if (vals.some((v) => v.startsWith(low) && v !== low)) return inSlot;
-      const hit = vals.filter((v) => low.startsWith(v)).sort((a, b) => b.length - a.length)[0];
-      if (hit == null) return s.slot === "NAME" ? inSlot : FAIL; // a name not seen yet is still a name
-      pos += hit.length;
+      // After a plain `=` or `!=` a made hand takes several, `made_flop=set|flush`,
+      // so the slot runs on past each one. `from` is where the first one starts.
+      const many = s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[i - 1]?.lit ?? "");
+      const from = pos;
+      for (;;) {
+        const piece = frag.slice(pos);
+        const low = piece.toLowerCase();
+        const inSlot = { state: "slot", i, at: pos, from, partial: piece };
+        // A finished one at the end of the term -- `flush` too, though `flush_draw`
+        // starts with it: stay open, so a click adds the next and typing runs on.
+        if (many && i === t.segs.length - 1 && vals.includes(low)) {
+          return { state: "slot", i, at: frag.length, from, partial: "", more: true };
+        }
+        // `>` could still become `>=`, and `UTG` `UTG+1`: stay in the slot.
+        if (vals.some((v) => v.startsWith(low) && v !== low)) return inSlot;
+        const hit = vals.filter((v) => low.startsWith(v)).sort((a, b) => b.length - a.length)[0];
+        if (hit == null) return s.slot === "NAME" ? inSlot : FAIL; // a name not seen yet is still a name
+        pos += hit.length;
+        if (!many || frag[pos] !== "|") break;
+        pos += 1;
+      }
     }
     return pos === frag.length ? { state: "complete" } : FAIL;
   }
@@ -181,6 +243,10 @@
 
   function conflicts(a, b) {
     if (a.toLowerCase() === b.toLowerCase()) return true;
+    // `!x` against `x`, or against a sized or compared `x` (`!cbet_flop` and
+    // `cbet_flop=medium`): no hand is both.
+    const negates = (x, y) => x.startsWith("!") && parts(y).name === x.slice(1).toLowerCase();
+    if (negates(a, b) || negates(b, a)) return true;
     const p = parts(a), q = parts(b);
     if (!p.op && !q.op) return (vocab?.exclusive ?? []).some((g) => g.includes(p.name) && g.includes(q.name));
     if (p.name !== q.name) return false;
@@ -310,6 +376,12 @@
     put("POS", vocab.positions.join("  "));
     put("SIZE", Object.entries(vocab.sizes).map(([k, d]) => `${k} (${d})`).join("  "));
     put("TEXTURE", vocab.textures.join("  "));
+    put("LINE", "x check  b bet  c call  r raise  f fold  * any number (x* = x then anything)"
+      + "  ? exactly one (x? = xc xf xr)  - alone: did not act;  line= takes flop/turn/river");
+    put("SEQ", "as LINE, everyone's actions in order: theirs X B C R F, others' x b c r f (case-sensitive);"
+      + "  xB* = checked to them, they bet, then anything  - alone: not in the hand");
+    put("MADE", Object.keys(vocab.made).join("  "));
+    put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");
 
     panel.replaceChildren(head, groupsBox, slotBox, empty, values);
@@ -335,17 +407,34 @@
 
   function renderSlot(frag, t, m) {
     const kind = t.segs[m.i].slot;
-    const before = frag.slice(0, m.at);
+    // Made hands already in the term (`set|flush|…`) are not offered again, and
+    // once one is finished a click joins the next with `|`.
+    const chosen = m.from == null ? [] : frag.slice(m.from, m.at).toLowerCase().split("|").filter(Boolean);
+    const before = frag.slice(0, m.at) + (m.more ? "|" : "");
     const top = el("div", null, "fh-slot-head");
-    if (before) top.append(el("code", before), " — ");
-    top.append(PICK[kind]);
+    if (before) top.append(el("code", before.replace(/\|$/, "")), " — ");
+    top.append(m.more
+      ? "click another made hand to add it (a hand matches if it made any of them), or type a comma for the next term"
+      : pickText(t, kind));
     const box = el("div", null, "fh-opts");
     const opts = options(kind);
-    if (!opts || (kind === "NAME" && !names.length)) {
+    // Case matters in an action sequence, so its patterns narrow by exact prefix.
+    const fold = kind === "SEQ" ? (s) => s : (s) => s.toLowerCase();
+    const ready = patterns(t, kind).filter(([v]) => fold(v).startsWith(fold(m.partial)));
+    if (!opts && ready.length) {
+      for (const [v, d] of ready) {
+        const b = el("button", v);
+        b.type = "button";
+        b.append(el("span", d));
+        b.addEventListener("click", () => pickOption(before, t, m.i, v));
+        box.append(b);
+      }
+    } else if (!opts || (kind === "NAME" && !names.length)) {
       box.append(el("span", kind === "NAME" ? "type a player's name, as on the players page" : "then a comma for the next term", "fh-hint"));
     } else {
       const p = m.partial.toLowerCase();
-      const shown = opts.filter(([v]) => (kind === "NAME" ? v.toLowerCase().includes(p) : v.toLowerCase().startsWith(p)));
+      const shown = opts.filter(([v]) => (kind === "NAME" ? v.toLowerCase().includes(p) : v.toLowerCase().startsWith(p)))
+        .filter(([v]) => !chosen.includes(v.toLowerCase()));
       for (const [v, d] of shown) {
         const b = el("button", v);
         b.type = "button";

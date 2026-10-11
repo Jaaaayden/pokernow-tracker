@@ -23,7 +23,7 @@ from typing import Self
 
 from ..db.conn import generation, path_of
 from ..logfmt.parser import position_name
-from .derive import SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
+from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 
 
 def load_hands(
@@ -175,7 +175,10 @@ _FLAGS = (
     "fold_to_3bet", "fold_to_3bet_opp", "wtsd", "wtsd_opp", "wsd",
 )
 _STREETS = ("flop", "turn", "river")
-_STREET_FLAGS = ("cbet", "cbet_opp", "fold_to_cbet", "fold_to_cbet_opp", "raise_cbet", "donk", "donk_opp")
+_STREET_FLAGS = (
+    "cbet", "cbet_opp", "fold_to_cbet", "fold_to_cbet_opp", "raise_cbet", "donk", "donk_opp",
+    "check_raise", "check_raise_opp",
+)
 #: Per-street *action* counts rather than hand counts: one hand can add several.
 _STREET_COUNTS = ("aggressive", "agg_denom")
 
@@ -225,6 +228,18 @@ class Tally:
                 c["faced", street, b] += 1
                 c["faced_fold", street, b] += bool(x.fold_to_cbet.get(street))
                 c["faced_raise", street, b] += bool(x.raise_cbet.get(street))
+            # Every first bet by its size, and what it got back; and every first
+            # bet or raise faced, c-bet or not, by its size and what they did.
+            b = x.bet_size.get(street)
+            if b is not None:
+                c["bet_n", street, b] += 1
+                answer = x.bet_answer.get(street)
+                if answer is not None:
+                    c["bet_got", street, b, answer] += 1
+            b = x.faced_bet_size.get(street)
+            if b is not None:
+                c["vs_bet", street, b] += 1
+                c["vs_bet_did", street, b, x.faced_bet_action[street]] += 1
 
     def __iadd__(self, other: Tally) -> Self:
         self.hands += other.hands
@@ -262,6 +277,8 @@ def rates(t: Tally) -> dict:
         "wsd": _rate(c["wsd"], c["wtsd"]),
         "net": t.net,
         "bb_per_100": round(float(100 * t.bb_sum / t.bb_n), 2) if t.bb_n else None,
+        # The total behind bb/100: each complete hand's net in its own big blinds.
+        "net_bb": round(float(t.bb_sum), 2) if t.bb_n else None,
         "_opp": {
             "vpip": c["vpip_opp"],
             "3bet": c["three_bet_opp"],
@@ -276,6 +293,7 @@ def rates(t: Tally) -> dict:
         out[f"raise_cbet_{street}"] = _rate(c["raise_cbet", street], faced_cbet)
         out[f"donk_{street}"] = _rate(c["donk", street], c["donk_opp", street])
         out[f"af_{street}"] = _rate(c["aggressive", street], c["agg_denom", street])
+        out[f"check_raise_{street}"] = _rate(c["check_raise", street], c["check_raise_opp", street])
 
         # Every c-bet counts toward the share, including one whose size is unknown.
         n_cbets = sum(n for k, n in c.items() if k[:2] == ("cbet_size", street))
@@ -291,10 +309,28 @@ def rates(t: Tally) -> dict:
             }
             for b in SIZE_BUCKETS
         }
+        # The bettor's side of fold equity: what each size of their first bet got.
+        # Rates are of every bet that size, so an unanswered one counts in none.
+        out[f"bet_{street}_answer_by_size"] = {
+            b: {
+                "n": c["bet_n", street, b],
+                **{a: _rate(c["bet_got", street, b, a], c["bet_n", street, b]) for a in ANSWERS},
+            }
+            for b in SIZE_BUCKETS
+        }
+        # The defender's: what they did facing each size of bet or raise, anyone's.
+        out[f"vs_bet_{street}_by_size"] = {
+            b: {
+                "faced": c["vs_bet", street, b],
+                **{a: _rate(c["vs_bet_did", street, b, a], c["vs_bet", street, b]) for a in ANSWERS},
+            }
+            for b in SIZE_BUCKETS
+        }
 
         out["_opp"][f"cbet_{street}"] = c["cbet_opp", street]
         out["_opp"][f"fold_to_cbet_{street}"] = faced_cbet
         out["_opp"][f"donk_{street}"] = c["donk_opp", street]
+        out["_opp"][f"check_raise_{street}"] = c["check_raise_opp", street]
         # Alone among these, an action count rather than a hand count: one hand can
         # contribute several. See SPEC.md, "Aggression Frequency".
         out["_opp"][f"af_{street}"] = c["agg_denom", street]
@@ -615,6 +651,10 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
                 "vpip": f.vpip,
                 "saw_flop": f.saw_flop,
                 "bet_size": dict(f.bet_size),
+                # Their own actions per postflop street, `xc` and the like, and the
+                # whole street from their seat, theirs in capitals: `xBrF`.
+                "line": dict(f.line),
+                "seq": dict(f.seq),
                 # Who the hand was against, and whether they closed the action.
                 # `position` above is the absolute seat and stays in the payload;
                 # the drill-down shows `ip` instead. See SPEC.md.
@@ -666,6 +706,8 @@ def sat_out_list(
                 "vpip": False,
                 "saw_flop": h.saw_flop,
                 "bet_size": {},
+                "line": {},
+                "seq": {},
                 "ip": None,
                 "pos_order": None,
                 "pos_players": None,

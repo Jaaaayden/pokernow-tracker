@@ -116,6 +116,7 @@ continuation bet. Some trackers carry the aggressor forward; this one does not.)
 | **Raise C-Bet** (flop/turn/river) | Player raises | Same as Fold to C-Bet | — |
 | **Call C-Bet** (flop/turn/river) | Player neither folds nor raises | Same as Fold to C-Bet | — |
 | **Donk Bet** (flop/turn/river) | Player bets | Player acts while no bet has yet been made on this street, the previous street's aggressor has not acted on it yet, and that aggressor is not all-in | The aggressor themselves; previous street checked through |
+| **Check-Raise** (flop/turn/river) | Player's line on the street starts `xr` | Player checked and then acted again on the street (`check_raise_opp`) — action only comes back after a bet | Player who never checked; a check that closed the street |
 | **Aggression Frequency** (per street) | `bet` + `raise` | `bet` + `raise` + `call` + `fold` | `check` is excluded from **both** sides |
 
 Aggression frequency deliberately excludes checks. Including them makes the stat
@@ -141,9 +142,44 @@ A street with no bet ends on a check, and exactly one player's check closed it,
 so a street has a `check_back` for at most one player and never alongside an
 `aggressor`.
 
+The three above are not exclusive, so they cannot be counted against each other.
+Four more facts take the player's **first** decision facing a bet on the street —
+same keys as `faced_bet` — and are:
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **faced_level[street]** | How many bets and raises the street had when they first faced one: 1 a bet, 2 a raise, 3 a re-raise | The bettor who is raised first faces level 2 |
+| **faced_bet_pot[street]** | The latest bet or raise in front of them then, measured as its maker's own size: `bet_pot` for a bet, `raise_pot` for a raise | The size of what they faced, not the price of calling it -- the rule `faced_cbet_size` already follows |
+| **faced_bet_size[street]** | The size bucket of that same bet or raise | |
+| **faced_bet_action[street]** | `fold`, `call` or `raise`, exactly one | A caller who later re-raises a re-raise answered with `call` |
+
+**Fold to bets by size** (`vs_bet_<street>_by_size` in the stat row) counts every
+first decision facing a bet by `faced_bet_size`, with the fold, call and raise
+rates of each bucket. It is the c-bet-only `vs_cbet_<street>_by_size` widened to
+anyone's bet or raise. Keys are the five size buckets: `{faced, fold, call, raise}`.
+
 Filters: `faced_bet_river`, `folded_to_bet_river`, `called_bet_<street>`,
 `raised_bet_<street>`, `aggressor_<street>`, `check_back_<street>`, and
-`check_back` for any street.
+`check_back` for any street. `faced_bet_river=large` and `faced_bet_river>=1`
+read `faced_bet_size` and `faced_bet_pot`.
+
+### What a bet got
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **bet_answer[street]** | What the player's first `bet` on the street got from the players behind it: `raise` if anyone raised over it, else `call` if at least one player called, else `fold` | No key when nobody acted on it. Keys are a subset of `bet_size` |
+
+The answers run until the first raise over the bet, and that raise is the answer
+whatever came before it: called by one player and raised by the next is a raised
+bet. `fold` means every player who acted on it folded. This is the reading
+`review.failed_bluff` already gives its responders.
+
+**What each bet size got** (`bet_<street>_answer_by_size`) is the bettor's side of
+fold equity: per size bucket, `{n, fold, call, raise}`, where `n` is every first
+bet of that size and the three rates are of `n`. Their `n`s add up to the bets
+made on the street.
+
+Filters: `bet_answer_river=fold`, `=call`, `=raise`.
 
 ### Who the action was against
 
@@ -216,7 +252,8 @@ the bet over the pot it was made into.
 
 | Bucket | Size | Rule |
 |---|---|---|
-| `small` | under ½ pot | `amount < floor(½ × pot)` |
+| `blocker` | under ⅕ pot | `amount < pot // 5` |
+| `small` | ⅕ to ½ pot | `amount ≥ pot // 5` and `amount < floor(½ × pot)` |
 | `medium` | ½ to ¾ pot | `amount ≥ floor(½ × pot)` |
 | `large` | ¾ pot to pot | `amount ≥ floor(¾ × pot)` and `amount ≤ pot` |
 | `overbet` | more than pot | `amount > pot` |
@@ -227,6 +264,14 @@ exactly pot and 28 exactly ¾. With the edges placed anywhere else, the same
 button click would land on either side of one. Bets are whole chips, so an edge
 is rounded down to a chip: a ¾-pot click into a pot of 30 is 22 or 23 chips, and
 both are `large`. A pot-sized bet is `large`, not an overbet.
+
+**A blocker is a bet too small to ask much of anyone**: the one-blind poke into a
+big pot, made to set the price of the river rather than to win it. No button
+makes it, so its edge is a round number rather than a click, and it is taken in
+integers, `pot // 5`, never `0.2 × pot` -- the float lands a chip either side of
+the same edge on different pots.
+
+The same buckets size a raise, measured by `raise_pot` (see "Raise sizes").
 
 **Fold to C-Bet and Raise C-Bet by size** split both stats by the bucket of the
 c-bet the player faced -- that c-bet's own size, not the price of calling it.
@@ -287,6 +332,94 @@ therefore `bet_river` (the flag) or `bet_river>=1` (the size).
 **Comparisons against a missing value are false, not errors.** `open_bb<3` does not
 match a limped pot; the hand has no open size, so it cannot satisfy any claim
 about one.
+
+**`!` negates a flag, and only a flag.** `!cbet_flop` is every hand `cbet_flop`
+does not match, the hands that never saw a flop included; add `cbet_flop_opp` for
+"could have c-bet and did not". A comparison, a size or a texture has its own `!=`
+where negating it means something, and `!pot>=500` could be read two ways, so it
+is refused.
+
+### Action lines
+
+A line is what one player did on one street, written as one letter per voluntary
+action: `x` check, `b` bet, `c` call, `r` raise, `f` fold. `xc` is a check-call,
+`bf` a bet that folded to a raise, `xrc` a check-raise that called the re-raise.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **line[street]** | The player's own voluntary actions on that postflop street, in order | No key for a street they did not act on: not reached, already folded, or already all in. Never empty when present; only the last letter can be `f` |
+| **check_raise[street]** | The line starts `xr` | |
+| **check_raise_opp[street]** | The line starts `x` and has a second letter | Action only comes back to a player who checked when someone bet behind them, so this is "checked and faced a bet" |
+| **fold_street** | The street of their voluntary fold, preflop included | `None` when they never folded |
+
+Lines are filters: `line_flop=xc` is exactly that line; `*` stands for any run of
+letters, none included, and `?` for exactly one, so `line_flop=x*` is every flop
+that started with a check, `line_river=*r` every river that ended on a raise and
+`line_turn=?c` a call as their second action. `-` alone is "did not act".
+Any other pattern needs them to have acted, so `line_turn=*` is "acted on the
+turn". `line_flop!=x*` is the exact opposite of `line_flop=x*`, so it keeps the
+hands that never saw a flop as well.
+
+`line=F/T/R` reads the three streets at once, flop first. An empty segment, or one
+left off the end, matches anything, not acting included: `line=xc//b*` is a flop
+check-call, any turn, and a river they bet. `check_raise`, `check_raise_<street>`
+and `check_raise_<street>_opp` are flags. A row from `hand_list` carries `line`.
+Line patterns forgive case.
+
+### The whole street
+
+A line is one player's half of the street. The other half, what was done *to*
+them, is the sequence: every voluntary action on the street, everyone's, in order,
+written from one seat.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **seq[street]** | Every voluntary action on that postflop street in order, the player's own as `X B C R F` and everyone else's as `x b c r f` | A key for every street the player was still in when it began -- see below. Dropping the lower-case letters and lower-casing the rest gives `line[street]`, or `""` where there is no line |
+| **faced_check_raise[street]** | They made the street's bet, and a player who had checked earlier on the street raised | The other side of `check_raise`. A raise over someone else's raise counts, if the raiser had checked: `xBrr` is a check-reraise, and still at them |
+| **faced_check_raise_action[street]** | Their next action after it: `fold`, `call` or `raise` | No key when they never acted again (all in on the bet). The check-raiser sat in front of them, so nothing of theirs comes between |
+
+Heads-up villain checks, hero bets, villain check-raises, hero folds: hero's row is
+`xBrF` and villain's `XbRf`, each the other with the case swapped. Three-handed it
+reads the same way, `xxBcr` from the bettor's seat.
+
+**Which streets get a key.** A street was played when its board was dealt, or when
+anyone acted on it (a log cut mid-street), and two or more players were still in
+when it began. Every player still in gets a key, whether or not they act on it:
+
+- A player **all in** from an earlier street has a row of the others' lower-case
+  letters alone, and no `line`. They were in the pot, and what the others did is
+  what happened to it.
+- A street **nobody acted on** -- the run-out after an all-in -- is `""` for
+  everyone still in, not a missing key. They were in it and nothing happened.
+- A player who **folded on an earlier street**, or a hand that ended before the
+  street was dealt, has no key. That is what `-` matches.
+
+Sequences are filters, and **case-sensitive**, unlike lines: a capital is this
+player's action, lower case anyone else's, so `action_flop=xB*` (they bet after a
+check) and `action_flop=Xb*` (they checked and someone bet) are two seats of one
+street. `*` is any run, `?` exactly one action, `-` alone "not in the hand on that
+street". `action_flop=*Br*` is "they bet and were raised", at any point and by
+anyone; `action_flop=xBrF` is the heads-up check-raise they folded to, and
+`action_flop=?B*` a bet with exactly one player checking in front. `action_flop=*` is "in the hand on the
+flop", the run-out included. `action=F/T/R` reads the three streets at once with
+the same segment rules as `line=`, and `!=` is the exact complement, as for lines.
+
+`faced_check_raise_<street>` and `faced_check_raise` are flags, and
+`faced_check_raise_flop=fold` (`call`, `raise`) is the answer. A row from
+`hand_list` carries `seq`.
+
+### Raise sizes
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **raise_pot[street]** | The player's first `raise` on the street: `(amount − to_call) / (pot_before + to_call)` | `amount` is the raise's own chips, `to_call` what calling would have cost them, `pot_before` the pot before the raise, forced posts included. A pot-sized raise is 1.0 |
+| **raise_size[street]** | The size bucket of the same chips over the same pot | Keys match `raised_bet` exactly |
+
+This is the pot-limit convention: the raise is measured after the call, against
+the pot that call would have made. It is also what PokerNow's ½, ¾ and pot raise
+buttons measure -- see judgement call 28 for how that was checked.
+
+Filters: `raised_bet_flop=large` and `raised_bet_flop>=1`.
 
 ### Jams
 
@@ -404,6 +537,50 @@ and the tag that reads it says which count it rests on.
 
 Filters: `hand=72` (both suits), `hand=72o`, `hand=77`, `hand!=AA`, and
 `hand_pct>=60`. A holding term matches only where the cards are known.
+
+### Made hand by street
+
+`made_flop=set` reads what the holding had made **on the board as it stood on
+that street** (`cards.made_at`), so a flop call that rivered a flush is a draw on
+the flop and a flush on the river. `made=flush` reads the final board, exactly as
+the `made` range view does.
+
+The names are `cards.MADE_LEAVES`, one flat list strongest first: each class,
+with `pair`, `trips` and `draw` opened up into their details.
+
+    straight_flush quads full_house flush straight set trips two_pair
+    overpair top_pair pocket_pair middle_pair bottom_pair board_pair
+    combo_draw flush_draw open_ender gutshot high_card
+
+`pair` and `draw` also name their whole group (`cards.MADE_GROUPS`). **A leaf wins
+over a class of the same name**, so `made_flop=trips` is one hole card to a paired
+board and never a set; a set is `made_flop=set`.
+
+| Operator | Matches |
+|---|---|
+| `=` / `!=` | that leaf, or any leaf of that group / anything else |
+| `>=` / `>` | at least as strong as the name's weakest leaf / stronger than its strongest |
+| `<=` / `<` | no stronger than its strongest / weaker than its weakest |
+
+So `made_turn>=two_pair` is two pair or better, `made_flop>=pair` any pair or
+better, and `made_river<pair` the draws and air.
+
+**`=` and `!=` take several names joined by `|`**, matching any of them:
+`made_flop=set|full_house|flush` is the hands that flopped one of the three, which
+no single span says, since `two_pair` sits between them and the pairs. A
+comparison takes one name: "at least a set or a flush" is not a question.
+
+A `made_<street>` term matches only when the cards are known, the board reached
+that street, and the player had not folded on an earlier one. Every operator,
+`!=` included, makes a claim about a holding, so an unknown one matches none of
+them. `made=` keeps every known holding with a board, folded or not, because that
+is what the range view counts and a row there must reproduce as a filter.
+
+On the river a draw that missed is still its draw, as on the final board. That is
+`made_hand`'s reading, and `made_river=flush_draw` is the busted flush draws.
+
+`flop=trips` is not a holding. It is the board texture, three of a rank on the
+flop, and stays one.
 
 ---
 
@@ -635,7 +812,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **CHECKS BACK WEAK** | strong | `check_back` any street and WTSD, shown | ≤ 35% | 10 | `check_back,wtsd` (made) |
 | **TRAPS** | strong | same | ≥ 60% | 8 | same |
 | **DONKS** | Donk Bet (flop) | its opportunity | ≥ 35% | 15 | `donk_flop` |
-| **BIG = STRONG** / **BIG = BLUFF** | strong share of shown first bets, `large`+`overbet` against `small`+`medium`, any street | | gap ≥ 40 points | 6 each side | `wtsd` (sizing, `bet`, the street with most bets) |
+| **BIG = STRONG** / **BIG = BLUFF** | strong share of shown first bets, `large`+`overbet` against `blocker`+`small`+`medium`, any street | | gap ≥ 40 points | 6 each side | `wtsd` (sizing, `bet`, the street with most bets) |
 
 Each tag reports `n` (the denominator it was judged on), `hits`, `pct`, and the
 filter and chart view that reproduce it. The rate tags' `n` is exactly the hands
@@ -691,6 +868,10 @@ and WTSD all include it. Only the ledger is short.
 
 `hands` therefore counts every hand, while the bb/100 denominator may be smaller.
 Re-importing the finished export repairs the hand and it rejoins.
+
+`net_bb` in a stat row is the numerator of that same fraction: Σ net / big blind
+over the same complete hands. It is the figure a "bb won" column prints, and it
+moves only where bb/100 does.
 
 On the 6,255-hand database this was developed against, excluding the two truncated
 hands moves the whole-table ledger from −3.29 bb to −0.43 bb of 10,731 bb gross,
@@ -1035,3 +1216,48 @@ archaeology.
     the hand would show a 5-chip gap on a river all-in, where there is no gap to
     have. It is paid where PokerNow paid it. The one other river gap in the
     database is the odd chip of a chopped pot, which is real and half a chip.
+28. **A raise is sized after the call, against the pot the call would make.**
+    `raise_pot = (amount − to_call) / (pot_before + to_call)`. Checked against
+    the 1,419 postflop raises that were not all in across the bundled logs
+    (`pnt/logs` and the fixtures), with each convention asked how many raises
+    land within a chip of ½, ¾ and pot exactly:
+
+    | Convention | ½ | ¾ | pot |
+    |---|---|---|---|
+    | extra over pot after the call (this one) | 152 | 107 | 84 |
+    | extra over the pot before the raise | 75 | 35 | 70 |
+    | raise-to over the pot before the raise | 39 | 46 | 119 |
+
+    Only the first has a spike at all three button sizes -- in 0.05-wide bins,
+    184 raises at 0.50 against 67 and 31 either side, 118 at 0.75 against 28
+    and 24, 86 at 1.00 against 9 and 6 -- so it is the one PokerNow's raise
+    buttons use. The broad hump between 0.15 and 0.45 is min-raises, which
+    land wherever the bet they raise puts them: a min-raise of a ½-pot bet is
+    0.25, of a pot bet 0.33. Raise-to over the pot has its own spike at 1.00
+    (raise to the size of the pot) but nothing at ½ or ¾.
+29. **A blocker is under a fifth of the pot.** No button makes one, so the edge
+    is a judgement value; a fifth keeps the one-blind poke into a big pot apart
+    from the ⅓-pot bet, which is a real sizing and not a blocker.
+30. **The facing-a-bet sizes are the first decision only.** `faced_level`,
+    `faced_bet_pot`, `faced_bet_size` and `faced_bet_action` describe the first
+    time the player faced a bet on the street, as `fold_to_cbet_opp` does for
+    c-bets, so each is one answer per street and the by-size table counts each
+    decision once. A bettor raised and re-raised again answered the raise.
+31. **`made_<street>` stops at a fold; `made=` does not.** The per-street term
+    is about the hand a player held while acting, and a player who folded the
+    flop held nothing on the turn. The final-board term is the range view's
+    question, which classifies every known holding on the board as dealt.
+32. **`line_<street>!=` is the exact complement of `=`.** Not acting is a value,
+    `-`, so a hand that never reached the street matches every `!=` pattern
+    except `-`. Pair it with `line_<street>=*` to mean "acted, and not like this".
+    `action_` reads the same way.
+33. **An all-in player keeps a `seq` on the streets after their all-in**, of the
+    others' letters alone, and an unplayed run-out is `""` rather than no key.
+    The sequence answers "what happened on this street while they were in the
+    pot", and an all-in player is in the pot; "-" is kept for the players who
+    were not. A street with fewer than two players still in has no key for
+    anyone: the hand was over before it, whatever the board record says.
+34. **`faced_check_raise` belongs to the bettor alone.** Whoever raised the bet
+    before the check-raise also had it come over the top of them, but their
+    raise was already an answer to a bet, and "we bet, they check-raised" is
+    the spot the term names. The raiser's view is in their `seq`: `xbR*r`.

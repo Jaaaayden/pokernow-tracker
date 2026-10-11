@@ -303,7 +303,7 @@ def test_chart_page_is_served(client):
 def test_sizing_endpoint(client):
     body = client.get("/players/genericpoker/sizing", params={"street": "flop"}).json()
     assert body["kind"] == "cbet"
-    assert [b["size"] for b in body["blocks"]] == ["small", "medium", "large", "overbet", "check"]
+    assert [b["size"] for b in body["blocks"]] == ["blocker", "small", "medium", "large", "overbet", "check"]
     assert sum(b["n"] for b in body["blocks"]) == body["spot"]
     faced = client.get(
         "/players/genericpoker/sizing", params={"street": "turn", "kind": "faced_cbet"}
@@ -409,9 +409,14 @@ def test_spot_help_lists_every_term(client):
     body = client.get("/filters").json()
     assert {
         "groups", "positions", "sizes", "textures", "operators",
-        "decided", "decisions", "exclusive", "texture_families",
+        "decided", "decisions", "exclusive", "texture_families", "answers", "flags", "made",
     } <= set(body)
     assert any(t["term"] == "vs=NAME" for g in body["groups"] for t in g["terms"])
+    # The values the panel offers for the line, made-hand, answer and !flag slots.
+    assert list(body["sizes"])[0] == "blocker"
+    assert body["answers"] == ["fold", "call", "raise"]
+    assert {"set", "trips", "pair", "draw"} <= set(body["made"])
+    assert "cbet_flop" in body["flags"]
     script = client.get("/filter-help.js")
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("text/javascript")
@@ -635,8 +640,11 @@ def test_sat_out_lists_the_rest_of_the_session(client):
     assert numbers == list(range(1, len(numbers) + 1)) and len(numbers) == 233
     assert len(mine) == 20
     assert [h["ts"] for h in away] == sorted((h["ts"] for h in away), reverse=True)
+    assert set(mine[0]) <= set(away[0]), "a sat-out row carries every key a hand row does"
+    assert any(h["line"] for h in mine) and any(h["seq"] for h in mine)
     for h in away:
         assert h["sat_out"] and h["hole_cards"] is None and h["net_bb"] is None
+        assert h["line"] == {} and h["seq"] == {}
         assert "chugnuts" not in h["vs"] and len(h["vs"]) == h["players"]
         assert {"reviewed", "note"} <= set(h)
     # Whoever came out ahead, by how much: the final hand's 2,934 pot went to genericpoker.

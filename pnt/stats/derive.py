@@ -24,9 +24,10 @@ PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
 VOLUNTARY_COMMIT = {"call", "bet", "raise"}
 AGGRESSIVE = {"bet", "raise"}
 
-#: Bet-size buckets, smallest first: under half pot, half to three-quarters,
-#: three-quarters to pot, over pot. See SPEC.md, "Bet size buckets".
-SIZE_BUCKETS = ("small", "medium", "large", "overbet")
+#: Bet-size buckets, smallest first: under a fifth of the pot, a fifth to half,
+#: half to three-quarters, three-quarters to pot, over pot. See SPEC.md, "Bet
+#: size buckets".
+SIZE_BUCKETS = ("blocker", "small", "medium", "large", "overbet")
 
 
 def size_bucket(amount: int, pot: int) -> str:
@@ -36,6 +37,10 @@ def size_bucket(amount: int, pot: int) -> str:
     of the bets in real logs. Bets are whole chips, so a 3/4 click into a pot of
     30 comes out as 22 or 23: a bet reaches an edge when it is at least the edge
     rounded down to a chip. Overbet is strictly more than the pot.
+
+    A blocker is under a fifth of the pot, with the edge rounded down the same
+    way: `pot // 5` in integers, never `0.2 * pot`, whose float can land a chip
+    either side of the same edge.
     """
     if amount > pot:
         return "overbet"
@@ -43,7 +48,16 @@ def size_bucket(amount: int, pot: int) -> str:
         return "large"
     if amount >= math.floor(0.5 * pot):
         return "medium"
-    return "small"
+    if amount >= pot // 5:
+        return "small"
+    return "blocker"
+
+
+#: The letter each voluntary postflop action writes into a `line`.
+LINE_CODE = {"check": "x", "bet": "b", "call": "c", "raise": "r", "fold": "f"}
+
+#: What a player can do facing a bet, and what a bet can get back. Exclusive.
+ANSWERS = ("fold", "call", "raise")
 
 
 @dataclass(slots=True)
@@ -150,6 +164,16 @@ class Facts:
     #: Their check closed a street that checked through, with at least two players
     #: acting on it. The player who declined to bet when nobody else did either.
     check_back: dict[str, bool] = field(default_factory=dict)
+    #: At their *first* decision facing a bet on the street -- same keys as
+    #: `faced_bet` -- how many bets and raises were in front of them (1 a bet, 2 a
+    #: raise, 3 a re-raise), the size of the latest one, and what they did there,
+    #: exactly one of ANSWERS. See SPEC.md, "Facing a bet".
+    faced_level: dict[str, int] = field(default_factory=dict)
+    #: That latest bet or raise, measured as its maker's `bet_pot` or `raise_pot`.
+    faced_bet_pot: dict[str, float] = field(default_factory=dict)
+    #: The SIZE_BUCKETS bucket of that same bet or raise.
+    faced_bet_size: dict[str, str] = field(default_factory=dict)
+    faced_bet_action: dict[str, str] = field(default_factory=dict)
 
     aggressive: dict[str, int] = field(default_factory=dict)
     agg_denom: dict[str, int] = field(default_factory=dict)
@@ -194,6 +218,37 @@ class Facts:
     bet_size: dict[str, str] = field(default_factory=dict)
     #: The bucket of the c-bet this player faced, on streets where they faced one.
     faced_cbet_size: dict[str, str] = field(default_factory=dict)
+    #: This player's first `raise` on each postflop street: the chips it added
+    #: beyond a call, over the pot once they had called -- so a pot-sized raise is
+    #: 1.0. See SPEC.md, "Raise sizes".
+    raise_pot: dict[str, float] = field(default_factory=dict)
+    #: The SIZE_BUCKETS bucket of that same raise.
+    raise_size: dict[str, str] = field(default_factory=dict)
+    #: What this player's first `bet` on the street got back: `raise` if anyone
+    #: raised over it, else `call` if anyone called, else `fold`. No key when
+    #: nobody answered it. See SPEC.md, "What a bet got".
+    bet_answer: dict[str, str] = field(default_factory=dict)
+    #: Their own voluntary actions on each postflop street, in order, one letter
+    #: each from LINE_CODE: `xc` is check-call, `bf` bet then folded to a raise.
+    #: No key for a street they did not act on. See SPEC.md, "Action lines".
+    line: dict[str, str] = field(default_factory=dict)
+    #: Checked, then raised a bet behind them: the line starts `xr`.
+    check_raise: dict[str, bool] = field(default_factory=dict)
+    #: Checked, then had to act again: the line starts `x` and goes on. The
+    #: opportunity for `check_raise`, and the hands `xc` and `xf` come from too.
+    check_raise_opp: dict[str, bool] = field(default_factory=dict)
+    #: The street of their voluntary fold, preflop included; None if they never folded.
+    fold_street: str | None = None
+    #: Every voluntary action on each postflop street, everyone's, in order and
+    #: from this player's seat: their own in capitals (`X B C R F`), the others'
+    #: in lower case. `xBrF` is: checked to, bet, check-raised, folded. A key for
+    #: every street they were still in when it began, even with nothing of their
+    #: own on it. See SPEC.md, "The whole street".
+    seq: dict[str, str] = field(default_factory=dict)
+    #: They made the street's bet, and a player who had checked to them raised.
+    faced_check_raise: dict[str, bool] = field(default_factory=dict)
+    #: What they did next: one of ANSWERS. No key when they never acted again.
+    faced_check_raise_action: dict[str, str] = field(default_factory=dict)
     #: Chips in the middle when each postflop street was dealt, for the streets
     #: that were: forced posts included, capped at `pot`. Same for everyone.
     pot_at: dict[str, int] = field(default_factory=dict)
@@ -303,12 +358,60 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         cbet_raised = False
         street_aggressor: str | None = None
         acted: set[str] = set()
+        # The street's betting as it stands: bets and raises so far (1 a bet, 2 a
+        # raise), each player's chips in on this street, the most anyone has in,
+        # and the size of the latest bet or raise as (pot fraction, bucket).
+        level = 0
+        put: dict[str, int] = {}
+        top = 0
+        latest: tuple[float, str] | None = None
+        # Each actor's line so far, and who made the street's one bet: what a
+        # check-raise is read from.
+        lines: dict[str, str] = {}
+        bettor: str | None = None
 
-        for a in street_actions:
+        for i, a in enumerate(street_actions):
+            # --- shared street state first, for every actor: a player missing
+            # from `facts` still moves the level and the price for everyone else.
+            faced = (level, latest)
+            pot = pot_before[a.seq]
+            to_call = max(0, top - put.get(a.pn_id, 0))
+            sized: tuple[float, str] | None = None
+            if a.kind == "bet" and pot > 0:
+                sized = (round(a.amount / pot, 3), size_bucket(a.amount, pot))
+            elif a.kind == "raise" and pot + to_call > 0:
+                # What the raise adds beyond a call, over the pot once called: the
+                # convention PokerNow's raise buttons follow. See SPEC.md, "Raise sizes".
+                extra = a.amount - to_call
+                sized = (round(extra / (pot + to_call), 3), size_bucket(extra, pot + to_call))
+            if a.kind in AGGRESSIVE:
+                level += 1
+                latest = sized
+            put[a.pn_id] = put.get(a.pn_id, 0) + a.amount
+            top = max(top, put[a.pn_id])
+
+            # A check-raise against the street's bettor, and the bettor's answer:
+            # their next action. The check-raiser checked in front of them, so it
+            # always comes before the bettor acts again.
+            prior = lines.get(a.pn_id, "")
+            lines[a.pn_id] = prior + LINE_CODE.get(a.kind, "")
+            if a.kind == "bet":
+                bettor = a.pn_id
+            b = facts.get(bettor) if bettor is not None else None
+            if b is not None and a.pn_id == bettor:
+                if street in b.faced_check_raise and street not in b.faced_check_raise_action:
+                    if a.kind in ANSWERS:
+                        b.faced_check_raise_action[street] = a.kind
+            elif b is not None and a.kind == "raise" and prior == "x":
+                b.faced_check_raise[street] = True
+
             f = facts.get(a.pn_id)
             if f is None:
                 acted.add(a.pn_id)
                 continue
+
+            if a.kind in LINE_CODE:
+                f.line[street] = f.line.get(street, "") + LINE_CODE[a.kind]
 
             # facing a bet or raise, whoever made it -- the c-bet family below is
             # the subset where it was the previous street's aggressor's c-bet
@@ -320,6 +423,20 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                     f.called_bet[street] = True
                 elif a.kind == "raise":
                     f.raised_bet[street] = True
+                # The first time only: a bettor who is raised and calls has
+                # answered a raise, and that is their decision facing a bet.
+                if street not in f.faced_level and a.kind in ANSWERS:
+                    f.faced_level[street] = faced[0]
+                    f.faced_bet_action[street] = a.kind
+                    if faced[1] is not None:
+                        f.faced_bet_pot[street], f.faced_bet_size[street] = faced[1]
+
+            if a.kind == "raise" and street not in f.raise_pot and sized is not None:
+                f.raise_pot[street], f.raise_size[street] = sized
+            if a.kind == "bet" and sized is not None and street not in f.bet_answer:
+                answer = _answer(a.pn_id, street_actions[i + 1:])
+                if answer is not None:
+                    f.bet_answer[street] = answer
 
             # c-bet opportunity: previous street's aggressor, first-in on this one
             if not bet_made and a.pn_id == prev_aggressor:
@@ -360,14 +477,11 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 f.agg_denom[street] = f.agg_denom.get(street, 0) + 1
 
             if a.kind == "bet":
-                pot = pot_before[a.seq]
-                size = size_bucket(a.amount, pot) if pot > 0 else None
                 if not bet_made and a.pn_id == prev_aggressor:
                     cbet_by = a.pn_id
-                    cbet_size = size
-                if street not in f.bet_pot and pot > 0:
-                    f.bet_pot[street] = round(a.amount / pot, 3)
-                    f.bet_size[street] = size
+                    cbet_size = sized[1] if sized is not None else None
+                if street not in f.bet_pot and sized is not None:
+                    f.bet_pot[street], f.bet_size[street] = sized
                 bet_made = True
                 street_aggressor = a.pn_id
             elif a.kind == "raise":
@@ -378,6 +492,13 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
 
             acted.add(a.pn_id)
 
+        for f in facts.values():
+            line = f.line.get(street, "")
+            if line.startswith("x") and len(line) >= 2:
+                f.check_raise_opp[street] = True
+                if line.startswith("xr"):
+                    f.check_raise[street] = True
+
         if street_aggressor in facts:
             facts[street_aggressor].aggressor[street] = True
         # A street with no bet ends on a check, and that check closed it. One
@@ -387,6 +508,55 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
             facts[last.pn_id].check_back[street] = True
 
         prev_aggressor = street_aggressor
+
+
+def _sequences(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Each street's voluntary actions, everyone's, written from each seat.
+
+    A street was played when its board was dealt, or when anyone acted on it (a
+    log cut mid-street), and at least two players were still in at its start: a
+    hand everyone folded to is over, even if a board stands in the record. Every
+    player still in gets a key, an all-in player included -- their row is the
+    others' letters alone -- and a street nobody acted on, an all-in run-out, is
+    an empty string rather than no key: they were in it and nothing happened.
+    """
+    folded = {a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"}
+    for street in POSTFLOP_STREETS:
+        acts = [
+            a for a in hand.actions
+            if a.street == street and not a.is_forced and a.kind in LINE_CODE
+        ]
+        live = [pid for pid in facts if pid not in folded]
+        if (not acts and board_at(hand.board, street) is None) or len(live) < 2:
+            break
+        for pid in live:
+            facts[pid].seq[street] = "".join(
+                LINE_CODE[a.kind].upper() if a.pn_id == pid else LINE_CODE[a.kind] for a in acts
+            )
+        folded |= {a.pn_id for a in acts if a.kind == "fold"}
+
+
+def _answer(bettor: str, after: list[HandAction]) -> str | None:
+    """What a bet got from the players behind it, given the street's later actions.
+
+    The answers run until the first raise over it, which is the answer whatever
+    came before: a call and then a raise is a raised bet. Otherwise one call is
+    enough to make it called, and it was folded to only when everyone who acted
+    folded. None when nobody acted on it at all. The same reading as
+    `review.failed_bluff`'s responders.
+    """
+    kinds: set[str] = set()
+    for b in after:
+        if b.pn_id == bettor:
+            continue
+        if b.kind in AGGRESSIVE:
+            return "raise"
+        kinds.add(b.kind)
+    if "call" in kinds:
+        return "call"
+    if "fold" in kinds:
+        return "fold"
+    return None
 
 
 def _jams(hand: HandRow, facts: dict[str, Facts]) -> None:
@@ -538,12 +708,17 @@ def derive(hand: HandRow) -> list[Facts]:
 
     aggressor = _preflop(hand, facts)
     _postflop(hand, facts, aggressor)
+    _sequences(hand, facts)
     _jams(hand, facts)
     _table(hand, facts)
 
     folded_preflop = {
         a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"
     }
+    for a in hand.actions:
+        if a.kind == "fold" and not a.is_forced and a.pn_id in facts:
+            f = facts[a.pn_id]
+            f.fold_street = f.fold_street or a.street
     for pid, p in hand.players.items():
         f = facts[pid]
         f.saw_flop = hand.saw_flop and pid not in folded_preflop
