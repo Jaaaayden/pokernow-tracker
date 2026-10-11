@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from pnt.stats.cards import MADE_LEAVES
 from pnt.stats.derive import POSTFLOP_STREETS, SIZE_BUCKETS, _seat_ranks, derive, size_bucket
 from pnt.stats.filters import parse_filter
 from pnt.stats.queries import aggregate, facts_for, hand_list, load_hands
@@ -222,6 +223,8 @@ def test_sizing_tells_partition_the_spot(db):
             for b in out["blocks"]:
                 assert len(b["hand_ids"]) == b["n"]
                 assert sum(c["n"] for c in b["classes"]) == b["known"]
+                leaves = [c["class"] for c in b["classes"]]
+                assert leaves == sorted(leaves, key=(*MADE_LEAVES, "no_board").index)
                 if kind == "faced_cbet" and b["n"]:
                     assert b["known"] <= b["continued"] <= b["n"]
                     assert abs(b["fold"] + b["call"] + b["raise"] - 100) < 0.3

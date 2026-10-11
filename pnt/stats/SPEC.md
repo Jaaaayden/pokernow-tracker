@@ -512,6 +512,14 @@ A range view is a filter, then a bucketing of the hands whose cards are known:
   the board alone does not. Any pair or better keeps its class even with a draw.
   `draw` sorts between `pair` and `high_card`.
 
+  The view's rows are flat: one per `cards.MADE_LEAVES` leaf, strongest first,
+  each with the class it belongs to as its `group`. A pair is `top_pair` or
+  `board_pair`, never also a `pair` row above them counting the same hands, so
+  the rows partition the known hands. Each row is exactly the hands
+  `made=<leaf>` finds in the same spot (see "Made hand by street"), which is the
+  filter a click on it lists; a hand that ended before the flop is a `no_board`
+  row, last, with no made hand for a filter to name.
+
 **Coverage** (`known / hands`) is reported alongside and is the honest part.
 Cards are known only when shown, and hands are shown when they reach showdown.
 A "3-bet range" from this data is really "3-bet hands that reached showdown":

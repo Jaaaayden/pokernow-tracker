@@ -126,12 +126,10 @@
   /* --- composition bars --- */
   .bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 6px 12px; align-items: center; }
   .bars .lab { text-align: right; color: var(--ink-2); white-space: nowrap; }
-  .bars .lab.detail { padding-left: 14px; color: var(--muted); font-size: 13px; }
   .bars .pick { cursor: pointer; }
   .bars .lab.pick:hover, .bars .lab.pick:focus-visible { color: var(--ink); text-decoration: underline; outline: 0; }
   .bars .track { height: 14px; background: transparent; position: relative; }
   .bars .fill { height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
-  .bars .fill.detail { background: var(--accent); opacity: .45; height: 10px; margin-top: 2px; }
   .bars .val { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .bars .val small { color: var(--muted); margin-left: 6px; }
 
@@ -147,7 +145,6 @@
   th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  td.detail { padding-left: 24px; color: var(--ink-2); }
   tr.pick { cursor: pointer; }
   tr.pick:hover td { background: var(--mid); }
   tr.pick:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -318,7 +315,6 @@
     .strip-head b { font-size: 12px; }
     .strip-head a { font-size: 11px; }
     .bars { font-size: 11px; gap: 3px 8px; }
-    .bars .lab.detail { font-size: 10px; }
     table { font-size: 11px; }
     th, td { padding: 3px 5px; }
     th { font-size: 10px; }
@@ -621,7 +617,7 @@
     sel.value = opt ? opt.value : "";
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
-                  table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null,
+                  table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
                   game: null, games: null, played: true, satOut: false, session: null, manual: null, split: false };
 
@@ -979,25 +975,19 @@
     midpoint: "midpoint of two raises that disagree",
     none: "never raised",
   };
-  // "trips" as a detail is a board pair plus one hole card. It used to read "one
-  // hole card", which looks like a player who showed one card.
-  const DETAIL = { trips: "paired board", set: "set", board_pair: "on board only" };
-  const label = (c, detail) => detail ? (DETAIL[c.class] || c.class.replace(/_/g, " ")) : c.class.replace(/_/g, " ");
-  // Rows for a made-hand breakdown. A detail that covers every hand of its class
-  // is folded into the class row: drawn separately, it repeats the same hands.
-  function classRows(classes) {
-    const out = [];
-    for (const c of classes) {
-      const ds = c.details || [];
-      if (ds.length === 1 && ds[0].n === c.n) {
-        out.push({ c, detail: false, text: `${label(c, false)} · ${label(ds[0], true)}` });
-        continue;
-      }
-      out.push({ c, detail: false, text: label(c, false) });
-      for (const dd of ds) out.push({ c: dd, detail: true, text: label(dd, true) });
-    }
-    return out;
-  }
+  // Made-hand rows come flat, one per leaf of cards.MADE_LEAVES: top pair is a
+  // row of its own, with no "pair" row above it counting the same hands again.
+  // Three leaves read wrong bare: "trips" is one hole card to a paired board (it
+  // used to read "one hole card", which looks like a player who showed one card),
+  // a pocket pair here is one under a board card, and a board pair is a pair the
+  // hole cards add nothing to.
+  const MADE_LABEL = { trips: "trips (paired board)", pocket_pair: "underpair", board_pair: "board pair only" };
+  const classRows = (classes) => classes.map(c => ({ c, text: MADE_LABEL[c.class] || c.class.replace(/_/g, " ") }));
+  // The term that finds a made-hand row's hands, added to the spot: `made=` reads
+  // the final board the way the composition does (SPEC judgement call 31), so the
+  // list it brings back is the row. A hand that ended before the flop has no
+  // made hand to name, and lists by its ids.
+  const madeTerm = (c) => c.class === "no_board" ? null : `made=${c.class}`;
   const TITLE = {
     preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
     review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
@@ -1036,7 +1026,7 @@
     if (view === MANUAL_VIEW) { renderManual(d); return; }
     if (review) { renderReview(d, view); return; }
     if (view === "preflop") renderGrid(d);
-    else if (view === "made") renderClassBars($("bars"), d.classes, "");
+    else if (view === "made") renderClassBars($("bars"), d.classes, "", true);
     else renderSizing(d);
     renderTable(d, view);
   }
@@ -1176,10 +1166,11 @@
     };
   }
 
-  // Make an element open the hand list for `ids`, by click or Enter.
-  function pickable(el, title, ids) {
+  // Make an element open the hand list for `ids`, or for the spot narrowed by
+  // `term`, by click or Enter.
+  function pickable(el, title, ids, term = null) {
     el.classList.add("pick");
-    const open = () => openHands(title, ids);
+    const open = () => openHands(title, ids, term);
     el.addEventListener("click", open);
     el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
   }
@@ -1269,25 +1260,28 @@
   }
   function hideTip() { $("tip").style.display = "none"; }
 
-  // Made-hand bars into `bars`. `context` prefixes the hand list's title.
-  function renderClassBars(bars, classes, context) {
+  // Made-hand bars into `bars`. `context` prefixes the hand list's title. In the
+  // made view a bar lists its hands through its `made=` term; a sizing block's
+  // bars list by ids, since the term alone does not say the bet size.
+  function renderClassBars(bars, classes, context, byTerm = false) {
     bars.replaceChildren();
     if (!classes.length) {
       const p = document.createElement("div"); p.className = "lab"; p.textContent = "no shown hands in this spot";
       bars.appendChild(p); return;
     }
     const max = Math.max(...classes.map(c => c.pct));
-    for (const { c, detail, text } of classRows(classes)) {
-      const title = `${context}${text} · shown ${c.n}×`;
-      const lab = document.createElement("div"); lab.className = "lab" + (detail ? " detail" : "");
+    for (const { c, text } of classRows(classes)) {
+      const term = byTerm ? madeTerm(c) : null;
+      const title = `${context}${text} · shown ${c.n}×` + (term ? ` · ${term}` : "");
+      const lab = document.createElement("div"); lab.className = "lab";
       lab.textContent = text;
       lab.tabIndex = 0; lab.setAttribute("role", "button");
-      pickable(lab, title, c.hand_ids);
+      pickable(lab, title, term ? null : c.hand_ids, term);
       const track = document.createElement("div"); track.className = "track";
-      const fill = document.createElement("div"); fill.className = "fill" + (detail ? " detail" : "");
+      const fill = document.createElement("div"); fill.className = "fill";
       fill.style.width = (c.pct / max * 100) + "%";
       track.appendChild(fill);
-      pickable(track, title, c.hand_ids);
+      pickable(track, title, term ? null : c.hand_ids, term);
       const val = document.createElement("div"); val.className = "val";
       val.textContent = fmtPct(c.pct);
       const sm = document.createElement("small"); sm.textContent = `${c.n} · ${fmtBb(c.net_bb)}`;
@@ -1346,14 +1340,14 @@
     // Every row stands for a set of hands, so clicking one lists them -- the
     // same drill-down the grid cells and bars have. Without it the table is the
     // one view you cannot get from a number back to the hands behind it.
-    const row = (vals, { detail = false, title = null, ids = null } = {}) => {
+    const row = (vals, { title = null, ids = null, term = null } = {}) => {
       const tr = document.createElement("tr");
-      vals.forEach((v, i) => { const td = document.createElement("td"); if (detail && i === 0) td.className = "detail"; td.textContent = v ?? "–"; tr.appendChild(td); });
+      vals.forEach((v) => { const td = document.createElement("td"); td.textContent = v ?? "–"; tr.appendChild(td); });
       if (ids?.length) {
         tr.tabIndex = 0;
         tr.setAttribute("role", "button");
         tr.setAttribute("aria-label", `${title} — list these hands`);
-        pickable(tr, title, ids);
+        pickable(tr, title, term ? null : ids, term);
       }
       t.appendChild(tr);
     };
@@ -1364,9 +1358,10 @@
           c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max],
           { title: `${label} · shown ${c.n}×`, ids: c.hand_ids }));
     } else if (view === "made") {
-      for (const { c, detail, text } of classRows(d.classes)) {
+      for (const { c, text } of classRows(d.classes)) {
+        const term = madeTerm(c);
         row([text, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
-          { detail, title: `${text} · shown ${c.n}×`, ids: c.hand_ids });
+          { title: `${text} · shown ${c.n}×` + (term ? ` · ${term}` : ""), ids: c.hand_ids, term });
       }
     } else {
       for (const b of d.blocks) {
@@ -1387,11 +1382,13 @@
   // ---- hand list and replay ------------------------------------------------
   const HAND_LIMIT = 300;
 
-  async function handRows() {
-    const key = `${state.player}|${state.filter}`;
+  // The hands in the spot, or in the spot narrowed by one more `term`.
+  async function handRows(term = null) {
+    const filter = [state.filter, term].filter(Boolean).join(",");
+    const key = `${state.player}|${filter}`;
     if (state.handRows?.key === key) return state.handRows.rows;
     const q = new URLSearchParams();
-    if (state.filter) q.set("filter", state.filter);
+    if (filter) q.set("filter", filter);
     const asked = loadSeq;
     const body = await getJson(`/players/${encodeURIComponent(state.player)}/hands?` + q);
     // Checked before caching, so a stale answer is never memoized for the session.
@@ -1407,7 +1404,9 @@
   // Bumped by every open and close of the list: a cell clicked after another, or
   // the list closed by a new spot or view, outdates the rows still being fetched.
   let handsSeq = 0;
-  async function openHands(title, ids) {
+  // `ids` picks rows out of the spot's hands; `term` instead lists the spot
+  // narrowed by that filter term, so the list is what the term finds.
+  async function openHands(title, ids, term = null) {
     const seq = ++handsSeq;
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
@@ -1417,8 +1416,9 @@
     const list = $("hand-rows");
     list.replaceChildren(message("loading…"));
     state.handIds = ids; // remembered so a change of order re-lists the same set
+    state.handTerm = term;
     try {
-      const rows = await handRows();
+      const rows = await handRows(term);
       if (seq !== handsSeq) return;
       const want = ids ? new Set(ids) : null;
       renderHandRows(want ? rows.filter(r => want.has(r.hand_id)) : rows);
@@ -2052,7 +2052,7 @@
   $("hands-close").addEventListener("click", closeHands);
   $("hands-sort").addEventListener("change", () => {
     state.handSort = $("hands-sort").value;
-    if (!$("hands").classList.contains("hidden")) openHands($("hands-title").textContent, state.handIds);
+    if (!$("hands").classList.contains("hidden")) openHands($("hands-title").textContent, state.handIds, state.handTerm);
   });
   $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
   $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });

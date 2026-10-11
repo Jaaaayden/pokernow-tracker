@@ -98,7 +98,8 @@ hands in this spot: 12   cards known: 7   coverage: 58.3%
 class                       n    pct  won   net bb
 straight                    2   28.6    2     61.5
 two_pair                    2   28.6    1    -34.0
-pair                        3   42.9    2     36.0
+top_pair                    1   14.3    1     15.1
+middle_pair                 2   28.6    1     20.9
 ```
 
 A spot can be anything: position, pot type, preflop line, bet size bucket, facing a

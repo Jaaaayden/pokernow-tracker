@@ -979,10 +979,6 @@ def _print_composition(comp: dict) -> None:
         typer.echo(
             f"{c['class']:<24}{c['n']:>5}{_fmt(c['pct']):>7}{c['won']:>5}{c['net_bb']:>9}"
         )
-        for d in c.get("details", []):
-            typer.echo(
-                f"  {d['class']:<22}{d['n']:>5}{_fmt(d['pct']):>7}{d['won']:>5}{d['net_bb']:>9}"
-            )
 
 
 @app.command("range")
