@@ -56,6 +56,18 @@
   input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
   .controls.narrow { margin-top: -6px; }
   .controls.narrow .lbl { color: var(--muted); font-size: 12px; margin-right: 8px; }
+  /* Your note on the player on show, under the dropdown. Set off like a hand's
+     note: it is the one line here you wrote yourself. */
+  .pnote { display: flex; align-items: flex-start; gap: 6px; margin: -6px 0 14px; font-size: 13px; color: var(--ink-2); }
+  .pnote:empty { display: none; }
+  .pnote + .controls.narrow { margin-top: 0; }
+  .pnote .text { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--accent); padding: 1px 0 1px 8px; }
+  .pnote .pen { padding: 0 6px; font-size: 12px; color: var(--muted); }
+  .pnote .pen:hover { color: var(--ink); border-color: var(--accent); }
+  .pnote.editing { flex-direction: column; align-items: stretch; gap: 4px; }
+  .pnote textarea { width: 100%; max-width: 72ch; min-height: 3.4em; resize: vertical; font: inherit; font-size: 13px;
+    color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 6px; padding: 6px 8px; }
+  .pnote .hint { color: var(--muted); font-size: 11px; }
   button { cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: transparent; }
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
@@ -355,6 +367,7 @@
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
     </span>
   </div>
+  <div class="pnote" id="pnote"></div>
   <div class="controls narrow">
     <label for="pot">Pot ≥</label>
     <input id="pot" type="number" min="0" step="1" placeholder="any" title="final pot, in chips (writes pot>=N into the spot)">
@@ -733,6 +746,86 @@
       vs.appendChild(o);
     }
     syncChips(); // the dropdown can only show a vs= term once it has the names
+    setNotes(rows);
+    paintPlayerNote();
+  }
+
+  // ---- player note -----------------------------------------------------------
+  // What you have written about the player on show, under the dropdown, and
+  // edited where it stands: the ✎ swaps the line for a box, saved the way a hand's
+  // note is -- Ctrl+Enter or clicking away, Escape to abandon, emptied to delete.
+  // The notes ride in with the player list. The HUD's refresh asks for them again,
+  // since one may have been written on a card there in the meantime.
+  let playerNotes = new Map();
+  let noteBox = null; // the open editor, which no repaint may throw away
+  const setNotes = (rows) => { playerNotes = new Map(rows.filter(p => p.notes).map(p => [p.alias, p.notes])); };
+  async function refreshNotes() {
+    try { setNotes(await getJson("/players")); paintPlayerNote(); } catch { /* the notes as they were */ }
+  }
+
+  function paintPlayerNote() {
+    if (noteBox) return;
+    const line = $("pnote");
+    line.classList.remove("editing");
+    line.replaceChildren();
+    if (!state.player) return;
+    const text = playerNotes.get(state.player);
+    if (text) {
+      const t = document.createElement("span");
+      t.className = "text"; t.textContent = text;
+      line.appendChild(t);
+    }
+    const pen = document.createElement("button");
+    pen.type = "button"; pen.className = "pen";
+    pen.textContent = text ? "✎" : "✎ note";
+    pen.title = text ? `edit your note on ${state.player}` : `write down what you know about ${state.player}`;
+    pen.addEventListener("click", editPlayerNote);
+    line.appendChild(pen);
+  }
+
+  function editPlayerNote() {
+    // Saved against the player it was opened for, even if the HUD has moved the
+    // chart on to someone else while you typed.
+    const player = state.player;
+    const box = document.createElement("textarea");
+    box.value = playerNotes.get(player) || "";
+    box.setAttribute("aria-label", `note on ${player}`);
+    box.placeholder = `what you know about ${player} that no log records`;
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = "Ctrl+Enter or click away to save · Esc to cancel · empty to delete";
+    noteBox = box;
+    const close = () => {
+      if (noteBox !== box) return;
+      noteBox = null;
+      paintPlayerNote();
+    };
+    async function save() {
+      if (noteBox !== box || box.disabled) return;
+      if (box.value.trim() === (playerNotes.get(player) || "").trim()) { close(); return; }
+      box.disabled = true;
+      try {
+        const out = await postJson(`/players/${encodeURIComponent(player)}/note`, { note: box.value });
+        if (out.note) playerNotes.set(player, out.note);
+        else playerNotes.delete(player);
+        close();
+      } catch (e) {
+        // The note is still in the box, and the box stays open with it.
+        box.disabled = false;
+        box.focus();
+        showErr(e);
+      }
+    }
+    box.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.stopPropagation(); close(); }
+      else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); save(); }
+    });
+    box.addEventListener("blur", save);
+    const line = $("pnote");
+    line.classList.add("editing");
+    line.replaceChildren(box, hint);
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
   }
 
   // Bumped by every load. Loads overlap -- the HUD posts a spot each time the
@@ -743,6 +836,7 @@
   let loadSeq = 0;
   async function load({ quiet = false } = {}) {
     if (!state.player) return;
+    paintPlayerNote(); // the player on show may have changed
     const seq = ++loadSeq;
     const live = () => seq === loadSeq;
     const view = state.by;
@@ -1365,7 +1459,12 @@
       ? `${state.handSort === "pot" ? "biggest" : "newest"} ${HAND_LIMIT} of ${rows.length}`
       : `${rows.length} hand${rows.length === 1 ? "" : "s"}`;
     if (!rows.length) { list.appendChild(message("no hands")); return; }
-    for (const h of rows.slice(0, HAND_LIMIT)) list.appendChild(handRowButton(h, list, $("replay")));
+    // Each with the review rows' ✎, so a hand found by drilling in can be written
+    // on where it was found. Rows from a server too old to send notes get none.
+    for (const h of rows.slice(0, HAND_LIMIT)) {
+      const row = handRowButton(h, list, $("replay"));
+      list.appendChild("note" in h ? reviewedRow(h, row, { noteOnly: true }) : row);
+    }
   }
 
   // One hand as a row: the drill-down list and the review views both build them
@@ -1620,8 +1719,10 @@
   // The session view and the review views hold their own copies of a hand, so a
   // mark made in one is carried into the other.
   function applyToHand(hand_id, fields) {
-    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands])) {
-      for (const other of hands || []) {
+    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands, state.handRows?.rows])) {
+      // On the chart views `state.data.hands` is a count, not a list.
+      if (!Array.isArray(hands)) continue;
+      for (const other of hands) {
         if (other.hand_id === hand_id) Object.assign(other, fields);
       }
     }
@@ -1632,7 +1733,9 @@
     $("err").classList.remove("hidden");
   }
 
-  function reviewedRow(h, row) {
+  // `noteOnly`: the ✎ and nothing else, for the drill-down list, which is not a
+  // review queue -- nothing there is ticked off, and its rows never fade.
+  function reviewedRow(h, row, { noteOnly = false } = {}) {
     const wrap = document.createElement("div");
     wrap.className = "rev-row";
     const marks = document.createElement("div");
@@ -1650,7 +1753,7 @@
     pen.className = "note";
     pen.textContent = "✎";
     // Rows from a server too old to know about flags get no 🚩.
-    const flag = "flagged" in h ? document.createElement("button") : null;
+    const flag = !noteOnly && "flagged" in h ? document.createElement("button") : null;
     if (flag) {
       flag.type = "button";
       flag.className = "flag";
@@ -1658,7 +1761,7 @@
     }
 
     const paint = () => {
-      wrap.dataset.reviewed = String(!!h.reviewed);
+      wrap.dataset.reviewed = String(!noteOnly && !!h.reviewed);
       mark.setAttribute("aria-pressed", String(!!h.reviewed));
       mark.textContent = h.reviewed ? "✓" : "";
       mark.title = h.reviewed
@@ -1739,9 +1842,12 @@
       box.disabled = true;
       try {
         const out = await postJson(`/hands/${h.hand_id}/note`, { note: box.value });
-        applyToHand(h.hand_id, { note: out.note, noted_at: out.noted_at });
+        const fields = { note: out.note, noted_at: out.noted_at };
+        applyToHand(h.hand_id, fields);
+        // A drill-down row may belong to a list no longer cached anywhere.
+        Object.assign(h, fields);
         closeEdit();
-        setReviewCount();
+        if (!noteOnly) setReviewCount();
       } catch (e) {
         // The note is still in the box, and the box stays open with it.
         box.disabled = false;
@@ -1774,7 +1880,8 @@
       box.addEventListener("blur", () => save(box));
     });
 
-    if (flag) { marks.classList.add("three"); marks.append(mark, flag, pen); }
+    if (noteOnly) marks.append(pen);
+    else if (flag) { marks.classList.add("three"); marks.append(mark, flag, pen); }
     else marks.append(mark, pen);
     body.append(row, note);
     wrap.append(marks, body);
@@ -2049,7 +2156,7 @@
     if (parent === window || e.source !== parent) return;
     if (!e.origin.startsWith("chrome-extension://") && e.origin !== location.origin) return;
     if (!e.data) return;
-    if (e.data.type === "pnt-refresh") { looked.clear(); dropCaches(); load({ quiet: true }); }
+    if (e.data.type === "pnt-refresh") { looked.clear(); dropCaches(); refreshNotes(); load({ quiet: true }); }
     if (e.data.type === "pnt-spot") {
       const seq = ++spotSeq;
       const player = e.data.player;

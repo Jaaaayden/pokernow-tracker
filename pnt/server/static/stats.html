@@ -59,6 +59,7 @@
   th.group { color: var(--ink-2); border-bottom: 0; padding-bottom: 0; text-align: center; }
   td.name a { color: var(--ink); text-decoration: none; }
   td.name a:hover { color: var(--accent); text-decoration: underline; }
+  td.name .pnote { margin-left: 4px; font-size: 11px; cursor: help; }
   td.dim { color: var(--muted); }
   td.up { color: var(--up); }
   td.down { color: var(--down); }
@@ -196,6 +197,19 @@
   };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
+
+  // alias -> what you have written about them (players page, chart or HUD), shown
+  // as a 📝 beside the name. From /players, which is a plain join and costs nothing
+  // beside /stats; a page whose list cannot be had simply shows no marks.
+  let notes = new Map();
+  async function loadNotes() {
+    try {
+      const r = await fetch("/players", { headers: { accept: "application/json" } });
+      if (!r.ok) return;
+      notes = new Map((await r.json()).filter(p => p.notes).map(p => [p.alias, p.notes]));
+      if (state.rows.length) render();
+    } catch { /* no marks */ }
+  }
 
   const readUrl = () => {
     const q = new URLSearchParams(location.search);
@@ -381,6 +395,12 @@
       a.textContent = row.player;
       a.title = `${row.player}'s range chart in this spot`;
       name.appendChild(a);
+      const note = notes.get(row.player);
+      if (note) {
+        const m = document.createElement("span");
+        m.className = "pnote"; m.textContent = "📝"; m.title = note;
+        name.appendChild(m);
+      }
       tr.appendChild(name);
       for (const [key, , kind, opp] of cols) {
         const td = document.createElement("td");
@@ -436,6 +456,7 @@
   document.querySelectorAll("[data-street]").forEach(x => x.setAttribute("aria-pressed", x.dataset.street === state.street));
   writeUrl();
   load();
+  loadNotes();
 })();
 </script>
 <script src="/filter-help.js"></script>

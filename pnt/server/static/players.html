@@ -52,6 +52,9 @@
   .row .alias { font-weight: 600; font-size: 15px; }
   .row .names { color: var(--muted); font-size: 12.5px; overflow: hidden;
                 text-overflow: ellipsis; white-space: nowrap; }
+  .row .pnote { color: var(--ink-2); font-size: 12.5px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .row .pnote:empty { display: none; }
   .row .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .row .num b { display: block; font-weight: 600; }
   .row .num span { color: var(--muted); font-size: 12px; }
@@ -74,6 +77,11 @@
   .sub { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--grid); }
   .sub p { margin: 0 0 8px; color: var(--ink-2); font-size: 13px; }
   .sub .line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pnote-edit textarea { display: block; width: 100%; min-height: 3.6em; resize: vertical;
+    font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 6px 8px; }
+  .pnote-edit textarea:focus { outline: none; border-color: var(--accent); }
+  .pnote-edit .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
   .warnbox { background: var(--mid); border-radius: 8px; padding: 10px 12px; margin: 10px 0 0;
              font-size: 13px; color: var(--ink-2); }
   .warnbox b { color: var(--ink); }
@@ -176,6 +184,10 @@
     const names = p.identities.map((i) => i.name).filter(Boolean);
     // The names are the evidence for a merge, so they lead rather than hide in the fold.
     tw.appendChild(el("div", "names", names.length ? names.join(" · ") : "no name recorded"));
+    // The note's first line, so a glance down the list finds who you have read.
+    const pnote = el("div", "pnote");
+    paintNote(pnote, p);
+    tw.appendChild(pnote);
     row.appendChild(tw);
     const num = el("div", "num");
     num.appendChild(el("b", null, fmt(p.hands)));
@@ -187,11 +199,17 @@
     });
     card.appendChild(row);
 
-    card.appendChild(body(p));
+    card.appendChild(body(p, pnote));
     return card;
   }
 
-  function body(p) {
+  function paintNote(line, p) {
+    const first = (p.notes || "").split("\n")[0];
+    line.textContent = first ? "📝 " + first : "";
+    line.title = p.notes || "";
+  }
+
+  function body(p, pnote) {
     const body = el("div", "body");
 
     const t = el("table", "ids");
@@ -235,9 +253,59 @@
     rn.addEventListener("click", (e) => { e.stopPropagation(); doRename(p); });
     acts.appendChild(rn);
     body.appendChild(acts);
+    body.appendChild(notePanel(p, pnote));
 
     if (players.length > 1) body.appendChild(mergePanel(p));
     return body;
+  }
+
+  // What you know about them that no log records. Kept on the player, not on an
+  // id, so it follows them across devices and a merge carries it along. The HUD
+  // shows it on their card. Saved as the hand notes in the chart are: Ctrl+Enter
+  // or leaving the box, and an emptied box deletes it.
+  function notePanel(p, pnote) {
+    const wrap = el("div", "sub pnote-edit");
+    const box = document.createElement("textarea");
+    box.value = p.notes || "";
+    box.placeholder = `What you know about ${p.alias} that no log records: tells, tilt, history…`;
+    box.setAttribute("aria-label", `note on ${p.alias}`);
+    const hint = el("div", "hint");
+    const paintHint = () => {
+      hint.textContent = (p.notes_at ? `noted ${p.notes_at.slice(0, 10)} · ` : "")
+        + "Ctrl+Enter or click away to save · empty to delete";
+    };
+    paintHint();
+    let saving = false;
+    async function save() {
+      if (saving || box.value.trim() === (p.notes || "").trim()) return;
+      saving = true;
+      box.disabled = true;
+      try {
+        const out = await api(`/players/${encodeURIComponent(p.alias)}/note`, { note: box.value });
+        p.notes = out.note; p.notes_at = out.noted_at;
+        // Painted in place rather than through render(): that would rebuild the
+        // box, and a Ctrl+Enter save leaves you typing in it.
+        box.value = p.notes || "";
+        paintNote(pnote, p);
+        paintHint();
+        // Saved by the blur of a click that closed the card: the list was redrawn
+        // from the old note while this was in flight.
+        if (!pnote.isConnected) render();
+        toast(out.note ? `Saved the note on ${p.alias}.` : `Cleared the note on ${p.alias}.`);
+      } catch (e) {
+        // What was typed stays in the box, to save again.
+        toast("Could not save the note: " + e.message);
+      } finally {
+        saving = false;
+        box.disabled = false;
+      }
+    }
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save().then(() => box.focus()); }
+    });
+    box.addEventListener("blur", save);
+    wrap.append(box, hint);
+    return wrap;
   }
 
   function mergePanel(p) {
@@ -286,7 +354,8 @@
     box.appendChild(el("b", null, `${source.alias} disappears.`));
     box.append(document.createTextNode(
       ` Its ${source.n_ids} PokerNow id${source.n_ids === 1 ? "" : "s"} and ${fmt(source.hands)} hands`
-      + ` move to ${target.alias}, which then has ${fmt(source.hands + target.hands)}.`));
+      + ` move to ${target.alias}, which then has ${fmt(source.hands + target.hands)}.`
+      + (source.notes ? ` Its note is added to the end of ${target.alias}'s, and stays there if you undo.` : "")));
     const ul = document.createElement("ul");
     for (const i of source.identities) {
       const li = document.createElement("li");
