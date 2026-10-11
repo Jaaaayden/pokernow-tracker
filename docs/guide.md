@@ -198,10 +198,13 @@ fold-to-3-bet is defined on it. `limp` is the action, and `limped` is the pot. S
 `called_open,faced_3bet_any=call`. This is the vocabulary the live HUD uses to name
 the spot a hand is in as it is played.
 
-**Bet sizes** come in four buckets: `small` (under ½ pot), `medium` (½ to ¾),
-`large` (¾ to pot) and `overbet` (more than pot). PokerNow's ½, ¾ and pot buttons
-each start one. Use them as `cbet_flop=medium`, `cbet_turn=overbet`,
+**Bet sizes** come in five buckets: `blocker` (under ⅕ pot), `small` (⅕ to ½),
+`medium` (½ to ¾), `large` (¾ to pot) and `overbet` (more than pot). PokerNow's ½,
+¾ and pot buttons each start one. Use them as `cbet_flop=medium`, `cbet_turn=overbet`,
 `bet_river=large`, or `faced_cbet_flop=small` for the c-bet a player was facing.
+`faced_bet_river=large` is any bet or raise they faced, `raised_bet_flop=medium`
+their own raise (measured after the call, so a pot raise is 1.0), and
+`bet_answer_river=fold` what their bet got: `fold`, `call` or `raise`.
 
 **Postflop responses** are flags per street: `folded_to_cbet_turn`,
 `raised_cbet_flop`, and `donk_flop` (betting into the previous street's aggressor
@@ -209,13 +212,23 @@ before they act). Facing any bet, not only a c-bet, is a term too:
 `faced_bet_river`, `folded_to_bet_river`, `called_bet_flop`, `raised_bet_turn`.
 `aggressor_river` is the player who made the street's last bet or raise, and
 `check_back_turn` (or `check_back` for any street) is the player whose check closed
-a street that checked through.
+a street that checked through. `check_raise_flop` is a check-raise, and
+`check_raise_flop_opp` checked and then faced a bet.
+
+**Action lines** spell out what a player did on a street, one letter per action:
+`x` check, `b` bet, `c` call, `r` raise, `f` fold. `line_flop=xc` is a flop
+check-call, `*` matches any run (`line_turn=x*` checked first), and `-` is "did not
+act". `line=xc//b*` reads flop/turn/river at once, an empty street matching
+anything. Put `!` in front of any flag to negate it: `!cbet_flop`.
 
 **All-ins**, preflop included: `jam` / `jam_river` (bet or raised all in),
 `faced_jam` / `faced_jam_turn`, and `called_jam` / `called_jam_preflop`.
 
 **The holding:** `hand=72` (both suits), `hand=72o`, `hand!=AA`, or `hand_pct>=60`
-for a bottom-40% hand by the standard strength ranking.
+for a bottom-40% hand by the standard strength ranking. `made_flop=set` is what the
+shown hand had made on the flop's board, `made_turn>=two_pair` that or better, and
+`made=flush` the final board; `pair` and `draw` name the whole group. So
+`made_flop>=set,line_flop=x*` is the sets that checked the flop.
 
 **Board texture:** `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on. The full tag
