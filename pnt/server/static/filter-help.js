@@ -98,9 +98,12 @@
   // ready-made patterns depend on which template is being filled. Picking one
   // fills it in; typing over it is just as good, since the slot is free text.
   const PATTERN_HINT = {
-    LINE: "their own actions on {where}: x check, b bet, c call, r raise, f fold; * any run, ? one action, - did not act",
-    SEQ: "everyone's actions on {where}, in order: THEIRS in capitals (X B C R F), everyone else's in lower case;"
-      + " * any run, ? one action, - not in the hand; case matters",
+    LINE: "their own actions on {where}: x check, b bet, c call, r raise, f fold."
+      + " * is any number of actions (x* = checked, then anything); ? is exactly one, whichever it was"
+      + " (x? = xc, xf or xr); - on its own = did not act",
+    SEQ: "everyone's actions on {where}, in order: THEIRS in capitals (X B C R F), everyone else's in lower case."
+      + " * is any number of actions (xB* = checked to them, they bet, then anything); ? is exactly one,"
+      + " whichever it was (xB? = xBc or xBf); - on its own = not in the hand; case matters",
   };
   const PATTERNS = {
     LINE: [
@@ -373,8 +376,10 @@
     put("POS", vocab.positions.join("  "));
     put("SIZE", Object.entries(vocab.sizes).map(([k, d]) => `${k} (${d})`).join("  "));
     put("TEXTURE", vocab.textures.join("  "));
-    put("LINE", "x check  b bet  c call  r raise  f fold  * any run  ? one action  - did not act;  line= takes flop/turn/river");
-    put("SEQ", "as LINE, everyone's actions in order: theirs X B C R F, others' x b c r f (case-sensitive)  - not in the hand");
+    put("LINE", "x check  b bet  c call  r raise  f fold  * any number (x* = x then anything)"
+      + "  ? exactly one (x? = xc xf xr)  - alone: did not act;  line= takes flop/turn/river");
+    put("SEQ", "as LINE, everyone's actions in order: theirs X B C R F, others' x b c r f (case-sensitive);"
+      + "  xB* = checked to them, they bet, then anything  - alone: not in the hand");
     put("MADE", Object.keys(vocab.made).join("  "));
     put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");

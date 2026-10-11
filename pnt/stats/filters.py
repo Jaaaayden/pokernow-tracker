@@ -591,11 +591,14 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("faced_check_raise_<street>=ANSWER", "faced_check_raise_flop=fold", "what they did next: fold, call or raise"),
     )),
     ("Action line", (
-        ("line_<street>=LINE", "line_flop=xc", "their actions that street: x check, b bet, c call, r raise, f fold"),
+        ("line_<street>=LINE", "line_flop=xc",
+         ("their actions that street: x check, b bet, c call, r raise, f fold; x* checked then anything,"
+          " x? checked then exactly one more (xc xf xr), - alone did not act")),
         ("line_<street>!=LINE", "line_turn!=x*", "any line but that one"),
         ("line=LINE", "line=xc//b*", "flop/turn/river; * any run, ? one action, - did not act, empty any"),
         ("action_<street>=SEQ", "action_flop=xBr*",
-         "the whole street, everyone in order: THEIRS IN CAPITALS, others lower case; case matters, unlike line_"),
+         ("the whole street, everyone in order: THEIRS IN CAPITALS, others lower case; xB* checked to them,"
+          " they bet, then anything; xB? then exactly one more (xBc or xBf); - alone not in the hand; case matters")),
         ("action_<street>!=SEQ", "action_turn!=*Br*", "any street but that"),
         ("action=SEQ", "action=*Bc//", "flop/turn/river, as line=; - not in the hand that street"),
     )),
