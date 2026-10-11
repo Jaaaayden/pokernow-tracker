@@ -46,6 +46,11 @@ pinned in [`pnt/stats/SPEC.md`](../pnt/stats/SPEC.md). That file is the artifact
   players' reviews, is marked once and noted once. They are keyed on the hand's own
   number within its game rather than on `hand_id`, which a rebuild reassigns, so
   `pnt rebuild` leaves them alone.
+- **Player notes** (`players.notes`, `notes_at`) are the same kind of judgement
+  about a person. Every operation that deletes a player row carries the note
+  along: a merge appends the source's note to the target's, an alias import that
+  empties a player passes its note to whoever now holds the IDs, and deleting a
+  game never removes a player with a note. `test_player_notes.py` holds all three.
 - **The alias table** is the one thing a re-import cannot rebuild, which is why
   it is exported to [`pnt/logs/aliases.csv`](../pnt/logs/aliases.csv) and kept in
   the repo.

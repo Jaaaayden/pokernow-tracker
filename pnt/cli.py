@@ -24,8 +24,10 @@ from .ingest.importer import (
     export_aliases,
     import_csv,
     merge_players,
+    player_notes,
     rebuild_game,
     rename_player,
+    set_player_note,
     split_identities,
 )
 from .ingest.csv_source import HAND_START, has_hands, read_csv
@@ -912,6 +914,52 @@ def note(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"#{hand_number} {game}: " + (f"noted {row['noted_at']}" if row else "note cleared"))
+
+
+@app.command("player-note")
+def player_note(
+    alias: str = typer.Argument(None, help="The player, by alias. Omit to list every note."),
+    text: str = typer.Argument(None, help="What you know about them. Omit to print the note."),
+    db: Path = DbOpt,
+    clear: bool = typer.Option(False, "--clear", help="Delete the note instead of writing one."),
+) -> None:
+    """Write down what you know about a player, for the HUD to show beside their stats.
+
+    The player-sized twin of `pnt note`: with no arguments, lists every note; with
+    an alias and no text, prints theirs. Writing again replaces it. The note is the
+    canonical player's, so it follows them across devices, and a merge appends the
+    merged player's note to it rather than dropping it.
+
+        pnt player-note henry "tanks then jams with air; never folds the river"
+        pnt player-note henry --clear
+        pnt player-note
+    """
+    conn = connect(db)
+    if alias is None:
+        rows = player_notes(conn)
+        if not rows:
+            typer.echo("(nothing noted)")
+            return
+        for name, v in rows.items():
+            typer.echo(f"{name}  {v['noted_at'] or ''}".rstrip())
+            for line in v["note"].splitlines():
+                typer.echo(f"    | {line}")
+        return
+    if clear and text is not None:
+        raise typer.BadParameter("--clear deletes the note; it takes no text")
+    if text is None and not clear:
+        row = conn.execute("SELECT notes FROM players WHERE alias = ?", (alias,)).fetchone()
+        if row is None:
+            typer.echo(f"unknown alias: {alias!r}", err=True)
+            raise typer.Exit(1)
+        typer.echo((row["notes"] or "").strip() or "(no note on that player)")
+        return
+    try:
+        row = set_player_note(conn, alias, None if clear else text)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"{alias}: " + (f"noted {row['noted_at']}" if row else "note cleared"))
 
 
 def _print_grid(grid: dict) -> None:

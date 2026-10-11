@@ -47,6 +47,11 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Zero on existing games until their next rebuild, which is safe: the caches it
     # keys live in one process, and every rebuild made from here on stamps.
     ("games", "derived_gen", "INTEGER NOT NULL DEFAULT 0"),
+    # The exception to "disposable": a player's note is typed by you, not parsed,
+    # and nothing rebuilds it. The column is still safe to add this way -- it
+    # starts empty everywhere, which is exactly what an older database held, since
+    # `players.notes` existed from the start but nothing wrote to it.
+    ("players", "notes_at", "TEXT"),
 )
 
 

@@ -108,6 +108,31 @@ def resolve_identity(conn: sqlite3.Connection, pn_id: str, name: str, seen_at: s
     return player_id
 
 
+#: Between two notes joined into one, when the players they were written about
+#: turn out to be the same human. On a line of its own, so each half reads as it
+#: was written and the join stays visible.
+NOTE_JOIN = "\n— "
+
+
+def _append_note(conn: sqlite3.Connection, player_id: int, note: str | None) -> None:
+    """Add `note` to the end of a player's note, inside the caller's transaction.
+
+    A note already there word for word is not added again, so an identity
+    operation replayed -- the same alias file applied twice -- cannot grow it.
+    """
+    note = (note or "").strip()
+    if not note:
+        return
+    row = conn.execute("SELECT notes FROM players WHERE player_id = ?", (player_id,)).fetchone()
+    have = (row["notes"] or "").strip() if row else ""
+    if note == have or note in have.split(NOTE_JOIN):
+        return
+    conn.execute(
+        "UPDATE players SET notes = ?, notes_at = ? WHERE player_id = ?",
+        (f"{have}{NOTE_JOIN}{note}" if have else note, _now(), player_id),
+    )
+
+
 def merge_players(conn: sqlite3.Connection, source_alias: str, target_alias: str) -> list[str]:
     """Point every ID of `source_alias` at `target_alias`, then drop the empty player.
 
@@ -119,10 +144,15 @@ def merge_players(conn: sqlite3.Connection, source_alias: str, target_alias: str
     else records which IDs used to be behind it, and `split_identities` needs
     exactly this list to put them back. A typed-out CLI merge hardly needs undo;
     a one-click merge in a UI does.
+
+    The source's note is appended to the target's rather than lost with its row:
+    both were written about the same human, under two names. Undoing the merge
+    leaves the joined note where it is -- it is still true of whoever it was
+    about, and which half belonged to which device is yours to tidy, not a guess.
     """
     with writing(conn):
         src = conn.execute(
-            "SELECT player_id FROM players WHERE alias = ?", (source_alias,)
+            "SELECT player_id, notes FROM players WHERE alias = ?", (source_alias,)
         ).fetchone()
         dst = conn.execute(
             "SELECT player_id FROM players WHERE alias = ?", (target_alias,)
@@ -142,6 +172,7 @@ def merge_players(conn: sqlite3.Connection, source_alias: str, target_alias: str
             "UPDATE player_identities SET player_id = ? WHERE player_id = ?",
             (dst["player_id"], src["player_id"]),
         )
+        _append_note(conn, dst["player_id"], src["notes"])
         conn.execute("DELETE FROM players WHERE player_id = ?", (src["player_id"],))
         bump_generation(conn)
     return moved
@@ -212,6 +243,39 @@ def rename_player(conn: sqlite3.Connection, old: str, new: str) -> None:
         bump_generation(conn)
 
 
+def player_notes(conn: sqlite3.Connection) -> dict[str, dict]:
+    """alias -> {"note", "noted_at"}, for every player you have written about."""
+    return {
+        r["alias"]: {"note": r["notes"], "noted_at": r["notes_at"]}
+        for r in conn.execute(
+            "SELECT alias, notes, notes_at FROM players"
+            " WHERE TRIM(COALESCE(notes, '')) != '' ORDER BY alias"
+        )
+    }
+
+
+def set_player_note(conn: sqlite3.Connection, alias: str, note: str | None) -> dict | None:
+    """Write what you know about a player, or clear it. Returns the stored note, or None.
+
+    The rules of a hand's note (`review.set_note`): the text is stripped, a note
+    that strips to nothing clears it, and every write stamps `notes_at` afresh.
+    Writing replaces what is there -- a note is a document, not a log -- and only
+    a merge joins two (`merge_players`).
+
+    Bumps no generation: no statistic reads a note, so no cache goes stale over one.
+
+    Raises ValueError for an alias the database does not have.
+    """
+    text = (note or "").strip() or None
+    with writing(conn):
+        if not conn.execute(
+            "UPDATE players SET notes = ?, notes_at = ? WHERE alias = ?",
+            (text, _now() if text else None, alias),
+        ).rowcount:
+            raise ValueError(f"unknown alias: {alias!r}")
+    return player_notes(conn).get(alias)
+
+
 def export_aliases(conn: sqlite3.Connection) -> list[tuple[str, str]]:
     """Every ``(pn_id, alias)`` pair, in the order `pnt alias list` shows them.
 
@@ -241,6 +305,10 @@ def apply_aliases(conn: sqlite3.Connection, pairs: list[tuple[str, str]]) -> tup
     the name; it is renamed out of the way the same way `resolve_identity` settles a
     collision, instead of being silently merged in.
 
+    A player left holding no identity is deleted, as a merge deletes its source --
+    and as in a merge, a note it had goes with its IDs, onto the player (or
+    players) they now belong to.
+
     Returns ``(moved, unknown)``.
     """
     wanted: dict[str, list[str]] = {}
@@ -249,7 +317,13 @@ def apply_aliases(conn: sqlite3.Connection, pairs: list[tuple[str, str]]) -> tup
 
     moved = 0
     with writing(conn):
-        known = {r["pn_id"] for r in conn.execute("SELECT pn_id FROM player_identities")}
+        # Who held each ID before anything moved: once a player is emptied, this is
+        # the only record of where its note should follow its identities to.
+        held_by = {
+            r["pn_id"]: r["player_id"]
+            for r in conn.execute("SELECT pn_id, player_id FROM player_identities")
+        }
+        known = set(held_by)
         for alias, ids in wanted.items():
             ids = [i for i in ids if i in known]
             if not ids:
@@ -282,8 +356,25 @@ def apply_aliases(conn: sqlite3.Connection, pairs: list[tuple[str, str]]) -> tup
                 [(player_id, i, player_id) for i in ids],
             ).rowcount
         unknown = sum(1 for pn_id, _ in pairs if pn_id not in known)
-        conn.execute(
-            "DELETE FROM players WHERE player_id NOT IN (SELECT player_id FROM player_identities)"
+        orphans = conn.execute(
+            "SELECT player_id, notes FROM players"
+            " WHERE player_id NOT IN (SELECT player_id FROM player_identities)"
+        ).fetchall()
+        for orphan in orphans:
+            if not (orphan["notes"] or "").strip():
+                continue
+            ids = sorted(i for i, p in held_by.items() if p == orphan["player_id"])
+            # In order of first appearance, so two receivers get it in a stable order.
+            heirs = dict.fromkeys(
+                conn.execute(
+                    "SELECT player_id FROM player_identities WHERE pn_id = ?", (i,)
+                ).fetchone()["player_id"]
+                for i in ids
+            )
+            for player_id in heirs:
+                _append_note(conn, player_id, orphan["notes"])
+        conn.executemany(
+            "DELETE FROM players WHERE player_id = ?", [(o["player_id"],) for o in orphans]
         )
         bump_generation(conn)
     return moved, unknown
@@ -433,9 +524,10 @@ def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
     The inverse of importing it, so re-importing the log puts back exactly what this
     took away. Returns the number of hands removed.
 
-    Identities mostly stay. A merge or a rename is a judgement no log can rebuild, so
-    a player is removed only when nothing about it came from a person: a single
-    PokerNow ID, still under the name `resolve_identity` gave it, in no hand left.
+    Identities mostly stay. A merge, a rename or a note is a judgement no log can
+    rebuild, so a player is removed only when nothing about it came from a person: a
+    single PokerNow ID, still under the name `resolve_identity` gave it, unwritten
+    about, in no hand left.
     """
     with writing(conn):
         hands = conn.execute(
@@ -452,7 +544,8 @@ def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
             "   AND p.alias IN"
             "     (pi.pn_id, pi.last_seen_name, pi.last_seen_name || ' (' || pi.pn_id || ')')"
             "   AND (SELECT COUNT(*) FROM player_identities o"
-            "        WHERE o.player_id = pi.player_id) = 1)"
+            "        WHERE o.player_id = pi.player_id) = 1"
+            "   AND TRIM(COALESCE(p.notes, '')) = '')"
         )
         bump_generation(conn)
     return hands

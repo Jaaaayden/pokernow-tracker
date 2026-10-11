@@ -232,6 +232,7 @@ pnt sizing henry --street flop --kind cbet   # what each bet size is made of
 pnt tags                                     # archetype and exploit tags
 pnt review jayden                            # hands to review
 pnt note <game_id> 161 "turn barrel was bad" # write down what went wrong in one hand
+pnt player-note henry "jams light"           # and what you know about a player
 pnt allin                                    # all-in EV: actual vs adjusted
 pnt pots                                     # biggest pots in the last 7 days
 pnt alias list                               # the player names you can query

@@ -1053,6 +1053,18 @@ present between hands as well as during one.
 reviewed** button does the same for the Hand review and Bad beats views. Notes are
 never hidden: they are the one thing on the row you wrote yourself.
 
+**A player note is the same judgement about a person** ("tanks then jams with
+air"). It lives on the canonical player (`players.notes`, `notes_at`), not on a
+PokerNow ID, so it follows them across devices; the rules are a hand note's --
+stripped, replaced on every write, deleted when emptied. `pnt player-note <alias>
+"<text>"` and `POST /players/{alias}/note` write it; `/players` and each `/hud`
+seat carry it, and the players page, the stats table, the chart and the HUD card
+show it. Three operations delete player rows, and none may take a note with them:
+a **merge** appends the source's note to the target's after a `— ` line, an
+**alias re-sync** that empties a player hands its note to whoever now holds its
+IDs, and **deleting a game** never removes a player with a note. No statistic
+reads it, so writing one invalidates no cache.
+
 ### Reproducing a flag on the chart
 
 Unlike a tag, a flag cannot be turned into a filter that finds exactly its hands:

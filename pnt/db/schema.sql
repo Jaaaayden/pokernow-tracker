@@ -63,11 +63,16 @@ CREATE TABLE IF NOT EXISTS parse_misses (
 -- ------------------------------------------------------- identity (layer 2) --
 
 -- A canonical person. Stats are always requested for one of these.
+-- `notes` is what you know about them that no log records ("tanks then jams
+-- with air", "plays scared after a loss"), and `notes_at` when it was last
+-- written. Like the alias it is a judgement, so the identity operations that
+-- delete player rows carry it along instead of dropping it (importer.py).
 CREATE TABLE IF NOT EXISTS players (
     player_id  INTEGER PRIMARY KEY,
     alias      TEXT NOT NULL UNIQUE,
     notes      TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    notes_at   TEXT
 );
 
 -- Many PokerNow IDs -> one person. IDs are stable per browser/device and survive

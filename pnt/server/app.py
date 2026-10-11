@@ -35,8 +35,10 @@ from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
     ingest_entries,
     merge_players,
+    player_notes,
     rebuild_game,
     rename_player,
+    set_player_note,
     split_identities,
 )
 from pnt.stats.allin import allin_hand_list, allin_report
@@ -511,6 +513,9 @@ def players(request: Request) -> list[dict] | HTMLResponse:
     Hand counts come straight from `hand_players` rather than through `report()`.
     That is a plain join -- milliseconds -- where the derived path walks every hand
     in the database, and nothing on this page needs a derived statistic.
+
+    `notes` is what you have written about the player (`POST /players/{alias}/note`)
+    and `notes_at` when; both null when you have written nothing.
     """
     if "text/html" in request.headers.get("accept", ""):
         return _page("players.html")
@@ -521,12 +526,22 @@ def players(request: Request) -> list[dict] | HTMLResponse:
     }
     out: dict[str, dict] = {}
     for r in conn.execute(
-        "SELECT p.alias, pi.pn_id, pi.last_seen_name, pi.first_seen_at, pi.last_seen_at"
+        "SELECT p.alias, p.notes, p.notes_at, pi.pn_id, pi.last_seen_name, pi.first_seen_at,"
+        " pi.last_seen_at"
         " FROM players p JOIN player_identities pi ON pi.player_id = p.player_id"
         " ORDER BY p.alias, pi.pn_id"
     ):
+        noted = bool((r["notes"] or "").strip())
         entry = out.setdefault(
-            r["alias"], {"alias": r["alias"], "n_ids": 0, "hands": 0, "identities": []}
+            r["alias"],
+            {
+                "alias": r["alias"],
+                "n_ids": 0,
+                "hands": 0,
+                "notes": r["notes"] if noted else None,
+                "notes_at": r["notes_at"] if noted else None,
+                "identities": [],
+            },
         )
         entry["n_ids"] += 1
         entry["hands"] += counts.get(r["pn_id"], 0)
@@ -548,6 +563,32 @@ def players(request: Request) -> list[dict] | HTMLResponse:
             dict.fromkeys(i["name"] for i in entry["identities"] if i["name"])
         )
     return rows
+
+
+class PlayerNoteRequest(BaseModel):
+    #: What you know about them. Empty, or nothing but spaces, clears the note.
+    note: str = ""
+
+
+@app.post("/players/{alias}/note")
+def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()]) -> dict:
+    """Write down what you know about a player, or clear the note.
+
+    One note per person, not per PokerNow ID: it is kept on the canonical player,
+    so it follows them across devices, and the merges, alias re-syncs and game
+    deletions that remove player rows carry it along (see importer.py). Shown on
+    the players page, beside their name on the stats table and the chart, and on
+    their HUD card.
+    """
+    try:
+        note = set_player_note(db(), alias, req.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "alias": alias,
+        "note": note["note"] if note else None,
+        "noted_at": note["noted_at"] if note else None,
+    }
 
 
 @app.get("/players/{alias}/positions")
@@ -882,6 +923,9 @@ def hud(game_id: GameId) -> dict:
     `tags` is the player's lifetime archetype and exploit tags (SPEC.md, "Tags").
     They read the same per-alias `Facts` cache `/live` fills on every poll, so
     they cost a few milliseconds on top of it.
+
+    `note` is what you have written about the player, or null -- the one thing
+    on the card no log could have told it.
     """
     conn = db()
     latest = conn.execute(
@@ -900,6 +944,7 @@ def hud(game_id: GameId) -> dict:
 
     by_alias = {r["player"]: r for r in report(conn)}
     by_session = {r["player"]: r for r in report(conn, game_id=game_id)}
+    notes = player_notes(conn)
     return {
         "game_id": game_id,
         "seats": [
@@ -914,6 +959,8 @@ def hud(game_id: GameId) -> dict:
                 "session": by_session.get(r["alias"], {"hands": 0}),
                 # Lifetime tags; a seat with no identity yet has none.
                 "tags": tags_for(facts_cached(conn, r["alias"]) if r["alias"] else []),
+                # What you have written about them; null when nothing.
+                "note": notes.get(r["alias"], {}).get("note"),
             }
             for r in seated
         ],
