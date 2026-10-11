@@ -44,6 +44,7 @@ from pnt.ingest.importer import (
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.fold_equity import fold_equity, pool_facts
 from pnt.stats.live import snapshot
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
@@ -1045,3 +1046,29 @@ def rename(req: Annotated[RenameRequest, Body()]) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"old": req.old, "new": req.new.strip()}
+
+
+@app.get("/players/{alias}/fold_equity")
+def player_fold_equity(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Fold equity by bet size for one player, within a spot: what each size of
+    their bets got against its break-even, and how they defend against each size
+    against its MDF. Rows carry their hand ids for the chart's drill-down, and the
+    filter that finds them. See SPEC.md, "Fold equity by bet size"."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, **fold_equity(facts, with_ids=True)}
+
+
+@app.get("/fold_equity")
+def pool_fold_equity(
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The same for the whole pool: every player's bets and every player's
+    defense, summed. No hand ids -- one hand is several players' rows here."""
+    conn = db()
+    facts = pool_facts(conn, game, _predicate(conn, filter))
+    return {"player": None, "filter": filter, **fold_equity(facts)}

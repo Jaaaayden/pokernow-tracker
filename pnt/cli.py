@@ -35,6 +35,7 @@ from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
 from .stats.allin import allin_report
 from .stats.filters import parse_filter
+from .stats.fold_equity import fold_equity, pool_facts
 from .stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from .stats.queries import display_names, facts_by_player, facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
@@ -1434,6 +1435,76 @@ def alias_import(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
         pairs = [(r["pn_id"], r["alias"]) for r in csv.DictReader(fh)]
     moved, unknown = apply_aliases(connect(db), pairs)
     typer.echo(f"moved {moved} identity row(s); {unknown} id(s) not in this database yet")
+
+
+def _print_fold_equity(who: str, out: dict) -> None:
+    """Both sides of `fold_equity`, street by street: the bettor's table, then the
+    defender's. `*` marks a row that clears its line on at least MIN_SAMPLE hands."""
+    def pct(v: float | None) -> str:
+        return "--" if v is None else f"{v:.1f}%"
+
+    def table(title: str, rows: list[dict], head: tuple, line: str, gap: str) -> None:
+        typer.echo(title)
+        typer.echo(f"  {'size':<9}{head[0]:>6}{'fold':>8}{'call':>8}{'raise':>8}"
+                   f"{'size':>8}{head[1]:>8}{head[2]:>8}")
+        for r in rows:
+            if r["n"]:
+                mark = " *" if r["judged"] and r[gap] > 0 else ""
+                typer.echo(
+                    f"  {r['size']:<9}{r['n']:>6}{pct(r['fold']):>8}{pct(r['call']):>8}"
+                    f"{pct(r['raise']):>8}{r['median_size']:>8.2f}{pct(r[line]):>8}{r[gap]:>+8.1f}{mark}"
+                )
+
+    typer.echo(f"{who}  ({out['hands']} hands)")
+    for street, d in out["streets"].items():
+        typer.echo("")
+        table(f"{street}: bets  (b/e: a pure bluff's break-even; edge = fold - b/e)",
+              d["bets"], ("bets", "b/e", "edge"), "break_even", "edge")
+        for key, what in (("faced", "bets and raises faced"), ("faced_cbet", "c-bets faced")):
+            table(f"{street}: {what}  (over = fold - (100 - MDF))",
+                  d[key], ("faced", "MDF", "over"), "mdf", "overfold")
+
+
+@app.command()
+def foldeq(
+    alias: str = typer.Argument(None, help="One player; the whole pool when omitted."),
+    pool: bool = typer.Option(False, "--pool", help="Also print the whole pool, to compare."),
+    db: Path = DbOpt,
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Fold equity by bet size: how often each size of bet is folded to, against
+    the fold rate a pure bluff that size needs, and how often each size is
+    defended, against the MDF.
+
+    Size is the median bet in the bucket, as a fraction of the pot. `*` marks a
+    bet size that showed a profit as a pure bluff, or a defense that over-folds,
+    on at least ten hands.
+    """
+    conn = connect(db)
+    try:
+        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        results = []
+        if alias:
+            facts = facts_for(conn, alias, game)
+            if pred is not None:
+                facts = [f for f in facts if pred(f)]
+            results.append((alias, fold_equity(facts)))
+        if pool or not alias:
+            results.append(("pool", fold_equity(pool_facts(conn, game, pred))))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        body = {who: out for who, out in results}
+        typer.echo(json.dumps(body if len(body) > 1 else results[0][1], indent=2))
+        return
+    if filter_:
+        typer.echo(f"filter: {filter_}\n")
+    for i, (who, out) in enumerate(results):
+        if i:
+            typer.echo("\n" + "=" * 64 + "\n")
+        _print_fold_equity(who, out)
 
 
 if __name__ == "__main__":  # pragma: no cover

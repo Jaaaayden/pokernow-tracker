@@ -280,6 +280,72 @@ Filters use the bucket names: `cbet_flop=medium` (a flop c-bet of that size),
 `bet_river=overbet` (their first river bet, c-bet or not) and
 `faced_cbet_turn=large` (the c-bet they were facing).
 
+### Fold equity by bet size
+
+`fold_equity(facts)` (`stats/fold_equity.py`) puts the two sides of a bet next to
+the price of bluffing at that size, per street and size bucket. It reads the facts
+above and adds none.
+
+**A pure bluff's break-even.** A bet of `s` pots with no equity wins the pot (1)
+when everyone folds and loses `s` otherwise, so it breaks even when it is folded
+to `s / (1 + s)` of the time: ⅓ for a half-pot bet, ½ for a pot-sized one. The
+defender's side of the same number is the **minimum defense frequency**,
+`MDF = 1 − s / (1 + s) = 1 / (1 + s)`: how often they must call or raise to keep
+that bluff from profiting. ⅔ against a half-pot bet.
+
+| Side | Rows | Per bucket | Against | Filter (`n`) |
+|---|---|---|---|---|
+| **Bettor** (`bets`) | Every first bet on the street, by `bet_size` | `n`; `fold`, `call`, `raise` from `bet_answer`; `unanswered` | `break_even`; `edge` = fold % − break-even, in points | `bet_<street>=SIZE`; the folded part `bet_<street>=SIZE,bet_answer_<street>=fold` |
+| **Defender** (`faced`) | Every first decision facing a bet or raise, by `faced_bet_size` | `n`; `fold`, `call`, `raise` from `faced_bet_action` | `mdf`; `overfold` = fold % − (100 − MDF), in points | `faced_bet_<street>=SIZE` |
+| **Defender, c-bets only** (`faced_cbet`) | Every c-bet faced before anyone raised it, by `faced_cbet_size` | as above, from `fold_to_cbet` / `raise_cbet` | as above | `faced_cbet_<street>=SIZE`; the folded part adds `folded_to_cbet_<street>` |
+
+Each row also carries `mean_size` and `median_size` (pot fractions) and `judged`
+(at least `MIN_SAMPLE` = 10 rows). A positive `edge` means a pure bluff of that
+size, made as often as these bets were, would have shown a profit; a positive
+`overfold` means the player gives up more than the bet demands, and bluffing them
+at that size prints. The views highlight both only on a judged row: a 100% fold
+rate off two bets says nothing about the next one.
+
+Judgement calls:
+
+1. **The break-even is the mean of each bet's own `s / (1 + s)`**, not the
+   break-even of the mean `bet_pot`. A bluff of `s` pots folded to with probability
+   p makes `p − (1 − p)s` pots, which over the pot *after* the bet, `1 + s`, is
+   `p − s / (1 + s)`. So fold % minus this mean is a bluff's average result per
+   bet, each measured against the pot it made, and the edge is zero exactly at
+   break-even. The break-even of the mean size is the same zero with each bet
+   measured against the pot *before* it, where one 200-pot jam into a limped pot
+   risks as much as four hundred half-pot bets: on the 14,543-hand database it moved the
+   flop overbet bucket's break-even from 70% to 84% by itself. Inside the four
+   bounded buckets the two readings agree to a few tenths. MDF is averaged the
+   same way, and `median_size` is the size a view prints, for the same reason.
+2. **Rates are of every bet in the bucket**, the reading `bet_<street>_answer_by_size`
+   already gives, so a page showing both never disagrees with itself. A bet nobody
+   answered (a log that stops after it) counts in none of the three, and is
+   reported as `unanswered`. The real database has none.
+3. **The bettor's fold % is everyone folding; the defender's is one player's
+   fold.** Multiway, a bet three players face is one bet and three decisions, so
+   the pool's defender fold % runs above its bettor fold % at the same size, and
+   should.
+4. **The defender's rows include raises faced**, sized by `raise_pot`: a raise of
+   `s` is a bet of `s` into the pot once called, which is the pot-limit
+   convention ("Raise sizes") and the reading MDF takes of a raise. A player's
+   first decision is the one counted, as in `vs_bet_<street>_by_size`. The
+   defender's fold has no filter of its own: no term reads `faced_bet_action`, and
+   `folded_to_bet_<street>` also matches a call followed by a fold to the raise.
+5. **An unraised c-bet is the first bet a player faces on the street**, so its
+   pot fraction is that player's `faced_bet_pot`, and the c-bet rows read it
+   there: there is no `faced_cbet_pot`.
+6. **No cards are needed**, so there is no coverage figure: every bet and every
+   fold is in the log. The other bias still applies in reverse: this says how
+   often a bet *won*, not what it was. Most bets that got called were not bluffs.
+
+The **pool** (`GET /fold_equity`, `pnt foldeq --pool`) is the same computation over
+every (hand, player) row in the database, so its counts are the players' counts
+summed. Its rows carry filters but no hand ids, since one hand is several rows.
+`GET /players/{alias}/fold_equity` adds each row's `hand_ids` and, where the
+folded part has a filter, `fold_hand_ids`. Both take `filter=` and `game=`.
+
 ---
 
 ## Showdown
