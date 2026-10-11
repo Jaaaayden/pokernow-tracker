@@ -286,13 +286,18 @@ class                       n    pct  won   net bb
 --------------------------------------------------
 straight                    2   28.6    2     61.5
 two_pair                    2   28.6    1    -34.0
-pair                        3   42.9    2     36.0
-  middle_pair               2   28.6    1     20.9
-  top_pair                  1   14.3    1     15.1
+top_pair                    1   14.3    1     15.1
+middle_pair                 2   28.6    1     20.9
 ```
 
-Unpaired hands split into `draw` (a flush or straight draw on the flop or turn, with
-the kind of draw as the detail) and `high_card`, so the high-card row is real air.
+Every row is one kind of hand, strongest first, with no `pair` row above them adding
+them up again: a pair is the pair it was (`overpair`, `top_pair`, `pocket_pair`
+for one under a board card, `middle_pair`, `bottom_pair`, `board_pair` when the
+hole cards add nothing), three of a kind is a `set` or `trips` off a paired board,
+and an unpaired hand is the draw it had on the flop or turn (`combo_draw`,
+`flush_draw`, `open_ender`, `gutshot`) or `high_card`, so the high-card row is real
+air. These are the names `made=` takes, and on the chart a row lists its hands as
+the spot plus `made=<row>`.
 
 **Coverage is the number to read first.** Cards are known only at showdown, so a
 chart of "hands they 3-bet" is really "hands they 3-bet and showed down". The

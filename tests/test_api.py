@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from pnt.ingest.csv_source import read_csv
+from pnt.stats.cards import MADE_LEAVES
 from tests.conftest import ALL_LOGS, HU, HU_GAME, local_client
 
 fastapi = pytest.importorskip("fastapi")
@@ -279,6 +280,14 @@ def test_range_endpoint(client):
     made = client.get("/players/genericpoker/range", params={"by": "made", "filter": "wtsd"}).json()
     assert made["classes"]
     assert sum(c["n"] for c in made["classes"]) == made["known"]
+    leaves = [c["class"] for c in made["classes"]]
+    assert leaves == sorted(leaves, key=MADE_LEAVES.index) and "pair" not in leaves
+    # A row clicked on the chart lists the spot narrowed by its `made=` term.
+    for c in made["classes"]:
+        hands = client.get(
+            "/players/genericpoker/hands", params={"filter": f"wtsd,made={c['class']}"}
+        ).json()["hands"]
+        assert sorted(h["hand_id"] for h in hands) == sorted(c["hand_ids"]), c["class"]
 
 
 def test_range_endpoint_validates_input(client):

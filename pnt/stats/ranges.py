@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections import defaultdict
 from statistics import mean, median, multimode
 
-from .cards import ALL_CLASSES, MADE_CLASSES, grid_labels, hand_class, made_hand
+from .cards import ALL_CLASSES, MADE_LEAVES, grid_labels, hand_class, leaf_of, made_hand
 from .derive import POSTFLOP_STREETS, SIZE_BUCKETS, Facts
 
 SIZING_KINDS = ("cbet", "bet", "faced_cbet")
@@ -166,42 +166,39 @@ def range_grid(facts: list[Facts]) -> dict:
 
 
 def composition(facts: list[Facts]) -> dict:
-    """What the shown hands in this set had made, strongest class first.
+    """What the shown hands in this set had made, strongest first.
+
+    One flat row per `MADE_LEAVES` leaf (``class``), in that order, with the
+    class it belongs to as ``group``: ``top_pair`` is a row of its own, in group
+    ``pair``, and there is no ``pair`` row above it. A parent row only repeated
+    its leaves' hands, and read like one more kind of holding beside them. The
+    rows partition the known hands, and each one is exactly the hands
+    ``made=<class>`` finds, a hand ended preflop (``no_board``, last) aside.
 
     ``pct`` is of *known* hands, not of the line -- the unknown ones are exactly
     the ones this cannot speak for.
     """
     known = [f for f in facts if f.hole_cards]
-    by_cls: dict[str, list[Facts]] = defaultdict(list)
-    by_detail: dict[str, dict[str, list[Facts]]] = defaultdict(lambda: defaultdict(list))
+    by_leaf: dict[str, list[Facts]] = defaultdict(list)
+    group: dict[str, str] = {}
     for f in known:
         mh = made_hand(f.hole_cards, f.board)
-        by_cls[mh.cls].append(f)
-        if mh.detail:
-            by_detail[mh.cls][mh.detail].append(f)
+        leaf = leaf_of(mh)
+        by_leaf[leaf].append(f)
+        group[leaf] = mh.cls
 
     spot = _spot_sizes(facts)
     tol = _tolerance(spot)
-
-    def row(label: str, rows: list[Facts]) -> dict:
-        return {
-            "class": label,
-            "pct": round(100.0 * len(rows) / len(known), 1) if known else None,
-            **_summary(rows, tol),
+    classes = [
+        {
+            "class": leaf,
+            "group": group[leaf],
+            "pct": round(100.0 * len(by_leaf[leaf]) / len(known), 1),
+            **_summary(by_leaf[leaf], tol),
         }
-
-    order = (*MADE_CLASSES, "no_board")
-    classes = []
-    for cls in order:
-        if cls not in by_cls:
-            continue
-        entry = row(cls, by_cls[cls])
-        if cls in by_detail:
-            entry["details"] = [
-                row(d, rows)
-                for d, rows in sorted(by_detail[cls].items(), key=lambda kv: -len(kv[1]))
-            ]
-        classes.append(entry)
+        for leaf in (*MADE_LEAVES, "no_board")
+        if leaf in by_leaf
+    ]
 
     return {
         "hands": len(facts),

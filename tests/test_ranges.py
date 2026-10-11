@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from pnt.stats.cards import ALL_CLASSES
+from pnt.stats.cards import ALL_CLASSES, MADE_GROUPS, MADE_LEAVES
 from pnt.stats.derive import derive
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import facts_for, load_hands
+from pnt.stats.queries import facts_for, load_hands, report
 from pnt.stats.ranges import composition, range_grid
 from tests.conftest import HU_GAME
 
@@ -179,21 +179,38 @@ def test_hero_cards_are_known_on_every_hand(db):
     assert grid["coverage"] > 95
 
 
-def test_composition_sums_to_known(db):
+def test_composition_is_flat_and_sums_to_known(db):
+    """One row per made-hand leaf, strongest first. There is no `pair` row above
+    `top_pair` counting the same hands again, so the rows partition the known ones."""
     facts = [f for f in facts_for(db, "Chris") if f.saw_flop]
     comp = composition(facts)
-    assert sum(c["n"] for c in comp["classes"]) == comp["known"]
-    for c in comp["classes"]:
-        if "details" in c:
-            assert sum(d["n"] for d in c["details"]) == c["n"]
-    assert abs(sum(c["pct"] for c in comp["classes"]) - 100) < 0.5
-    # strongest first
-    order = [c["class"] for c in comp["classes"]]
-    assert order.index("pair") > order.index("two_pair")
-    if "draw" in order:
-        assert order.index("pair") < order.index("draw")
-        if "high_card" in order:
-            assert order.index("draw") < order.index("high_card")
+    rows = comp["classes"]
+    assert sum(c["n"] for c in rows) == comp["known"]
+    assert abs(sum(c["pct"] for c in rows) - 100) < 0.5
+    order = [c["class"] for c in rows]
+    assert order == sorted(order, key=MADE_LEAVES.index)  # strongest first
+    assert all(c["class"] in MADE_GROUPS[c["group"]] and "details" not in c for c in rows)
+    assert "pair" not in order and "draw" not in order
+    assert sum(c["group"] == "pair" for c in rows) > 1, "the pairs come apart into their kinds"
+
+
+def test_every_made_row_reproduces_as_a_filter(db):
+    """Clicking a made-hand row lists the spot narrowed by `made=<leaf>`, which
+    reads the final board the way the composition does (judgement call 31): the
+    term finds exactly that row's hands, in every spot. A hand that ended before
+    the flop has no made hand to name, and is the one row that lists by its ids."""
+    seen = set()
+    for player in report(db):
+        facts = facts_for(db, player["player"])
+        for spot in ("", "wtsd", "!wtsd", "saw_flop", "pfa,srp"):
+            pool = [f for f in facts if parse_filter(spot)(f)] if spot else facts
+            for row in composition(pool)["classes"]:
+                if row["class"] == "no_board":
+                    continue
+                seen.add(row["class"])
+                pred = parse_filter(",".join(t for t in (spot, f"made={row['class']}") if t))
+                assert [f.hand_id for f in facts if pred(f)] == row["hand_ids"], (player, spot, row)
+    assert {"set", "trips", "top_pair", "bottom_pair", "board_pair", "high_card"} <= seen
 
 
 def test_filtered_line_composition(db):
