@@ -90,11 +90,45 @@
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
-    LINE: "type a line: x check, b bet, c call, r raise, f fold, * any run, ? one action, - did not act; / between streets",
-    SEQ: "type the street, everyone in order: THEIR OWN in capitals (X B C R F), everyone else's in lower case;"
-      + " * any run, ? one action, - not in the hand; case matters here",
     MADE: "pick a made hand", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
   };
+
+  // The two pattern slots read differently on one street (`line_flop=`) and on
+  // all three (`line=`, flop/turn/river split by `/`), so their hint and their
+  // ready-made patterns depend on which template is being filled. Picking one
+  // fills it in; typing over it is just as good, since the slot is free text.
+  const PATTERN_HINT = {
+    LINE: "their own actions on {where}: x check, b bet, c call, r raise, f fold; * any run, ? one action, - did not act",
+    SEQ: "everyone's actions on {where}, in order: THEIRS in capitals (X B C R F), everyone else's in lower case;"
+      + " * any run, ? one action, - not in the hand; case matters",
+  };
+  const PATTERNS = {
+    LINE: [
+      ["x", "checked"], ["xc", "check-called"], ["xf", "check-folded"], ["xr*", "check-raised"],
+      ["b", "bet"], ["bc", "bet, called a raise"], ["bf", "bet, folded to a raise"], ["c", "called"],
+    ],
+    LINE_ALL: [
+      ["xc/xc/xc", "check-called every street"], ["c/c/c", "called every street"], ["b/b/b", "bet every street"],
+      ["b/x/b", "bet, checked the turn, bet the river"], ["b/x/", "bet the flop, checked the turn"],
+      ["x/b/", "checked the flop, bet the turn"], ["xr*//", "check-raised the flop"],
+    ],
+    SEQ: [
+      ["xB*", "checked to them, they bet"], ["xBr*", "…and got check-raised"], ["xBrF", "…and folded to it"],
+      ["*Br*", "their bet got raised"], ["Xb*", "they checked, someone bet"], ["XbR*", "they check-raised"],
+      ["bC*", "they called a bet"], ["bR*", "they raised a bet"],
+    ],
+    SEQ_ALL: [
+      ["xB*/xB*/", "bet flop and turn after a check"], ["Bc/Bc/Bc", "bet every street, called each time"],
+      ["Xb*/Xb*/", "checked and faced a bet on flop and turn"], ["xBr*//", "got check-raised on the flop"],
+    ],
+  };
+  const allStreets = (t) => !t.segs.some((s) => s.slot === "street");
+  function pickText(t, kind) {
+    if (!PATTERN_HINT[kind]) return PICK[kind];
+    const where = allStreets(t) ? "each street, flop/turn/river split by / (empty = any)" : "that street";
+    return "type " + PATTERN_HINT[kind].replace("{where}", where);
+  }
+  const patterns = (t, kind) => PATTERNS[allStreets(t) ? `${kind}_ALL` : kind] ?? [];
 
   function segments(term) {
     const segs = [];
@@ -353,10 +387,21 @@
     const before = frag.slice(0, m.at);
     const top = el("div", null, "fh-slot-head");
     if (before) top.append(el("code", before), " — ");
-    top.append(PICK[kind]);
+    top.append(pickText(t, kind));
     const box = el("div", null, "fh-opts");
     const opts = options(kind);
-    if (!opts || (kind === "NAME" && !names.length)) {
+    // Case matters in an action sequence, so its patterns narrow by exact prefix.
+    const fold = kind === "SEQ" ? (s) => s : (s) => s.toLowerCase();
+    const ready = patterns(t, kind).filter(([v]) => fold(v).startsWith(fold(m.partial)));
+    if (!opts && ready.length) {
+      for (const [v, d] of ready) {
+        const b = el("button", v);
+        b.type = "button";
+        b.append(el("span", d));
+        b.addEventListener("click", () => pickOption(before, t, m.i, v));
+        box.append(b);
+      }
+    } else if (!opts || (kind === "NAME" && !names.length)) {
       box.append(el("span", kind === "NAME" ? "type a player's name, as on the players page" : "then a comma for the next term", "fh-hint"));
     } else {
       const p = m.partial.toLowerCase();
