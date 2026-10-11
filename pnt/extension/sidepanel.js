@@ -35,6 +35,8 @@
     compact: false,     // the stats table only: no tags, spot lines or chart
     sentSpots: [],      // the last few spots posted into the chart, to tell an echo from an edit
     flagged: null,      // {game, n, flagged}: what the 🚩 last wrote, ahead of /live
+    notes: new Map(),   // alias -> the note a ✎ last wrote (null: cleared), ahead of /hud
+    noteEdit: null,     // the alias whose note is open for editing; redraws wait for it
   };
   let selected = null, pinned = null;
   let heldAt = null; // the moment a card was clicked at; see followSpot
@@ -131,6 +133,10 @@
       state.acting = acting;
       state.hud = snap.hudData ?? null;
       state.live = snap.liveData ?? null;
+      // A note written here stands in until /hud reports the same, as the 🚩 does.
+      for (const s of state.hud?.seats ?? []) {
+        if (state.notes.has(s.alias) && state.notes.get(s.alias) === (s.note ?? null)) state.notes.delete(s.alias);
+      }
       render();
       followSpot();
     }
@@ -389,6 +395,8 @@
   };
 
   function render() {
+    // A redraw would throw away a note being typed; it runs when the box closes.
+    if (state.noteEdit) return;
     const body = $("body");
     body.replaceChildren();
     const seats = rows().sort((a, b) => a.seat - b.seat);
@@ -498,6 +506,12 @@
       const name = el("td", "name", s.alias || s.name || s.pn_id);
       name.appendChild(el("small", null, `#${s.seat}`));
       name.title = `${s.alias || s.name || s.pn_id} · seat ${s.seat} · ${s.pn_id}`;
+      // No room for the note itself: the name is underlined, and the note is its hover.
+      const note = noteOf(s);
+      if (note) {
+        name.classList.add("noted");
+        name.title += `\n\n📝 ${note}`;
+      }
       row.append(name);
       for (const [k, , tip] of COLS) {
         const td = el("td");
@@ -526,6 +540,9 @@
     const name = el("span", "name", s.alias || s.name || s.pn_id);
     name.appendChild(el("small", null, `#${s.seat}`));
     who.appendChild(name);
+    // A player without an identity yet has nowhere to keep a note.
+    const pen = s.alias ? el("button", "pen", "✎") : null;
+    if (pen) who.appendChild(pen);
     if (s.live) {
       const pos = el("span", "pos", s.live.position || "");
       pos.title = "Position this hand. Blank when the button or a blind is dead.";
@@ -534,6 +551,7 @@
       who.append(pos, stack);
     }
     c.appendChild(who);
+    if (pen) c.appendChild(noteLine(s, pen));
 
     // Tag chips, every one: they wrap onto as many lines as they need. A chip
     // opens the hands behind the tag: that pins the player and switches follow
@@ -592,6 +610,73 @@
       selectPlayer(s.alias, spot);
     });
     return c;
+  }
+
+  // ------------------------------------------------------------------ notes --
+  // What you know about a player that no log records, written on the players
+  // page, in the chart, or here. It sits under the name; the ✎ beside the name
+  // swaps it for a box, saved the way the chart saves a hand's note -- Ctrl+Enter
+  // or clicking away, Escape to abandon, emptied to delete. While the box is open
+  // the cards are not redrawn, so the next report cannot throw away what is being
+  // typed; they catch up as it closes.
+  const noteOf = (s) => (state.notes.has(s.alias) ? state.notes.get(s.alias) : s.note) || null;
+
+  function noteLine(s, pen) {
+    const line = el("div", "pnote");
+    const paint = () => {
+      const note = noteOf(s);
+      line.textContent = note || "";
+      line.title = note || "";
+      pen.setAttribute("aria-pressed", String(!!note));
+      pen.title = note ? `edit your note on ${s.alias}` : `write down what you know about ${s.alias}`;
+    };
+    paint();
+
+    const close = () => {
+      if (state.noteEdit !== s.alias) return;
+      state.noteEdit = null;
+      render();
+    };
+    async function save(box) {
+      if (state.noteEdit !== s.alias || box.disabled) return;
+      if (box.value.trim() === (noteOf(s) || "")) { close(); return; }
+      box.disabled = true;
+      const r = await send({ type: "playerNote", alias: s.alias, note: box.value });
+      if (!r.ok) {
+        // The note is still in the box, and the box stays open with it.
+        box.disabled = false;
+        box.focus();
+        setStatus(`could not save the note on ${s.alias}: ${r.error}`);
+        return;
+      }
+      state.notes.set(s.alias, r.data.note ?? null);
+      close();
+      // An open chart shows the note too: it fetches again, quietly.
+      if (isOpen()) $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, origin());
+    }
+
+    pen.addEventListener("click", (e) => {
+      e.stopPropagation(); // the card's own click opens the chart
+      if (state.noteEdit) return; // one box at a time; clicking away saves it first
+      state.noteEdit = s.alias;
+      const edit = el("div", "pnote-edit");
+      const box = el("textarea");
+      box.value = noteOf(s) || "";
+      box.placeholder = `what you know about ${s.alias}`;
+      box.setAttribute("aria-label", `note on ${s.alias}`);
+      edit.append(box, el("span", "hint", "Ctrl+Enter or click away to save · Esc to cancel · empty to delete"));
+      edit.addEventListener("click", (ev) => ev.stopPropagation());
+      line.replaceWith(edit);
+      pen.setAttribute("aria-pressed", "true");
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+      box.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") { ev.stopPropagation(); close(); }
+        else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); save(box); }
+      });
+      box.addEventListener("blur", () => save(box));
+    });
+    return line;
   }
 
   // ----------------------------------------------------------------- start --

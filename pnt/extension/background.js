@@ -84,6 +84,14 @@ const handlers = {
       body: JSON.stringify({ flagged: !!flagged }),
     }),
 
+  // A card's ✎: what you know about a player, written at the table. Empty clears it.
+  playerNote: ({ alias, note }) =>
+    call(`/players/${encodeURIComponent(alias)}/note`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ note: String(note ?? "") }),
+    }),
+
   // The content script reports here -- counters, status text, and the HUD and
   // live payloads -- and the side panel and settings page read it back.
   status: async (msg, sender) => {

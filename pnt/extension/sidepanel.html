@@ -47,6 +47,19 @@
   .who .name small { color: #898781; font-weight: 400; margin-left: 3px; font-size: 10px; }
   .who .pos { color: #c3c2b7; margin-left: auto; }
   .who .stack { color: #fff; }
+  /* Your note on the player: the one line on the card no log could have written.
+     The ✎ stays faint until the card is hovered or there is a note to edit. */
+  .who .pen { padding: 0 3px; font-size: 10px; color: #898781; opacity: .35; }
+  .card:hover .who .pen, .who .pen[aria-pressed="true"] { opacity: 1; }
+  .pnote { margin-top: 3px; padding-left: 6px; border-left: 2px solid #3987e5; color: #e8e6dc;
+    white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; overflow: hidden; }
+  .pnote:empty { display: none; }
+  .pnote-edit { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; cursor: auto; }
+  .pnote-edit textarea { box-sizing: border-box; width: 100%; min-height: 3.4em; resize: vertical; font: inherit;
+    color: #fff; background: #1a1a19; border: 1px solid #383835; border-radius: 5px; padding: 3px 5px; }
+  .pnote-edit textarea:focus { outline: none; border-color: #3987e5; }
+  .pnote-edit .hint { color: #898781; font-size: 9px; }
   .card.act .name { color: #ffd166; }
   .card.act .name::before { content: "▶ "; font-size: 8px; }
 
@@ -83,6 +96,7 @@
   .grid th.group { color: #c3c2b7; text-align: center; font-weight: 400; padding-bottom: 0; }
   .grid th:first-child, .grid td:first-child { text-align: left; }
   .grid td.name { font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .grid td.name.noted { text-decoration: underline dotted #898781; text-underline-offset: 2px; }
   .grid td.name small { color: #898781; font-weight: 400; margin-left: 3px; font-size: 9px; }
   .grid td small.life { color: #898781; margin-left: 3px; font-size: 9px; }
   .grid td .drift { color: #86b6ef; }
