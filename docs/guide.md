@@ -129,6 +129,32 @@ No string comparison finds those. Only someone who was at the table knows, so th
 page lays out the IDs, names, hand counts and dates, shows exactly what a merge
 will move *before* you confirm it, and then offers an undo.
 
+### Player notes
+
+Some reads never show up in a stat: "tanks then jams with air", "tilts after a
+lost all-in", "this is Sam's brother". Write them on the player. Open their row on
+the players page and type in the box under **rename**; Ctrl+Enter or clicking away
+saves it, and an emptied box deletes it. The same note is under the Player dropdown
+on the chart page, with a ✎ to edit it where it stands, and a 📝 beside the name on
+the stats table holds it as a tooltip. At the table it is under the player's name on
+their HUD card, and the ✎ beside the name edits it there. In the compact table, the
+name is underlined and the note is its tooltip.
+
+```bash
+pnt player-note henry "tanks then jams with air; never folds a river"
+pnt player-note henry           # read it back
+pnt player-note henry --clear
+pnt player-note                 # every note so far
+```
+
+The note belongs to the person, not to one PokerNow ID, so it follows them to a
+second device once you merge the two. A merge keeps both notes: the merged-away
+player's note is added to the end of the other's, after a `— ` line. Nothing else
+loses one either: `pnt alias import` hands the note of a player it empties to
+whoever now holds the IDs, and deleting a game never removes a player you have
+written about. Notes are not in `aliases.csv`, so they stay in the database.
+`POST /players/{alias}/note` writes one, and `/players` and `/hud/{game}` return them.
+
 ## Stats
 
 `pnt stats` lists every player, most hands first. It prints `--`, not `0`, when a
@@ -455,6 +481,11 @@ shows up on two players' reviews, is marked once and noted once. They survive
 The two are independent. Unticking a hand you want to look at again keeps what you
 wrote about it, and a note on a hand you have *not* finished with ("check the turn
 sizing here") is the ordinary case. Writing a note again replaces it.
+
+There are two kinds of note. A hand note, the ✎ beside a row, is about one hand: it
+is on every list of the chart, including the hands you open by clicking a cell. A
+[player note](#player-notes) is about the person, and sits under their name on the
+players page, the chart and the HUD.
 
 ### Flagging hands yourself
 
