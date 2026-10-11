@@ -463,3 +463,166 @@ def test_trips_is_still_the_board_texture(hu):
 def test_bad_terms_are_rejected(term, message):
     with pytest.raises(ValueError, match=message):
         parse_filter(term)
+
+
+# --- the whole street: `seq` and the action terms ------------------------------
+
+
+def test_sequences_on_the_fixture_hands(hu):
+    """Both rows of each pinned hand: the same street, each from its own seat."""
+    assert hu[2][CHRIS].seq == {"flop": "xX", "turn": "xX", "river": "bF"}
+    assert hu[2][GP].seq == {"flop": "Xx", "turn": "Xx", "river": "Bf"}
+    assert hu[10][CHRIS].seq == {"flop": "bC", "turn": "bF"}
+    assert hu[10][GP].seq == {"flop": "Bc", "turn": "Bf"}
+    assert hu[12][CHRIS].seq == {"flop": "xBc", "turn": "xX", "river": "xBf"}
+    assert hu[12][GP].seq == {"flop": "XbC", "turn": "Xx", "river": "XbF"}
+    assert hu[92][CHRIS].seq == {"flop": "xBrC", "turn": "bC", "river": "bRc"}
+    assert hu[92][GP].seq == {"flop": "XbRc", "turn": "Bc", "river": "BrC"}
+
+
+def test_facing_a_check_raise_on_the_fixtures(hu):
+    chris, gp = hu[92][CHRIS], hu[92][GP]
+    assert chris.faced_check_raise == {"flop": True} and chris.faced_check_raise_action == {"flop": "call"}
+    assert gp.faced_check_raise == {} and gp.check_raise == {"flop": True}
+    assert hu[12][CHRIS].faced_check_raise == {}, "gp checked and called: no raise"
+
+
+def test_hand_list_rows_carry_the_sequence(hu):
+    assert hand_list([hu[92][CHRIS]])[0]["seq"] == {"flop": "xBrC", "turn": "bC", "river": "bRc"}
+
+
+#: Three-way, 30 in the middle. A and B check, C bets 15, A calls, B check-raises
+#: to 60 -- C's bet, check-raised by a player who was not first to act -- C calls
+#: and A folds.
+CHECK_RAISED = _hand(
+    ["A", "B", "C"],
+    [
+        ("preflop", "A", "post", 5), ("preflop", "B", "post", 10),
+        ("preflop", "C", "call", 10), ("preflop", "A", "call", 5), ("preflop", "B", "check", 0),
+        ("flop", "A", "check", 0), ("flop", "B", "check", 0), ("flop", "C", "bet", 15, 15),
+        ("flop", "A", "call", 15, 15), ("flop", "B", "raise", 60, 60), ("flop", "C", "call", 45, 60),
+        ("flop", "A", "fold", 0),
+    ],
+    board=("9c", "8d", "2h"),
+)
+
+
+def test_a_multiway_street_from_each_seat():
+    f = {x.pn_id: x for x in derive(CHECK_RAISED)}
+    assert f["C"].seq == {"flop": "xxBcrCf"}
+    assert f["A"].seq == {"flop": "XxbCrcF"}
+    assert f["B"].seq == {"flop": "xXbcRcf"}
+    assert f["C"].faced_check_raise == {"flop": True}
+    assert f["C"].faced_check_raise_action == {"flop": "call"}
+    assert f["B"].check_raise == {"flop": True}
+    assert f["A"].faced_check_raise == {}, "A called the bet; the check-raise is the bettor's to face"
+
+    assert parse_filter("action_flop=xxBcr*,faced_check_raise_flop=call,line_flop=bc")(f["C"])
+    assert parse_filter("action_flop=*R*,check_raise_flop")(f["B"])
+    # The three-way hand from above: B bet, C called, and A check-raised over it.
+    g = {x.pn_id: x for x in derive(THREE_WAY)}
+    assert g["B"].seq["flop"] == "xBcrFc" and g["B"].faced_check_raise_action == {"flop": "fold"}
+    assert parse_filter("faced_check_raise_flop=fold,action_flop=xBcrF*")(g["B"])
+    assert "flop" in g["B"].seq and "turn" not in g["B"].seq, "folded the flop: out of the turn"
+    assert g["A"].seq["turn"] == "Bf" and g["C"].seq["turn"] == "bF"
+
+
+def test_an_all_in_player_keeps_watching():
+    """C is all in preflop. A and B play on: C's rows are their letters alone, with
+    no line. The turn checks through and A folds the river."""
+    hand = _hand(
+        ["A", "B", "C"],
+        [
+            ("preflop", "A", "post", 5), ("preflop", "B", "post", 10), ("preflop", "C", "raise", 50, 50),
+            ("preflop", "A", "call", 45), ("preflop", "B", "call", 40),
+            ("flop", "A", "check", 0), ("flop", "B", "bet", 30, 30), ("flop", "A", "call", 30, 30),
+            ("turn", "A", "check", 0), ("turn", "B", "check", 0),
+            ("river", "A", "check", 0), ("river", "B", "bet", 40, 40), ("river", "A", "fold", 0),
+        ],
+        board=("9c", "8d", "2h", "Kc", "5s"),
+    )
+    hand.actions[2].all_in = True
+    f = {x.pn_id: x for x in derive(hand)}
+    assert f["C"].seq == {"flop": "xbc", "turn": "xx", "river": "xbf"}
+    assert f["C"].line == {}
+    assert parse_filter("action=*//*b*,line_flop=-")(f["C"])
+    assert f["A"].seq == {"flop": "XbC", "turn": "Xx", "river": "XbF"}
+
+
+def test_a_run_out_is_an_empty_street():
+    """Both all in preflop: nobody acts on a dealt board, and each street is ''."""
+    hand = _hand(
+        ["A", "B"],
+        [
+            ("preflop", "A", "post", 5), ("preflop", "B", "post", 10),
+            ("preflop", "A", "raise", 95, 100), ("preflop", "B", "call", 90),
+        ],
+        board=("9c", "8d", "2h", "Kc", "5s"),
+    )
+    hand.actions[2].all_in = hand.actions[3].all_in = True
+    for f in derive(hand):
+        assert f.seq == {"flop": "", "turn": "", "river": ""}
+        assert parse_filter("action_river=*")(f)
+        assert not parse_filter("action_river=-")(f) and not parse_filter("action_river=?*")(f)
+
+
+def test_sequence_invariants(every_hand):
+    """Every seq projects onto the line, and heads-up the two rows are mirrors."""
+    mirrored = 0
+    for hand in every_hand:
+        facts = derive(hand)
+        for f in facts:
+            assert f.line.keys() <= f.seq.keys()
+            assert f.faced_check_raise_action.keys() <= f.faced_check_raise.keys()
+            for s, seq in f.seq.items():
+                assert re.fullmatch(r"[xbcrfXBCRF]*", seq), seq
+                assert "".join(ch for ch in seq if ch.isupper()).lower() == f.line.get(s, "")
+                if f.faced_check_raise.get(s):
+                    assert "b" in f.line[s]
+                    assert any(o.check_raise.get(s) for o in facts if o is not f)
+        for s in STREETS:
+            rows = [f.seq[s] for f in facts if s in f.seq]
+            assert len({len(r) for r in rows}) <= 1, "one street, one sequence"
+            assert len(rows) != 1, "a street is played by two or more"
+            if len(rows) == 2:
+                mirrored += 1
+                assert rows[0] == rows[1].swapcase()
+    assert mirrored > 500
+
+
+def test_action_terms(hu):
+    chris, gp = hu[92][CHRIS], hu[92][GP]
+    for term in (
+        "action_flop=xBrC", "action_flop=*Br*", "action_flop=?B??", "action=xBrC/bC/bRc",
+        "action=*Br*//*R*", "action_river=b?c", "faced_check_raise", "faced_check_raise_flop",
+        "faced_check_raise_flop=call", "action_turn!=B*",
+    ):
+        assert parse_filter(term)(chris), term
+    for term in ("action_flop=xbrc", "action_flop=XbRc", "action_flop=xBr", "faced_check_raise_flop=fold"):
+        assert not parse_filter(term)(chris), term
+    assert parse_filter("action_flop=XbRc")(gp), "case says whose action it was"
+    assert not parse_filter("faced_check_raise")(gp)
+
+    assert parse_filter("action_river=-")(hu[10][CHRIS]), "no river: not in it"
+    assert not parse_filter("action_river=*")(hu[10][CHRIS])
+    assert parse_filter("action_river!=*")(hu[10][CHRIS])
+    # Line patterns take ? too, and still forgive case.
+    assert parse_filter("line_flop=?c,line_flop=??,line_flop=?C")(hu[12][GP])
+    assert not parse_filter("line_flop=?")(hu[12][GP])
+
+
+@pytest.mark.parametrize(
+    "term, message",
+    [
+        ("action_flop=xBq", "bad action pattern"),
+        ("action_flop=", "bad action pattern"),
+        ("action=", "bad action"),
+        ("action=x/x/x/x", "bad action"),
+        ("faced_check_raise_flop=maybe", "unknown answer"),
+        ("action_preflop=x", "unknown filter term"),
+        ("line_flop=x!", "bad line pattern"),
+    ],
+)
+def test_bad_action_terms_are_rejected(term, message):
+    with pytest.raises(ValueError, match=message):
+        parse_filter(term)

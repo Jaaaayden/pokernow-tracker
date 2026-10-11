@@ -651,8 +651,10 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
                 "vpip": f.vpip,
                 "saw_flop": f.saw_flop,
                 "bet_size": dict(f.bet_size),
-                # Their own actions per postflop street, `xc` and the like.
+                # Their own actions per postflop street, `xc` and the like, and the
+                # whole street from their seat, theirs in capitals: `xBrF`.
                 "line": dict(f.line),
+                "seq": dict(f.seq),
                 # Who the hand was against, and whether they closed the action.
                 # `position` above is the absolute seat and stays in the payload;
                 # the drill-down shows `ip` instead. See SPEC.md.
@@ -705,6 +707,7 @@ def sat_out_list(
                 "saw_flop": h.saw_flop,
                 "bet_size": {},
                 "line": {},
+                "seq": {},
                 "ip": None,
                 "pos_order": None,
                 "pos_players": None,

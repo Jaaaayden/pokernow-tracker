@@ -353,8 +353,9 @@ action: `x` check, `b` bet, `c` call, `r` raise, `f` fold. `xc` is a check-call,
 | **fold_street** | The street of their voluntary fold, preflop included | `None` when they never folded |
 
 Lines are filters: `line_flop=xc` is exactly that line; `*` stands for any run of
-letters, none included, so `line_flop=x*` is every flop that started with a check
-and `line_river=*r` every river that ended on a raise. `-` alone is "did not act".
+letters, none included, and `?` for exactly one, so `line_flop=x*` is every flop
+that started with a check, `line_river=*r` every river that ended on a raise and
+`line_turn=?c` a call as their second action. `-` alone is "did not act".
 Any other pattern needs them to have acted, so `line_turn=*` is "acted on the
 turn". `line_flop!=x*` is the exact opposite of `line_flop=x*`, so it keeps the
 hands that never saw a flop as well.
@@ -363,6 +364,49 @@ hands that never saw a flop as well.
 left off the end, matches anything, not acting included: `line=xc//b*` is a flop
 check-call, any turn, and a river they bet. `check_raise`, `check_raise_<street>`
 and `check_raise_<street>_opp` are flags. A row from `hand_list` carries `line`.
+Line patterns forgive case.
+
+### The whole street
+
+A line is one player's half of the street. The other half, what was done *to*
+them, is the sequence: every voluntary action on the street, everyone's, in order,
+written from one seat.
+
+| Fact | Definition | Notes |
+|---|---|---|
+| **seq[street]** | Every voluntary action on that postflop street in order, the player's own as `X B C R F` and everyone else's as `x b c r f` | A key for every street the player was still in when it began -- see below. Dropping the lower-case letters and lower-casing the rest gives `line[street]`, or `""` where there is no line |
+| **faced_check_raise[street]** | They made the street's bet, and a player who had checked earlier on the street raised | The other side of `check_raise`. A raise over someone else's raise counts, if the raiser had checked: `xBrr` is a check-reraise, and still at them |
+| **faced_check_raise_action[street]** | Their next action after it: `fold`, `call` or `raise` | No key when they never acted again (all in on the bet). The check-raiser sat in front of them, so nothing of theirs comes between |
+
+Heads-up villain checks, hero bets, villain check-raises, hero folds: hero's row is
+`xBrF` and villain's `XbRf`, each the other with the case swapped. Three-handed it
+reads the same way, `xxBcr` from the bettor's seat.
+
+**Which streets get a key.** A street was played when its board was dealt, or when
+anyone acted on it (a log cut mid-street), and two or more players were still in
+when it began. Every player still in gets a key, whether or not they act on it:
+
+- A player **all in** from an earlier street has a row of the others' lower-case
+  letters alone, and no `line`. They were in the pot, and what the others did is
+  what happened to it.
+- A street **nobody acted on** -- the run-out after an all-in -- is `""` for
+  everyone still in, not a missing key. They were in it and nothing happened.
+- A player who **folded on an earlier street**, or a hand that ended before the
+  street was dealt, has no key. That is what `-` matches.
+
+Sequences are filters, and **case-sensitive**, unlike lines: a capital is this
+player's action, lower case anyone else's, so `action_flop=xB*` (they bet after a
+check) and `action_flop=Xb*` (they checked and someone bet) are two seats of one
+street. `*` is any run, `?` exactly one action, `-` alone "not in the hand on that
+street". `action_flop=*Br*` is "they bet and were raised", at any point and by
+anyone; `action_flop=xBrF` is the heads-up check-raise they folded to, and
+`action_flop=?B*` a bet with exactly one player checking in front. `action_flop=*` is "in the hand on the
+flop", the run-out included. `action=F/T/R` reads the three streets at once with
+the same segment rules as `line=`, and `!=` is the exact complement, as for lines.
+
+`faced_check_raise_<street>` and `faced_check_raise` are flags, and
+`faced_check_raise_flop=fold` (`call`, `raise`) is the answer. A row from
+`hand_list` carries `seq`.
 
 ### Raise sizes
 
@@ -1201,3 +1245,14 @@ archaeology.
 32. **`line_<street>!=` is the exact complement of `=`.** Not acting is a value,
     `-`, so a hand that never reached the street matches every `!=` pattern
     except `-`. Pair it with `line_<street>=*` to mean "acted, and not like this".
+    `action_` reads the same way.
+33. **An all-in player keeps a `seq` on the streets after their all-in**, of the
+    others' letters alone, and an unplayed run-out is `""` rather than no key.
+    The sequence answers "what happened on this street while they were in the
+    pot", and an all-in player is in the pot; "-" is kept for the players who
+    were not. A street with fewer than two players still in has no key for
+    anyone: the hand was over before it, whatever the board record says.
+34. **`faced_check_raise` belongs to the bettor alone.** Whoever raised the bet
+    before the check-raise also had it come over the top of them, but their
+    raise was already an answer to a bet, and "we bet, they check-raised" is
+    the spot the term names. The raiser's view is in their `seq`: `xbR*r`.

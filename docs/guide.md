@@ -219,7 +219,15 @@ a street that checked through. `check_raise_flop` is a check-raise, and
 `x` check, `b` bet, `c` call, `r` raise, `f` fold. `line_flop=xc` is a flop
 check-call, `*` matches any run (`line_turn=x*` checked first), and `-` is "did not
 act". `line=xc//b*` reads flop/turn/river at once, an empty street matching
-anything. Put `!` in front of any flag to negate it: `!cbet_flop`.
+anything, and `?` matches exactly one action. Put `!` in front of any flag to
+negate it: `!cbet_flop`.
+
+**The whole street**, everyone's actions in order, is `action_flop=`: the player's
+own actions in capitals, everyone else's in lower case. Unlike `line_`, **case
+matters**. `action_flop=xBrF` is "they checked to me, I bet, they check-raised, I
+folded"; `action_flop=*Br*` is any flop where I bet and got raised. `action=` takes
+flop/turn/river like `line=`. `faced_check_raise_flop` is "I bet and got
+check-raised", and `faced_check_raise_flop=fold` what I did about it.
 
 **All-ins**, preflop included: `jam` / `jam_river` (bet or raised all in),
 `faced_jam` / `faced_jam_turn`, and `called_jam` / `called_jam_preflop`.

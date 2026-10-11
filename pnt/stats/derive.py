@@ -239,6 +239,16 @@ class Facts:
     check_raise_opp: dict[str, bool] = field(default_factory=dict)
     #: The street of their voluntary fold, preflop included; None if they never folded.
     fold_street: str | None = None
+    #: Every voluntary action on each postflop street, everyone's, in order and
+    #: from this player's seat: their own in capitals (`X B C R F`), the others'
+    #: in lower case. `xBrF` is: checked to, bet, check-raised, folded. A key for
+    #: every street they were still in when it began, even with nothing of their
+    #: own on it. See SPEC.md, "The whole street".
+    seq: dict[str, str] = field(default_factory=dict)
+    #: They made the street's bet, and a player who had checked to them raised.
+    faced_check_raise: dict[str, bool] = field(default_factory=dict)
+    #: What they did next: one of ANSWERS. No key when they never acted again.
+    faced_check_raise_action: dict[str, str] = field(default_factory=dict)
     #: Chips in the middle when each postflop street was dealt, for the streets
     #: that were: forced posts included, capped at `pot`. Same for everyone.
     pot_at: dict[str, int] = field(default_factory=dict)
@@ -355,6 +365,10 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         put: dict[str, int] = {}
         top = 0
         latest: tuple[float, str] | None = None
+        # Each actor's line so far, and who made the street's one bet: what a
+        # check-raise is read from.
+        lines: dict[str, str] = {}
+        bettor: str | None = None
 
         for i, a in enumerate(street_actions):
             # --- shared street state first, for every actor: a player missing
@@ -375,6 +389,21 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 latest = sized
             put[a.pn_id] = put.get(a.pn_id, 0) + a.amount
             top = max(top, put[a.pn_id])
+
+            # A check-raise against the street's bettor, and the bettor's answer:
+            # their next action. The check-raiser checked in front of them, so it
+            # always comes before the bettor acts again.
+            prior = lines.get(a.pn_id, "")
+            lines[a.pn_id] = prior + LINE_CODE.get(a.kind, "")
+            if a.kind == "bet":
+                bettor = a.pn_id
+            b = facts.get(bettor) if bettor is not None else None
+            if b is not None and a.pn_id == bettor:
+                if street in b.faced_check_raise and street not in b.faced_check_raise_action:
+                    if a.kind in ANSWERS:
+                        b.faced_check_raise_action[street] = a.kind
+            elif b is not None and a.kind == "raise" and prior == "x":
+                b.faced_check_raise[street] = True
 
             f = facts.get(a.pn_id)
             if f is None:
@@ -479,6 +508,32 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
             facts[last.pn_id].check_back[street] = True
 
         prev_aggressor = street_aggressor
+
+
+def _sequences(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Each street's voluntary actions, everyone's, written from each seat.
+
+    A street was played when its board was dealt, or when anyone acted on it (a
+    log cut mid-street), and at least two players were still in at its start: a
+    hand everyone folded to is over, even if a board stands in the record. Every
+    player still in gets a key, an all-in player included -- their row is the
+    others' letters alone -- and a street nobody acted on, an all-in run-out, is
+    an empty string rather than no key: they were in it and nothing happened.
+    """
+    folded = {a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"}
+    for street in POSTFLOP_STREETS:
+        acts = [
+            a for a in hand.actions
+            if a.street == street and not a.is_forced and a.kind in LINE_CODE
+        ]
+        live = [pid for pid in facts if pid not in folded]
+        if (not acts and board_at(hand.board, street) is None) or len(live) < 2:
+            break
+        for pid in live:
+            facts[pid].seq[street] = "".join(
+                LINE_CODE[a.kind].upper() if a.pn_id == pid else LINE_CODE[a.kind] for a in acts
+            )
+        folded |= {a.pn_id for a in acts if a.kind == "fold"}
 
 
 def _answer(bettor: str, after: list[HandAction]) -> str | None:
@@ -653,6 +708,7 @@ def derive(hand: HandRow) -> list[Facts]:
 
     aggressor = _preflop(hand, facts)
     _postflop(hand, facts, aggressor)
+    _sequences(hand, facts)
     _jams(hand, facts)
     _table(hand, facts)
 

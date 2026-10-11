@@ -151,6 +151,7 @@ def test_filter_vocabulary_covers_every_term():
     import re
 
     from pnt.stats.filters import (
+        ACTION_TERMS,
         ANSWERED,
         DECIDED,
         FLAGS,
@@ -168,7 +169,7 @@ def test_filter_vocabulary_covers_every_term():
             parse_filter(example)  # every example is a working filter
             for s in STREETS:
                 documented.add(re.split(r"[!<>=]", term.replace("<street>", s), maxsplit=1)[0])
-    for key in [*FLAGS, *NUMERIC, *SIZED, *ANSWERED, *LINE_TERMS, *MADE_TERMS]:
+    for key in [*FLAGS, *NUMERIC, *SIZED, *ANSWERED, *LINE_TERMS, *ACTION_TERMS, *MADE_TERMS]:
         assert key in documented, f"{key} is missing from filters.VOCABULARY"
     assert any(term.startswith("!") for _, terms in VOCABULARY for term, _, _ in terms), "!flag"
     # The decision family is documented as one `<spot>=DECISION` row; every spot it

@@ -84,14 +84,16 @@
   // --- Templates. A vocabulary term is literals and parameter slots:
   // `cbet_<street>=SIZE` is "cbet_", street, "=", SIZE. A trailing `>=N` is an
   // operator slot then a number, since every comparison takes any operator.
-  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|MADE|ANSWER|FLAG)/;
+  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|ANSWER|FLAG)/;
   const OP_WORDS = { ">=": "at least", "<=": "at most", "=": "exactly", ">": "more than", "<": "less than" };
   const PICK = {
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
-    LINE: "type a line: x check, b bet, c call, r raise, f fold, * any run, - did not act; / between streets",
-    MADE: "pick a made hand", ANSWER: "pick what the bet got", FLAG: "pick a flag to negate",
+    LINE: "type a line: x check, b bet, c call, r raise, f fold, * any run, ? one action, - did not act; / between streets",
+    SEQ: "type the street, everyone in order: THEIR OWN in capitals (X B C R F), everyone else's in lower case;"
+      + " * any run, ? one action, - not in the hand; case matters here",
+    MADE: "pick a made hand", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
   };
 
   function segments(term) {
@@ -319,7 +321,8 @@
     put("POS", vocab.positions.join("  "));
     put("SIZE", Object.entries(vocab.sizes).map(([k, d]) => `${k} (${d})`).join("  "));
     put("TEXTURE", vocab.textures.join("  "));
-    put("LINE", "x check  b bet  c call  r raise  f fold  * any run  - did not act;  line= takes flop/turn/river");
+    put("LINE", "x check  b bet  c call  r raise  f fold  * any run  ? one action  - did not act;  line= takes flop/turn/river");
+    put("SEQ", "as LINE, everyone's actions in order: theirs X B C R F, others' x b c r f (case-sensitive)  - not in the hand");
     put("MADE", Object.keys(vocab.made).join("  "));
     put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");

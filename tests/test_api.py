@@ -641,10 +641,10 @@ def test_sat_out_lists_the_rest_of_the_session(client):
     assert len(mine) == 20
     assert [h["ts"] for h in away] == sorted((h["ts"] for h in away), reverse=True)
     assert set(mine[0]) <= set(away[0]), "a sat-out row carries every key a hand row does"
-    assert any(h["line"] for h in mine)
+    assert any(h["line"] for h in mine) and any(h["seq"] for h in mine)
     for h in away:
         assert h["sat_out"] and h["hole_cards"] is None and h["net_bb"] is None
-        assert h["line"] == {}
+        assert h["line"] == {} and h["seq"] == {}
         assert "chugnuts" not in h["vs"] and len(h["vs"]) == h["players"]
         assert {"reviewed", "note"} <= set(h)
     # Whoever came out ahead, by how much: the final hand's 2,934 pot went to genericpoker.
