@@ -565,6 +565,11 @@ board and never a set; a set is `made_flop=set`.
 So `made_turn>=two_pair` is two pair or better, `made_flop>=pair` any pair or
 better, and `made_river<pair` the draws and air.
 
+**`=` and `!=` take several names joined by `|`**, matching any of them:
+`made_flop=set|full_house|flush` is the hands that flopped one of the three, which
+no single span says, since `two_pair` sits between them and the pairs. A
+comparison takes one name: "at least a set or a flush" is not a question.
+
 A `made_<street>` term matches only when the cards are known, the board reached
 that street, and the player had not folded on an earlier one. Every operator,
 `!=` included, makes a claim about a holding, so an unknown one matches none of

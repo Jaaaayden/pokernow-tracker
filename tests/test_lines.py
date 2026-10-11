@@ -430,6 +430,32 @@ def test_made_terms(hu):
     assert not parse_filter("made_flop!=set")(hu[10][CHRIS]), "an unknown holding matches nothing"
 
 
+def test_made_terms_take_several(hu):
+    """`=` and `!=` take several names joined by `|`, matching any of them."""
+    chris = hu[92][CHRIS]  # middle pair on the flop, trips on the turn
+    assert parse_filter("made_flop=set|middle_pair")(chris)
+    assert parse_filter("made_flop=draw|pair")(chris), "a group joins like a leaf"
+    assert parse_filter("made_turn=set|trips|full_house")(chris)
+    assert not parse_filter("made_turn=set|full_house")(chris)
+    assert not parse_filter("made_flop!=set|pair")(chris)
+    assert parse_filter("made_flop!=set|flush")(chris)
+    assert parse_filter("made=TRIPS|Set")(chris), "names forgive case"
+    assert not parse_filter("made_flop=set|middle_pair")(hu[10][CHRIS]), "unknown cards: nothing"
+
+
+def test_several_made_hands_are_their_union(every_hand):
+    """`a|b|c` matches exactly the hands one of `a`, `b` and `c` matches."""
+    names = ("set", "full_house", "flush", "pair", "draw")
+    union = parse_filter("made_flop=" + "|".join(names))
+    each = [parse_filter(f"made_flop={n}") for n in names]
+    seen = 0
+    for hand in every_hand:
+        for f in derive(hand):
+            assert union(f) == any(p(f) for p in each)
+            seen += union(f)
+    assert seen > 0
+
+
 def test_trips_is_still_the_board_texture(hu):
     """`flop=trips` is three of a rank on the flop; the holding is `made_flop=trips`."""
     chris = hu[92][CHRIS]  # the turn pairs the board: trips in hand, not on the board
@@ -452,6 +478,8 @@ def test_trips_is_still_the_board_texture(hu):
         ("line=//", "bad line"),
         ("made_flop=sets", "unknown made hand"),
         ("made=", "unknown made hand"),
+        ("made_flop=set|", r"a \| needs a made hand on each side"),
+        ("made_flop>=set|flush", "only = and != take several"),
         ("bet_answer_flop=maybe", "unknown answer"),
         ("faced_bet_flop=huge", "unknown bet size"),
         ("raised_bet_river=huge", "unknown bet size"),

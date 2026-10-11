@@ -124,6 +124,9 @@
   };
   const allStreets = (t) => !t.segs.some((s) => s.slot === "street");
   function pickText(t, kind) {
+    if (kind === "MADE" && t.segs.some((s, j) => s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[j - 1]?.lit ?? ""))) {
+      return "pick a made hand; after one, click more to match any of them";
+    }
     if (!PATTERN_HINT[kind]) return PICK[kind];
     const where = allStreets(t) ? "each street, flop/turn/river split by / (empty = any)" : "that street";
     return "type " + PATTERN_HINT[kind].replace("{where}", where);
@@ -178,14 +181,29 @@
         continue;
       }
       const opts = options(s.slot);
-      const inSlot = { state: "slot", i, at: pos, partial: rest };
-      if (!opts) return inSlot; // a number or a hand: the rest of the term is the value
+      if (!opts) return { state: "slot", i, at: pos, partial: rest }; // a number or a hand: the rest is the value
       const vals = opts.map(([v]) => v.toLowerCase());
-      // `>` could still become `>=`, and `UTG` `UTG+1`: stay in the slot.
-      if (vals.some((v) => v.startsWith(low) && v !== low)) return inSlot;
-      const hit = vals.filter((v) => low.startsWith(v)).sort((a, b) => b.length - a.length)[0];
-      if (hit == null) return s.slot === "NAME" ? inSlot : FAIL; // a name not seen yet is still a name
-      pos += hit.length;
+      // After a plain `=` or `!=` a made hand takes several, `made_flop=set|flush`,
+      // so the slot runs on past each one. `from` is where the first one starts.
+      const many = s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[i - 1]?.lit ?? "");
+      const from = pos;
+      for (;;) {
+        const piece = frag.slice(pos);
+        const low = piece.toLowerCase();
+        const inSlot = { state: "slot", i, at: pos, from, partial: piece };
+        // A finished one at the end of the term -- `flush` too, though `flush_draw`
+        // starts with it: stay open, so a click adds the next and typing runs on.
+        if (many && i === t.segs.length - 1 && vals.includes(low)) {
+          return { state: "slot", i, at: frag.length, from, partial: "", more: true };
+        }
+        // `>` could still become `>=`, and `UTG` `UTG+1`: stay in the slot.
+        if (vals.some((v) => v.startsWith(low) && v !== low)) return inSlot;
+        const hit = vals.filter((v) => low.startsWith(v)).sort((a, b) => b.length - a.length)[0];
+        if (hit == null) return s.slot === "NAME" ? inSlot : FAIL; // a name not seen yet is still a name
+        pos += hit.length;
+        if (!many || frag[pos] !== "|") break;
+        pos += 1;
+      }
     }
     return pos === frag.length ? { state: "complete" } : FAIL;
   }
@@ -384,10 +402,15 @@
 
   function renderSlot(frag, t, m) {
     const kind = t.segs[m.i].slot;
-    const before = frag.slice(0, m.at);
+    // Made hands already in the term (`set|flush|…`) are not offered again, and
+    // once one is finished a click joins the next with `|`.
+    const chosen = m.from == null ? [] : frag.slice(m.from, m.at).toLowerCase().split("|").filter(Boolean);
+    const before = frag.slice(0, m.at) + (m.more ? "|" : "");
     const top = el("div", null, "fh-slot-head");
-    if (before) top.append(el("code", before), " — ");
-    top.append(pickText(t, kind));
+    if (before) top.append(el("code", before.replace(/\|$/, "")), " — ");
+    top.append(m.more
+      ? "click another made hand to add it (a hand matches if it made any of them), or type a comma for the next term"
+      : pickText(t, kind));
     const box = el("div", null, "fh-opts");
     const opts = options(kind);
     // Case matters in an action sequence, so its patterns narrow by exact prefix.
@@ -405,7 +428,8 @@
       box.append(el("span", kind === "NAME" ? "type a player's name, as on the players page" : "then a comma for the next term", "fh-hint"));
     } else {
       const p = m.partial.toLowerCase();
-      const shown = opts.filter(([v]) => (kind === "NAME" ? v.toLowerCase().includes(p) : v.toLowerCase().startsWith(p)));
+      const shown = opts.filter(([v]) => (kind === "NAME" ? v.toLowerCase().includes(p) : v.toLowerCase().startsWith(p)))
+        .filter(([v]) => !chosen.includes(v.toLowerCase()));
       for (const [v, d] of shown) {
         const b = el("button", v);
         b.type = "button";

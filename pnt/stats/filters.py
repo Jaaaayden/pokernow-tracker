@@ -275,9 +275,12 @@ def _street_matcher(pattern: str, kind: str) -> Callable[[str | None], bool]:
             else "X B C R F for their own actions, x b c r f for everyone else's"
         )
         missing = "did not act" if kind == "line" else "not in the hand on that street"
+        start = "xc*" if kind == "line" else "xB*"
         raise ValueError(
-            f"bad {kind} pattern {pattern!r}: use {hint}, * (any run) and ? (one action), "
-            f"or - ({missing})"
+            f"bad {kind} pattern {pattern!r}: use {hint}. Two wildcards: * stands for any "
+            f"number of actions, none included ({start} is {start[:-1]} then anything), and ? "
+            f"for exactly one ({start[:-1]}? is {start[:-1]} then one more action). - on its own "
+            f"means {missing}"
         )
     rx = re.compile("".join({"*": ".*", "?": "."}.get(ch, ch) for ch in pattern))
     return lambda value: value is not None and rx.fullmatch(value) is not None
@@ -353,6 +356,22 @@ def _made_leaf(f: Facts, street: str | None) -> str | None:
     return None if mh is None else leaf_of(mh)
 
 
+def _made_test(op: str, names: list[str]) -> Callable[[int], bool]:
+    """The test on a leaf's rank that `op` and `names` make. `names` is one name,
+    or several for `=` and `!=`, each a leaf or a group's span."""
+    spans = [[_LEAF_RANK[x] for x in _made_names(n)] for n in names]
+    members = frozenset(r for s in spans for r in range(min(s), max(s) + 1))
+    lo, hi = min(spans[0]), max(spans[0])  # the strongest member, and the weakest
+    return {
+        "=": lambda r: r in members,
+        "!=": lambda r: r not in members,
+        ">=": lambda r: r <= hi,
+        ">": lambda r: r < lo,
+        "<=": lambda r: r >= lo,
+        "<": lambda r: r > hi,
+    }[op]
+
+
 def _made_term(term: str) -> Predicate | None:
     """`made_flop=set`, `made_turn>=two_pair`, `made_river<pair`, `made=flush`.
 
@@ -360,6 +379,11 @@ def _made_term(term: str) -> Predicate | None:
     span: `>=pair` is a pair or better, `<pair` weaker than every pair -- the
     draws and high card. `!=` and every comparison need a known hand on that
     street, like every claim about a holding.
+
+    `=` and `!=` take several names joined by `|`, any of them:
+    `made_flop=set|flush|full_house` is the hands that flopped one of the three,
+    which no single span says. A comparison takes one name, since "at least set
+    or flush" is not a question.
     """
     for name in MADE_TERMS:
         if not term.startswith(name):
@@ -368,17 +392,15 @@ def _made_term(term: str) -> Predicate | None:
         op = next((o for o in ("!=", ">=", "<=", "=", ">", "<") if rest.startswith(o)), None)
         if op is None:
             continue
-        leaves = _made_names(rest[len(op):].strip().lower())
-        ranks = [_LEAF_RANK[x] for x in leaves]
-        lo, hi = min(ranks), max(ranks)  # the strongest member, and the weakest
-        test: Callable[[int], bool] = {
-            "=": lambda r: lo <= r <= hi,
-            "!=": lambda r: not lo <= r <= hi,
-            ">=": lambda r: r <= hi,
-            ">": lambda r: r < lo,
-            "<=": lambda r: r >= lo,
-            "<": lambda r: r > hi,
-        }[op]
+        names = [n.strip().lower() for n in rest[len(op):].split("|")]
+        if len(names) > 1 and not all(names):
+            raise ValueError(f"{term!r}: a | needs a made hand on each side (made_flop=set|flush)")
+        if len(names) > 1 and op not in ("=", "!="):
+            raise ValueError(
+                f"{term!r}: only = and != take several made hands (made_flop=set|flush); "
+                f"{op} compares against one"
+            )
+        test = _made_test(op, names)
         street = None if name == "made" else name.removeprefix("made_")
 
         def pred(f: Facts, street=street, test=test) -> bool:
@@ -581,7 +603,7 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("hand=CLASS", "hand=72", "the shown hand: 72 is both suits, 72o one, 77 the pair"),
         ("hand!=CLASS", "hand!=AA", "any shown hand but that one"),
         ("hand_pct>=N", "hand_pct>=60", "strength rank of the shown hand: 0.6 is AA, 100 is 32o"),
-        ("made_<street>=MADE", "made_flop=set", "what the shown hand had made on that street"),
+        ("made_<street>=MADE", "made_flop=set|flush", "what the shown hand had made on that street; | for any of several"),
         ("made_<street>>=MADE", "made_turn>=two_pair", "that or better; also !=, >, <=, <"),
         ("made=MADE", "made=flush", "made on the final board"),
     )),

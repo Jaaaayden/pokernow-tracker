@@ -235,8 +235,9 @@ check-raised", and `faced_check_raise_flop=fold` what I did about it.
 **The holding:** `hand=72` (both suits), `hand=72o`, `hand!=AA`, or `hand_pct>=60`
 for a bottom-40% hand by the standard strength ranking. `made_flop=set` is what the
 shown hand had made on the flop's board, `made_turn>=two_pair` that or better, and
-`made=flush` the final board; `pair` and `draw` name the whole group. So
-`made_flop>=set,line_flop=x*` is the sets that checked the flop.
+`made=flush` the final board; `pair` and `draw` name the whole group, and `|` joins
+several (`made_flop=set|full_house|flush`). So `made_flop>=set,line_flop=x*` is the
+sets that checked the flop.
 
 **Board texture:** `flop=ace_high`, `flop=monotone`, `flop=paired`,
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on. The full tag
