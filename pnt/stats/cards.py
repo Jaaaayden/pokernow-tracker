@@ -19,6 +19,7 @@ Pure functions over card strings; nothing here touches the database.
 from __future__ import annotations
 
 from collections import Counter
+from functools import lru_cache
 from typing import NamedTuple
 
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
@@ -342,6 +343,75 @@ def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[
     if v == board_values[-1]:
         return MadeHand(cls, "bottom_pair")
     return MadeHand(cls, "middle_pair")
+
+
+#: Every made hand as one flat list, strongest first: each class, with `pair`,
+#: `trips` and `draw` opened up into their details. This is the order a
+#: `made_flop>=set` comparison reads, and the order a flat composition sorts by.
+#: ``pocket_pair`` is an underpair -- a pocket pair with a board card above it --
+#: and sits below top pair for that reason.
+MADE_LEAVES = (
+    "straight_flush",
+    "quads",
+    "full_house",
+    "flush",
+    "straight",
+    "set",
+    "trips",
+    "two_pair",
+    "overpair",
+    "top_pair",
+    "pocket_pair",
+    "middle_pair",
+    "bottom_pair",
+    "board_pair",
+    "combo_draw",
+    "flush_draw",
+    "open_ender",
+    "gutshot",
+    "high_card",
+)
+
+
+def leaf_of(mh: MadeHand) -> str:
+    """The `MADE_LEAVES` entry for a made hand: its detail where it has one, else its
+    class. ``("trips", "set")`` is ``set``, ``("flush", None)`` is ``flush``."""
+    return mh.detail or mh.cls
+
+
+#: Each class in MADE_CLASSES -> the leaves it opens into, strongest first.
+#: `pair` and `draw` are the groups a filter names most; `trips` is here for
+#: completeness, but as a filter name the leaf ``trips`` wins over it (see
+#: `filters._made_names`), so ``made_flop=trips`` is never a set.
+MADE_GROUPS: dict[str, tuple[str, ...]] = {
+    "straight_flush": ("straight_flush",),
+    "quads": ("quads",),
+    "full_house": ("full_house",),
+    "flush": ("flush",),
+    "straight": ("straight",),
+    "trips": ("set", "trips"),
+    "two_pair": ("two_pair",),
+    "pair": ("overpair", "top_pair", "pocket_pair", "middle_pair", "bottom_pair", "board_pair"),
+    "draw": DRAW_DETAILS,
+    "high_card": ("high_card",),
+}
+
+
+@lru_cache(maxsize=1 << 16)
+def made_at(hole: str, board: tuple[str, ...], street: str) -> MadeHand | None:
+    """`made_hand` on the board as it stood on `street`, or None when the board never
+    got there. The hand a player held *when they acted* on that street: a flop call
+    that rivered a flush was a draw when the call was made.
+
+    On the river this is `made_hand` on the full board, so a draw that missed still
+    reads as its draw -- the same as the final-board classification. Cached, since a
+    filter asks the same (cards, board, street) once per term per page load; the
+    arguments must be hashable, which `Facts.hole_cards` and `Facts.board` are.
+    """
+    seen = board_at(board, street)
+    if seen is None or len(seen) < 3:
+        return None
+    return made_hand(hole, seen)
 
 
 # ------------------------------------------------------------------ boards ---

@@ -150,7 +150,17 @@ def test_filter_vocabulary_covers_every_term():
     term nobody using the page can discover."""
     import re
 
-    from pnt.stats.filters import DECIDED, FLAGS, NUMERIC, SIZED, STREETS, VOCABULARY
+    from pnt.stats.filters import (
+        ANSWERED,
+        DECIDED,
+        FLAGS,
+        LINE_TERMS,
+        MADE_TERMS,
+        NUMERIC,
+        SIZED,
+        STREETS,
+        VOCABULARY,
+    )
 
     documented: set[str] = set()
     for _, terms in VOCABULARY:
@@ -158,8 +168,9 @@ def test_filter_vocabulary_covers_every_term():
             parse_filter(example)  # every example is a working filter
             for s in STREETS:
                 documented.add(re.split(r"[!<>=]", term.replace("<street>", s), maxsplit=1)[0])
-    for key in [*FLAGS, *NUMERIC, *SIZED]:
+    for key in [*FLAGS, *NUMERIC, *SIZED, *ANSWERED, *LINE_TERMS, *MADE_TERMS]:
         assert key in documented, f"{key} is missing from filters.VOCABULARY"
+    assert any(term.startswith("!") for _, terms in VOCABULARY for term, _, _ in terms), "!flag"
     # The decision family is documented as one `<spot>=DECISION` row; every spot it
     # covers must be a documented term in its own right so the row can be found.
     for key in DECIDED:
@@ -176,6 +187,49 @@ def test_conflict_groups_name_real_terms():
         assert set(group) <= set(FLAGS), group
     for family in TEXTURE_FAMILIES:
         assert set(family) <= set(TEXTURE_TAGS), family
+
+
+def test_every_size_bucket_is_on_every_page():
+    """The pages keep their own copies of the bucket list -- labels, column headers,
+    the replay's bucket names -- so a bucket added in derive.py must reach all three,
+    and in the same order."""
+    import re
+    from pathlib import Path
+
+    from pnt.stats.derive import SIZE_BUCKETS
+
+    static = Path(__file__).parent.parent / "pnt/server/static"
+
+    def listed(path: str, start: str, pattern: str) -> list[str]:
+        page = (static / path).read_text(encoding="utf-8")
+        i = page.index(start)
+        return re.findall(pattern, page[i:page.index(";", i)])
+
+    assert listed("replay.js", "const SIZE_LABEL = {", r"(\w+):") == [*SIZE_BUCKETS, "check"]
+    assert listed("chart.html", "const SIZES = [", r'\["[^"]+", "(\w+)"\]') == list(SIZE_BUCKETS)
+    assert listed("stats.html", "const SIZES = [", r'\["(\w+)", "[^"]+"\]') == list(SIZE_BUCKETS)
+
+
+def test_the_replay_buckets_bets_as_derive_does():
+    """replay.js labels a bet with its own copy of `size_bucket`; run it on every
+    bet into a range of pots and hold it to the Python one."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from pnt.stats.derive import size_bucket
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    src = (Path(__file__).parent.parent / "pnt/server/static/replay.js").read_text(encoding="utf-8")
+    body = src[src.index("const bucketOf"):]
+    body = body[:body.index(";") + 1]
+    cases = [(a, p) for p in (1, 4, 20, 21, 29, 30, 99, 100, 137) for a in range(1, 2 * p + 2)]
+    script = f"{body}\nconsole.log(JSON.stringify({json.dumps(cases)}.map(([a, p]) => bucketOf(a, p))));"
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == [size_bucket(a, p) for a, p in cases]
 
 
 def test_every_chart_chip_is_a_working_filter():

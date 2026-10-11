@@ -40,11 +40,13 @@
     }
     return row;
   }
-  const SIZE_LABEL = { small: "under ½ pot", medium: "½–¾ pot", large: "¾ pot to pot", overbet: "overbet", check: "checked" };
-  // Mirrors size_bucket() in derive.py, for labelling bets in a replay.
+  const SIZE_LABEL = { blocker: "under ⅕ pot", small: "⅕–½ pot", medium: "½–¾ pot", large: "¾ pot to pot", overbet: "overbet", check: "checked" };
+  // Mirrors size_bucket() in derive.py, for labelling bets in a replay. The
+  // blocker edge is an integer division there, and Math.floor of it here.
   const bucketOf = (amount, pot) => amount > pot ? "overbet"
     : amount >= Math.floor(0.75 * pot) ? "large"
-    : amount >= Math.floor(0.5 * pot) ? "medium" : "small";
+    : amount >= Math.floor(0.5 * pot) ? "medium"
+    : amount >= Math.floor(pot / 5) ? "small" : "blocker";
 
   function message(text, cls = "muted") {
     const p = document.createElement("p"); p.className = cls; p.textContent = text; return p;

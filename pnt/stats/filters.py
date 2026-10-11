@@ -17,16 +17,30 @@ flop half pot, c-bet the turn, overbet the river" is::
 The pot and the opposition are terms too: `pot>=500` keeps the hands whose final
 pot reached 500 chips, and `vs=henry` the hands played against henry.
 `jam_river` keeps river all-ins, the spot for reading bluffs against value, and
-`called_jam` the other side of it.
+`called_jam` the other side of it. `line_flop=xr` is a flop check-raise, and
+`made_flop>=set,line_flop=x*` the sets that checked the flop -- a slowplay.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 
 from ..logfmt.parser import position_name
-from .cards import ALL_CLASSES, RANK_VALUE, TEXTURE_TAGS, board_texture, hand_class, hand_pct
-from .derive import SIZE_BUCKETS, Facts
+from .cards import (
+    ALL_CLASSES,
+    MADE_GROUPS,
+    MADE_LEAVES,
+    RANK_VALUE,
+    TEXTURE_TAGS,
+    board_texture,
+    hand_class,
+    hand_pct,
+    leaf_of,
+    made_at,
+    street_of_board,
+)
+from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, Facts
 
 Predicate = Callable[[Facts], bool]
 
@@ -97,7 +111,11 @@ for _s in STREETS:
     FLAGS[f"raised_bet_{_s}"] = lambda f, s=_s: bool(f.raised_bet.get(s))
     FLAGS[f"aggressor_{_s}"] = lambda f, s=_s: bool(f.aggressor.get(s))
     FLAGS[f"check_back_{_s}"] = lambda f, s=_s: bool(f.check_back.get(s))
+    # Checked, then raised a bet behind them; and checked, then had to act again.
+    FLAGS[f"check_raise_{_s}"] = lambda f, s=_s: bool(f.check_raise.get(s))
+    FLAGS[f"check_raise_{_s}_opp"] = lambda f, s=_s: bool(f.check_raise_opp.get(s))
 FLAGS["check_back"] = lambda f: any(f.check_back.values())
+FLAGS["check_raise"] = lambda f: any(f.check_raise.values())
 
 # Jams: all-in bets and raises, and the players who faced and called them. Preflop
 # counts here, unlike the postflop terms above.
@@ -125,6 +143,11 @@ NUMERIC: dict[str, Callable[[Facts], float | None]] = {
     #: `hand_pct>=60` is a bottom-40% hand. None when the cards were not shown.
     "hand_pct": lambda f: hand_pct(hand_class(f.hole_cards)) if f.hole_cards else None,
 }
+for _s in STREETS:
+    #: The bet or raise they first faced on the street, and their own first raise,
+    #: as pot fractions: `faced_bet_river>=1` is facing a pot-sized bet or bigger.
+    NUMERIC[f"faced_bet_{_s}"] = lambda f, s=_s: f.faced_bet_pot.get(s)
+    NUMERIC[f"raised_bet_{_s}"] = lambda f, s=_s: f.raise_pot.get(s)
 
 #: name -> getter for the size-bucket terms (`cbet_flop=medium`, `bet_river=overbet`,
 #: `faced_cbet_turn=large`). The buckets are SIZE_BUCKETS; see SPEC.md.
@@ -133,6 +156,22 @@ for _s in STREETS:
     SIZED[f"cbet_{_s}"] = lambda f, s=_s: f.bet_size.get(s) if f.cbet.get(s) else None
     SIZED[f"bet_{_s}"] = lambda f, s=_s: f.bet_size.get(s)
     SIZED[f"faced_cbet_{_s}"] = lambda f, s=_s: f.faced_cbet_size.get(s)
+    SIZED[f"faced_bet_{_s}"] = lambda f, s=_s: f.faced_bet_size.get(s)
+    SIZED[f"raised_bet_{_s}"] = lambda f, s=_s: f.raise_size.get(s)
+
+#: name -> getter for the answer terms (`bet_answer_river=fold`): what their first
+#: bet on the street got back, one of ANSWERS, or None when they made no bet there
+#: or nobody answered it.
+ANSWERED: dict[str, Callable[[Facts], str | None]] = {
+    f"bet_answer_{_s}": (lambda f, s=_s: f.bet_answer.get(s)) for _s in STREETS
+}
+
+#: The action-line terms: `line_flop=xc` for one street, `line=xc/x/b*` for the hand.
+LINE_TERMS = ("line", *(f"line_{s}" for s in STREETS))
+
+#: The made-hand terms: `made_flop>=set` on the board as it stood on that street,
+#: `made=flush` on the final board.
+MADE_TERMS = ("made", *(f"made_{s}" for s in STREETS))
 
 #: What a player can do at a preflop decision point.
 DECISIONS = ("fold", "check", "call", "raise")
@@ -185,6 +224,137 @@ def _decision_term(term: str) -> Predicate | None:
     if decision not in DECISIONS:
         raise ValueError(f"unknown decision {decision!r}. Known: {', '.join(DECISIONS)}")
     return lambda f, g=DECIDED[name], d=decision: g(f) == d
+
+
+def _answer_term(term: str) -> Predicate | None:
+    name, sep, answer = term.partition("=")
+    if not sep or name not in ANSWERED:
+        return None
+    if answer not in ANSWERS:
+        raise ValueError(f"unknown answer {answer!r}. Known: {', '.join(ANSWERS)}")
+    return lambda f, g=ANSWERED[name], want=answer: g(f) == want
+
+
+def _line_matcher(pattern: str) -> Callable[[str | None], bool]:
+    """One street's pattern as a test on that street's line (None: did not act).
+
+    ``x``, ``b``, ``c``, ``r`` and ``f`` are themselves, ``*`` any run of them,
+    none included, and the whole pattern must match: ``x*`` is every line that
+    starts with a check, ``*r`` every line that ends on a raise. ``-`` alone is
+    "did not act on the street". Any other pattern needs them to have acted, so
+    ``*`` is "acted at all".
+    """
+    pattern = pattern.strip().lower()
+    if pattern == "-":
+        return lambda line: line is None
+    codes = "".join(LINE_CODE.values())
+    if not pattern or any(ch not in codes + "*" for ch in pattern):
+        raise ValueError(
+            f"bad line pattern {pattern!r}: use {', '.join(codes)} and * (any run), or - (did not act)"
+        )
+    rx = re.compile("".join(".*" if ch == "*" else ch for ch in pattern))
+    return lambda line: line is not None and rx.fullmatch(line) is not None
+
+
+def _line_term(term: str) -> Predicate | None:
+    """`line_flop=xc` / `line_flop!=x*`, and `line=xc/x/b*` across the streets.
+
+    The hand form takes up to three patterns, flop/turn/river; an empty one, or
+    one left off the end, matches anything, not acting included. `!=` is exactly
+    the opposite of `=`, so `line_river!=b*` keeps the hands that never reached
+    the river as well -- `-` is a value a line can have.
+    """
+    for name in LINE_TERMS:
+        for op in ("!=", "="):
+            prefix = f"{name}{op}"
+            if not term.startswith(prefix):
+                continue
+            value = term[len(prefix):]
+            if name == "line":
+                parts = value.split("/")
+                if len(parts) > len(STREETS) or not any(p.strip() for p in parts):
+                    raise ValueError(
+                        f"bad line {value!r}: give up to three street patterns as flop/turn/river, e.g. xc//b*"
+                    )
+                tests = [(s, _line_matcher(p)) for s, p in zip(STREETS, parts) if p.strip()]
+            else:
+                tests = [(name.removeprefix("line_"), _line_matcher(value))]
+            want = op == "="
+
+            def pred(f: Facts, tests=tests, want=want) -> bool:
+                return all(t(f.line.get(s)) for s, t in tests) == want
+
+            return pred
+    return None
+
+
+#: The order streets are dealt in, for "folded before this street".
+_STREET_ORDER = {"preflop": 0, **{s: i + 1 for i, s in enumerate(STREETS)}}
+_LEAF_RANK = {leaf: i for i, leaf in enumerate(MADE_LEAVES)}
+
+
+def _made_names(name: str) -> tuple[str, ...]:
+    """The leaves a made-hand name covers. A leaf wins over a class of the same
+    name, so ``trips`` is one hole card to a paired board and never a set."""
+    if name in _LEAF_RANK:
+        return (name,)
+    if name in MADE_GROUPS:
+        return MADE_GROUPS[name]
+    raise ValueError(
+        f"unknown made hand {name!r}. Known: {', '.join(MADE_LEAVES)}, or a group: "
+        f"{', '.join(g for g in MADE_GROUPS if g not in _LEAF_RANK)}"
+    )
+
+
+def _made_leaf(f: Facts, street: str | None) -> str | None:
+    """Their made hand on `street`'s board as a MADE_LEAVES leaf, or None when it
+    cannot be said: cards unknown, the board never got there, or they had folded
+    on an earlier street. `street` None is the final board, read the way the
+    made-hand range view reads it: every known holding, folded or not."""
+    if f.hole_cards is None:
+        return None
+    if street is None:
+        street = street_of_board(f.board)
+    elif f.fold_street is not None and _STREET_ORDER[f.fold_street] < _STREET_ORDER[street]:
+        return None
+    mh = made_at(f.hole_cards, f.board, street)
+    return None if mh is None else leaf_of(mh)
+
+
+def _made_term(term: str) -> Predicate | None:
+    """`made_flop=set`, `made_turn>=two_pair`, `made_river<pair`, `made=flush`.
+
+    Comparisons read MADE_LEAVES, strongest first. Against a group they take its
+    span: `>=pair` is a pair or better, `<pair` weaker than every pair -- the
+    draws and high card. `!=` and every comparison need a known hand on that
+    street, like every claim about a holding.
+    """
+    for name in MADE_TERMS:
+        if not term.startswith(name):
+            continue
+        rest = term[len(name):]
+        op = next((o for o in ("!=", ">=", "<=", "=", ">", "<") if rest.startswith(o)), None)
+        if op is None:
+            continue
+        leaves = _made_names(rest[len(op):].strip().lower())
+        ranks = [_LEAF_RANK[x] for x in leaves]
+        lo, hi = min(ranks), max(ranks)  # the strongest member, and the weakest
+        test: Callable[[int], bool] = {
+            "=": lambda r: lo <= r <= hi,
+            "!=": lambda r: not lo <= r <= hi,
+            ">=": lambda r: r <= hi,
+            ">": lambda r: r < lo,
+            "<=": lambda r: r >= lo,
+            "<": lambda r: r > hi,
+        }[op]
+        street = None if name == "made" else name.removeprefix("made_")
+
+        def pred(f: Facts, street=street, test=test) -> bool:
+            leaf = _made_leaf(f, street)
+            return leaf is not None and test(_LEAF_RANK[leaf])
+
+        return pred
+    return None
 
 
 def _size_term(term: str) -> Predicate | None:
@@ -301,7 +471,8 @@ def _numeric_term(term: str) -> Predicate | None:
 #: Every term a filter understands, grouped for the pages' `?` panel. Each entry is
 #: (term as written, an example to drop into the box, what it keeps). `<street>`
 #: stands for flop, turn or river. `test_filter_vocabulary_covers_every_term` holds
-#: this to FLAGS, NUMERIC and SIZED, so a new term cannot ship undocumented.
+#: this to FLAGS, NUMERIC, SIZED, ANSWERED, LINE_TERMS and MADE_TERMS, so a new
+#: term cannot ship undocumented.
 VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Preflop", (
         ("vpip", "vpip", "called, bet or raised preflop"),
@@ -358,17 +529,33 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("aggressor_<street>", "aggressor_river", "made the street's last bet or raise"),
         ("check_back_<street>", "check_back_turn", "their check closed a street that checked through"),
         ("check_back", "check_back", "checked back any street"),
+        ("check_raise_<street>", "check_raise_flop", "checked, then raised a bet"),
+        ("check_raise_<street>_opp", "check_raise_flop_opp", "checked, then had to act again"),
+        ("check_raise", "check_raise", "check-raised any street"),
+    )),
+    ("Action line", (
+        ("line_<street>=LINE", "line_flop=xc", "their actions that street: x check, b bet, c call, r raise, f fold"),
+        ("line_<street>!=LINE", "line_turn!=x*", "any line but that one"),
+        ("line=LINE", "line=xc//b*", "flop/turn/river; * any run, - did not act, empty any"),
     )),
     ("Holding", (
         ("hand=CLASS", "hand=72", "the shown hand: 72 is both suits, 72o one, 77 the pair"),
         ("hand!=CLASS", "hand!=AA", "any shown hand but that one"),
         ("hand_pct>=N", "hand_pct>=60", "strength rank of the shown hand: 0.6 is AA, 100 is 32o"),
+        ("made_<street>=MADE", "made_flop=set", "what the shown hand had made on that street"),
+        ("made_<street>>=MADE", "made_turn>=two_pair", "that or better; also !=, >, <=, <"),
+        ("made=MADE", "made=flush", "made on the final board"),
     )),
     ("Bet size", (
         ("cbet_<street>=SIZE", "cbet_flop=medium", "c-bet that size"),
         ("bet_<street>=SIZE", "bet_river=overbet", "first bet was that size"),
         ("faced_cbet_<street>=SIZE", "faced_cbet_flop=small", "faced a c-bet that size"),
+        ("faced_bet_<street>=SIZE", "faced_bet_river=large", "first bet or raise they faced was that size"),
+        ("raised_bet_<street>=SIZE", "raised_bet_flop=medium", "their first raise was that size"),
         ("bet_<street>>=N", "bet_river>=1", "first bet, as a pot fraction"),
+        ("faced_bet_<street>>=N", "faced_bet_river>=1", "the bet or raise they faced, as a pot fraction"),
+        ("raised_bet_<street>>=N", "raised_bet_flop>=1", "their raise, as a pot fraction once called"),
+        ("bet_answer_<street>=ANSWER", "bet_answer_river=fold", "what their first bet got: fold, call or raise"),
     )),
     ("All-in", (
         ("jam", "jam", "bet or raised all-in, any street"),
@@ -401,6 +588,9 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("vs=NAME", "vs=henry", "played against that player"),
         ("vs!=NAME", "vs!=henry", "not against that player"),
     )),
+    ("Not", (
+        ("!FLAG", "!cbet_flop", "any flag above, negated"),
+    )),
 )
 
 
@@ -421,10 +611,29 @@ TEXTURE_FAMILIES: tuple[tuple[str, ...], ...] = (
 
 
 _SIZE_WORDS = {
-    "small": "under ½ pot",
+    "blocker": "under ⅕ pot",
+    "small": "⅕ to ½ pot",
     "medium": "½ to ¾ pot",
     "large": "¾ pot to pot",
     "overbet": "more than pot",
+}
+
+
+#: Every name a `made_` term takes: the leaves, then the groups that are not leaves
+#: themselves. `trips` is both, and the leaf wins.
+MADE_NAMES: tuple[str, ...] = (*MADE_LEAVES, *(g for g in MADE_GROUPS if g not in MADE_LEAVES))
+
+_MADE_WORDS = {
+    "set": "pocket pair + a board card",
+    "trips": "one hole card + a board pair",
+    "overpair": "pocket pair over the board",
+    "pocket_pair": "underpair",
+    "board_pair": "pair on the board only",
+    "combo_draw": "flush draw + straight draw",
+    "open_ender": "two ranks make a straight",
+    "gutshot": "one rank makes a straight",
+    "pair": "any pair",
+    "draw": "any draw",
 }
 
 
@@ -445,6 +654,9 @@ def vocabulary() -> dict:
         "positions": positions,
         "decisions": list(DECISIONS),
         "decided": list(DECIDED),
+        "answers": list(ANSWERS),
+        "flags": list(FLAGS),
+        "made": {m: _MADE_WORDS.get(m, "") for m in MADE_NAMES},
         "sizes": {b: _SIZE_WORDS[b] for b in SIZE_BUCKETS},
         "textures": list(TEXTURE_TAGS),
         "exclusive": [list(g) for g in EXCLUSIVE],
@@ -481,6 +693,15 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
       ``check_back_turn``    closed a street that checked through; ``faced_bet_river``,
                              ``folded_to_bet_river``, ``called_bet_<street>``,
                              ``raised_bet_<street>`` and ``aggressor_<street>`` likewise
+      ``check_raise_flop``   checked, then raised; ``check_raise_flop_opp`` checked and acted again
+      ``faced_bet_river=large``  the bet or raise they first faced, by size; also
+                             ``raised_bet_<street>=`` for their own raise, and ``>=0.5`` forms
+      ``bet_answer_river=fold``  what their first bet got: fold, call or raise
+      ``line_flop=xc``       their own actions on the street: x b c r f, ``*`` any run,
+                             ``-`` did not act; ``line=xc//b*`` flop/turn/river
+      ``made_flop>=set``     their made hand on that street's board; ``made=flush`` on the
+                             final one; =, !=, >=, >, <=, < against a leaf or a group
+      ``!cbet_flop``         any flag, negated
     """
     terms = [t.strip() for t in expr.split(",") if t.strip()]
     preds: list[Predicate] = []
@@ -488,6 +709,14 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
     for term in terms:
         if term in FLAGS:
             preds.append(FLAGS[term])
+            continue
+
+        # `!flag`: plain flags only. A negated comparison or size has its own `!=`
+        # where it means anything, and `!pot>=500` would read two ways.
+        if term.startswith("!"):
+            if term[1:] not in FLAGS:
+                raise ValueError(f"only a flag can be negated with !: {term!r}")
+            preds.append(lambda f, p=FLAGS[term[1:]]: not p(f))
             continue
 
         player = _player_term(term, names)
@@ -514,6 +743,21 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             preds.append(decided)
             continue
 
+        answered = _answer_term(term)
+        if answered is not None:
+            preds.append(answered)
+            continue
+
+        line = _line_term(term)
+        if line is not None:
+            preds.append(line)
+            continue
+
+        made = _made_term(term)
+        if made is not None:
+            preds.append(made)
+            continue
+
         sized = _size_term(term)
         if sized is not None:
             preds.append(sized)
@@ -535,7 +779,9 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             f"position=<POS>; vs=<player>; hand=<class>; a comparison on {', '.join(NUMERIC)}; "
             f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
             f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
-            f"or flop=/turn=/river=/board= with a texture tag"
+            f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "
+            f"line_<street>=PATTERN or line=flop/turn/river; made_<street>=HAND or made=HAND; "
+            f"!flag; or flop=/turn=/river=/board= with a texture tag"
         )
 
     if not preds:

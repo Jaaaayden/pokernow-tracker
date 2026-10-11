@@ -84,12 +84,14 @@
   // --- Templates. A vocabulary term is literals and parameter slots:
   // `cbet_<street>=SIZE` is "cbet_", street, "=", SIZE. A trailing `>=N` is an
   // operator slot then a number, since every comparison takes any operator.
-  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME)/;
+  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|MADE|ANSWER|FLAG)/;
   const OP_WORDS = { ">=": "at least", "<=": "at most", "=": "exactly", ">": "more than", "<": "less than" };
   const PICK = {
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
+    LINE: "type a line: x check, b bet, c call, r raise, f fold, * any run, - did not act; / between streets",
+    MADE: "pick a made hand", ANSWER: "pick what the bet got", FLAG: "pick a flag to negate",
   };
 
   function segments(term) {
@@ -116,6 +118,9 @@
       case "DECISION": return plain(vocab.decisions);
       case "op": return vocab.operators.map((o) => [o, OP_WORDS[o]]);
       case "NAME": return plain(names);
+      case "MADE": return Object.entries(vocab.made).map(([v, d]) => (d ? [v, d] : [v]));
+      case "ANSWER": return plain(vocab.answers);
+      case "FLAG": return plain(vocab.flags);
       default: return null;
     }
   }
@@ -181,6 +186,10 @@
 
   function conflicts(a, b) {
     if (a.toLowerCase() === b.toLowerCase()) return true;
+    // `!x` against `x`, or against a sized or compared `x` (`!cbet_flop` and
+    // `cbet_flop=medium`): no hand is both.
+    const negates = (x, y) => x.startsWith("!") && parts(y).name === x.slice(1).toLowerCase();
+    if (negates(a, b) || negates(b, a)) return true;
     const p = parts(a), q = parts(b);
     if (!p.op && !q.op) return (vocab?.exclusive ?? []).some((g) => g.includes(p.name) && g.includes(q.name));
     if (p.name !== q.name) return false;
@@ -310,6 +319,9 @@
     put("POS", vocab.positions.join("  "));
     put("SIZE", Object.entries(vocab.sizes).map(([k, d]) => `${k} (${d})`).join("  "));
     put("TEXTURE", vocab.textures.join("  "));
+    put("LINE", "x check  b bet  c call  r raise  f fold  * any run  - did not act;  line= takes flop/turn/river");
+    put("MADE", Object.keys(vocab.made).join("  "));
+    put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");
 
     panel.replaceChildren(head, groupsBox, slotBox, empty, values);
