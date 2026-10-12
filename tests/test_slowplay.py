@@ -174,6 +174,30 @@ def test_players_are_ranked_by_share(pool):
     assert not by_player(grouped, aliases, "flop", "two_pair", min_n=10**6)
 
 
+def test_the_slowplays_tag_is_the_flop_total_row(pool, monkeypatch):
+    """The tag counts what the flop table's total row counts, and when it fires its
+    filter finds exactly its `n` hands."""
+    from pnt.stats import tags
+
+    grouped, _, names = pool
+    monkeypatch.setitem(tags.THRESHOLDS, "slowplays", {"pct": 0, "n": 1})
+    fired = 0
+    for facts in grouped.values():
+        total = slowplay(facts, "flop")["total"]
+        rule = tags.profile(facts)["rules"]["slowplays"]
+        assert (rule["n"], rule["hits"]) == (total["n"], total["slowplay"])
+        tag = next((t for t in tags.tags_for(facts)["tags"] + tags.tags_for(facts)["streaky"]
+                    if t["id"] == "slowplays"), None)
+        if total["n"]:
+            fired += 1
+            assert tag is not None and tag["by"] == "strength" and tag["street"] == "flop"
+            assert len(_count(facts, tag["filter"], names)) == tag["n"] == total["n"]
+        else:
+            assert tag is None
+    assert fired, "some fixture player flopped a set or better and showed it"
+    assert any("slowplays" in members for _, _, members, _ in tags.STYLES)
+
+
 # --- the server and the CLI ----------------------------------------------------
 
 

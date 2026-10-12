@@ -280,7 +280,8 @@ def test_station_is_read_from_the_flop_and_showdown():
 # ------------------------------------------------------------ invariant -----
 
 #: Tags whose `n` is exactly the hands their filter finds.
-EXACT = {"folds_river", "folds_to_cbet", "sticky_vs_cbet", "auto_cbet", "rarely_cbets", "folds_to_3bet"}
+EXACT = {"folds_river", "folds_to_cbet", "sticky_vs_cbet", "auto_cbet", "rarely_cbets", "folds_to_3bet",
+         "slowplays"}
 #: Tags whose `hits` is exactly the hands their filter finds.
 HITS = {"limper", "donks"}
 #: Tags judged on shown hands: `n` is the hands their filter finds with cards known.

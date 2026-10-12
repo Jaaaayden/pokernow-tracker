@@ -646,6 +646,12 @@ every cell with `n`, `pct` of its row, `filter` and `hand_ids`.
 [alias] --street flop --floor set` prints both; the chart's **Strength by street**
 view draws the player's.
 
+The **SLOWPLAYS** tag (see "Exploit tags") is this table's flop `total` row at the
+default floor: `n` is the row's `n`, its hits the slowplays, and its filter the
+row's. Calibrated on the 13,300-hand database on 2026-10-11, where the pool sits at
+41% and the hero, every hand known, at 34%: 55% over 15 hands fires for one player
+of the seven with a sample and finds one more who is streaky.
+
 ---
 
 ## Decision points (nodes)
@@ -844,7 +850,7 @@ Exploit tags are judged first because BALANCED depends on them.
 |---|---|
 | **STICKY** | CALLS DOWN LIGHT, STICKY VS CBET, INELASTIC VS 3BET |
 | **FIT OR FOLD** | FOLDS RIVER, FOLDS TO CBET, FOLDS TO 3BET, NO BLUFF, CHECKS BACK WEAK |
-| **TRAPPER** | TRAPS, RARELY CBETS |
+| **TRAPPER** | TRAPS, SLOWPLAYS, RARELY CBETS |
 | **GAMBLER** | JAM HAPPY, JAMS LIGHT, 4BETS LIGHT, BLUFFS RIVER, DONKS, AUTO CBET |
 
 Only tags that are not streaky count toward a style.
@@ -875,6 +881,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **RARELY CBETS** | same | same | ≤ 35% | 25 | same |
 | **CHECKS BACK WEAK** | strong | `check_back` any street and WTSD, shown | ≤ 35% | 10 | `check_back,wtsd` (made) |
 | **TRAPS** | strong | same | ≥ 60% | 8 | same |
+| **SLOWPLAYS** | checked or called (the slowplay columns of "Strength by street") | a set or better on the flop, shown, that they acted on | ≥ 55% | 15 | `made_flop>=set,line_flop=*` (strength, flop) |
 | **DONKS** | Donk Bet (flop) | its opportunity | ≥ 35% | 15 | `donk_flop` |
 | **BIG = STRONG** / **BIG = BLUFF** | strong share of shown first bets, `large`+`overbet` against `blocker`+`small`+`medium`, any street | | gap ≥ 40 points | 6 each side | `wtsd` (sizing, `bet`, the street with most bets) |
 

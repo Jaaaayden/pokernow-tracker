@@ -145,6 +145,19 @@ def _row(leaf: str, made_term: str, street: str, hands: list[Facts], all_in: lis
     }
 
 
+def strong_column(f: Facts, street: str, floor: str = DEFAULT_FLOOR) -> str | None:
+    """The column one hand lands in, or None when it is not in the table: cards
+    unknown, weaker than `floor` on `street`, or no decision there. What the
+    SLOWPLAYS tag counts, one hand at a time."""
+    line = f.line.get(street)
+    if line is None:
+        return None
+    leaf = _made_leaf(f, street)
+    if leaf is None or MADE_LEAVES.index(leaf) > MADE_LEAVES.index(floor):
+        return None
+    return category(line, bool(f.check_back.get(street)))
+
+
 def check_floor(floor: str) -> str:
     floor = floor.strip().lower()
     if floor not in MADE_LEAVES:

@@ -30,6 +30,7 @@ from functools import lru_cache
 from ..logfmt.events import PREFLOP, RIVER
 from .cards import board_at, hand_class, hand_pct, made_hand, street_of_board
 from .derive import POSTFLOP_STREETS, Facts
+from .slowplay import SLOWPLAY, strong_column
 
 #: Hands these games play on purpose (the 7-2 bounty and its cousins). They are
 #: fun-tag material and never evidence of a bad call: a 72o that called a 3-bet
@@ -81,6 +82,10 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "rarely_cbets": {"pct": 35, "n": 25},
     "checks_back_weak": {"pct": 35, "n": 10},
     "traps": {"pct": 60, "n": 8},
+    # Shown hands, so an opponent's share reads high (the sets that bet and got
+    # folds to are never seen): the pool sits at 41% and the hero, every hand
+    # known, at 34%, so the line is drawn well clear of both.
+    "slowplays": {"pct": 55, "n": 15},
     "donks": {"pct": 35, "n": 15},
     "size_tell": {"gap": 40, "n": 6},
     "fun": {"hits": 2},
@@ -100,7 +105,7 @@ STYLES: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
      "Hard to move off a hand. Value bet thin and big; do not bluff."),
     ("fit_or_fold", "FIT OR FOLD", ("folds_river", "folds_to_cbet", "folds_to_3bet", "no_bluff", "checks_back_weak"),
      "Gives up without a hand and bets only with one. Bet when they check; fold to their aggression."),
-    ("trapper", "TRAPPER", ("traps", "rarely_cbets"),
+    ("trapper", "TRAPPER", ("traps", "slowplays", "rarely_cbets"),
      "Slow plays strong hands. Their checks are not weakness; bet thinner into them."),
     ("gambler", "GAMBLER", ("jam_happy", "jams_light", "fourbets_light", "bluffs_river", "donks", "auto_cbet"),
      "Puts chips in wide. Tighten up and let them bet into you."),
@@ -308,6 +313,12 @@ def counts(facts: Iterable[Facts]) -> Counter:
             if den(f):
                 c[f"{name}.n"] += 1
                 c[f"{name}.hits"] += bool(num(f))
+        # A set or better on the flop, shown, that they acted on: the total row of
+        # the Strength by street table, one hand at a time.
+        col = strong_column(f, "flop")
+        if col is not None:
+            c["slowplays.n"] += 1
+            c["slowplays.hits"] += col in SLOWPLAY
         s = strength(f)
         if s is None:
             continue
@@ -354,6 +365,7 @@ def profile(facts: list[Facts] | Counter) -> dict:
         "rules": {
             **{name: m(name) for name in _SHOWN},
             **{name: m(name) for name in _rates() if name not in ("3bet", "wtsd")},
+            "slowplays": m("slowplays"),
             "size_tell": {
                 "small": m("size_tell.small"),
                 "big": m("size_tell.big"),
@@ -373,12 +385,14 @@ def _exploits(p: dict) -> list[dict]:
     r = p["rules"]
     out: list[dict] = []
 
-    def rate_tag(id: str, label: str, m: dict, above: bool, tip: str, filter: str, by: str = "preflop") -> None:
+    def rate_tag(
+        id: str, label: str, m: dict, above: bool, tip: str, filter: str, by: str = "preflop", **extra
+    ) -> None:
         th = t[id]
         if m["n"] < th["n"] or m["pct"] is None:
             return
         if (m["pct"] >= th["pct"]) if above else (m["pct"] <= th["pct"]):
-            out.append(_tag(id, label, "exploit", tip.format(**m), m["n"], m["hits"], filter, by))
+            out.append(_tag(id, label, "exploit", tip.format(**m), m["n"], m["hits"], filter, by, **extra))
 
     m = r["no_bluff"]
     rate_tag("no_bluff", "NO BLUFF", m, False,
@@ -458,6 +472,11 @@ def _exploits(p: dict) -> list[dict]:
     rate_tag("traps", "TRAPS", m, True,
              "Checked back and showed a strong hand {pct}% of the time ({hits} of {n} shown). "
              "Do not lead into a check-back.", "check_back,wtsd", "made")
+    # Opens the Strength by street view on the flop, where the cells split it.
+    rate_tag("slowplays", "SLOWPLAYS", r["slowplays"], True,
+             "Checked or called with a set or better on the flop {pct}% of the time ({hits} of {n} shown). "
+             "Their flop check or call can be a monster; do not bet thin into it.",
+             "made_flop>=set,line_flop=*", "strength", street="flop")
     rate_tag("donks", "DONKS", r["donks"], True,
              "Led into the aggressor on {pct}% of flops ({hits} of {n}). Expect leads; raise them.", "donk_flop")
 
