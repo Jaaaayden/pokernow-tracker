@@ -1053,6 +1053,24 @@ def rename(req: Annotated[RenameRequest, Body()]) -> dict:
     return {"old": req.old, "new": req.new.strip()}
 
 
+@app.get("/players/{alias}/results")
+def player_results(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'position=BTN'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's big blinds won and lost inside a spot, by pot type, seat and position.
+
+    Every row carries the filter terms that find its hands, to add to `filter`.
+    See SPEC.md, "Results by pot type".
+    """
+    # Imported here rather than up top, where every feature's imports meet: one
+    # module, read by this endpoint alone.
+    from pnt.stats.results import results_breakdown
+
+    return {"player": alias, "filter": filter, **results_breakdown(_spot_facts(alias, filter, game))}
+
+
 # ---- the action-line explorer -------------------------------------------------
 
 _LINES_MODE = f"^({'|'.join(MODES)})$"

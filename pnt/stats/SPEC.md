@@ -1164,6 +1164,68 @@ Equities depend on cards and pot layout alone -- never on a hand id or an identi
 so they are memoized in `equity_cache`, the one derived table in the schema. It is
 disposable: drop it and the next request refills it, with identical numbers.
 
+### Results by pot type
+
+Where one player's big blinds were won and lost, inside whatever spot is on the
+chart. `results.py` mirrors this section; `GET /players/{alias}/results`, `pnt
+results` and the chart's **Results** view read it.
+
+Three tables over the same hands. Each **partitions** them, so its rows add up
+to the spot's total: the same hand count, and the same net to the exact fraction.
+
+| Table | Rows | Filter each row adds |
+|---|---|---|
+| **Pot type** | walk, limped, single-raised, 3-bet pot, 4-bet pot+ | `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` |
+| ↳ **role**, raised pots only | PFA, caller / other | `<pot>,pfa` · `<pot>,!pfa` |
+| **Position** | each seat `position=` names, in preflop acting order, blinds last; then dead button | `position=<seat>` · `dead_button` |
+| **In position after the flop** | in position, out of position, no flop | none · none · `!saw_flop` |
+
+Every row is a `queries.Tally`, read out by `rates`, so the money is the money
+bb/100 is made of everywhere: each complete hand's net over its own big blind.
+**`net_bb`** is that sum; **`bb_per_100`** is it over **`bb_hands`**, the
+complete hands with a known big blind. **`hands`** counts every hand. An
+incomplete hand is therefore in a row's `hands` and in none of its bb figures --
+the rule in "Money", unchanged. The other columns: `vpip_pct` and `saw_flop_pct`
+are shares of the row's hands, so "lost it playing" can be told from "lost the
+blind folding"; `wtsd` and `wsd` are the stat rows' own.
+
+**The worst row.** In each table, the lowest bb/100 among the rows standing on
+at least **100 hands with a known result** (`WORST_MIN_HANDS`) is marked
+`worst` -- and only when it is losing. Role rows are candidates alongside their
+pot type: the worst place to be is usually one side of a pot.
+
+Judgement calls:
+
+1. **A walk is the big blind folded to, and only from the big blind's seat.**
+   `pot_level` 1 is every pot nobody raised; a walk is the part of it where this
+   player never had a preflop decision, which on a complete hand is only ever
+   the big blind (or a straddler) everyone folded to. It is a per-seat row on
+   purpose: the players who folded around to someone else's walk made a real
+   decision -- the small blind paid for it -- so they stay in **limped**, which
+   is "nobody raised", as the `limped` term has always meant. Two rare hands
+   also land in walk: a blind all-in from its post, who never acted, and a hand
+   whose log stops before the player's first action. Both are counted rather
+   than guessed at; the second is already out of every bb figure.
+2. **A limper, and the big blind checking its option, are "caller / other".** A
+   limped pot has no preflop aggressor, so it is not split by role at all:
+   everyone in it would be "other". In a raised pot "other" is everyone but the
+   last raiser -- the cold-caller, the blind who defended, the opener who called
+   the 3-bet, and the player who folded preflop. `vpip_pct` and `saw_flop_pct`
+   say how much of the row is each.
+3. **Seats follow the `position=` filter, not `positional_report`.** A row must
+   reproduce from its filter, and the filter labels a hand with a dead small
+   blind (`blinds_irregular`) where `pnt positions` drops it; here it keeps the
+   label it filters on. A dead button gets no label from either, and is its own
+   row.
+4. **In position is read only on hands that saw a flop.** `in_position` is set
+   on a preflop fold as well, from the seats, but a fold has no position to
+   play, so those hands -- and walks, whose `in_position` is None -- are the
+   **no flop** row instead of half of in position. A hand that saw a flop with
+   the order unknown gets a row of its own when one occurs.
+5. **No filter term says in or out of position yet**, so those two rows carry
+   `filter: null` and their `hand_ids`; the chart lists those hands without
+   touching the spot. An `ip` flag would make them clickable like the rest.
+
 ---
 
 ## Hand review

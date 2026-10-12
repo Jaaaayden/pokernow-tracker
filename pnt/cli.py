@@ -1438,6 +1438,67 @@ def alias_import(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
     typer.echo(f"moved {moved} identity row(s); {unknown} id(s) not in this database yet")
 
 
+#: `pnt results`: one row's figures, after its label.
+_RESULTS_COLUMNS = [
+    ("hands", "Hands", 7),
+    ("net_bb", "Net bb", 10),
+    ("bb_per_100", "bb/100", 9),
+    ("vpip_pct", "VPIP%", 7),
+    ("saw_flop_pct", "Flop%", 7),
+    ("wtsd", "WTSD", 6),
+    ("wsd", "W$SD", 6),
+]
+
+
+@app.command()
+def results(
+    alias: str,
+    db: Path = DbOpt,
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'position=BTN'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Where a player's big blinds went: by pot type and who raised it, by seat, by position.
+
+    Each row ends with the filter that finds its hands, to add to the spot. The
+    worst bb/100 among rows of enough hands is marked; incomplete hands count as
+    hands but in no bb figure.
+    """
+    from .stats.results import results_breakdown
+
+    conn = connect(db)
+    try:
+        facts = facts_for(conn, alias, game)
+        if filter_:
+            pred = parse_filter(filter_, display_names(conn))
+            facts = [f for f in facts if pred(f)]
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    out = results_breakdown(facts)
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+
+    def line(r: dict, indent: int = 0) -> str:
+        text = (" " * indent + r["label"])[:23].ljust(24)
+        text += "".join(_fmt(r.get(c)).rjust(w) for c, _, w in _RESULTS_COLUMNS)
+        spot = r["filter"] if r["filter"] is not None else "(no filter term)"
+        return text + "   " + spot + ("   <- worst" if r["worst"] else "")
+
+    typer.echo(f"{alias}  filter: {filter_ or '(none)'}")
+    typer.echo(line(out["total"]))
+    typer.echo(f"worst: the lowest bb/100 of {out['min_hands']}+ hands with a known result\n")
+    for table in out["tables"]:
+        header = table["title"].ljust(24) + "".join(h.rjust(w) for _, h, w in _RESULTS_COLUMNS)
+        typer.echo(header + "   filter")
+        typer.echo("-" * (len(header) + 9))
+        for r in table["rows"]:
+            typer.echo(line(r))
+            for role in r.get("roles", ()):
+                typer.echo(line(role, 2))
+        typer.echo("")
+
+
 @app.command("lines")
 def lines_cmd(
     alias: str,
