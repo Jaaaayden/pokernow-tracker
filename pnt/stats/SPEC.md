@@ -582,6 +582,76 @@ On the river a draw that missed is still its draw, as on the final board. That i
 `flop=trips` is not a holding. It is the board texture, three of a rank on the
 flop, and stays one.
 
+### Strength by line
+
+The action-line explorer (`lines.line_breakdown`, `GET /players/{alias}/lines`,
+`GET /lines` for the pool, `pnt lines`, the chart's **Lines** view) groups a spot's
+hands by how they were played after the flop, and splits each group by what the
+hands in it were when shown.
+
+**The group key** is one segment per street, flop/turn/river joined with `/`, or
+one street alone when the caller asks for one:
+
+| Mode | Segment | Filter that finds the group |
+|---|---|---|
+| `own` | `line[street]`, or `-` with no line | `line=xc/x/-`, or `line_flop=xc` for one street |
+| `action` | `seq[street]`, `-` with no key, `.` for `""` | `action=XbC/Xx/-`, or `action_flop=XbC` |
+
+`.` is a street they were in on which nobody acted, the run-out after an all-in.
+An empty segment in `action=` means "anything", so `.` is written as two terms
+instead: `action_turn=*` (in the hand on the turn) and `action_turn!=?*` (with not
+one action on it). Every hand lands in exactly one group -- the hands with no
+action after the flop are `-/-/-` -- so the groups add up to the spot.
+
+**Strength** is read on the board of the **last street of the key they acted
+on**: a segment that is not `-` or `.`, and in `action` mode has a capital in it.
+That street is fixed by the key, so a whole group is read on one street, and the
+tiers are:
+
+| Tier | Holding on that street | `made_<street>` terms |
+|---|---|---|
+| **nutted** | `NUTTED_FROM` (a set) or better by `cards.made_at`: set, straight, flush, full house, quads, straight flush | `>=set` |
+| **strong** | the rest of `tags.strength_at`'s strong: trips, two pair, an overpair, top pair | `<set,>=top_pair` |
+| **marginal** | its medium and weak: an underpair, middle, bottom or board pair | `<top_pair,>=board_pair` |
+| **draw** | a flush or straight draw and no pair, flop and turn only | `=draw` |
+| **air** | high card; on the river a draw that missed | `=high_card`, on the river `<pair` |
+
+Each tier is an unbroken run of `MADE_LEAVES`, so it is a filter too: a tier's
+filter is the group's plus its terms on that street.
+
+| Field | Meaning |
+|---|---|
+| `n` | Hands in the group |
+| `shown` | Of them, cards known |
+| `known` | Of those, with a street to read them on; a group with no action after the flop has none |
+| `coverage` | `known / n` |
+| `tiers` | `{tier: {n, pct, filter}}`, `pct` of `known`; the counts add up to `known` |
+| `draw_heavy` | The draw share, said outright. Always 0 on a group read on the river |
+| `net_bb`, `bb_per_100` | By the bb/100 rule: complete hands with a known big blind (see "Money") |
+| `filter`, `hand_ids` | The terms that find exactly the group inside the same spot, and its hands. The pool form leaves the ids out |
+
+Groups under `min` hands (3 unless asked) are left out of the rows and counted in
+`hidden`, groups and hands. Rows are sorted by `n`.
+
+**The usual bias, sharpened.** A line that wins uncontested is never shown, and a
+line is often *why* a hand won uncontested: `b/b/-` where the turn bet got a fold
+is in the group, but its cards are not in the split. Bluffs that got a fold are
+never shown, so a betting line reads stronger than it is. The hero's cards are
+known on every hand, which is why the hero's coverage is far higher than anyone
+else's.
+
+35. **Nutted starts at a set.** `NUTTED_FROM = "set"`, in `lines.py`. A set is
+    hidden and near the top of most boards; trips made with one hole card on a
+    paired board are not, since anyone holding the case card or a full house has
+    it beat, so trips stay strong. Two pair is strong for the same reason a flush
+    is not: one is beaten by every better two pair, the other by very little.
+    `NUTTED_FROM` is the one place to move it.
+36. **Strength is read where they last acted, not on the final board.** A flop
+    check-raise that folded the turn is judged on the turn board, where the fold
+    happened; a line that ended on the flop says nothing about a river nobody saw
+    them play. The cost is that a group read on the river can never be
+    draw-heavy: a draw there has missed, and is air.
+
 ---
 
 ## Decision points (nodes)
