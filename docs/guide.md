@@ -334,6 +334,18 @@ to one, raises one and leads in the selected spot. The **Jammed** and **Called
 jam** chip rows write the all-in terms for you, and the **Pot ≥** box and **vs**
 picker write `pot>=` and `vs=`.
 
+**Results** opens with the red line and the blue line: the player's net big blinds
+over time, split into the hands they took to showdown (blue) and every other hand
+(red), which add up to the grey total. A blue line that climbs while the red one
+falls is someone who wins with cards and gives pots up without them: bluff them
+off hands and value-bet them thinly. A rising red line is someone who takes pots
+away, so call them down lighter. A dashed line pays each all-in showdown by
+equity, and the bars underneath are each session's result. Hover for any hand's
+running totals, click a point to open that hand, click a bar to list that
+session, or click red or blue in the legend to narrow the spot to those hands.
+`pnt winnings <alias>` prints the totals and the session table, and
+`GET /players/{alias}/winnings` returns every point.
+
 Every cell, bar and size opens the list of hands behind it, and clicking a hand
 replays it. Each row names who the hand was against and whether the player closed
 the action (`IP` or `OOP` rather than a seat, since every postflop stat here is

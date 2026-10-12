@@ -1250,6 +1250,52 @@ Judgement calls:
    `filter: null` and their `hand_ids`; the chart lists those hands without
    touching the spot. An `ip` flag would make them clickable like the rest.
 
+### Red and blue lines
+
+One player's winnings as running totals in hand order, split on whether they went
+to showdown. `winnings.py` mirrors this section; `GET /players/{alias}/winnings`,
+`pnt winnings` and the graph at the top of the chart's **Results** view read it.
+
+```
+x          = net / big_blind               each complete hand with a known big blind
+total[i]   = Σ x over the first i such hands, oldest first
+blue[i]    = Σ x over those hands with wtsd
+red[i]     = Σ x over those hands with not wtsd
+red + blue = total                          at every hand
+```
+
+| Line | Hands | Filter |
+|---|---|---|
+| **Total** (grey) | every complete hand with a known big blind | none |
+| **Blue** (showdown) | `wtsd`: saw the flop, the hand went to showdown, and they had not folded | `wtsd` |
+| **Red** (no showdown) | everything else: preflop folds, walks, pots won with a bet, pots given up | `!wtsd` |
+| **All-in adjusted** (dashed, optional) | the total, with each all-in showdown's `adjusted` (see "All-in EV") in place of its net | none |
+| **Session bars** | one per `game_id`, oldest first: Σ x over that game's hands, plus its red and blue parts | none -- `hand_ids` |
+
+The money is bb/100's money: each sum is the exact fraction `Tally.bb_sum` is, so
+the last point of `total` is `rates()["net_bb"]` for the same hands, to the cent.
+**`hands`** counts every hand in the spot and **`bb_hands`** the ones in the
+lines; each line carries both, so `known / n` is always on show. Every point is
+rounded from its own exact sum, so `red + blue` can sit a cent off `total`.
+
+Judgement calls:
+
+1. **Incomplete hands are in no line**, by the rule in "Money": a hand whose log
+   stops early has no result, and one with no known big blind has no size. Both
+   still count among the hands, and on their side of the red / blue split, so
+   each line's filter finds its `hands` exactly.
+2. **Red is "not `wtsd`", not "won without showdown".** It is every hand this
+   player did not take to showdown, won or lost: the pots they took with a bet,
+   the ones they folded, and the blinds. A preflop all-in that ran out the board
+   is blue, since `wtsd` counts the board being dealt as seeing the flop.
+3. **The adjusted line only moves on all-in showdowns with every live hand
+   known.** Its population is "All-in EV"'s, narrowed to this player's hands in
+   the spot. An all-in showdown with a mucked live hand has no equity to pay by,
+   so it keeps its actual net and is counted as `adjusted.skipped`. The graph
+   draws the line only when at least one all-in was adjusted.
+4. **No filter term names a game**, so a session bar carries its `hand_ids`
+   within the spot and the chart lists those hands without touching the spot.
+
 ---
 
 ## Hand review
