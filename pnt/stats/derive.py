@@ -318,6 +318,9 @@ class Facts:
     spr_flop: float | None = None
     #: Collected chips from the pot. A 7-2 bounty is not the pot.
     won_pot: bool = False
+    #: The signed 7-2 side-bet result, from `HandPlayerRow.bounty`: positive when
+    #: paid to them, negative when they paid, 0 when none. Already part of `net`.
+    bounty: int = 0
     #: As the preflop aggressor, after every earlier postflop street checked
     #: through: first to bet on this street (turn and river).
     delayed_cbet_opp: dict[str, bool] = field(default_factory=dict)
@@ -903,6 +906,7 @@ def derive(hand: HandRow) -> list[Facts]:
             hand_number=hand.hand_number,
             ts=hand.ts,
             net=p.collected - p.contributed + p.bounty,
+            bounty=p.bounty,
             pot=pot,
             bb_size=hand.bb,
             complete=hand.complete,

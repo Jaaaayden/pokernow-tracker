@@ -106,6 +106,9 @@ FLAGS: dict[str, Predicate] = {
     "cold_call": lambda f: f.cold_call,
     "straddled": lambda f: f.straddled,
     "won_pot": lambda f: f.won_pot,
+    # The 7-2 side bet, settled outside the pot.
+    "bounty_won": lambda f: f.bounty > 0,
+    "bounty_paid": lambda f: f.bounty < 0,
 }
 
 # Responses to a c-bet, and leads into the previous street's aggressor, per street.
@@ -716,6 +719,8 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("won_sd", "won_sd", "won at showdown"),
         ("won_pot", "won_pot", "collected from the pot; a bounty is not the pot"),
         ("fold_street=STREET", "fold_street=turn", "the street they folded on: preflop, flop, turn or river"),
+        ("bounty_won", "bounty_won", "was paid the 7-2 bounty"),
+        ("bounty_paid", "bounty_paid", "paid the 7-2 bounty"),
         ("won", "won", "won chips"),
         ("lost", "lost", "lost chips"),
         ("cards_known", "cards_known", "hole cards were shown"),
@@ -741,6 +746,7 @@ EXCLUSIVE: tuple[tuple[str, ...], ...] = (
     ("steal", "fold_to_steal_opp"),
     ("fold_to_steal", "3bet_vs_steal"),
     ("squeeze", "cold_call"),
+    ("bounty_won", "bounty_paid"),
 )
 
 #: Texture tags no one board carries two of. The rest overlap on purpose (see

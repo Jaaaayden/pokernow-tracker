@@ -525,6 +525,12 @@ Filter: `players_flop=2` (heads-up on the flop), `players_flop>=3` (multiway).
 | **WWSF** (`wwsf`) | `saw_flop` and `won_pot` | `saw_flop` (the WTSD denominator) | Hands ending preflop |
 | **WWSF, no showdown** (`wwsf_nsd`) | `saw_flop`, `won_pot` and not `wtsd` | Same as WWSF | Same |
 
+| Fact | Definition |
+|---|---|
+| **bounty** | The signed 7-2 side-bet result, `HandPlayerRow.bounty`: positive when paid to the player, negative when they paid, 0 when none. Part of `net`, never of the pot |
+
+Filters: `bounty_won` (`bounty > 0`) and `bounty_paid` (`bounty < 0`).
+
 Filters: `won_pot`; WWSF is `saw_flop,won_pot` over `saw_flop`, and the
 no-showdown part adds `!wtsd`. `fold_street=<street>` keeps the hands folded on
 that street, preflop included.
