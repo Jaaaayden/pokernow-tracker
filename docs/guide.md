@@ -206,6 +206,15 @@ from the same URL (the page alone is at `/stats.html`). Pick a street to swap th
 postflop columns, toggle the c-bet size mix, and click a player to open their range
 chart in the spot you are looking at.
 
+**SQZ** and **CC** are squeeze and cold-call. A squeeze is a 3-bet after an open and
+at least one caller; a player whose SQZ sits near zero lets you open and flat in
+front of them without being squeezed off the hand. A cold call is a call of an open
+with nothing in yet (no blind posted, no limp); a high CC means a capped range,
+since the strong hands would have 3-bet. Hover a cell for the number of chances
+behind it. The range chart's **Squeeze** and **Cold call** chips put the same hands
+on the chart, and **Got squeezed** is the other side: they called an open and then
+faced a 3-bet.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.
