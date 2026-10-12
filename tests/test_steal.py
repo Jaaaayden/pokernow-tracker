@@ -159,8 +159,30 @@ def test_folds_to_steal_fires_at_its_threshold_and_not_under_its_sample():
     assert all(parse_filter("fold_to_steal_opp")(f) for f in _blind(30, {}))
 
 
-def test_folds_to_steal_ignores_dead_button_hands():
-    """Thirty dead-button folds are no evidence: the seat names are guesses."""
-    rows = [replace(f, dead_button=True) for f in _blind(30, {})]
-    assert not any(f.fold_to_steal_opp for f in rows)
-    assert _tag(rows, "folds_to_steal") is None
+def _button(n: int, opens: int) -> list:
+    """`n` copies of the button folded to, opening `opens` of them."""
+    d = {f.pn_id: f for f in derive(_steal_hand())}["D"]
+    return [replace(d, hand_id=i, opener=i < opens) for i in range(n)]
+
+
+def test_steals_wide_fires_at_its_threshold_and_not_under_its_sample():
+    from pnt.stats.tags import THRESHOLDS
+
+    assert THRESHOLDS["steals_wide"] == {"pct": 55, "n": 30}
+    t = _tag(_button(30, 17), "steals_wide")  # 56.7%
+    assert t and (t["n"], t["hits"], t["kind"], t["filter"]) == (30, 17, "exploit", "steal_opp")
+    assert t["label"] == "STEALS WIDE" and "17 of 30" in t["tip"]
+    assert _tag(_button(30, 16), "steals_wide") is None, "16 of 30 is 53.3%, under the line"
+    assert _tag(_button(29, 29), "steals_wide") is None, "29 chances is under the sample"
+    assert sum(parse_filter("steal")(f) for f in _button(30, 17)) == 17
+    assert all(parse_filter("steal_opp")(f) for f in _button(30, 17))
+
+
+@pytest.mark.parametrize("flag", ["dead_button", "blinds_irregular"])
+def test_the_steal_tags_ignore_dead_button_and_dead_blind_hands(flag):
+    """Thirty folds or steals on hands whose seats are guesses are no evidence."""
+    folds = [replace(f, **{flag: True}) for f in _blind(30, {})]
+    steals = [replace(f, **{flag: True}) for f in _button(30, 30)]
+    assert not any(f.fold_to_steal_opp for f in folds) and not any(f.steal_opp for f in steals)
+    assert _tag(folds, "folds_to_steal") is None
+    assert _tag(steals, "steals_wide") is None
