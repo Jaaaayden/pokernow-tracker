@@ -154,6 +154,19 @@
   tr.pick td:first-child::after { content: " ›"; color: var(--muted); }
   #table { overflow-x: auto; }
 
+  /* --- fold equity, under the sizing blocks --- */
+  .foldeq { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
+  .foldeq h3 { font-size: 13px; font-weight: 600; margin: 14px 0 0; display: flex; gap: 4px 10px; flex-wrap: wrap; align-items: baseline; }
+  .foldeq h3:first-of-type { margin-top: 0; }
+  .foldeq h3 small { color: var(--muted); font-weight: 400; }
+  .foldeq .tbl { overflow-x: auto; }
+  .foldeq table { margin-top: 6px; }
+  .foldeq tr.none td { color: var(--muted); }
+  /* A positive edge on their bets, an over-fold facing them: the exploit signal. */
+  .foldeq td.hot { color: var(--accent); font-weight: 600; }
+  .foldeq td.sub { cursor: pointer; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+  .foldeq td.sub:hover { color: var(--ink); }
+
   /* --- hand list and replay --- */
   #hands { margin-top: 14px; }
   .hand-rows { display: flex; flex-direction: column; max-height: 360px; overflow-y: auto; }
@@ -437,6 +450,7 @@
     <div id="bars" class="bars hidden"></div>
     <div id="sizing" class="sizing hidden"></div>
     <div id="table" class="hidden"></div>
+    <div id="foldeq" class="foldeq hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
@@ -872,8 +886,12 @@
           if (live()) state.review = { key, data };
         }
       } else if (view === "sizing") {
+        // Fold equity rides along: same player and spot, every street at once. A
+        // server too old to have it costs that section, not the view.
+        const fe = getJson(`/players/${player}/fold_equity?` + q).catch(e => ({ error: String(e.message || e) }));
         q.set("street", state.street); q.set("kind", state.kind);
         data = await getJson(`/players/${player}/sizing?` + q);
+        data.fold_equity = await fe;
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -1003,6 +1021,109 @@
     review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
   };
 
+  // Fold equity on the street the Sizing view is showing: their bets against a
+  // pure bluff's break-even, and their defense against the MDF. Rendered into its
+  // own block under the sizing blocks, and shown in the table mode too, since it
+  // is a table already. See SPEC.md, "Fold equity by bet size".
+  function renderFoldEquity(d) {
+    const wrap = $("foldeq");
+    wrap.replaceChildren();
+    const fe = d.fold_equity;
+    if (!fe || fe.error || !fe.streets) {
+      wrap.appendChild(message(fe?.error
+        ? `fold equity: ${fe.error}`
+        : "fold equity: the running server is older than this page: restart `pnt service` (or `pnt serve`)", "err"));
+      return;
+    }
+    const street = d.street;
+    const s = fe.streets[street];
+    const pct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+    const pts = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+    const pot = (v) => v == null ? "–" : Math.round(v * 100) + "% pot";
+    const head = (title, small) => {
+      const h = document.createElement("h3");
+      const t = document.createElement("span"); t.textContent = title;
+      const sm = document.createElement("small"); sm.textContent = small;
+      h.append(t, sm);
+      wrap.appendChild(h);
+    };
+    // One table; `cols` is [header, value(r), hot(r)?, sub(r)?] -- `hot` marks the
+    // exploit signal, `sub` makes a cell list a subset of the row's hands.
+    const table = (rows, cols, what) => {
+      const box = document.createElement("div"); box.className = "tbl";
+      const t = document.createElement("table");
+      const hr = document.createElement("tr");
+      for (const [h, , , , tip] of cols) {
+        const th = document.createElement("th"); th.textContent = h; if (tip) th.title = tip; hr.appendChild(th);
+      }
+      t.appendChild(hr);
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        if (!r.n) tr.className = "none";
+        tr.title = r.filter + (r.judged ? "" : ` · under ${fe.min_sample} hands: not judged`);
+        for (const [, val, hot, sub] of cols) {
+          const td = document.createElement("td");
+          td.textContent = val(r);
+          if (hot && r.judged && hot(r)) td.classList.add("hot");
+          const part = sub?.(r);
+          if (part?.ids.length) {
+            td.classList.add("sub");
+            td.title = part.filter;
+            td.addEventListener("click", (e) => { e.stopPropagation(); openHands(part.title, part.ids); });
+          }
+          tr.appendChild(td);
+        }
+        if (r.n) {
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
+          const title = `${street} · ${what} · ${SIZE_LABEL[r.size]}`;
+          tr.setAttribute("aria-label", `${title} — list these hands`);
+          pickable(tr, title, r.hand_ids);
+        }
+        t.appendChild(tr);
+      }
+      box.appendChild(t);
+      wrap.appendChild(box);
+    };
+    const size = ["size", (r) => SIZE_LABEL[r.size]];
+    const typical = ["typical", (r) => pot(r.median_size), null, null, "the median bet in the bucket, over the pot"];
+
+    head(`Fold equity on the ${street}`, `their bets · ${s.totals.bets} on the ${street}`);
+    table(s.bets, [
+      size,
+      ["bets", (r) => r.n],
+      ["all folded", (r) => pct(r.fold), (r) => r.edge > 0,
+        (r) => ({ ids: r.fold_hand_ids, filter: r.fold_filter, title: `${street} bets · ${SIZE_LABEL[r.size]} · everyone folded` }),
+        "everyone who acted on the bet folded"],
+      ["called", (r) => pct(r.call)],
+      ["raised", (r) => pct(r.raise)],
+      typical,
+      ["break-even", (r) => pct(r.break_even), null, null, "how often a pure bluff this size must be folded to"],
+      ["edge", (r) => pts(r.edge), (r) => r.edge > 0, null, "all folded minus break-even, in points: positive and a pure bluff this size showed a profit"],
+    ], "their bets");
+    for (const [key, what] of [["faced", "facing a bet or raise"], ["faced_cbet", "facing a c-bet"]]) {
+      head(what.charAt(0).toUpperCase() + what.slice(1), `${s.totals[key]} first decisions, by the size faced`);
+      table(s[key], [
+        size,
+        ["faced", (r) => r.n],
+        ["fold", (r) => pct(r.fold), (r) => r.overfold > 0,
+          key === "faced_cbet" ? (r) => ({ ids: r.fold_hand_ids, filter: r.fold_filter, title: `${street} · ${what} · ${SIZE_LABEL[r.size]} · folded` }) : null],
+        ["call", (r) => pct(r.call)],
+        ["raise", (r) => pct(r.raise)],
+        typical,
+        ["MDF", (r) => pct(r.mdf), null, null, "minimum defense frequency: how often to call or raise so a pure bluff this size does not profit"],
+        ["over-fold", (r) => pts(r.overfold), (r) => r.overfold > 0, null, "fold minus (100 − MDF), in points: positive folds more than the bet demands"],
+      ], what);
+    }
+    const note = document.createElement("p");
+    note.className = "note"; note.style.margin = "10px 0 0";
+    note.textContent = `A bet's break-even is the fold rate a bluff with no equity needs at that size; MDF is the share a defender must continue with to deny it. `
+      + `Highlighted: a size that showed a profit as a pure bluff, or a defense that folds too much, on ${fe.min_sample}+ hands. `
+      + `No cards are needed, so every bet counts, shown or not; bluffs that got folds are never shown, so this says how often a size won, not what it was. `
+      + `Click a row for its hands; an underlined fold rate lists the folds alone.`;
+    wrap.appendChild(note);
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -1030,6 +1151,7 @@
     $("bars").classList.toggle("hidden", view !== "made" || table);
     $("sizing").classList.toggle("hidden", view !== "sizing" || table);
     $("table").classList.toggle("hidden", !table);
+    $("foldeq").classList.toggle("hidden", view !== "sizing");
     $("review").classList.toggle("hidden", !review);
     applyLayout();
     if (view === SESSION_VIEW) { renderSession(d); return; }
@@ -1304,6 +1426,7 @@
   }
 
   function renderSizing(d) {
+    renderFoldEquity(d);
     const wrap = $("sizing");
     wrap.replaceChildren();
     if (!d.spot) {
