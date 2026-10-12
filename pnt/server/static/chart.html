@@ -171,10 +171,13 @@
   .lrows .lab { font-family: inherit; cursor: default; }
   .lrows .lab:hover { text-decoration: none; }
   .tlab { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; }
-  .tlab .caret { border: 0; background: none; padding: 0; width: 12px; flex: none; color: var(--muted);
-    font-size: 10px; line-height: 1; cursor: pointer; }
-  .tlab .caret:hover, .tlab .caret:focus-visible { color: var(--ink); outline: 0; }
+  .tlab { align-items: center; }
+  .tlab .caret { flex: none; width: 18px; height: 18px; padding: 0; border: 1px solid var(--axis); border-radius: 5px;
+    background: var(--surface); color: var(--ink-2); font-size: 10px; line-height: 16px; text-align: center; cursor: pointer; }
+  .tlab .caret:hover, .tlab .caret:focus-visible { border-color: var(--accent); color: var(--accent); outline: 0; }
+  .tlab .caret[aria-expanded=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .tlab .caret.leaf { visibility: hidden; }
+  .tlab .ways { color: var(--muted); font-size: 11px; }
   .tlab .st { flex: none; width: 3.3em; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
   .tlab .words { cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
   .tlab .words:hover, .tlab .words:focus-visible { text-decoration: underline; outline: 0; }
@@ -491,6 +494,7 @@
     <input id="filter" type="text" placeholder="srp,pot>=500,vs=henry" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
+    <button id="back" title="undo the last change to the spot (Alt+←)" disabled>← Back</button>
   </div>
   <!-- The views, on a row of their own: what they play, then the hands to look at
        again. Two groups rather than one long bar, so neither wraps a label. -->
@@ -498,11 +502,11 @@
     <span class="seg" role="group" aria-label="Analysis views">
       <button data-view="preflop" aria-pressed="true" title="the 169 starting hands, coloured by result">Preflop</button>
       <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
+      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
       <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
-      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
     </span>
     <span class="seg" role="group" aria-label="Review views">
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
@@ -1363,6 +1367,11 @@
         words.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(g.filter, title(g)); } });
         const code = document.createElement("span"); code.className = "code"; code.textContent = g.line;
         lab.append(caret, st, words, code);
+        if (kids && !open) {
+          const ways = document.createElement("span"); ways.className = "ways";
+          ways.textContent = `${g.children.length} way${g.children.length === 1 ? "" : "s"} on`;
+          lab.appendChild(ways);
+        }
 
         const n = document.createElement("div"); n.className = "num"; n.textContent = g.n;
         const stack = document.createElement("div"); stack.className = "stack";
@@ -1714,7 +1723,8 @@
     const size = ["size", (r) => SIZE_LABEL[r.size]];
     const typical = ["typical", (r) => pot(r.median_size), null, null, "the median bet in the bucket, over the pot"];
 
-    head(`Fold equity on the ${street}`, `their bets · ${s.totals.bets} on the ${street}`);
+    head(`When they bet the ${street}: did everyone fold?`,
+      `their own first bet on the street · ${s.totals.bets} bets · the fold equity their sizes earned`);
     table(s.bets, [
       size,
       ["bets", (r) => r.n],
@@ -1727,8 +1737,14 @@
       ["break-even", (r) => pct(r.break_even), null, null, "how often a pure bluff this size must be folded to"],
       ["edge", (r) => pts(r.edge), (r) => r.edge > 0, null, "all folded minus break-even, in points: positive and a pure bluff this size showed a profit"],
     ], "their bets");
+    const FACING = {
+      faced: [`When they faced a bet or raise on the ${street}: did they fold?`,
+        "anyone's bet or raise, the first time they faced one on the street"],
+      faced_cbet: [`When they faced a c-bet on the ${street}: did they fold?`,
+        "only a continuation bet from the last street's aggressor: a subset of the table above"],
+    };
     for (const [key, what] of [["faced", "facing a bet or raise"], ["faced_cbet", "facing a c-bet"]]) {
-      head(what.charAt(0).toUpperCase() + what.slice(1), `${s.totals[key]} first decisions, by the size faced`);
+      head(FACING[key][0], `${FACING[key][1]} · ${s.totals[key]} decisions`);
       table(s[key], [
         size,
         ["faced", (r) => r.n],
@@ -2983,19 +2999,38 @@
     state.games = null; // a new game may have started
     state.bluffs = null;
   }
-  function apply() {
+  // The spots this page has been through, newest last: a click into a line or a
+  // bar adds terms, and Back takes the spot to what it was before, in one click,
+  // rather than picking those terms back out of the box.
+  const spotHistory = [];
+  function apply(fromBack = false) {
     state.player = $("player").value;
-    state.filter = $("filter").value.trim();
+    const next = $("filter").value.trim();
+    if (fromBack !== true && next !== state.filter) {
+      spotHistory.push(state.filter);
+      if (spotHistory.length > 50) spotHistory.shift();
+    }
+    $("back").disabled = !spotHistory.length;
+    state.filter = next;
     dropCaches(); // Apply always asks the server again
     syncChips();
     closeHands();
     writeUrl();
     load();
   }
-  $("apply").addEventListener("click", apply);
+  $("apply").addEventListener("click", () => apply());
+  const back = () => {
+    if (!spotHistory.length) return;
+    $("filter").value = spotHistory.pop();
+    apply(true);
+  };
+  $("back").addEventListener("click", back);
+  document.addEventListener("keydown", (e) => {
+    if (e.altKey && e.key === "ArrowLeft" && spotHistory.length) { e.preventDefault(); back(); }
+  });
   $("clear").addEventListener("click", () => { $("filter").value = ""; apply(); });
   $("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
-  $("player").addEventListener("change", apply);
+  $("player").addEventListener("change", () => apply());
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x === b));
     state.by = b.dataset.view; writeUrl(); load();
