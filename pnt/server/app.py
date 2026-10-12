@@ -42,9 +42,12 @@ from pnt.ingest.importer import (
     split_identities,
 )
 from pnt.stats.allin import allin_hand_list, allin_report
+from pnt.stats.bluffs import CATEGORY, bluff_value, members
+from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
-from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown, pool_facts
+from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
+from pnt.stats.lines import pool_facts as line_pool_facts
 from pnt.stats.live import snapshot
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
@@ -1094,10 +1097,76 @@ def pool_lines(
     """
     conn = db()
     pred = _predicate(conn, filter)
-    facts = pool_facts(conn, game)
+    facts = line_pool_facts(conn, game)
     if pred is not None:
         facts = [f for f in facts if pred(f)]
     out = _lines(facts, mode, street, min)
     for g in out["groups"]:
         del g["hand_ids"]
     return {"player": None, "filter": filter, **out}
+# --- bluff:value -----------------------------------------------------------------
+
+
+@app.get("/players/{alias}/bluffs")
+def player_bluffs(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's bluff:value by kind of aggression: bets by size, check-raises,
+    raises and jams per street, with the shown hands read on the street of the
+    action. Each row carries its hand ids, so the chart lists them on a click.
+    See SPEC.md, "Bluff:value"."""
+    facts = _spot_facts(alias, filter, game)
+    return {"scope": "player", "player": alias, "filter": filter, **bluff_value(facts)}
+
+
+def _pool_spot(conn: sqlite3.Connection, filter: str | None, game: str | None) -> list[Facts]:
+    pred = _predicate(conn, filter)
+    facts = bluff_pool_facts(conn, game)
+    return [f for f in facts if pred(f)] if pred is not None else facts
+
+
+@app.get("/bluffs")
+def pool_bluffs(
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The same table over the pool: every player, every hand. A hand counts once
+    per player who took the line in it. No hand ids, since one names nobody; the
+    pool's hands are listed by /bluffs/hands."""
+    conn = db()
+    facts = _pool_spot(conn, filter, game)
+    players = len({f.pn_id for f in facts})
+    return {"scope": "pool", "player": None, "filter": filter, "players": players,
+            **bluff_value(facts, ids=False)}
+
+
+@app.get("/bluffs/hands")
+def pool_bluff_hands(
+    category: Annotated[str, Query(description="a row's key, e.g. 'bet_river_overbet'")],
+    cls: Annotated[str | None, Query(description="value, marginal, semi_bluff or bluff")] = None,
+    filter: Annotated[str | None, Query(description="the spot the table was drawn in")] = None,
+    game: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=5000)] = 500,
+) -> dict:
+    """The pool's hands behind one row of /bluffs, or one class of it, newest first,
+    each with the player who took the line. By key rather than filter, so the one
+    row without a filter, all aggression, lists the same way as the rest."""
+    conn = db()
+    try:
+        rows = members(_pool_spot(conn, filter, game), category, cls)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    names = display_names(conn)
+    # hand_list sorts newest first, and the sort is stable: sorted the same way
+    # here, its rows line up with these facts, which is where the name comes from.
+    rows.sort(key=lambda x: (x.ts or "", x.hand_id), reverse=True)
+    total = len(rows)
+    rows = rows[:limit]
+    hands = hand_list(rows, names)
+    for h, f in zip(hands, rows):
+        h["player"] = names.get(f.pn_id, f.pn_id)
+    cat = CATEGORY[category]
+    return {"category": category, "cls": cls, "label": cat["label"], "street": cat["street"],
+            "filter": filter, "total": total, "hands": _with_marks(conn, hands, game)}

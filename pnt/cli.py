@@ -34,6 +34,7 @@ from .ingest.importer import (
 from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
 from .stats.allin import allin_report
+from .stats.bluffs import bluff_value, pool_facts
 from .stats.filters import parse_filter
 from .stats.lines import DEFAULT_MIN as LINES_MIN
 from .stats.lines import MODES as LINES_MODES
@@ -1491,6 +1492,75 @@ def lines_cmd(
         row = f"{g['line']:<{width}}{g['n']:>6}{g['known']:>7}{_fmt(g['net_bb']):>9}"
         row += "".join(f"{_fmt(g['tiers'][t]['pct']):>9}" for t in TIERS)
         typer.echo(f"{row}  {g['filter']}")
+
+def _print_bluffs(title: str, out: dict) -> None:
+    """One bluff:value table: a row per category, grouped by street."""
+    typer.echo(title)
+    typer.echo(
+        f"{'':<7}{'category':<27}{'n':>6}{'shown':>7}{'cov%':>7}"
+        f"{'value':>7}{'marg':>6}{'semi':>6}{'bluff':>6}{'V : B':>10}{'folded':>8}"
+    )
+    typer.echo("-" * 97)
+    street = None
+    for r in out["rows"]:
+        if r["street"] != street and street is not None:
+            typer.echo("")
+        c = r["counts"]
+        # ASCII for the console: Windows' default code page has no infinity sign.
+        ratio = r["ratio_text"].replace("∞", "inf")
+        folded = f"{_fmt(r['folded_pct'])}%" if r["folded_pct"] is not None else ""
+        typer.echo(
+            f"{(r['street'] if r['street'] != street else ''):<7}{r['label'][:26]:<27}"
+            f"{r['n']:>6}{r['known']:>7}{_fmt(r['coverage']):>7}"
+            f"{c['value']:>7}{c['marginal']:>6}{c['semi_bluff']:>6}{c['bluff']:>6}"
+            f"{ratio:>10}{folded:>8}"
+        )
+        street = r["street"]
+
+
+@app.command()
+def bluffs(
+    alias: str = typer.Argument(None, help="One player; the pool when omitted."),
+    pool: bool = typer.Option(False, "--pool", help="The pool too: every player, every hand."),
+    db: Path = DbOpt,
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,vs=henry'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Bluff:value by kind of aggression: bets by size, check-raises, raises and jams.
+
+    The shown hands of each are read on the board of the street the action was
+    made on: value (top pair or better), marginal (a weaker pair), semi-bluff (a
+    draw on the flop or turn) and bluff (no pair, or a missed draw on the river).
+    Bets everyone folded to are never shown, so the shown ratio leans to value;
+    `folded` is how many of a bet row's bets got there, as context.
+    """
+    conn = connect(db)
+    try:
+        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        scopes = []
+        if alias:
+            scopes.append((alias, facts_for(conn, alias, game)))
+        if pool or not alias:
+            scopes.append(("pool", pool_facts(conn, game)))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    outs = {
+        name: bluff_value([f for f in facts if pred is None or pred(f)], ids=False)
+        for name, facts in scopes
+    }
+    if as_json:
+        typer.echo(json.dumps(outs if len(outs) > 1 else next(iter(outs.values())), indent=2))
+        return
+    for i, (name, out) in enumerate(outs.items()):
+        if i:
+            typer.echo("")
+        _print_bluffs(f"{name}  filter: {filter_ or '(none)'}  hands: {out['hands']}", out)
+    typer.echo(
+        "\nShown hands only, read on the street of the action. Bets everyone folded to are"
+        "\nnever shown, so the ratio leans to value: read coverage, and `folded`, first."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

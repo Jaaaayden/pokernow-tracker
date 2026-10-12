@@ -659,6 +659,48 @@ else's.
     happened; a line that ended on the flop says nothing about a river nobody saw
     them play. The cost is that a group read on the river can never be
     draw-heavy: a draw there has missed, and is air.
+### Bluff:value
+
+`bluffs.bluff_value` splits a player's aggression into categories and reads what
+the shown hands in each had, **on the board of the street the action was made
+on** (`tags.strength_at`). Each category is a filter, so it reproduces as a spot:
+
+| Category | Filter | Per street |
+|---|---|---|
+| Bet, by size | `bet_<street>=blocker` … `=overbet` | their first bet on the street, by its bucket |
+| Check-raise | `check_raise_<street>` | |
+| Raise | `raised_bet_<street>` | every raise facing a bet, check-raises included |
+| Jam | `jam_<street>` | an all-in bet or raise |
+| Every river bet | `bet_river` | the five river bet rows added together |
+| All aggression | none | every hand they bet or raised in, read on the **last** street they did |
+
+| Class | `strength_at` | As a filter (flop shown) |
+|---|---|---|
+| `value` | strong | `made_flop>=top_pair` |
+| `marginal` | medium or weak | `made_flop=pocket_pair\|middle_pair\|bottom_pair\|board_pair` |
+| `semi_bluff` | draw, flop or turn | `made_flop=draw` |
+| `bluff` | air; on the river a missed draw too | `made_flop=high_card`; `made_river<pair` on the river |
+
+Every row reports `n` (every hand in it), `known` (cards shown), coverage, the four
+counts, and **value : bluff** as `value / (bluff + semi_bluff)`, printed "2.1 : 1".
+Marginal hands are on neither side: they bet for thin value or protection, and the
+ratio is the one a caller needs. Value with no bluff beside it prints "∞ : 1";
+nothing shown prints "--".
+
+**A bet everyone folds to is never shown**, and that is the bluff that worked, so
+the shown ratio leans to value -- more so the more of a row got folds. Bet rows
+carry `folded`, the bets whose `bet_answer` was `fold`, as that context. Raise,
+check-raise and jam rows carry none: what a raise got is not a fact. The player
+whose logs these are knows their own cards on every hand, so their own rows are
+close to complete; everyone else's are their showdowns.
+
+**The pool** is the same table over every player's rows. Each row of `Facts` is
+one hand and one player, so a pool category counts a hand once for each player
+who took the line in it, and a pool row is the sum of the players' rows.
+
+All aggression has no filter because a filter is an AND of terms and cannot say
+"bet or raised on some street". Its hands are listed by category key instead
+(`/bluffs/hands?category=aggression`).
 
 ---
 
