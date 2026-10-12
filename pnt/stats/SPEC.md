@@ -59,6 +59,29 @@ first.
 A straddle is a forced post, so it raises the *amount* of level 1 without creating
 level 2.
 
+### Straddles
+
+| Fact | Definition |
+|---|---|
+| **straddled** | Some player made a forced post whose `post_kind` is `straddle`. Same value for everyone in the hand |
+
+Filter: `straddled`, and `!straddled` for the rest.
+
+Judgement calls:
+
+1. **A straddle changes no level.** The level-1 amount already includes it (see
+   above), so the open, the 3-bet and every other level read the same on a
+   straddled hand; `open_bb` is still the open over the hand's big blind, not
+   over the straddle. A straddled pot is a pot type of its own only through this
+   flag.
+2. **The straddler has a live blind.** Their post is their bet for the street,
+   exactly as a big blind's is, so they are never a cold caller ("Squeeze and
+   cold-call") -- but the straddle seat is not a blind for blind defense, which
+   reads the seat names.
+3. **Only the log's word counts.** A post is a straddle when PokerNow's line says
+   `posts a straddle`; a post of twice the big blind under another name is not
+   one, and a post with no recorded kind is not one either.
+
 ---
 
 ## Preflop
@@ -100,14 +123,89 @@ hands where they folded to an open. `faced_3bet` and `faced_3bet=<decision>` sta
 covers the cold-caller and the squeezed player too. `limp` is the action and
 `limped` the pot type.
 
+Two more rates read the path directly:
+
+| Stat | Numerator | Denominator | Filter (num / den) |
+|---|---|---|---|
+| **Limp-reraise** (`limp_reraise`) | `pf_faced[1] == call` and `pf_faced[2] == raise` (`limp_raise`) | Limped, then acted facing the open: `limp_raise` + `limp_call` + `limp_fold` | `limp,faced_open=raise` / `limp,faced_open` |
+| **Preflop jam** (`jam_pf`) | `jam[preflop]`: an all-in bet or raise | Had a preflop decision (`vpip_opp`, kept as `jam_pf_opp`) | `jam_preflop` / `acted_preflop` |
+
+A limper whose next decision is facing a 3-bet -- someone opened and someone else
+3-bet before it came back -- never faced the open, so is in neither side of
+limp-reraise. An all-in call is not a jam ("Jams").
+
+### Steals and blind defense
+
+A steal is an open from late position that nobody in front of it wanted: the
+blinds are the only players left to beat.
+
+| Fact | Definition |
+|---|---|
+| **first_in** | At the player's first voluntary preflop action, every earlier voluntary preflop action was a fold. Forced posts do not count, so the player after a straddle can be first in |
+| **steal_open** | The hand's opener was `first_in`, from a steal seat (CO, BTN or SB; heads-up the BTN/SB), on a hand that is neither `dead_button` nor `blinds_irregular`. Same value for everyone in the hand |
+| **callers_before** | Calls made at level 2 before this player's first decision at level 2. None when they never acted facing the open |
+| **position_label** | The seat's name (`position_name`), or None on a dead-button or dead-blind hand -- the rule `positional_report` follows. A property, not stored |
+
+| Stat | Numerator | Denominator | Exclusions |
+|---|---|---|---|
+| **ATS** (`ats`) | Opened (`opener`) | `steal_opp`: `first_in` from a steal seat | Dead button; dead blind |
+| **Fold to steal** (`fold_to_steal`) | `pf_faced[2] == fold` | `fold_to_steal_opp`: in the SB or BB, the hand's open was a steal, and `callers_before == 0` | Same, through `steal_open` |
+| **3-bet vs steal** (`3bet_vs_steal`) | `pf_faced[2] == raise` (`three_bet_vs_steal`) | Same as fold to steal | Same |
+
+Filters: `first_in`, `steal_opp`, `steal`, `fold_to_steal_opp`, `fold_to_steal`,
+`3bet_vs_steal`, and `callers_before>=N`.
+
+Judgement calls:
+
+1. **Seats are trusted only where `positional_report` trusts them.** The
+   `position=` filter drops a dead button but labels a dead-blind hand; a steal
+   is a claim about the seat, so both are out, as in "Known judgement calls" 4.
+   `first_in` is a claim about the action alone and stays set on them.
+2. **A steal folded to the blinds needs no caller in between.** One call and the
+   blind is facing an open and a caller, which is the squeeze spot, so
+   `callers_before == 0` is part of the defense opportunity.
+3. **Heads-up, the button's open is a steal**, and the big blind defends it. The
+   small blind folding first in from the BTN/SB is a steal opportunity it
+   declined.
+4. **A blind's 3-bet of a steal is a 3-bet**, and counts in the 3-bet stat as
+   well: 3-bet vs steal is a slice of it, not a separate action.
+
+### Squeeze and cold-call
+
+| Fact | Definition |
+|---|---|
+| **posted_blind** | The player made a forced preflop post that is a live blind: small blind, big blind, straddle, or a returning player's missed big blind. Antes and dead small blinds are not live (`post_kind` `ante` and `missing_sb`), and a post of no recorded kind counts as live |
+
+| Stat | Numerator | Denominator | Exclusions |
+|---|---|---|---|
+| **Squeeze** (`squeeze`) | `pf_faced[2] == raise` | `squeeze_opp`: acted facing the open with `callers_before >= 1` | — |
+| **Cold-call** (`cold_call`) | `pf_faced[2] == call` | `cold_call_opp`: acted facing the open, with no live blind posted and no earlier decision this hand (`1 not in pf_faced`) | Blinds and straddlers; limpers |
+
+Filters: `squeeze_opp`, `squeeze`, `cold_call_opp`, `cold_call`.
+
+Judgement calls:
+
+1. **"Not in the blinds" is read from the posts, not the seat names.** A player
+   with a live blind in front of them is not coming in cold, whatever seat the
+   label gives them: the straddler and the returning player's missed big blind
+   are out with the small and big blinds. Reading posts also keeps the dead-button
+   hands, whose labels are guesses.
+2. **A limper is never a cold caller.** Their limp is their first decision, so
+   the call of the open that follows is `limp_call`.
+3. **A squeeze is a 3-bet.** Every `squeeze` is a `three_bet`, and the limper who
+   re-raises an open and its callers is both a squeeze and a limp-reraise.
+4. **The callers are callers of the open.** Limps before the open are level 1 and
+   do not count toward `callers_before`; a limper who then calls the open does.
+
 ---
 
 ## Postflop
 
 **Aggressor**: the last player to `bet` or `raise` on a street. If a street checks
 through it has **no** aggressor, so there is no c-bet opportunity on the next
-street. (A bet on a street that checked through is a probe or float, not a
-continuation bet. Some trackers carry the aggressor forward; this one does not.)
+street. (A bet on a street after one that checked through is a delayed c-bet or a
+probe, not a continuation bet -- see "Delayed c-bet, probe and float". Some
+trackers carry the aggressor forward; this one does not.)
 
 | Stat | Numerator | Denominator | Exclusions |
 |---|---|---|---|
@@ -180,6 +278,56 @@ bet of that size and the three rates are of `n`. Their `n`s add up to the bets
 made on the street.
 
 Filters: `bet_answer_river=fold`, `=call`, `=raise`.
+
+### Delayed c-bet, probe and float
+
+What happens on the streets after the aggressor gives one up. The c-bet and the
+donk bet are both defined against the previous street's aggressor; these three
+cover the bets the aggressor's check leaves open. "PFA" is the preflop aggressor
+(`pfa`), who stays the same on every street.
+
+| Stat | Numerator | Denominator (opportunity) | Streets |
+|---|---|---|---|
+| **Delayed c-bet** (`delayed_cbet_<s>`) | Player bets | The player is the PFA, every earlier postflop street was dealt and checked through, and they act on this street with no bet yet made on it | turn, river |
+| **Probe** (`probe_<s>`) | Player bets | Not the PFA; the previous street checked through and the PFA's check closed it (`check_back` by the PFA); they act on this street with no bet yet, before the PFA has acted on it | turn, river |
+| **Fold to probe** (`fold_to_probe_<s>`) | The PFA folds | The PFA acts facing a probe bet, before anyone raises over it | turn, river |
+| **Float** (`float_<s>`) | Player bets | The player called on the previous street (`called_bet[prev]`; on the flop, put chips in preflop without being the PFA), the previous street's aggressor has acted on this street -- checked, since no bet is yet made -- and they act with no bet yet | flop, turn, river |
+
+"Checked through" is the `check_back` rule: no bet or raise, and a check by one of
+two or more players closed it. The fact for a float is `float_bet` (and
+`float_opp`), so it does not shadow the builtin; the stat key and the filter are
+`float_<s>`.
+
+**The families are disjoint from the c-bet and the donk bet, and from each
+other, on any one street.** A delayed c-bet and a probe follow a street that
+checked through, which has no aggressor, so neither a c-bet nor a donk
+opportunity exists there. A float needs an aggressor who has *already* acted on
+the street, where a donk needs one who has *not* -- the float is "bet when the
+c-bet was missed", the donk "bet before the c-bet could be made". And a float
+needs an aggressor on the previous street, which the other two rule out. A bettor
+whose opportunity is none of the five is betting into a street nobody owned.
+
+Filters: `delayed_cbet_<s>`, `delayed_cbet_<s>_opp`, `probe_<s>`,
+`probe_<s>_opp`, `faced_probe_<s>` (the fold-to-probe opportunity),
+`folded_to_probe_<s>`, `float_<s>`, `float_<s>_opp`, and the any-street forms
+`delayed_cbet`, `delayed_cbet_opp`, `probe`, `probe_opp`, `faced_probe`,
+`folded_to_probe`, `float`, `float_opp`.
+
+Judgement calls:
+
+1. **A delayed c-bet needs every earlier street checked.** The PFA who c-bets the
+   flop, checks the turn and bets the river is not delayed: the flop was bet.
+   That river is the other player's probe spot when the PFA's check closed the
+   turn, and the PFA's own river bet there is in none of the five.
+2. **A probe is against the PFA, not the last aggressor.** The street before was
+   checked through, so it has no aggressor; the player a probe tests is the one
+   who owned the hand preflop and declined to keep betting.
+3. **"In position" for a float is behind the aggressor.** The aggressor checked to
+   them, so they act after the aggressor on the street; multiway they need not
+   be last of everyone. This is the bet against a missed c-bet, and the c-bettor
+   is the one it is against.
+4. **A flop float is open to every non-PFA player who put chips in preflop.** On
+   a raised pot that is everyone who called a raise, the big blind included.
 
 ### Who the action was against
 
@@ -363,6 +511,36 @@ would inflate WTSD for exhibitionists.
 **"Saw the flop"** means dealt in, did not fold preflop, and a flop was actually
 dealt.
 
+| Fact | Definition |
+|---|---|
+| **players_flop** | How many players saw the flop: the count of `saw_flop` rows in the hand. None when no flop was dealt. Same value for everyone in the hand |
+
+Filter: `players_flop=2` (heads-up on the flop), `players_flop>=3` (multiway).
+
+### Won when saw flop
+
+| Fact / Stat | Numerator | Denominator | Exclusions |
+|---|---|---|---|
+| **won_pot** (fact) | `collected > 0` -- the reading W$SD takes | — | A 7-2 bounty is **not** winning the pot: it is paid beside the pot, never from it |
+| **WWSF** (`wwsf`) | `saw_flop` and `won_pot` | `saw_flop` (the WTSD denominator) | Hands ending preflop |
+| **WWSF, no showdown** (`wwsf_nsd`) | `saw_flop`, `won_pot` and not `wtsd` | Same as WWSF | Same |
+
+Filters: `won_pot`; WWSF is `saw_flop,won_pot` over `saw_flop`, and the
+no-showdown part adds `!wtsd`. `fold_street=<street>` keeps the hands folded on
+that street, preflop included.
+
+Judgement calls:
+
+1. **Winning the pot is collecting from it, not finishing ahead.** A player who
+   takes a side pot smaller than what they put in has `won_pot` and a negative
+   net, and a player paid a bounty on a lost hand has neither `won_pot` nor a
+   pot. This is W$SD's reading, so WWSF's showdown part and W$SD count the same
+   hands.
+2. **A chopped pot is won**, by everyone who collected, as in W$SD. So the WWSF
+   of the players in one hand can sum past 100%.
+3. **`wwsf_nsd` shares WWSF's denominator**, so the two stack: `wwsf_nsd ≤ wwsf`,
+   and the difference is the share of flops won at showdown.
+
 ---
 
 ## Lines and sizing
@@ -506,6 +684,33 @@ that is exactly where a bluff succeeds. A `jam_river` range that is all value ca
 mean the player only jams value, or only that their bluffs got through. Read coverage
 before reading balance. `called_jam` ranges suffer much less from this, since a
 called jam almost always reaches showdown.
+
+### Stack depth
+
+| Fact | Definition | None when |
+|---|---|---|
+| **eff_bb** | `min(own, max(other dealt-in stacks)) / bb`, from the `Player stacks:` line: the most this player could win or lose against the deepest other stack at the table | Any of those stacks is unknown, or the big blind is |
+| **spr_flop** | Among the players who saw the flop, each one's stack behind = starting stack − their preflop chips (forced posts included), floored at 0; then `min(own behind, max(the others' behind)) / pot_at["flop"]` | They did not see the flop, a flop player's stack is unknown, or the flop pot is 0 |
+
+Both are rounded to two places. Filters: `eff_bb<40`, `eff_bb>=150`,
+`spr_flop<=3`.
+
+Judgement calls:
+
+1. **An unknown stack is unknown, not zero** -- "Hand review" judgement call 26,
+   applied here. One missing stack at the table leaves `eff_bb` None for
+   everyone, since the deepest other stack cannot be named; such a hand matches
+   no `eff_bb` comparison, so a depth split adds up to the hands with known
+   stacks, not to all of them.
+2. **Effective stack is against the deepest other stack, before any action.** It
+   says how deep the hand could play from the deal, which is the question a depth
+   split asks of every hand alike, a preflop fold included. It is not the stack
+   against the players who stayed in; `spr_flop` is.
+3. **SPR is per player, against the flop players.** `review._spr` measures the
+   SPR between a flagged player and the villains of one flag; this one is each
+   flop player's own, against the deepest other stack behind on the flop. A
+   player all in preflop has 0 behind and an SPR of 0, and so does everyone who
+   saw the flop against them alone.
 
 ### Board texture
 
@@ -1155,6 +1360,24 @@ moves only where bb/100 does.
 On the 6,255-hand database this was developed against, excluding the two truncated
 hands moves the whole-table ledger from −3.29 bb to −0.43 bb of 10,731 bb gross,
 and every one of the 6,253 complete hands conserves chips exactly.
+
+### Confidence intervals
+
+```
+rate      Wilson score interval, z = 1.96 (95%):
+            p      = num / den
+            centre = (p + z²/2n) / (1 + z²/n)
+            half   = z · √(p(1 − p)/n + z²/4n²) / (1 + z²/n)
+            (lo, hi) = (centre − half, centre + half), clipped to [0, 1]
+bb/100    ± 1.96 · sd / √n · 100
+            sd = √((Σx² − (Σx)²/n) / (n − 1)),  x = each hand's net / its big blind
+```
+
+`queries.wilson(num, den)` returns `(lo, hi)` as fractions, or None when `den`
+is 0. `rates()["bb_per_100_ci"]` is the bb/100 half-width, over the same complete
+hands with a known big blind as bb/100 itself (`n` = `Tally.bb_n`), and None under
+two of them. `Tally.bb_sq` keeps Σx² as an exact fraction, so it adds across
+games like `bb_sum`.
 
 ### All-in EV
 
