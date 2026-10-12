@@ -18,6 +18,7 @@ from . import update as upd
 from .db.conn import DEFAULT_DB, connect
 from .ingest import fetch as fetchmod
 from .ingest import sync as syncmod
+from .ingest.csv_source import HAND_START, has_hands, read_csv
 from .ingest.importer import (
     apply_aliases,
     delete_game,
@@ -30,11 +31,13 @@ from .ingest.importer import (
     set_player_note,
     split_identities,
 )
-from .ingest.csv_source import HAND_START, has_hands, read_csv
 from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import redact as rd
 from .stats.allin import allin_report
 from .stats.filters import parse_filter
+from .stats.lines import DEFAULT_MIN as LINES_MIN
+from .stats.lines import MODES as LINES_MODES
+from .stats.lines import TIERS, line_breakdown
 from .stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from .stats.queries import display_names, facts_by_player, facts_for, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
@@ -1434,6 +1437,64 @@ def alias_import(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
         pairs = [(r["pn_id"], r["alias"]) for r in csv.DictReader(fh)]
     moved, unknown = apply_aliases(connect(db), pairs)
     typer.echo(f"moved {moved} identity row(s); {unknown} id(s) not in this database yet")
+
+
+@app.command("lines")
+def lines_cmd(
+    alias: str,
+    db: Path = DbOpt,
+    mode: str = typer.Option(
+        "own", "--mode", help="'own' groups by their own line, 'action' by the whole street."
+    ),
+    street: str = typer.Option(None, "--street", help="One street only: flop, turn or river."),
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,pfa'"),
+    min_n: int = typer.Option(LINES_MIN, "--min", help="Hide lines with fewer hands than this."),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Every line a player took after the flop, and what they had when it was shown.
+
+    Each line's hands split into nutted, strong, marginal, draw and air on the board
+    of the last street they acted on, as a share of the hands shown. Bluffs that
+    got a fold are never shown, so read coverage first. The last column is the
+    filter that finds the line's hands, for --filter here or the chart's Spot box.
+    """
+    if mode not in LINES_MODES:
+        raise typer.BadParameter(f"--mode must be one of: {', '.join(LINES_MODES)}")
+    conn = connect(db)
+    try:
+        facts = facts_for(conn, alias, game)
+        if filter_:
+            pred = parse_filter(filter_, display_names(conn))
+            facts = [f for f in facts if pred(f)]
+        out = line_breakdown(facts, mode, street, max(1, min_n))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+
+    what = "own line" if mode == "own" else "whole street"
+    typer.echo(f"{alias}  {what}, {'/'.join(out['streets'])}  filter: {filter_ or '(none)'}")
+    typer.echo(
+        f"hands in this spot: {out['hands']}   shown and rated: {out['known']}"
+        f"   coverage: {_fmt(out['coverage'])}%   net: {_fmt(out['net_bb'])} bb"
+    )
+    hidden = out["hidden"]
+    if hidden["groups"]:
+        typer.echo(
+            f"{hidden['groups']} line(s) under {out['min']} hands hidden ({hidden['hands']} hands)"
+        )
+    typer.echo("strength: % of the known hands, on the last street they acted on.")
+    typer.echo("Bluffs that got a fold are never shown.\n")
+    width = max([len("line"), *(len(g["line"]) for g in out["groups"])]) + 2
+    head = f"{'line':<{width}}{'n':>6}{'known':>7}{'net bb':>9}" + "".join(f"{t:>9}" for t in TIERS)
+    typer.echo(head + "  filter")
+    typer.echo("-" * (len(head) + 8))
+    for g in out["groups"]:
+        row = f"{g['line']:<{width}}{g['n']:>6}{g['known']:>7}{_fmt(g['net_bb']):>9}"
+        row += "".join(f"{_fmt(g['tiers'][t]['pct']):>9}" for t in TIERS)
+        typer.echo(f"{row}  {g['filter']}")
 
 
 if __name__ == "__main__":  # pragma: no cover
