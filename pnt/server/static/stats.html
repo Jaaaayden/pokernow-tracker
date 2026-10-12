@@ -64,15 +64,6 @@
   td.up { color: var(--up); }
   td.down { color: var(--down); }
   tr:hover td, tr:hover td:first-child { background: var(--mid); }
-  /* Over-folding against a size, or a size that profits as a pure bluff: the
-     fold equity signal, here and in the pool table. */
-  td.hot { color: var(--accent); font-weight: 600; }
-  .pool { margin-top: 16px; }
-  .pool h2 { font-size: 14px; font-weight: 600; margin: 4px 0 2px; }
-  .pool h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
-  .pool h2 small, .pool h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .pool th { cursor: default; }
-  .pool tr.none td { color: var(--muted); }
   .err { color: #d03b3b; margin: 12px 0; }
   .crumb { margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
@@ -107,7 +98,6 @@
       <button data-street="river" aria-pressed="false">River</button>
     </span>
     <button id="sizetoggle" aria-pressed="false" title="show the c-bet size mix for this street">C-bet sizes</button>
-    <button id="foldtoggle" aria-pressed="false" title="show how often each player folds to each size of bet on this street">Folds by size</button>
     <a class="link" href="/players.html">players &rsaquo;</a>
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
     <a class="link" id="allinlink" href="/allin.html" style="margin-left:12px">all-in EV &rsaquo;</a>
@@ -123,25 +113,12 @@
       <li>A <b>lead</b> takes the street out of the c-bet columns: no c-bet chance for the
         aggressor, and no fold or raise for anyone else.</li>
       <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
-      <li><b>Folds by size</b> adds how often each player folds to each size of bet, highlighted where
-        they fold more than the pool's MDF allows. The fold equity table under this one is the whole pool.</li>
       <li>Click a player for their range chart in the same spot.</li>
     </ul>
   </div>
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
-
-  <div class="card pool" id="poolcard">
-    <h2>Fold equity <small id="pool-sub">the whole pool</small></h2>
-    <p class="note" style="margin:4px 0 0">How often each size of bet got everyone to fold, against the fold rate a pure
-      bluff that size needs (break-even), and how often players fold facing each size, against the
-      minimum defense frequency (MDF). Every player, whatever the min-hands setting; the spot applies.
-      <b>Highlighted</b>: a size that showed a profit as a pure bluff, or a pool that folds more than the
-      bet demands, on 10+ hands. No cards are needed, so every bet counts; bluffs that got folds are never
-      shown, so this says how often a size won, not what it was.</p>
-    <div id="pool"></div>
-  </div>
 
   <details class="key" id="key">
     <summary>What the columns mean</summary>
@@ -219,7 +196,7 @@
       "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
   };
 
-  const state = { filter: "", min: 25, street: "flop", sizes: false, folds: false, sort: "hands", dir: -1, rows: [], pool: null };
+  const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
 
   // alias -> what you have written about them (players page, chart or HUD), shown
   // as a 📝 beside the name. From /players, which is a plain join and costs nothing
@@ -240,7 +217,6 @@
     state.min = Math.max(1, parseInt(q.get("min") || "25", 10) || 25);
     state.street = ["turn", "river"].includes(q.get("street")) ? q.get("street") : "flop";
     state.sizes = q.get("sizes") === "1";
-    state.folds = q.get("folds") === "1";
     state.sort = q.get("sort") || "hands";
     state.dir = q.get("dir") === "asc" ? 1 : -1;
   };
@@ -250,7 +226,6 @@
     if (state.min !== 25) q.set("min", state.min);
     if (state.street !== "flop") q.set("street", state.street);
     if (state.sizes) q.set("sizes", "1");
-    if (state.folds) q.set("folds", "1");
     if (state.sort !== "hands") q.set("sort", state.sort);
     if (state.dir === 1) q.set("dir", "asc");
     if (theme) q.set("theme", theme);
@@ -272,45 +247,16 @@
       ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
           `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
       : [];
-    const folds = state.folds
-      ? SIZES.map(([b, h]) => [`fold:${b}`, h, "pct", null,
-          `How often they fold the ${s} at their first decision facing a bet or raise this size, `
-          + `anyone's. Highlighted where it is above what the pool can afford against that size `
-          + `(100 − MDF, in the fold equity table below), on 10+ bets faced.`])
-      : [];
-    return [...base, ...post, ...sizes, ...folds];
+    return [...base, ...post, ...sizes];
   };
 
-  // The column groups above the headers, in the order `columns` adds them.
-  const groups = () => [
-    ...(state.sizes ? [[`c-bet sizes on the ${state.street}`, SIZES.length]] : []),
-    ...(state.folds ? [[`folds to bets by size on the ${state.street}`, SIZES.length]] : []),
-  ];
-
-  // Size columns live inside `cbet_<street>_sizes`, and fold columns inside
-  // `vs_bet_<street>_by_size`, so they need their own lookup.
+  // Size columns live inside `cbet_<street>_sizes`, so they need their own lookup.
   const value = (row, key) => {
     if (key.startsWith("size:")) {
       const mix = row[`cbet_${state.street}_sizes`];
       return mix ? mix[key.slice(5)].pct : null;
     }
-    if (key.startsWith("fold:")) {
-      const by = row[`vs_bet_${state.street}_by_size`];
-      return by ? by[key.slice(5)].fold : null;
-    }
     return row[key];
-  };
-
-  // The fold % the pool can afford facing each size on the street: the bucket's
-  // break-even, from /fold_equity. A player above it over-folds against that size.
-  const affordable = (bucket) =>
-    state.pool?.streets?.[state.street]?.faced.find(r => r.size === bucket)?.break_even ?? null;
-  const overFolds = (row, key) => {
-    if (!key.startsWith("fold:")) return false;
-    const b = key.slice(5);
-    const cell = row[`vs_bet_${state.street}_by_size`]?.[b];
-    const line = affordable(b);
-    return !!cell && cell.faced >= 10 && cell.fold != null && line != null && cell.fold > line;
   };
 
   const fmt = (v, kind) => {
@@ -326,13 +272,6 @@
       const mix = row[`cbet_${state.street}_sizes`];
       return mix ? `${mix[key.slice(5)].n} of their ${state.street} c-bets` : "";
     }
-    if (key.startsWith("fold:")) {
-      const cell = row[`vs_bet_${state.street}_by_size`]?.[key.slice(5)];
-      if (!cell) return "";
-      const line = affordable(key.slice(5));
-      return `${cell.faced} bets or raises faced · filter faced_bet_${state.street}=${key.slice(5)}`
-        + (line == null ? "" : ` · the pool can afford to fold ${line.toFixed(1)}%`);
-    }
     if (!opp) return "";
     const n = row._opp?.[opp];
     if (n == null) return "";
@@ -342,34 +281,8 @@
   // Bumped by every load: an answer for controls since changed is dropped, so a
   // slow load cannot land after a quicker, newer one and be what is left on show.
   let loadSeq = 0;
-  // The pool's fold equity, alongside: a request of its own, so the player table
-  // never waits on it, and a failure here costs this section alone.
-  async function loadPool(seq) {
-    const q = new URLSearchParams();
-    if (state.filter) q.set("filter", state.filter);
-    $("poolcard").classList.add("loading");
-    try {
-      const r = await fetch("/fold_equity?" + q, { headers: { accept: "application/json" } });
-      const body = await r.json().catch(() => ({}));
-      if (seq !== loadSeq) return;
-      if (!r.ok || !body.streets) {
-        throw new Error(r.status === 404 ? "the running server is older than this page: restart `pnt service`"
-          : body.detail || `${r.status} ${r.statusText}`);
-      }
-      state.pool = body;
-    } catch (e) {
-      if (seq !== loadSeq) return;
-      state.pool = { error: String(e.message || e) };
-    } finally {
-      if (seq === loadSeq) $("poolcard").classList.remove("loading");
-    }
-    renderPool();
-    if (state.folds && state.rows.length) render(); // the highlights read the pool
-  }
-
   async function load() {
     const seq = ++loadSeq;
-    loadPool(seq);
     $("card").classList.add("loading");
     $("err").classList.add("hidden");
     const q = new URLSearchParams({ min_hands: state.min });
@@ -438,14 +351,14 @@
     $("subtitle").textContent = `${state.rows.length} players · ${state.filter || "all hands"} · ${state.street} columns`;
     const t = document.createElement("table");
 
-    if (groups().length) {
-      const tr = document.createElement("tr");
-      for (const [text, span] of [["", 1 + BASE.length + POSTFLOP.length], ...groups()]) {
+    if (state.sizes) {
+      const groups = document.createElement("tr");
+      for (const [text, span] of [["", 1 + BASE.length + POSTFLOP.length], [`c-bet sizes on the ${state.street}`, SIZES.length]]) {
         const th = document.createElement("th");
         th.className = "group"; th.colSpan = span; th.textContent = text;
-        tr.appendChild(th);
+        groups.appendChild(th);
       }
-      t.appendChild(tr);
+      t.appendChild(groups);
     }
 
     const head = document.createElement("tr");
@@ -495,7 +408,6 @@
         td.textContent = fmt(v, kind);
         if (v == null) td.className = "dim";
         else if (key === "bb_per_100") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
-        else if (overFolds(row, key)) td.className = "hot";
         const title = sampleTitle(row, key, opp);
         if (title) td.title = title;
         tr.appendChild(td);
@@ -514,74 +426,6 @@
     }
   }
 
-  // The pool's fold equity on the street picked: everyone's bets against a pure
-  // bluff's break-even, and everyone's first decision facing a bet against the MDF.
-  // Each row's filter is on hover; put it in the spot to see who makes up the row.
-  function renderPool() {
-    const wrap = $("pool");
-    const p = state.pool;
-    if (!p) return;
-    if (p.error) {
-      const e = document.createElement("p"); e.className = "err"; e.textContent = p.error;
-      wrap.replaceChildren(e);
-      return;
-    }
-    const s = p.streets[state.street];
-    $("pool-sub").textContent = `the whole pool · ${state.street} · ${p.hands} player-hands · ${state.filter || "all hands"}`;
-    const pctOf = (v) => v == null ? "–" : v.toFixed(1) + "%";
-    const pts = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
-    const pot = (v) => v == null ? "–" : Math.round(v * 100) + "% pot";
-    const block = (title, small, rows, cols) => {
-      const h = document.createElement("h3"); h.textContent = title;
-      const sm = document.createElement("small"); sm.textContent = small; h.appendChild(sm);
-      const t = document.createElement("table");
-      const hr = document.createElement("tr");
-      for (const [head, , , tip] of [["size", (r) => SIZE_NAME[r.size]], ...cols]) {
-        const th = document.createElement("th"); th.textContent = head; if (tip) th.title = tip; hr.appendChild(th);
-      }
-      t.appendChild(hr);
-      for (const r of rows) {
-        const tr = document.createElement("tr");
-        if (!r.n) tr.className = "none";
-        tr.title = `${r.filter}${r.fold_filter ? ` · folded: ${r.fold_filter}` : ""}`
-          + (r.judged ? "" : ` · under ${p.min_sample}: not judged`);
-        for (const [, val, hot] of [["size", (r) => SIZE_NAME[r.size]], ...cols]) {
-          const td = document.createElement("td");
-          td.textContent = val(r);
-          if (hot && r.judged && hot(r)) td.className = "hot";
-          tr.appendChild(td);
-        }
-        t.appendChild(tr);
-      }
-      return [h, t];
-    };
-    const typical = ["typical", (r) => pot(r.median_size), null, "the median bet in the bucket, over the pot"];
-    const defense = [
-      ["faced", (r) => r.n],
-      ["fold", (r) => pctOf(r.fold), (r) => r.overfold > 0],
-      ["call", (r) => pctOf(r.call)],
-      ["raise", (r) => pctOf(r.raise)],
-      typical,
-      ["MDF", (r) => pctOf(r.mdf), null, "minimum defense frequency: how often to call or raise so a pure bluff this size does not profit"],
-      ["can fold", (r) => pctOf(r.break_even), null, "100 − MDF: the most they can fold to this size"],
-      ["over-fold", (r) => pts(r.overfold), (r) => r.overfold > 0, "fold minus what they can afford, in points"],
-    ];
-    wrap.replaceChildren(
-      ...block("Bets", `${s.totals.bets} first bets · did everyone fold?`, s.bets, [
-        ["bets", (r) => r.n],
-        ["all folded", (r) => pctOf(r.fold), (r) => r.edge > 0],
-        ["called", (r) => pctOf(r.call)],
-        ["raised", (r) => pctOf(r.raise)],
-        typical,
-        ["break-even", (r) => pctOf(r.break_even), null, "how often a pure bluff this size must be folded to"],
-        ["edge", (r) => pts(r.edge), (r) => r.edge > 0, "all folded minus break-even, in points"],
-      ]),
-      ...block("Facing a bet or raise", `${s.totals.faced} first decisions, one player's each`, s.faced, defense),
-      ...block("Facing a c-bet", `${s.totals.faced_cbet} first decisions facing a c-bet nobody had raised`, s.faced_cbet, defense),
-    );
-  }
-  const SIZE_NAME = { blocker: "under ⅕ pot", small: "⅕–½ pot", medium: "½–¾ pot", large: "¾ pot to pot", overbet: "overbet" };
-
   function apply() {
     state.filter = $("filter").value.trim();
     state.min = Math.max(1, parseInt($("minhands").value, 10) || 1);
@@ -596,7 +440,7 @@
     // Keep a postflop sort pointing at the same stat on the street just picked.
     const m = state.sort.match(/^(.*)_(flop|turn|river)$/);
     if (m) state.sort = `${m[1]}_${state.street}`;
-    writeUrl(); render(); renderPool();
+    writeUrl(); render();
   }));
   $("sizetoggle").addEventListener("click", () => {
     state.sizes = !state.sizes;
@@ -604,18 +448,11 @@
     if (!state.sizes && state.sort.startsWith("size:")) state.sort = "hands";
     writeUrl(); render();
   });
-  $("foldtoggle").addEventListener("click", () => {
-    state.folds = !state.folds;
-    $("foldtoggle").setAttribute("aria-pressed", state.folds);
-    if (!state.folds && state.sort.startsWith("fold:")) state.sort = "hands";
-    writeUrl(); render();
-  });
 
   readUrl();
   $("filter").value = state.filter;
   $("minhands").value = state.min;
   $("sizetoggle").setAttribute("aria-pressed", state.sizes);
-  $("foldtoggle").setAttribute("aria-pressed", state.folds);
   document.querySelectorAll("[data-street]").forEach(x => x.setAttribute("aria-pressed", x.dataset.street === state.street));
   writeUrl();
   load();
