@@ -275,6 +275,48 @@
   .crumb a:hover { text-decoration: underline; }
   .hidden { display: none !important; }
 
+  /* --- bluff:value: a stacked bar per kind of aggression, grouped by street.
+     The four classes are one diverging scale, strongest claim to weakest: value
+     blue, marginal the neutral midpoint, semi-bluff and bluff red, the bluff
+     deepest. Dark mode takes its own steps, deepest the lightest, as the ramps
+     elsewhere on the page do. Checked with the dataviz palette validator. */
+  .bv { --bv-value: #256abf; --bv-marginal: #d6d5cc; --bv-semi_bluff: #ef9291; --bv-bluff: #b93a39;
+    display: flex; flex-direction: column; gap: 14px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #e34948; --bv-bluff: #f6b6b5; }
+  }
+  :root[data-theme="dark"] .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #e34948; --bv-bluff: #f6b6b5; }
+  .bv-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .bv-key { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: 12px; }
+  .bv-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .bv-street h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .bv-rows { display: grid; grid-template-columns: minmax(9em, max-content) minmax(120px, 1fr) repeat(3, max-content);
+    gap: 4px 14px; align-items: center; font-variant-numeric: tabular-nums; }
+  .bv-row { display: contents; }
+  .bv-row > * { min-width: 0; }
+  .bv-row .lab { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .bv-row .lab:hover, .bv-row .lab:focus-visible { color: var(--ink); text-decoration: underline; outline: 0; }
+  .bv-row.none .lab { cursor: default; text-decoration: none; color: var(--muted); }
+  .bv-row.roll .lab { color: var(--ink); font-weight: 600; }
+  .bv-bar { display: flex; gap: 2px; height: 14px; }
+  .bv-bar span { min-width: 3px; cursor: pointer; }
+  .bv-bar span:first-child { border-radius: 4px 0 0 4px; }
+  .bv-bar span:last-child { border-radius: 0 4px 4px 0; }
+  .bv-bar span:only-child { border-radius: 4px; }
+  .bv-bar span:hover, .bv-bar span:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .bv-bar.empty { box-shadow: inset 0 0 0 1px var(--grid); border-radius: 4px; }
+  .bv-row .num { text-align: right; white-space: nowrap; }
+  .bv-row .num small { color: var(--muted); margin-left: 4px; }
+  .bv-row.none .num { color: var(--muted); }
+  .bv-cols { color: var(--muted); font-size: 12px; }
+  .bv-cols.num { text-align: right; }
+  @media (max-width: 600px) {
+    .bv-rows { grid-template-columns: minmax(6em, max-content) minmax(60px, 1fr) repeat(3, max-content); gap: 3px 6px; font-size: 11px; }
+    .bv-row .num small { display: none; }
+    .bv-key, .bv-cols, .bv-street h3 { font-size: 10px; }
+    .bv-bar { height: 10px; }
+  }
+
   /* Narrow: the extension's side panel embeds this page a few hundred pixels
      wide. The grid shrinks to the width instead of scrolling sideways -- the
      cell text scales with it -- and the legend puts its bar on a row of its own,
@@ -361,6 +403,7 @@
       <button data-view="preflop" aria-pressed="true">Preflop chart</button>
       <button data-view="made" aria-pressed="false">Made hands</button>
       <button data-view="sizing" aria-pressed="false">Sizing</button>
+      <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by kind of aggression">Bluff:value</button>
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Hand review</button>
       <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Manual review</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
@@ -436,6 +479,7 @@
     <div id="scale" class="scale"></div>
     <div id="bars" class="bars hidden"></div>
     <div id="sizing" class="sizing hidden"></div>
+    <div id="bluffs" class="bv hidden"></div>
     <div id="table" class="hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
@@ -642,7 +686,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
+  const VIEWS = ["preflop", "made", "sizing", "bluffs", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -677,6 +721,7 @@
     state.color = ["net","pfr","size"].includes(c) ? c : "net";
     state.street = ["turn", "river"].includes(q.get("street")) ? q.get("street") : "flop";
     state.kind = ["bet", "faced_cbet"].includes(q.get("kind")) ? q.get("kind") : "cbet";
+    state.bluffScope = q.get("scope") === "pool" ? "pool" : "player";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -685,6 +730,7 @@
     if (state.by !== "preflop") q.set("by", state.by);
     if (state.color !== "net") q.set("color", state.color);
     if (state.by === "sizing") { q.set("street", state.street); q.set("kind", state.kind); }
+    if (state.by === "bluffs" && state.bluffScope === "pool") q.set("scope", "pool");
     if (isListView(state.by)) {
       if (state.order && state.order !== ORDERS[state.by][0]) q.set("order", state.order);
       if (state.hide.size) q.set("hide", [...state.hide].join(","));
@@ -871,6 +917,8 @@
           }
           if (live()) state.review = { key, data };
         }
+      } else if (view === "bluffs") {
+        data = await loadBluffs(quiet, live);
       } else if (view === "sizing") {
         q.set("street", state.street); q.set("kind", state.kind);
         data = await getJson(`/players/${player}/sizing?` + q);
@@ -1001,7 +1049,204 @@
   const TITLE = {
     preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
     review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
+    bluffs: "Value against bluffs, by kind of aggression",
   };
+
+  // ---- bluff:value -----------------------------------------------------------
+  // What they bet, raised and jammed with, one row per kind of aggression and
+  // grouped by street: a stacked bar of the shown hands, read on the board of the
+  // street the action was made on, then value : bluff, how many were shown, and
+  // for bets how many everyone folded to. The pool is the same table over every
+  // player and every hand. A row lists its hands on a click, a segment the hands
+  // of its class: one player's from the ids the row carries, the pool's from
+  // /bluffs/hands, since its ids name nobody. See SPEC.md, "Bluff:value".
+  const BV_CLASSES = [["value", "value"], ["marginal", "marginal"], ["semi_bluff", "semi-bluff"], ["bluff", "bluff"]];
+  const BV_CLASS_TIP = {
+    value: "top pair or an overpair, or better",
+    marginal: "a weaker pair: middle, bottom, a low pocket pair, or the board's",
+    semi_bluff: "no pair, a flush or straight draw (flop and turn)",
+    bluff: "no pair and no draw; on the river a missed draw too",
+  };
+  const BV_STREET = { flop: "Flop", turn: "Turn", river: "River", all: "Every street" };
+  const BV_NOTE = "Shown hands only, each read on the board of the street it bet or raised on. "
+    + "A bet everyone folds to is never shown, and that is the bluff that worked, so every ratio here leans to value: "
+    + "“folded” is how many of a row's bets got there. Your own cards are known on every hand, so your own rows are close to complete. "
+    + "The ratio is value against bluffs and semi-bluffs; marginal hands are on neither side.";
+
+  async function loadBluffs(quiet, live) {
+    const pool = state.bluffScope === "pool";
+    const key = `${pool ? "*pool*" : state.player}|${state.filter}`;
+    // Both scopes are kept, so the toggle flips between them without asking again;
+    // the pool is every hand in the database and takes a second or two.
+    if (!quiet && state.bluffs?.has(key)) return state.bluffs.get(key);
+    const q = new URLSearchParams();
+    if (state.filter) q.set("filter", state.filter);
+    const data = await getJson(pool ? "/bluffs?" + q : `/players/${encodeURIComponent(state.player)}/bluffs?` + q);
+    if (live()) (state.bluffs ??= new Map()).set(key, data);
+    return data;
+  }
+
+  // The pool's hands behind one row, or one class of it, in the drill-down list,
+  // each with the player who took the line where a review row puts its flag.
+  async function openPoolHands(title, key, cls) {
+    const seq = ++handsSeq;
+    state.poolHands = [title, key, cls];
+    $("hands").classList.remove("hidden");
+    $("hands-title").textContent = title;
+    $("hands-count").textContent = "";
+    resetReplay($("replay"), true);
+    applyLayout();
+    const list = $("hand-rows");
+    list.replaceChildren(message("loading…"));
+    try {
+      const q = new URLSearchParams({ category: key });
+      if (cls) q.set("cls", cls);
+      if (state.filter) q.set("filter", state.filter);
+      const body = await getJson("/bluffs/hands?" + q);
+      if (seq !== handsSeq) return;
+      let rows = body.hands;
+      if (state.handSort === "pot") rows = [...rows].sort((a, b) => (b.pot ?? -1) - (a.pot ?? -1));
+      list.replaceChildren();
+      const shown = Math.min(rows.length, HAND_LIMIT);
+      $("hands-count").textContent = body.total > shown
+        ? `${state.handSort === "pot" ? "biggest pots of the" : ""} newest ${shown} of ${body.total}`.trim()
+        : `${body.total} hand${body.total === 1 ? "" : "s"}`;
+      if (!rows.length) list.appendChild(message("no hands"));
+      for (const h of rows.slice(0, HAND_LIMIT)) {
+        const row = handRowButton(h, list, $("replay"), { kind: { text: h.player, group: "player" } });
+        list.appendChild("note" in h ? reviewedRow(h, row, { noteOnly: true }) : row);
+      }
+    } catch (e) {
+      if (seq !== handsSeq) return;
+      list.replaceChildren(message(String(e.message || e), "err"));
+    }
+    $("hands").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function bvTip(ev, r, cls) {
+    const tip = $("tip");
+    tip.replaceChildren();
+    const big = document.createElement("div"); big.className = "big";
+    big.textContent = cls ? `${r.counts[cls]}× ${BV_CLASSES.find(([k]) => k === cls)[1]}` : r.label;
+    tip.appendChild(big);
+    const rows = cls ? [[BV_CLASS_TIP[cls], ""], ["of the shown", fmtPct(r.pct[cls])]] : [];
+    rows.push(["value : bluff", r.ratio_text], ["shown", `${r.known} of ${r.n}`]);
+    if (r.folded != null) rows.push(["everyone folded", `${r.folded} of ${r.n}`]);
+    rows.push(["filter", (cls ? r.class_filters[cls] : r.filter) || "none: listed by hand"]);
+    for (const [k, v] of rows) {
+      const row = document.createElement("div"); row.className = "row";
+      const kk = document.createElement("span"); kk.textContent = k;
+      const vv = document.createElement("b"); vv.textContent = v;
+      row.append(kk, vv); tip.appendChild(row);
+    }
+    tip.style.display = "block";
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    const rect = (ev.currentTarget || ev.target).getBoundingClientRect();
+    const x = ev.clientX ?? rect.right, y = ev.clientY ?? rect.top;
+    tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px";
+    tip.style.top = Math.min(y + 14, innerHeight - h - 8) + "px";
+  }
+
+  function renderBluffs(d) {
+    const pool = d.scope === "pool";
+    const all = d.rows.find(r => r.key === "aggression");
+    setTileKeys(pool ? "player-hands in the pool" : "hands in this spot ›", "aggressive hands shown", "coverage");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = all.known;
+    $("t-cov").textContent = fmtPct(all.coverage);
+    $("t-raise").textContent = all.ratio_text;
+    setRaiseKey("value : bluff", `all aggression · ${all.n} hands bet or raised`);
+    $("subtitle").textContent = `${pool ? `the pool, ${d.players} players` : d.player} · ${d.filter || "all hands"}`;
+    $("note").textContent = BV_NOTE;
+    for (const id of ["colorseg", "sizingctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing", "table", "review"]) {
+      $(id).classList.add("hidden");
+    }
+    $("card-title").textContent = TITLE.bluffs;
+    applyLayout();
+
+    const wrap = $("bluffs");
+    wrap.replaceChildren();
+    const head = document.createElement("div"); head.className = "bv-head";
+    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Whose hands");
+    for (const [scope, text] of [["player", state.player], ["pool", "Pool"]]) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+      b.title = scope === "pool" ? "every player, every hand" : "this player's hands";
+      b.setAttribute("aria-pressed", (scope === "pool") === pool);
+      b.addEventListener("click", () => {
+        if (state.bluffScope === scope) return;
+        state.bluffScope = scope; closeHands(); writeUrl(); load();
+      });
+      seg.appendChild(b);
+    }
+    const key = document.createElement("span"); key.className = "bv-key";
+    for (const [k, text] of BV_CLASSES) {
+      const s = document.createElement("span"); s.title = BV_CLASS_TIP[k];
+      const i = document.createElement("i"); i.style.background = `var(--bv-${k})`;
+      s.append(i, text); key.appendChild(s);
+    }
+    head.append(seg, key);
+    wrap.appendChild(head);
+
+    const drill = (r, cls) => {
+      const what = cls ? ` · ${BV_CLASSES.find(([k]) => k === cls)[1]}` : "";
+      const title = `${BV_STREET[r.street]} ${r.label}${what}`;
+      if (pool) { openPoolHands(title, r.key, cls); return; }
+      state.poolHands = null;
+      openHands(title, cls ? r.class_ids[cls] : r.hand_ids);
+    };
+    const pick = (el, fn) => {
+      el.tabIndex = 0; el.setAttribute("role", "button");
+      el.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fn(); } });
+    };
+    for (const street of d.streets) {
+      const rows = d.rows.filter(r => r.street === street);
+      const block = document.createElement("div"); block.className = "bv-street";
+      const h = document.createElement("h3"); h.textContent = BV_STREET[street];
+      const grid = document.createElement("div"); grid.className = "bv-rows";
+      for (const [text, cls] of [["", ""], ["shown hands", ""], ["value : bluff", "num"], ["shown", "num"], ["folded", "num"]]) {
+        const c = document.createElement("div"); c.className = `bv-cols ${cls}`; c.textContent = text; grid.appendChild(c);
+      }
+      for (const r of rows) {
+        const row = document.createElement("div");
+        row.className = "bv-row" + (r.n ? "" : " none") + (["all_bets", "aggression"].includes(r.kind) ? " roll" : "");
+        const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = r.label;
+        lab.title = r.filter ? `${r.filter} · list these ${r.n} hands` : `bet or raised on any street · list these ${r.n} hands`;
+        if (r.n) pick(lab, () => drill(r, null));
+        const bar = document.createElement("div"); bar.className = "bv-bar" + (r.known ? "" : " empty");
+        for (const [k, text] of BV_CLASSES) {
+          const v = r.counts[k];
+          if (!v) continue;
+          const s = document.createElement("span");
+          s.style.flex = `${v} 1 0`; s.style.background = `var(--bv-${k})`;
+          s.setAttribute("aria-label", `${r.label}: ${v} ${text}, list them`);
+          pick(s, () => drill(r, k));
+          s.addEventListener("pointermove", (ev) => bvTip(ev, r, k));
+          s.addEventListener("pointerleave", hideTip);
+          bar.appendChild(s);
+        }
+        if (r.n) {
+          lab.addEventListener("pointermove", (ev) => bvTip(ev, r, null));
+          lab.addEventListener("pointerleave", hideTip);
+        }
+        const num = (text, small, title) => {
+          const c = document.createElement("div"); c.className = "num"; c.textContent = text;
+          if (small) { const sm = document.createElement("small"); sm.textContent = small; c.appendChild(sm); }
+          if (title) c.title = title;
+          return c;
+        };
+        const ratio = num(r.n ? r.ratio_text : "–", "", `${r.counts.value} value against ${r.counts.bluff + r.counts.semi_bluff} bluffs and semi-bluffs`);
+        const shown = num(r.n ? `${r.known}/${r.n}` : "none", r.n ? fmtPct(r.coverage) : "", "cards shown, of every hand in the row");
+        const folded = num(r.folded_pct == null ? "" : fmtPct(r.folded_pct), "",
+          r.folded == null ? "" : `${r.folded} of ${r.n} bets everyone folded to: never shown`);
+        row.append(lab, bar, ratio, shown, folded);
+        grid.appendChild(row);
+      }
+      block.append(h, grid);
+      wrap.appendChild(block);
+    }
+  }
 
   function render() {
     const d = state.data;
@@ -1009,6 +1254,8 @@
     // The view was switched and its data is still loading: what is held is the
     // last view's, in that view's shape. The load renders when it lands.
     if (!d || state.dataView !== view) return;
+    $("bluffs").classList.toggle("hidden", view !== "bluffs");
+    if (view === "bluffs") { renderBluffs(d); return; }
     const review = isListView(view);
     const table = state.table && !review;
     if (view === SESSION_VIEW) renderSessionTiles(d);
@@ -1970,6 +2217,7 @@
     state.session = null;
     state.manual = null;
     state.games = null; // a new game may have started
+    state.bluffs = null;
   }
   function apply() {
     state.player = $("player").value;
@@ -1999,6 +2247,8 @@
   });
   $("t-hands-tile").addEventListener("click", () => {
     // The session view is already the list of its hands.
+    // The pool's tile counts everyone's hands, which no one player's list holds.
+    if (state.by === "bluffs" && state.bluffScope === "pool") return;
     if (state.player && state.by !== SESSION_VIEW) openHands("All hands in this spot", null);
   });
   // The drill-down list and the review views read separate data; opening a view
@@ -2052,7 +2302,10 @@
   $("hands-close").addEventListener("click", closeHands);
   $("hands-sort").addEventListener("change", () => {
     state.handSort = $("hands-sort").value;
-    if (!$("hands").classList.contains("hidden")) openHands($("hands-title").textContent, state.handIds);
+    if ($("hands").classList.contains("hidden")) return;
+    // In the pool's bluff:value table every list is the pool's; see openPoolHands.
+    if (state.by === "bluffs" && state.bluffScope === "pool" && state.poolHands) openPoolHands(...state.poolHands);
+    else openHands($("hands-title").textContent, state.handIds);
   });
   $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
   $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });
