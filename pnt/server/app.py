@@ -46,6 +46,8 @@ from pnt.stats.bluffs import CATEGORY, bluff_value, members
 from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.fold_equity import fold_equity
+from pnt.stats.fold_equity import pool_facts as fold_pool_facts
 from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
 from pnt.stats.lines import pool_facts as line_pool_facts
 from pnt.stats.live import snapshot
@@ -1170,3 +1172,27 @@ def pool_bluff_hands(
     cat = CATEGORY[category]
     return {"category": category, "cls": cls, "label": cat["label"], "street": cat["street"],
             "filter": filter, "total": total, "hands": _with_marks(conn, hands, game)}
+@app.get("/players/{alias}/fold_equity")
+def player_fold_equity(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Fold equity by bet size for one player, within a spot: what each size of
+    their bets got against its break-even, and how they defend against each size
+    against its MDF. Rows carry their hand ids for the chart's drill-down, and the
+    filter that finds them. See SPEC.md, "Fold equity by bet size"."""
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, **fold_equity(facts, with_ids=True)}
+
+
+@app.get("/fold_equity")
+def pool_fold_equity(
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The same for the whole pool: every player's bets and every player's
+    defense, summed. No hand ids -- one hand is several players' rows here."""
+    conn = db()
+    facts = fold_pool_facts(conn, game, _predicate(conn, filter))
+    return {"player": None, "filter": filter, **fold_equity(facts)}
