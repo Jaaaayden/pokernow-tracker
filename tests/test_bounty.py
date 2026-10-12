@@ -99,3 +99,27 @@ def test_a_bounty_paid_to_someone_not_in_the_hand_is_ignored():
     h = parse(entries, GAME).hands[0]
     assert h.players["BBB"].bounty == -30
     assert "ZZZ" not in h.players
+
+
+def test_bounty_fact_and_filters(tmp_path):
+    """`Facts.bounty` carries the side bet through the database, and the
+    `bounty_won` / `bounty_paid` flags pick out each side of it."""
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import ingest_entries, rebuild_game
+    from pnt.stats.derive import derive
+    from pnt.stats.filters import parse_filter
+    from pnt.stats.live import hand_row
+    from pnt.stats.queries import load_hands
+
+    entries = [RawEntry(ord=i, at="2026-01-01T00:00:00Z", entry=t) for i, t in enumerate(LINES)]
+    conn = connect(tmp_path / "b.sqlite")
+    ingest_entries(conn, GAME, entries, "test")
+    rebuild_game(conn, GAME)
+    for hand in (load_hands(conn, GAME)[0], hand_row(_parsed().hands[0])):
+        f = {x.pn_id: x for x in derive(hand)}
+        assert (f["AAA"].bounty, f["BBB"].bounty, f["CCC"].bounty) == (60, -30, -30)
+        won, paid = parse_filter("bounty_won"), parse_filter("bounty_paid")
+        assert {p for p, x in f.items() if won(x)} == {"AAA"}
+        assert {p for p, x in f.items() if paid(x)} == {"BBB", "CCC"}
+        assert f["AAA"].won_pot and not f["BBB"].won_pot, "the bounty is not the pot"
+    conn.close()

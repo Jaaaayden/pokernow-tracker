@@ -92,6 +92,23 @@ FLAGS: dict[str, Predicate] = {
     "faced_4bet": lambda f: 4 in f.pf_faced,
     "5bet": lambda f: f.pf_faced.get(4) == "raise",
     "faced_5bet": lambda f: 5 in f.pf_faced,
+    # --- steals, squeezes and cold calls (SPEC.md, "Steals and blind defense",
+    # "Squeeze and cold-call"). Each reads the `Facts` property of the same name.
+    "first_in": lambda f: f.first_in,
+    "steal_opp": lambda f: f.steal_opp,
+    "steal": lambda f: f.steal,
+    "fold_to_steal_opp": lambda f: f.fold_to_steal_opp,
+    "fold_to_steal": lambda f: f.fold_to_steal,
+    "3bet_vs_steal": lambda f: f.three_bet_vs_steal,
+    "squeeze_opp": lambda f: f.squeeze_opp,
+    "squeeze": lambda f: f.squeeze,
+    "cold_call_opp": lambda f: f.cold_call_opp,
+    "cold_call": lambda f: f.cold_call,
+    "straddled": lambda f: f.straddled,
+    "won_pot": lambda f: f.won_pot,
+    # The 7-2 side bet, settled outside the pot.
+    "bounty_won": lambda f: f.bounty > 0,
+    "bounty_paid": lambda f: f.bounty < 0,
 }
 
 # Responses to a c-bet, and leads into the previous street's aggressor, per street.
@@ -122,6 +139,26 @@ FLAGS["check_back"] = lambda f: any(f.check_back.values())
 FLAGS["check_raise"] = lambda f: any(f.check_raise.values())
 FLAGS["faced_check_raise"] = lambda f: any(f.faced_check_raise.values())
 
+# After a missed c-bet (SPEC.md, "Delayed c-bet, probe and float"): term name ->
+# (Facts field, streets). Delayed c-bets and probes need a postflop street before
+# them; a float can follow the preflop raise. Each also has an any-street form.
+_MISSED_CBET = {
+    "delayed_cbet": ("delayed_cbet", STREETS[1:]),
+    "delayed_cbet_opp": ("delayed_cbet_opp", STREETS[1:]),
+    "probe": ("probe", STREETS[1:]),
+    "probe_opp": ("probe_opp", STREETS[1:]),
+    "faced_probe": ("fold_to_probe_opp", STREETS[1:]),
+    "folded_to_probe": ("fold_to_probe", STREETS[1:]),
+    "float": ("float_bet", STREETS),
+    "float_opp": ("float_opp", STREETS),
+}
+for _name, (_attr, _streets) in _MISSED_CBET.items():
+    FLAGS[_name] = lambda f, a=_attr: any(getattr(f, a).values())
+    for _s in _streets:
+        # `probe_turn_opp`, like `cbet_turn_opp`: the street before the suffix.
+        _term = f"{_name[:-4]}_{_s}_opp" if _name.endswith("_opp") else f"{_name}_{_s}"
+        FLAGS[_term] = lambda f, a=_attr, s=_s: bool(getattr(f, a).get(s))
+
 # Jams: all-in bets and raises, and the players who faced and called them. Preflop
 # counts here, unlike the postflop terms above.
 for _name in ("jam", "faced_jam", "called_jam"):
@@ -147,6 +184,13 @@ NUMERIC: dict[str, Callable[[Facts], float | None]] = {
     #: Where the holding sits in `cards.HAND_RANKING`: 0.6 is AA, 100 is 32o, so
     #: `hand_pct>=60` is a bottom-40% hand. None when the cards were not shown.
     "hand_pct": lambda f: hand_pct(hand_class(f.hole_cards)) if f.hole_cards else None,
+    #: After `players` on purpose, as `pot_bb` after `pot`.
+    "players_flop": lambda f: f.players_flop,
+    #: Stack depth: effective stack in bb, and the flop's stack-to-pot ratio.
+    "eff_bb": lambda f: f.eff_bb,
+    "spr_flop": lambda f: f.spr_flop,
+    #: Calls of the open in front of their first decision facing it.
+    "callers_before": lambda f: f.callers_before,
 }
 for _s in STREETS:
     #: The bet or raise they first faced on the street, and their own first raise,
@@ -553,6 +597,17 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("5bet", "5bet", "re-raised a 4-bet"),
         ("faced_5bet", "faced_5bet", "acted facing a 5-bet"),
         ("<spot>=DECISION", "faced_open=call", "what they did there: fold, check, call or raise"),
+        ("first_in", "first_in", "everyone before them folded"),
+        ("steal_opp", "steal_opp", "first in from CO, BTN or SB"),
+        ("steal", "steal", "opened first in from CO, BTN or SB"),
+        ("fold_to_steal_opp", "fold_to_steal_opp", "in a blind, facing a steal nobody called"),
+        ("fold_to_steal", "fold_to_steal", "folded a blind to a steal"),
+        ("3bet_vs_steal", "3bet_vs_steal", "3-bet a steal from a blind"),
+        ("callers_before>=N", "callers_before>=1", "calls of the open before they acted on it"),
+        ("squeeze_opp", "squeeze_opp", "faced an open and at least one caller"),
+        ("squeeze", "squeeze", "3-bet an open and its callers"),
+        ("cold_call_opp", "cold_call_opp", "faced an open with nothing in: no blind, no limp"),
+        ("cold_call", "cold_call", "called an open cold"),
     )),
     ("Pot type", (
         ("limped", "limped", "nobody raised preflop"),
@@ -564,6 +619,10 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("position=POS", "position=BTN", "their seat, any table size"),
         ("players=N", "players>=5", "how many were dealt in"),
         ("dead_button", "dead_button", "the button was dead"),
+        ("straddled", "straddled", "someone straddled"),
+        ("players_flop=N", "players_flop>=3", "how many saw the flop"),
+        ("eff_bb<N", "eff_bb<40", "effective stack at the start, in bb"),
+        ("spr_flop<=N", "spr_flop<=3", "stack-to-pot ratio on the flop"),
     )),
     ("Postflop", (
         ("saw_flop", "saw_flop", "saw the flop"),
@@ -589,6 +648,22 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("faced_check_raise_<street>", "faced_check_raise_flop", "bet, and got check-raised"),
         ("faced_check_raise", "faced_check_raise", "got check-raised, any street"),
         ("faced_check_raise_<street>=ANSWER", "faced_check_raise_flop=fold", "what they did next: fold, call or raise"),
+        ("delayed_cbet_<street>", "delayed_cbet_turn", "preflop raiser bet after every street before checked through (turn, river)"),
+        ("delayed_cbet_<street>_opp", "delayed_cbet_turn_opp", "could have made that delayed c-bet"),
+        ("delayed_cbet", "delayed_cbet", "delayed c-bet any street"),
+        ("delayed_cbet_opp", "delayed_cbet_opp", "could have delayed c-bet, any street"),
+        ("probe_<street>", "probe_turn", "bet into the preflop raiser who checked back the street before (turn, river)"),
+        ("probe_<street>_opp", "probe_turn_opp", "could have probed"),
+        ("probe", "probe", "probed any street"),
+        ("probe_opp", "probe_opp", "could have probed, any street"),
+        ("faced_probe_<street>", "faced_probe_turn", "preflop raiser facing a probe"),
+        ("folded_to_probe_<street>", "folded_to_probe_turn", "folded to a probe"),
+        ("faced_probe", "faced_probe", "faced a probe, any street"),
+        ("folded_to_probe", "folded_to_probe", "folded to a probe, any street"),
+        ("float_<street>", "float_turn", "called last street, then bet when its aggressor checked"),
+        ("float_<street>_opp", "float_turn_opp", "could have floated"),
+        ("float", "float", "floated any street"),
+        ("float_opp", "float_opp", "could have floated, any street"),
     )),
     ("Action line", (
         ("line_<street>=LINE", "line_flop=xc",
@@ -642,6 +717,10 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Result", (
         ("wtsd", "wtsd", "went to showdown"),
         ("won_sd", "won_sd", "won at showdown"),
+        ("won_pot", "won_pot", "collected from the pot; a bounty is not the pot"),
+        ("fold_street=STREET", "fold_street=turn", "the street they folded on: preflop, flop, turn or river"),
+        ("bounty_won", "bounty_won", "was paid the 7-2 bounty"),
+        ("bounty_paid", "bounty_paid", "paid the 7-2 bounty"),
         ("won", "won", "won chips"),
         ("lost", "lost", "lost chips"),
         ("cards_known", "cards_known", "hole cards were shown"),
@@ -664,6 +743,10 @@ EXCLUSIVE: tuple[tuple[str, ...], ...] = (
     ("limped", "srp", "3bet_pot", "4bet_pot"),
     ("won", "lost"),
     ("vpip", "no_vpip"),
+    ("steal", "fold_to_steal_opp"),
+    ("fold_to_steal", "3bet_vs_steal"),
+    ("squeeze", "cold_call"),
+    ("bounty_won", "bounty_paid"),
 )
 
 #: Texture tags no one board carries two of. The rest overlap on purpose (see
@@ -769,6 +852,11 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
       ``faced_check_raise_flop``  they bet and were check-raised; ``=fold`` what they did next
       ``made_flop>=set``     their made hand on that street's board; ``made=flush`` on the
                              final one; =, !=, >=, >, <=, < against a leaf or a group
+      ``fold_street=turn``   the street of their voluntary fold, preflop included
+      ``eff_bb<40``          effective stack in bb; also ``spr_flop``, ``players_flop`` and
+                             ``callers_before`` comparisons
+      ``steal``              opened first in from a steal seat; also the steal, squeeze,
+                             cold-call, probe, delayed c-bet and float families
       ``!cbet_flop``         any flag, negated
     """
     terms = [t.strip() for t in expr.split(",") if t.strip()]
@@ -795,6 +883,15 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
         holding = _hand_term(term)
         if holding is not None:
             preds.append(holding)
+            continue
+
+        if term.startswith("fold_street="):
+            street = term.split("=", 1)[1].strip().lower()
+            if street not in _STREET_ORDER:
+                raise ValueError(
+                    f"unknown street {street!r} for fold_street=. Known: {', '.join(_STREET_ORDER)}"
+                )
+            preds.append(lambda f, s=street: f.fold_street == s)
             continue
 
         if term.startswith("position="):
@@ -849,7 +946,8 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
         raise ValueError(
             f"unknown filter term: {term!r}. "
             f"Known flags: {', '.join(sorted(FLAGS))}; "
-            f"position=<POS>; vs=<player>; hand=<class>; a comparison on {', '.join(NUMERIC)}; "
+            f"position=<POS>; fold_street=<street>; vs=<player>; hand=<class>; "
+            f"a comparison on {', '.join(NUMERIC)}; "
             f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
             f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
             f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "

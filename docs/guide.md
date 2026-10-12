@@ -262,6 +262,21 @@ fold-to-3-bet is defined on it. `limp` is the action, and `limped` is the pot. S
 `called_open,faced_3bet_any=call`. This is the vocabulary the live HUD uses to name
 the spot a hand is in as it is played.
 
+**Steals, squeezes and cold calls.** `first_in` is everyone before them folded.
+`steal` is an open from first in from the CO, button or small blind (`steal_opp` the
+chance), and `fold_to_steal` / `3bet_vs_steal` are a blind's answer to one nobody
+called (`fold_to_steal_opp`). `squeeze` is a 3-bet over an open and at least one
+caller (`squeeze_opp`, or `callers_before>=1` for the count), and `cold_call` a call
+of an open with no blind and no limp in (`cold_call_opp`). Hands with a dead button
+or a dead blind have no steal, since their seats are guesses.
+
+**The table and the stacks.** `straddled` keeps the hands someone straddled,
+`players_flop>=3` the multiway flops, `eff_bb<40` the short-stacked hands (effective
+stack in big blinds at the deal) and `spr_flop<=3` the low stack-to-pot flops. A
+hand with an unknown stack matches no `eff_bb` comparison. `won_pot` is "collected
+from the pot" (a 7-2 bounty is not the pot), and `fold_street=turn` keeps the hands
+they folded on that street.
+
 **Bet sizes** come in five buckets: `blocker` (under ⅕ pot), `small` (⅕ to ½),
 `medium` (½ to ¾), `large` (¾ to pot) and `overbet` (more than pot). PokerNow's ½,
 ¾ and pot buttons each start one. Use them as `cbet_flop=medium`, `cbet_turn=overbet`,
@@ -278,6 +293,14 @@ before they act). Facing any bet, not only a c-bet, is a term too:
 `check_back_turn` (or `check_back` for any street) is the player whose check closed
 a street that checked through. `check_raise_flop` is a check-raise, and
 `check_raise_flop_opp` checked and then faced a bet.
+
+**After a missed c-bet.** `delayed_cbet_turn` is the preflop raiser betting the turn
+after the flop checked through; `probe_turn` is the other player betting into a
+preflop raiser who checked the flop back, and `folded_to_probe_turn` the raiser
+folding to it; `float_turn` is calling a bet on the flop and then betting the turn
+when that bettor checks. Each has an `_opp` form (`probe_turn_opp`) and an
+any-street form (`probe`). Delayed c-bets and probes are turn and river only; a
+float can be on the flop, after calling a preflop raise.
 
 **Action lines** spell out what a player did on a street, one letter per action:
 `x` check, `b` bet, `c` call, `r` raise, `f` fold. `line_flop=xc` is a flop

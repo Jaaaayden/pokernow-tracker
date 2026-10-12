@@ -92,6 +92,7 @@ def hand_row(parsed: ParsedHand, hand_id: int = 0) -> HandRow:
                 is_forced=a.is_forced,
                 all_in=a.all_in,
                 amount_to=a.amount_to,
+                post_kind=a.post_kind,
             )
             for a in parsed.actions
         ],
