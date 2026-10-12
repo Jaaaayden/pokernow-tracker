@@ -860,6 +860,62 @@ row's. Calibrated on the 13,300-hand database on 2026-10-11, where the pool sits
 41% and the hero, every hand known, at 34%: 55% over 15 hands fires for one player
 of the seven with a sample and finds one more who is streaky.
 
+### Voluntary shows
+
+`shows.voluntary_shows(conn, alias, game)` reads one player's rows of
+`v_voluntary_shows`: every hand they turned cards over in after it ended, with
+nobody asking. **The bias is the reverse of every other shown-hand figure, and it is
+the point.** Elsewhere the bluffs that got folds are never shown; here they appear
+only when the player chose to show them. A player who shows air after a fold or an
+uncontested pot is advertising bluffs; one who shows only strong hands is selling a
+tight image. The figure is what they want you to see, never a sample of a range, and
+the endpoint, the CLI and the page all say so (`shows.NOTE`).
+
+| Field | Counts |
+|---|---|
+| `hands` | every hand they were dealt into (`hand_players`), the base the shows come from |
+| `shows` | every row of `v_voluntary_shows` for their identities |
+| `two_card` | shows of both cards: classified |
+| `one_card` | shows of one card: counted, never classified |
+| `coverage` | `two_card / shows` |
+| `classes` | the two-card shows by class, summing to `two_card` |
+| `contexts` | the same counts split by how the hand ended for them, summing to the totals |
+
+| Context | Rule |
+|---|---|
+| **folded, then showed** | `folded = 1`, whether or not others reached showdown |
+| **won uncontested, then showed** | `folded = 0` and `went_to_showdown = 0` |
+| **reached showdown, showed after** | `folded = 0` and `went_to_showdown = 1`: a muck turned over later |
+
+A two-card show is read **on the board as it stood** (`tags.strength_at`, with
+`cards.made_at` for the made hand printed beside it): a fold on the street of the
+player's fold action, anything else on the board the hand ended on, and never past
+the board's first run.
+
+| Class | Postflop (`strength_at`) | Preflop (`strength_at`, by `hand_pct`) |
+|---|---|---|
+| `strong` | strong: top pair or an overpair, or better | strong (at or under 15) |
+| `marginal` | medium or weak: middle, bottom, board or a low pocket pair | medium (at or under 50) |
+| `draw` | draw, on the flop or turn | -- |
+| `air` | air: high card; on the river a missed draw (`missed`) too | weak (past 50) |
+
+No exclusions: a show from a dead-button or irregular-blinds hand is still a show,
+since nothing here is positional. Shows are not `Facts`, so no spot filter
+reproduces a row; each row carries its `hand_id` instead, and
+`test_fixture_counts_match_the_view` holds every count to the view.
+`GET /players/{alias}/shows?game=` returns it, `pnt shows <alias>` prints it, and
+the players page lists it as **Shows without being asked**.
+
+Judgement calls:
+
+1. **A fold is read where it was folded.** The tell is what they gave up and then
+   chose to show; the river that came after they left says nothing about that.
+2. **Preflop weak is air.** A bottom-half hand shown after a preflop fold or a
+   walk is the "look what I had" show, and nobody plays it for value.
+3. **The showdown muck is its own context.** The idea asked for two (folded and
+   uncontested), but a loser who mucks and then shows is a third choice, and
+   folding it into either would mislabel it.
+
 ---
 
 ## Decision points (nodes)

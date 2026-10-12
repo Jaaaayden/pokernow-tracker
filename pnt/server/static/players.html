@@ -96,6 +96,17 @@
   .err { color: var(--down); margin: 10px 0; }
   .hidden { display: none !important; }
   .empty { color: var(--muted); padding: 16px 2px; }
+
+  /* shows without being asked */
+  .shows .shows-h { color: var(--ink); font-weight: 600; }
+  .shows .dim { color: var(--muted); font-size: 12.5px; }
+  .shows p.shows-note { color: var(--ink-2); font-size: 12.5px; margin: 6px 0 8px; max-width: 80ch; }
+  .shows table.ids tr.total td { font-weight: 600; }
+  .shows table.ids { margin-bottom: 8px; }
+  .shows .shows-list td { white-space: nowrap; }
+  .shows .cls-strong { color: var(--up); }
+  .shows .cls-air, .shows .cls-draw { color: var(--down); }
+  .shows-wrap { overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -150,6 +161,7 @@
 
   async function load() {
     players = await api("/players");
+    showsCache.clear();  // a merge or rename changes whose shows these are
     players.sort((a, b) => b.hands - a.hands);
     $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
       + ` · ${players.reduce((n, p) => n + p.n_ids, 0)} PokerNow ids`;
@@ -254,6 +266,7 @@
     acts.appendChild(rn);
     body.appendChild(acts);
     body.appendChild(notePanel(p, pnote));
+    if (p.alias === openAlias) body.appendChild(showsPanel(p));
 
     if (players.length > 1) body.appendChild(mergePanel(p));
     return body;
@@ -306,6 +319,89 @@
     box.addEventListener("blur", save);
     wrap.append(box, hint);
     return wrap;
+  }
+
+  // Shows without being asked: what they turned over after a fold, a pot nobody
+  // contested, or a muck at showdown (GET /players/{alias}/shows). Fetched only
+  // for the open card, and kept per alias until the list reloads, since render()
+  // rebuilds every card on each click.
+  const showsCache = new Map();
+  const SUITS = { s: "♠", h: "♥", d: "♦", c: "♣" };
+  const prettyCards = (cards) => (Array.isArray(cards) ? cards.join("") : cards || "")
+    .replace(/([2-9TJQKA])([shdc])/g, (_, r, s) => r + SUITS[s] + " ").trim();
+  const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
+
+  function showsPanel(p) {
+    const wrap = el("div", "sub shows");
+    wrap.appendChild(el("p", "shows-h", "Shows without being asked"));
+    const box = el("div", null, "loading…");
+    wrap.appendChild(box);
+    let pending = showsCache.get(p.alias);
+    if (!pending) {
+      pending = api(`/players/${encodeURIComponent(p.alias)}/shows`);
+      showsCache.set(p.alias, pending);
+      pending.catch(() => showsCache.delete(p.alias));
+    }
+    pending.then((d) => box.replaceChildren(...showsBody(d)))
+      .catch((e) => box.replaceChildren(el("span", "err", "could not load shows: " + e.message)));
+    return wrap;
+  }
+
+  function showsBody(d) {
+    if (!d.shows) return [el("div", "dim", `Never showed a hand unasked, in ${fmt(d.hands)} dealt in.`)];
+    const out = [];
+    out.push(el("div", "dim",
+      `${fmt(d.shows)} shown of ${fmt(d.hands)} hands dealt in · two cards, classified: `
+      + `${d.two_card} of ${d.shows} (${d.coverage ?? "--"}%) · one card, counted only: ${d.one_card}`));
+    out.push(el("p", "shows-note", d.note));
+
+    const t = el("table", "ids");
+    const hr = document.createElement("tr");
+    for (const [h, cls] of [["how the hand ended", ""], ["shows", "r"], ["1 card", "r"], ...SHOW_CLASSES.map((c) => [c, "r"])]) {
+      hr.appendChild(el("th", cls, h));
+    }
+    t.appendChild(hr);
+    const total = { label: "all", shows: d.shows, one_card: d.one_card, classes: d.classes };
+    for (const c of [...d.contexts, total]) {
+      if (!c.shows && c !== total) continue;
+      const tr = el("tr", c === total ? "total" : "");
+      tr.appendChild(el("td", null, c.label));
+      tr.appendChild(el("td", "r", c.shows));
+      tr.appendChild(el("td", "r dim", c.one_card || "·"));
+      for (const k of SHOW_CLASSES) tr.appendChild(el("td", "r", c.classes[k] || "·"));
+      t.appendChild(tr);
+    }
+    const tableScroll = el("div", "shows-wrap");
+    tableScroll.appendChild(t);
+    out.push(tableScroll);
+
+    const words = Object.fromEntries(d.contexts.map((c) => [c.key, c.label]));
+    const list = el("table", "ids shows-list");
+    const lh = document.createElement("tr");
+    for (const [h, cls] of [["hand", ""], ["shown", ""], ["how it ended", ""], ["board as it stood", ""], ["read as", ""]]) {
+      lh.appendChild(el("th", cls, h));
+    }
+    list.appendChild(lh);
+    for (const r of d.rows) {
+      const tr = document.createElement("tr");
+      const td = el("td");
+      const a = el("a", "link", `#${r.hand_number}`);
+      a.href = `/hands/${r.hand_id}`;
+      a.target = "_blank"; a.rel = "noopener";
+      a.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}`;
+      td.appendChild(a);
+      tr.appendChild(td);
+      tr.appendChild(el("td", null, prettyCards(r.cards)));
+      tr.appendChild(el("td", "dim", words[r.context] || r.context));
+      tr.appendChild(el("td", null, r.board.length ? `${r.street}: ${prettyCards(r.board)}` : "preflop"));
+      const made = r.made ? (r.missed ? "missed " : "") + r.made.replace(/_/g, " ") : "";
+      tr.appendChild(el("td", r.class ? `cls-${r.class}` : "dim", r.class ? `${r.class} · ${made}` : "one card"));
+      list.appendChild(tr);
+    }
+    const scroll = el("div", "shows-wrap");
+    scroll.appendChild(list);
+    out.push(scroll);
+    return out;
   }
 
   function mergePanel(p) {

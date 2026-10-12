@@ -1773,5 +1773,50 @@ def slowplay(
     ])
 
 
+@app.command()
+def shows(
+    alias: str = typer.Argument(..., help="The player."),
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """The hands a player showed without being asked, and what they were.
+
+    Two-card shows are read on the board as it stood -- a fold on the street they
+    folded -- as strong, marginal, draw or air, and split by how the hand ended
+    for them. One-card shows are counted only. These are chosen reveals: what
+    the player wants you to see, not a sample of their range.
+    """
+    from .stats.shows import CLASSES, voluntary_shows
+
+    conn = connect(db)
+    try:
+        out = voluntary_shows(conn, alias, game)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+    typer.echo(f"{alias}  shown without being asked: {out['shows']} of {out['hands']} hands dealt in")
+    typer.echo(f"two cards, classified: {out['two_card']} of {out['shows']} ({_fmt(out['coverage'])}%)"
+               f"   one card, counted only: {out['one_card']}")
+    typer.echo(out["note"] + "\n")
+    header = f"{'how the hand ended':<32}{'shows':>6}{'1 card':>7}" + "".join(f"{c:>9}" for c in CLASSES)
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    total = {"label": "all", "shows": out["shows"], "one_card": out["one_card"], "classes": out["classes"]}
+    for c in [*out["contexts"], total]:
+        cells = "".join(f"{c['classes'][k] or '.':>9}" for k in CLASSES)
+        typer.echo(f"{c['label']:<32}{c['shows']:>6}{c['one_card'] or '.':>7}{cells}")
+    if out["rows"]:
+        typer.echo("")
+    for r in out["rows"]:
+        board = " ".join(r["board"]) or "(preflop)"
+        made = ("missed " if r["missed"] else "") + (r["made"] or "")
+        what = f"{r['class']}: {made}" if r["class"] else "one card"
+        typer.echo(f"  #{r['hand_number']:<5} {r['cards']:<6} {r['context']:<12} {r['street']:<8}"
+                   f" {board:<16} {what}   hand {r['hand_id']}")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

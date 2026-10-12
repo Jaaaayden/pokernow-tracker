@@ -1266,3 +1266,21 @@ def pool_slowplay(
         grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
     out = slowplay([f for facts in grouped.values() for f in facts], street, floor)
     return {"filter": filter, **out, "players": by_player(grouped, aliases, street, floor, min)}
+
+
+# --- voluntary shows -------------------------------------------------------------
+
+
+@app.get("/players/{alias:path}/shows")
+def player_shows(alias: str, game: str | None = None) -> dict:
+    """The hands one player showed without being asked: after a fold, after a pot
+    nobody contested, or after mucking at showdown. Two-card shows are classed
+    strong, marginal, draw or air on the board as it stood; one-card shows are
+    counted only. No filter: shows are not `Facts`, so each row is listed by its
+    hand. See SPEC.md, "Voluntary shows"."""
+    from pnt.stats.shows import voluntary_shows
+
+    try:
+        return voluntary_shows(db(), alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
