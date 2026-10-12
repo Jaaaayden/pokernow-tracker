@@ -1266,3 +1266,18 @@ def pool_slowplay(
         grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
     out = slowplay([f for facts in grouped.values() for f in facts], street, floor)
     return {"filter": filter, **out, "players": by_player(grouped, aliases, street, floor, min)}
+
+
+# ---- 7-2 bounty ledger -------------------------------------------------------
+# Imported inside the endpoint so this block stands alone. See SPEC.md,
+# "7-2 bounty ledger".
+
+
+@app.get("/bounties")
+def bounties(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+    """Who has collected and paid the 7-2 side bet, ranked by net, and how often
+    hero played 72 when dealt it. Hero only: anyone else's folded 72 is unseen.
+    The ledger's net sums to zero across players; `balance` says if it does not."""
+    from pnt.stats.bounty import ledger
+
+    return ledger(db(), game)
