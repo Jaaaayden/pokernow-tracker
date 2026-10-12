@@ -42,23 +42,20 @@ from .tags import strength_at
 #: The four classes, strongest claim first: the order the stacked bar is drawn in.
 CLASSES = ("value", "marginal", "semi_bluff", "bluff")
 
-#: The categories on each street, in the order a street's rows are listed.
-#: (kind, size bucket or None). `raise` is every raise facing a bet on the street,
-#: check-raises included: a check-raise is the raise made from out of position,
-#: and its own row splits it out.
-STREET_KINDS: tuple[tuple[str, str | None], ...] = (
-    *(("bet", s) for s in SIZE_BUCKETS),
-    ("check_raise", None),
-    ("raise", None),
-    ("jam", None),
-)
+#: A street's rows, in order. First one row per size, every bet or raise of that
+#: size, opening into the bet, the raise and the check-raise made at it -- size
+#: above action, since the size is what the table sees first. Then the street's
+#: summaries, across sizes: every check-raise, every raise (check-raises
+#: included), and the jams. A raise is sized like a bet, by `raise_pot`.
+SIZE_KINDS = ("bet", "raise", "check_raise")
+SUMMARY_KINDS = ("check_raise", "raise", "jam")
 
 _SIZE_WORDS = {
-    "blocker": "blocker bet, under 1/5 pot",
-    "small": "small bet, 1/5 to 1/2",
-    "medium": "medium bet, 1/2 to 3/4",
-    "large": "large bet, 3/4 to pot",
-    "overbet": "overbet",
+    "blocker": "blocker, under 1/5 pot",
+    "small": "small, 1/5 to 1/2 pot",
+    "medium": "medium, 1/2 to 3/4 pot",
+    "large": "large, 3/4 to pot",
+    "overbet": "overbet, above pot",
 }
 
 
@@ -124,26 +121,33 @@ def categories() -> list[dict]:
     aggression``, which reads each hand on its last aggressive street."""
     out: list[dict] = []
 
-    def add(key, street, kind, size, label, term, test, read_on):
+    def add(key, street, kind, size, label, term, test, read_on, parent=None):
         out.append({
-            "key": key, "street": street, "kind": kind, "size": size,
+            "key": key, "street": street, "kind": kind, "size": size, "parent": parent,
             "label": label, "filter": term, "test": test, "read_on": read_on,
         })
 
     for s in POSTFLOP_STREETS:
-        for kind, size in STREET_KINDS:
-            if kind == "bet":
-                add(f"bet_{s}_{size}", s, kind, size, _SIZE_WORDS[size], f"bet_{s}={size}",
-                    lambda f, s=s, z=size: f.bet_size.get(s) == z, s)
-            elif kind == "check_raise":
-                add(f"check_raise_{s}", s, kind, None, "check-raise", f"check_raise_{s}",
-                    lambda f, s=s: bool(f.check_raise.get(s)), s)
-            elif kind == "raise":
-                add(f"raise_{s}", s, kind, None, "raise (check-raises too)", f"raised_bet_{s}",
-                    lambda f, s=s: bool(f.raised_bet.get(s)), s)
-            else:
-                add(f"jam_{s}", s, kind, None, "jam (all-in bet or raise)", f"jam_{s}",
-                    lambda f, s=s: bool(f.jam.get(s)), s)
+        for z in SIZE_BUCKETS:
+            # Every bet or raise this size. No filter: one cannot say "a bet or a
+            # raise", so the row lists its hands; each action under it has one.
+            size_key = f"size_{s}_{z}"
+            add(size_key, s, "size", z, _SIZE_WORDS[z], None,
+                lambda f, s=s, z=z: f.bet_size.get(s) == z or f.raise_size.get(s) == z, s)
+            add(f"bet_{s}_{z}", s, "bet", z, "bet", f"bet_{s}={z}",
+                lambda f, s=s, z=z: f.bet_size.get(s) == z, s, size_key)
+            add(f"raise_{s}_{z}", s, "sized_raise", z, "raise", f"raised_bet_{s}={z},!check_raise_{s}",
+                lambda f, s=s, z=z: f.raise_size.get(s) == z and not f.check_raise.get(s), s, size_key)
+            # Their first raise on the street is the check-raise, so `raise_size` is its size.
+            add(f"check_raise_{s}_{z}", s, "sized_check_raise", z, "check-raise",
+                f"check_raise_{s},raised_bet_{s}={z}",
+                lambda f, s=s, z=z: bool(f.check_raise.get(s)) and f.raise_size.get(s) == z, s, size_key)
+        add(f"check_raise_{s}", s, "check_raise", None, "every check-raise", f"check_raise_{s}",
+            lambda f, s=s: bool(f.check_raise.get(s)), s)
+        add(f"raise_{s}", s, "raise", None, "every raise (check-raises too)", f"raised_bet_{s}",
+            lambda f, s=s: bool(f.raised_bet.get(s)), s)
+        add(f"jam_{s}", s, "jam", None, "every jam (all-in bet or raise)", f"jam_{s}",
+            lambda f, s=s: bool(f.jam.get(s)), s)
     add("bet_river_all", RIVER, "all_bets", None, "every river bet", "bet_river",
         lambda f: RIVER in f.bet_pot, RIVER)
     add("aggression", "all", "aggression", None, "all aggression", None,
@@ -189,6 +193,7 @@ def _row(cat: dict, rows: list[Facts], ids: bool) -> dict:
         "street": cat["street"],
         "kind": cat["kind"],
         "size": cat["size"],
+        "parent": cat["parent"],
         "label": cat["label"],
         "filter": cat["filter"],
         "class_filters": (

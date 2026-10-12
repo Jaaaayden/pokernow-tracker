@@ -177,6 +177,94 @@ def _money(rows: list[Facts]) -> dict:
     }
 
 
+def _summary(segments: tuple[str, ...], streets: tuple[str, ...], rows: list[Facts], mode: str) -> dict:
+    """One group's row: its filter, money, coverage and strength split. `streets`
+    are the streets `segments` cover -- all three for a whole line, fewer for a
+    branch of the tree, whose strength is read where it last acted."""
+    on = _rated_on(segments, streets, mode)
+    counts = dict.fromkeys(TIERS, 0)
+    shown = 0
+    for f in rows:
+        if not f.hole_cards:
+            continue
+        shown += 1
+        tier = tier_at(f.hole_cards, f.board, on) if on else None
+        if tier is not None:
+            counts[tier] += 1
+    known = sum(counts.values())
+    base = group_filter(segments, streets, mode)
+    tiers = {}
+    for tier in TIERS:
+        terms = tier_terms(tier, on) if on else None
+        tiers[tier] = {
+            "n": counts[tier],
+            "pct": _pct(counts[tier], known),
+            "filter": f"{base},{terms}" if terms and base else (terms if terms else None),
+        }
+    return {
+        "line": "/".join(segments),
+        "streets": dict(zip(streets, segments)),
+        "filter": base,
+        "n": len(rows),
+        **_money(rows),
+        "shown": shown,
+        "known": known,
+        "coverage": _pct(known, len(rows)),
+        "rated_on": on,
+        "tiers": tiers,
+        "draw_heavy": tiers["draw"]["pct"],
+        "hand_ids": [f.hand_id for f in rows],
+    }
+
+
+#: What a line looks like when it has stopped: nothing more to open below it.
+_ENDED = (NOT_PLAYED, NO_ACTION)
+
+
+def line_tree(facts: list[Facts], mode: str = "own", min_n: int = DEFAULT_MIN) -> list[dict]:
+    """The same lines as a tree: what they did on the flop, then the turn under each
+    flop line, then the river under each of those -- so every way of checking the
+    flop sits together, under one row that adds them up.
+
+    A node is `_summary` of every hand whose line starts that way, with its own
+    filter (``line_flop=x``, ``line=x/b``) and its strength read on the last street
+    of the node they acted on: "checked the flop" is what they had on the flop.
+    ``children`` are the ways on with `min_n` hands or more, biggest first, and
+    ``hidden`` counts the rest. A line that stopped there -- they folded, or were
+    all in -- has no children. Children and hidden add up to the node's ``n``.
+    """
+    streets = POSTFLOP_STREETS
+
+    def node(prefix: tuple[str, ...], rows: list[Facts]) -> dict:
+        out = _summary(prefix, streets[:len(prefix)], rows, mode)
+        out["children"], out["hidden"] = [], {"groups": 0, "hands": 0}
+        if len(prefix) == len(streets):
+            return out
+        nxt = streets[len(prefix)]
+        ways: dict[str, list[Facts]] = defaultdict(list)
+        for f in rows:
+            ways[_segment(f, nxt, mode)].append(f)
+        if set(ways) <= set(_ENDED):
+            return out  # the line ended here
+        for seg, sub in ways.items():
+            if len(sub) < min_n:
+                out["hidden"]["groups"] += 1
+                out["hidden"]["hands"] += len(sub)
+            else:
+                out["children"].append(node((*prefix, seg), sub))
+        out["children"].sort(key=lambda g: (-g["n"], g["line"]))
+        return out
+
+    top: dict[str, list[Facts]] = defaultdict(list)
+    for f in facts:
+        top[_segment(f, streets[0], mode)].append(f)
+    roots = [node((seg,), rows) for seg, rows in top.items() if len(rows) >= min_n]
+    # No action after the flop is the biggest group and says nothing about a line:
+    # it goes last.
+    roots.sort(key=lambda g: (g["line"] in _ENDED, -g["n"], g["line"]))
+    return roots
+
+
 def line_breakdown(
     facts: list[Facts],
     mode: str = "own",
@@ -216,46 +304,14 @@ def line_breakdown(
     groups, hidden_groups, hidden_hands = [], 0, 0
     shown_all = known_all = 0
     for segments, rows in grouped.items():
-        on = _rated_on(segments, streets, mode)
-        counts = dict.fromkeys(TIERS, 0)
-        shown = 0
-        for f in rows:
-            if not f.hole_cards:
-                continue
-            shown += 1
-            tier = tier_at(f.hole_cards, f.board, on) if on else None
-            if tier is not None:
-                counts[tier] += 1
-        known = sum(counts.values())
-        shown_all += shown
-        known_all += known
+        g = _summary(segments, streets, rows, mode)
+        shown_all += g["shown"]
+        known_all += g["known"]
         if len(rows) < min_n:
             hidden_groups += 1
             hidden_hands += len(rows)
             continue
-        base = group_filter(segments, streets, mode)
-        tiers = {}
-        for tier in TIERS:
-            terms = tier_terms(tier, on) if on else None
-            tiers[tier] = {
-                "n": counts[tier],
-                "pct": _pct(counts[tier], known),
-                "filter": f"{base},{terms}" if terms else None,
-            }
-        groups.append({
-            "line": "/".join(segments),
-            "streets": dict(zip(streets, segments)),
-            "filter": base,
-            "n": len(rows),
-            **_money(rows),
-            "shown": shown,
-            "known": known,
-            "coverage": _pct(known, len(rows)),
-            "rated_on": on,
-            "tiers": tiers,
-            "draw_heavy": tiers["draw"]["pct"],
-            "hand_ids": [f.hand_id for f in rows],
-        })
+        groups.append(g)
     groups.sort(key=lambda g: (-g["n"], g["line"]))
 
     return {
@@ -270,6 +326,7 @@ def line_breakdown(
         **_money(facts),
         "groups": groups,
         "hidden": {"groups": hidden_groups, "hands": hidden_hands},
+        "tree": line_tree(facts, mode, min_n) if street is None else None,
     }
 
 

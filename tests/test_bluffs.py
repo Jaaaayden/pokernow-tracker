@@ -68,6 +68,27 @@ def test_roll_ups_add_up(db):
         assert rows["aggression"]["n"] >= max(rows[f"raise_{s}"]["n"] for s in ("flop", "turn", "river"))
 
 
+def test_sizes_sit_above_the_actions(db):
+    """Each street opens with one row per size, every bet or raise of it, and the
+    bet, raise and check-raise of that size under it. A size row is the union of
+    its children (a bet and a re-raise of one size on one street is one hand), and
+    the sized actions add back up to the street's summaries."""
+    for player in _players(db):
+        rows = bluff_value(facts_for(db, player))["rows"]
+        by_key = {r["key"]: r for r in rows}
+        for street in ("flop", "turn", "river"):
+            for size in ("blocker", "small", "medium", "large", "overbet"):
+                parent = by_key[f"size_{street}_{size}"]
+                kids = [r for r in rows if r["parent"] == parent["key"]]
+                assert [r["kind"] for r in kids] == ["bet", "sized_raise", "sized_check_raise"]
+                assert set(parent["hand_ids"]) == {i for r in kids for i in r["hand_ids"]}, (player, parent["key"])
+            sized = {kind: sum(by_key[f"{kind}_{street}_{z}"]["n"]
+                               for z in ("blocker", "small", "medium", "large", "overbet"))
+                     for kind in ("raise", "check_raise")}
+            assert sized["check_raise"] == by_key[f"check_raise_{street}"]["n"], (player, street)
+            assert sized["raise"] + sized["check_raise"] == by_key[f"raise_{street}"]["n"], (player, street)
+
+
 # --- synthetic hands -----------------------------------------------------------
 
 #: Heads-up, limped, 20 in the middle. B bets 10 into a flop of Ah 7h 2c holding

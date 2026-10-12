@@ -151,6 +151,42 @@ def test_every_group_reproduces_as_a_filter(db, mode):
                             assert _count(inside, t["filter"], names) == t["n"], (player, g["line"], tier)
 
 
+def _walk(nodes):
+    for g in nodes:
+        yield g
+        yield from _walk(g["children"])
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_the_tree_adds_up_and_reproduces(db, mode):
+    """The grouped view: flop lines, the turn under each, the river under those.
+    Every node's filter finds exactly its hands, and so does each tier's; a node's
+    children and hidden ways on add up to it, unless the line ended there."""
+    names = display_names(db)
+    for player, facts in _players(db):
+        for min_n in (1, 3):
+            tree = line_breakdown(facts, mode, None, min_n=min_n)["tree"]
+            top = sum(g["n"] for g in tree)
+            assert top <= len(facts)
+            if min_n == 1:
+                assert top == len(facts), player
+            for g in _walk(tree):
+                assert _count(facts, g["filter"], names) == g["n"], (player, g["line"])
+                for tier, t in g["tiers"].items():
+                    if t["filter"] is not None:
+                        assert _count(facts, t["filter"], names) == t["n"], (player, g["line"], tier)
+                if g["children"] or g["hidden"]["groups"]:
+                    assert sum(c["n"] for c in g["children"]) + g["hidden"]["hands"] == g["n"], g["line"]
+            leaves = {g["line"]: g["n"] for g in _walk(tree) if len(g["streets"]) == 3}
+            flat = {g["line"]: g["n"] for g in line_breakdown(facts, mode, None, min_n=1)["groups"]}
+            assert all(flat[line] == n for line, n in leaves.items()), player
+
+
+def test_the_tree_is_left_out_for_one_street(db):
+    facts = facts_for(db, report(db)[0]["player"])
+    assert line_breakdown(facts, "own", "flop")["tree"] is None
+
+
 def test_the_pool_reproduces_too_runouts_included(db):
     """Every seat of every hand, edge logs too. The all-in run-outs (`.`, nobody
     acted) are the one segment with no letters to write, and must still match."""

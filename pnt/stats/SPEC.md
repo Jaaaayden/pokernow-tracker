@@ -707,6 +707,17 @@ filter is the group's plus its terms on that street.
 Groups under `min` hands (3 unless asked) are left out of the rows and counted in
 `hidden`, groups and hands. Rows are sorted by `n`.
 
+**The tree** (`lines.line_tree`, `tree` in the answer when all three streets are
+read) holds the same hands as nested rows, so that every way of checking the flop
+sits together: a node per flop line, opening into the turn lines under it, and
+those into the river. A node is every hand whose line *starts* that way, with its
+own filter (`line_flop=x`, `line=x/b`) and its own strength split, read on the last
+street of the node they acted on -- "checked the flop" is what they had on the
+flop. Its `children` are the ways on with `min` hands or more and `hidden` the
+rest, and the two add up to the node. A line that stopped there (they folded, or
+were all in) has no children. The leaves are the groups above, unchanged.
+`test_the_tree_adds_up_and_reproduces` holds every node to its filter.
+
 **The usual bias, sharpened.** A line that wins uncontested is never shown, and a
 line is often *why* a hand won uncontested: `b/b/-` where the turn bet got a fold
 is in the group, but its cards are not in the split. Bluffs that got a fold are
@@ -733,12 +744,23 @@ on** (`tags.strength_at`). Each category is a filter, so it reproduces as a spot
 
 | Category | Filter | Per street |
 |---|---|---|
-| Bet, by size | `bet_<street>=blocker` … `=overbet` | their first bet on the street, by its bucket |
-| Check-raise | `check_raise_<street>` | |
-| Raise | `raised_bet_<street>` | every raise facing a bet, check-raises included |
-| Jam | `jam_<street>` | an all-in bet or raise |
+| Size | none | every bet or raise of one size: the union of the three below it |
+| · bet | `bet_<street>=<size>` | their first bet on the street, by its bucket |
+| · raise | `raised_bet_<street>=<size>,!check_raise_<street>` | their first raise, sized by `raise_pot`, not a check-raise |
+| · check-raise | `check_raise_<street>,raised_bet_<street>=<size>` | the check-raise, which is their first raise |
+| Every check-raise | `check_raise_<street>` | the sized check-raises added together |
+| Every raise | `raised_bet_<street>` | every raise facing a bet, check-raises included |
+| Every jam | `jam_<street>` | an all-in bet or raise |
 | Every river bet | `bet_river` | the five river bet rows added together |
 | All aggression | none | every hand they bet or raised in, read on the **last** street they did |
+
+**Size above action.** A street's rows open with one per size, and each opens into
+the bet, the raise and the check-raise made at that size (`parent` names the size
+row): the size is what the table sees first, and the action is what it means. A
+size row has no filter, since a filter cannot say "a bet or a raise", and is
+listed by its hands; it is the union of its children rather than their sum,
+because a bet and a re-raise of one size on one street is one hand.
+`test_sizes_sit_above_the_actions` holds the sized rows to the summaries.
 
 | Class | `strength_at` | As a filter (flop shown) |
 |---|---|---|

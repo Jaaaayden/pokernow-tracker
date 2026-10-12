@@ -73,6 +73,10 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; }
+  .views .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; line-height: 1.35; }
+  .views .seg button + button { border-left: 1px solid var(--axis); }
+  .views .seg button[aria-pressed=true] + button, .views .seg button + button[aria-pressed=true] { border-left-color: transparent; }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .presets button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .presets button:hover { border-color: var(--muted); }
@@ -162,6 +166,22 @@
   .lrows .stack.none { color: var(--muted); font-size: 12px; align-items: center; }
   .lrows .val { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; color: var(--ink-2); }
   .lrows .val small { color: var(--muted); margin-left: 6px; }
+  /* Tree rows, in Lines and Bluff:value: a caret opens a row into the ways on
+     under it, and each level sits one step further in. */
+  .lrows .lab { font-family: inherit; cursor: default; }
+  .lrows .lab:hover { text-decoration: none; }
+  .tlab { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; }
+  .tlab .caret { border: 0; background: none; padding: 0; width: 12px; flex: none; color: var(--muted);
+    font-size: 10px; line-height: 1; cursor: pointer; }
+  .tlab .caret:hover, .tlab .caret:focus-visible { color: var(--ink); outline: 0; }
+  .tlab .caret.leaf { visibility: hidden; }
+  .tlab .st { flex: none; width: 3.3em; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .tlab .words { cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+  .tlab .words:hover, .tlab .words:focus-visible { text-decoration: underline; outline: 0; }
+  .tlab .words b { font-weight: 600; color: var(--ink); }
+  .tlab .code { color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+  .tsub { color: var(--ink-2); }
+  .tmore { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
   /* Narrow, the coverage goes under its bar rather than pushing the page sideways. */
   @media (max-width: 600px) {
     .lrows { grid-template-columns: max-content max-content minmax(60px, 1fr); gap: 2px 8px; }
@@ -345,8 +365,8 @@
     gap: 4px 14px; align-items: center; font-variant-numeric: tabular-nums; }
   .bv-row { display: contents; }
   .bv-row > * { min-width: 0; }
-  .bv-row .lab { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-  .bv-row .lab:hover, .bv-row .lab:focus-visible { color: var(--ink); text-decoration: underline; outline: 0; }
+  .bv-row .lab { color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+  .bv-row .lab .words:hover, .bv-row .lab .words:focus-visible { color: var(--ink); }
   .bv-row.none .lab { cursor: default; text-decoration: none; color: var(--muted); }
   .bv-row.roll .lab { color: var(--ink); font-weight: 600; }
   .bv-bar { display: flex; gap: 2px; height: 14px; }
@@ -393,6 +413,7 @@
     input[type=number] { width: 5em; }
     .seg { border-radius: 5px; }
     .seg button { padding: 2px 7px; }
+    .views .seg button { font-size: 11px; padding: 2px 7px; }
     .presets { gap: 3px; margin-bottom: 8px; }
     .presets button { font-size: 10px; padding: 1px 6px; }
     .presets .lbl { font-size: 10px; }
@@ -470,18 +491,24 @@
     <input id="filter" type="text" placeholder="srp,pot>=500,vs=henry" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
-    <span class="seg" role="group" aria-label="View">
-      <button data-view="preflop" aria-pressed="true">Preflop chart</button>
-      <button data-view="made" aria-pressed="false">Made hands</button>
-      <button data-view="sizing" aria-pressed="false">Sizing</button>
+  </div>
+  <!-- The views, on a row of their own: what they play, then the hands to look at
+       again. Two groups rather than one long bar, so neither wraps a label. -->
+  <div class="views">
+    <span class="seg" role="group" aria-label="Analysis views">
+      <button data-view="preflop" aria-pressed="true" title="the 169 starting hands, coloured by result">Preflop</button>
+      <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
+      <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
-      <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by kind of aggression">Bluff:value</button>
-      <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Strength by street</button>
-      <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Hand review</button>
-      <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Manual review</button>
+      <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
+      <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
+      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
+    </span>
+    <span class="seg" role="group" aria-label="Review views">
+      <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
+      <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Flagged</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
-      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
     </span>
   </div>
   <div class="pnote" id="pnote"></div>
@@ -1191,6 +1218,26 @@
     ["xB*/xB*/", "action=xB*/xB*/", "checked to on the flop and the turn, and bet both"],
   ];
   const LINE_CHIP_TERMS = LINE_CHIPS.map(([, t]) => t);
+  const LINE_WORD = { x: "check", b: "bet", c: "call", r: "raise", f: "fold" };
+
+  // One street of a line in words. Their own line reads `xc` as check-call; the
+  // whole street writes every action, theirs in bold -- `xBr` is check · bet · raise.
+  function lineWords(seg, mode) {
+    const el = document.createElement("span");
+    if (seg === "-") { el.textContent = mode === "own" ? "did not act" : "not in the hand"; return el; }
+    if (seg === ".") { el.textContent = "no action (all in)"; return el; }
+    if (mode === "own") { el.textContent = [...seg].map(ch => LINE_WORD[ch] ?? ch).join("-"); return el; }
+    [...seg].forEach((ch, i) => {
+      if (i) el.append(" · ");
+      const word = LINE_WORD[ch.toLowerCase()] ?? ch;
+      if (ch === ch.toUpperCase()) { const b = document.createElement("b"); b.textContent = word; el.append(b); }
+      else el.append(word);
+    });
+    return el;
+  }
+
+  // Which tree rows are open, by mode and line: kept while the page is open.
+  const lineOpen = new Set();
   const fmtNet = (v) => v == null ? "–" : fmtBb(v);
 
   // Add a row's (or segment's) terms to the spot and list its hands.
@@ -1288,14 +1335,36 @@
         const el = document.createElement("div"); el.className = "h" + (h === "hands" ? " num" : ""); el.textContent = h;
         rows.appendChild(el);
       }
-      for (const g of d.groups) {
-        const lab = document.createElement("div"); lab.className = "lab";
-        lab.textContent = g.line; lab.title = `add ${g.filter} to the spot and list these hands`;
-        lab.tabIndex = 0; lab.setAttribute("role", "button");
-        lab.addEventListener("click", () => drillLine(g.filter, title(g)));
-        lab.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(g.filter, title(g)); } });
-        const n = document.createElement("div"); n.className = "num"; n.textContent = g.n;
+      // The tree: what they did on the flop, opening into the turn and then the
+      // river, so every way of checking the flop sits under one row that adds
+      // them up. A row's strength is read on the last street of it they acted on.
+      const streets = ["flop", "turn", "river"];
+      const addNode = (g, depth) => {
+        const segs = g.line.split("/");
+        const key = `${d.mode}|${g.line}`;
+        const open = lineOpen.has(key);
+        const kids = g.children.length > 0;
 
+        const lab = document.createElement("div"); lab.className = "lab tlab" + (depth ? " tsub" : "");
+        lab.style.paddingLeft = `${depth * 16}px`;
+        const caret = document.createElement("button"); caret.type = "button";
+        caret.className = "caret" + (kids ? "" : " leaf");
+        caret.textContent = open ? "▾" : "▸";
+        if (kids) {
+          caret.setAttribute("aria-expanded", open);
+          caret.title = open ? "close" : `open the ${streets[segs.length]} under this`;
+          caret.addEventListener("click", () => { open ? lineOpen.delete(key) : lineOpen.add(key); renderLines(d, false); });
+        } else caret.tabIndex = -1;
+        const st = document.createElement("span"); st.className = "st"; st.textContent = d.street || streets[segs.length - 1];
+        const words = lineWords(segs.at(-1), d.mode); words.classList.add("words");
+        words.title = `${g.line} · add ${g.filter} to the spot and list these hands`;
+        words.tabIndex = 0; words.setAttribute("role", "button");
+        words.addEventListener("click", () => drillLine(g.filter, title(g)));
+        words.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(g.filter, title(g)); } });
+        const code = document.createElement("span"); code.className = "code"; code.textContent = g.line;
+        lab.append(caret, st, words, code);
+
+        const n = document.createElement("div"); n.className = "num"; n.textContent = g.n;
         const stack = document.createElement("div"); stack.className = "stack";
         if (!g.known) {
           stack.classList.add("none");
@@ -1315,8 +1384,10 @@
           seg.addEventListener("pointerleave", hideTip);
           seg.addEventListener("focus", (ev) => showLineTip(ev, g.line, tip));
           seg.addEventListener("blur", hideTip);
-          seg.addEventListener("click", () => { hideTip(); drillLine(tier.filter, tierTitle(g, name)); });
-          seg.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(tier.filter, tierTitle(g, name)); } });
+          if (tier.filter) {
+            seg.addEventListener("click", () => { hideTip(); drillLine(tier.filter, tierTitle(g, name)); });
+            seg.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(tier.filter, tierTitle(g, name)); } });
+          }
           stack.appendChild(seg);
         }
         const val = document.createElement("div"); val.className = "val";
@@ -1324,7 +1395,20 @@
         const sm = document.createElement("small"); sm.textContent = fmtNet(g.net_bb);
         val.appendChild(sm);
         rows.append(lab, n, stack, val);
-      }
+
+        if (!open) return;
+        for (const c of g.children) addNode(c, depth + 1);
+        if (g.hidden.groups) {
+          const more = document.createElement("div"); more.className = "tmore";
+          more.style.paddingLeft = `${(depth + 1) * 16 + 18}px`;
+          more.textContent = `${g.hidden.groups} more way${g.hidden.groups === 1 ? "" : "s"} on with fewer than `
+            + `${d.min} hands (${g.hidden.hands} hands)`;
+          rows.appendChild(more);
+        }
+      };
+      // One street only has no tree: those groups are already one level.
+      if (d.tree) for (const g of d.tree) addNode(g, 0);
+      else for (const g of d.groups) addNode({ ...g, children: [], hidden: { groups: 0, hands: 0 } }, 0);
       host.appendChild(rows);
     }
     if (d.hidden.groups) {
@@ -1357,6 +1441,8 @@
     bluff: "no pair and no draw; on the river a missed draw too",
   };
   const BV_STREET = { flop: "Flop", turn: "Turn", river: "River", all: "Every street" };
+  // Which size rows are open, by street and size: kept while the page is open.
+  const bvOpen = new Set();
   const BV_NOTE = "Shown hands only, each read on the board of the street it bet or raised on. "
     + "A bet everyone folds to is never shown, and that is the bluff that worked, so every ratio here leans to value: "
     + "“folded” is how many of a row's bets got there. Your own cards are known on every hand, so your own rows are close to complete. "
@@ -1479,7 +1565,8 @@
 
     const drill = (r, cls) => {
       const what = cls ? ` · ${BV_CLASSES.find(([k]) => k === cls)[1]}` : "";
-      const title = `${BV_STREET[r.street]} ${r.label}${what}`;
+      const size = r.parent ? `${d.rows.find(p => p.key === r.parent).label} · ` : "";
+      const title = `${BV_STREET[r.street]} ${size}${r.label}${what}`;
       if (pool) { openPoolHands(title, r.key, cls); return; }
       state.poolHands = null;
       openHands(title, cls ? r.class_ids[cls] : r.hand_ids);
@@ -1497,12 +1584,33 @@
       for (const [text, cls] of [["", ""], ["shown hands", ""], ["value : bluff", "num"], ["shown", "num"], ["folded", "num"]]) {
         const c = document.createElement("div"); c.className = `bv-cols ${cls}`; c.textContent = text; grid.appendChild(c);
       }
-      for (const r of rows) {
+      // Size above action: a row per size, every bet or raise of it, opening into
+      // the bet, the raise and the check-raise made at that size; then the
+      // street's summaries across sizes. An action nobody took is left out.
+      const kids = (r) => rows.filter(c => c.parent === r.key && c.n);
+      const addRow = (r, depth) => {
+        const sub = r.kind === "size" ? kids(r) : [];
+        const open = bvOpen.has(r.key);
         const row = document.createElement("div");
         row.className = "bv-row" + (r.n ? "" : " none") + (["all_bets", "aggression"].includes(r.kind) ? " roll" : "");
-        const lab = document.createElement("div"); lab.className = "lab"; lab.textContent = r.label;
-        lab.title = r.filter ? `${r.filter} · list these ${r.n} hands` : `bet or raised on any street · list these ${r.n} hands`;
-        if (r.n) pick(lab, () => drill(r, null));
+        const lab = document.createElement("div"); lab.className = "lab tlab" + (depth ? " tsub" : "");
+        lab.style.paddingLeft = `${depth * 16}px`;
+        const caret = document.createElement("button"); caret.type = "button";
+        caret.className = "caret" + (sub.length ? "" : " leaf");
+        caret.textContent = open ? "▾" : "▸";
+        if (sub.length) {
+          caret.setAttribute("aria-expanded", open);
+          caret.title = open ? "close" : "the bet, raise and check-raise at this size";
+          caret.addEventListener("click", (e) => {
+            e.stopPropagation(); open ? bvOpen.delete(r.key) : bvOpen.add(r.key); renderBluffs(d);
+          });
+        } else caret.tabIndex = -1;
+        const words = document.createElement("span"); words.className = "words"; words.textContent = r.label;
+        words.title = r.filter ? `${r.filter} · list these ${r.n} hands`
+          : r.kind === "size" ? `every bet or raise this size · list these ${r.n} hands`
+          : `bet or raised on any street · list these ${r.n} hands`;
+        if (r.n) pick(words, () => drill(r, null));
+        lab.append(caret, words);
         const bar = document.createElement("div"); bar.className = "bv-bar" + (r.known ? "" : " empty");
         for (const [k, text] of BV_CLASSES) {
           const v = r.counts[k];
@@ -1516,8 +1624,8 @@
           bar.appendChild(s);
         }
         if (r.n) {
-          lab.addEventListener("pointermove", (ev) => bvTip(ev, r, null));
-          lab.addEventListener("pointerleave", hideTip);
+          words.addEventListener("pointermove", (ev) => bvTip(ev, r, null));
+          words.addEventListener("pointerleave", hideTip);
         }
         const num = (text, small, title) => {
           const c = document.createElement("div"); c.className = "num"; c.textContent = text;
@@ -1531,7 +1639,9 @@
           r.folded == null ? "" : `${r.folded} of ${r.n} bets everyone folded to: never shown`);
         row.append(lab, bar, ratio, shown, folded);
         grid.appendChild(row);
-      }
+        if (open) for (const c of sub) addRow(c, depth + 1);
+      };
+      for (const r of rows) if (!r.parent) addRow(r, 0);
       block.append(h, grid);
       wrap.appendChild(block);
     }

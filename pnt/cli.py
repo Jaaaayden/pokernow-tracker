@@ -1573,7 +1573,8 @@ def _print_bluffs(title: str, out: dict) -> None:
         ratio = r["ratio_text"].replace("∞", "inf")
         folded = f"{_fmt(r['folded_pct'])}%" if r["folded_pct"] is not None else ""
         typer.echo(
-            f"{(r['street'] if r['street'] != street else ''):<7}{r['label'][:26]:<27}"
+            f"{(r['street'] if r['street'] != street else ''):<7}"
+            f"{(('  ' if r['parent'] else '') + r['label'])[:26]:<27}"
             f"{r['n']:>6}{r['known']:>7}{_fmt(r['coverage']):>7}"
             f"{c['value']:>7}{c['marginal']:>6}{c['semi_bluff']:>6}{c['bluff']:>6}"
             f"{ratio:>10}{folded:>8}"
