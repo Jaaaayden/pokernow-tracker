@@ -1773,5 +1773,60 @@ def slowplay(
     ])
 
 
+@app.command()
+def h2h(
+    alias: str = typer.Argument(None, help="One player's opponents; the pool's matrix when omitted."),
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Head to head: the big blinds that went between two players.
+
+    A hand with one winner is settled exactly: each loser's chips went to them.
+    With several winners each loser's loss is split by what each winner won.
+    Positive is what the row's player won from the column's.
+    """
+    from .stats.h2h import player_h2h, pool_h2h
+
+    conn = connect(db)
+    try:
+        out = player_h2h(conn, alias, game) if alias else pool_h2h(conn, game)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+    skipped = out["skipped"]
+    short = skipped["incomplete"] + skipped["unbalanced"] + skipped["no_bb"]
+    if alias:
+        typer.echo(f"{alias}  {out['hands']} hands  net {out['net_bb']:+.1f}bb against the table")
+        _print_table(out["rows"], "opponent", 16, [
+            ("hands", "hands", 7), ("counted", "money", 7), ("net_bb", "net bb", 9),
+            ("showdowns", "SD", 5), ("split_hands", "split", 6),
+            ("failed_bluffs", "FB by", 6), ("failed_bluffs_against", "FB vs", 6), ("n", "vs= n", 7),
+        ])
+        typer.echo(
+            "\nmoney: hands whose chips are all there. split: settled by the multiway rule."
+            "\nFB by / vs: their failed bluffs into the opponent, and the opponent's into them."
+            f"\n{out['failed_bluff_note']}"
+            "\nvs= n: the hands `--filter vs=<opponent>` finds, still in when they last acted."
+        )
+    else:
+        players = out["players"]
+        names = [p["player"] for p in players]
+        width = 7
+        typer.echo(f"who pays whom: {out['hands']} hands, bb the row won from the column\n")
+        typer.echo(" " * 16 + "".join(n[: width - 1].rjust(width) for n in names) + "total".rjust(9))
+        for p in players:
+            row = out["cells"][p["player"]]
+            cells = "".join(
+                (f"{row[n]['net_bb']:+.0f}" if n in row else ".").rjust(width) for n in names
+            )
+            typer.echo(p["player"][:15].ljust(16) + cells + f"{p['net_bb']:+.0f}".rjust(9))
+    if short:
+        typer.echo(f"\n{short} hand(s) moved no money: {skipped['incomplete']} incomplete, "
+                   f"{skipped['unbalanced']} whose chips do not balance, {skipped['no_bb']} without a big blind.")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
