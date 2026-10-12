@@ -1256,6 +1256,74 @@ Equities depend on cards and pot layout alone -- never on a hand id or an identi
 so they are memoized in `equity_cache`, the one derived table in the schema. It is
 disposable: drop it and the next request refills it, with identical numbers.
 
+### Head to head
+
+The money between two players: who has paid whom, and how much. `h2h.py` mirrors
+this section; `GET /players/{alias}/h2h` (one row per opponent), `GET /h2h` (the
+pool's matrix), `pnt h2h` and the players page read it.
+
+Each hand is settled into transfers, **payer → payee**, on two ledgers kept apart:
+the pot (`collected − contributed`) and the 7-2 bounty (`bounty`).
+
+```
+winners  = players whose ledger is positive; won_w = their gain
+loser l pays winner w:   −ledger_l × won_w / Σ won
+```
+
+With **one winner** -- every hand that ended heads-up with a single winner, and
+most multiway ones -- that is exact: each loser's net went to the winner, a
+folder's dead money with it. With **several winners** (a chop, a side pot won by
+someone else) it is the rule in judgement call 1. Either way **every player's
+transfers in less their transfers out is exactly their `net`**, so a player's
+row against the whole table sums to their net, and the matrix is antisymmetric:
+what a won from b is exactly what b lost to a.
+
+| Field (per pair, from a's side) | Definition |
+|---|---|
+| **hands** | Hands both were dealt into, every hand |
+| **counted** | Of those, hands whose money is all there: complete, both ledgers net to zero, a known big blind. Only these move money |
+| **net_bb** | Σ over counted hands of the chips b paid a, net, over that hand's big blind. Positive is up |
+| **bounty_bb** | The part of `net_bb` that was bounties |
+| **flow_hands** / **split_hands** | Counted hands where chips moved between them; of those, the ones settled by the multiway rule rather than exactly |
+| **showdowns** | Both still in when the hand went to showdown |
+| **failed_bluffs** | a's `failed_bluff` flags (see "Hand review") that b called or raised |
+| **bluff_spots** / **bluff_known** | Hands where a lost a pot of at least `failed_bluff_pot_bb` after b called or raised a's postflop bet or raise; of those, the ones where a's cards were known, so the flag could be judged. `failed_bluffs ≤ bluff_known ≤ bluff_spots` |
+
+Each opponent row of `/players/{alias}/h2h` also carries the chart filter for
+the hands against them and **`n`**, how many of the player's hands it keeps. The
+filter is `vs=<name>`, which is "still in when I last acted", so `n` is at most
+`hands` and usually smaller.
+
+Judgement calls:
+
+1. **Several winners split each loss by what each won, not by what each
+   collected.** A side pot is why: all in for 20, A wins the 60 main pot and B
+   the 60 side pot from C. Both collected 60, but A won 40 and B 10; split by
+   collected, C would pay each 25 and A's transfers would no longer add up to
+   A's net. Split by gain, C pays A 40 and B 10. In a plain chop the two rules
+   agree.
+2. **A hand whose money is not all there moves nothing.** An incomplete hand, or
+   one whose pot or bounties do not net to zero (two of 14,716 complete hands on
+   the database this was built on), is a hand played together and nothing more,
+   the rule in "Money". The response counts them under `skipped`.
+3. **Bounties go to the player they were paid to.** They are their own ledger:
+   settled with the pot, a bounty would be spread across the pot's winners. The
+   log names payer and payee, but the hand keeps only each player's sum, so a
+   hand with two bounty receivers would fall back to the proportional rule; none
+   has occurred.
+4. **Two IDs of one person in the same hand are one person**, and money between
+   them is not a pair. Folding happens through the identity map at read time, so
+   a merge or a split re-answers on the next request.
+5. **The chart filter names the opponent only when it names nobody else.**
+   `vs=` matches a display name or a raw ID, ignoring case, so `hsj` and `HSJ`
+   are one term for two people. Then a player with one PokerNow ID is named by
+   that ID (`vs=<pn_id>`); one with several, sharing a name, gets `filter: null`,
+   since a filter cannot say "this ID or that one". A name with a comma would
+   split the term, and is treated the same way.
+6. **Failed bluffs need the bluffer's cards**: shown at a showdown, or your own.
+   Your failed bluffs are therefore always judged and everyone else's only when
+   shown, which is what `bluff_known / bluff_spots` is there to say.
+
 ### Results by pot type
 
 Where one player's big blinds were won and lost, inside whatever spot is on the

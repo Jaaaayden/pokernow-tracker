@@ -1309,3 +1309,30 @@ def player_shows(alias: str, game: str | None = None) -> dict:
         return voluntary_shows(db(), alias, game)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ---- head to head ------------------------------------------------------------
+# Imported inside the endpoints so this block stands alone. See SPEC.md,
+# "Head to head".
+
+
+@app.get("/players/{alias:path}/h2h")
+def player_h2h(alias: str, game: str | None = None) -> dict:
+    """The money between one player and each opponent, biggest either way first.
+    `net_bb` is what the player won from them; each row's `filter` opens the hands
+    against them on the chart and `n` is how many it finds."""
+    from pnt.stats.h2h import player_h2h as h2h_rows
+
+    try:
+        return h2h_rows(db(), alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/h2h")
+def pool_h2h(game: str | None = None) -> dict:
+    """Who pays whom: every pair in the pool, as a matrix read from the row's side.
+    No hand ids -- one cell is two players' hands."""
+    from pnt.stats.h2h import pool_h2h as h2h_matrix
+
+    return h2h_matrix(db(), game)
