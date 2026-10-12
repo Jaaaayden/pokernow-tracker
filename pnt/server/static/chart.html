@@ -1303,11 +1303,12 @@
     const host = table ? $("table") : $("lineview");
     host.replaceChildren();
 
-    // Once a click has narrowed the spot, the way back is here, beside the tree,
-    // and not only up in the controls: Back undoes the last change, and "all
-    // lines" takes out every line and made-hand term while keeping the rest.
+    // While a click has the spot narrowed to a line, the way back is here, beside
+    // the tree, and not only up in the controls: Back undoes the last change, and
+    // "all lines" takes out every line and made-hand term while keeping the rest.
+    // Back at every line, the bar goes; the Back up top still undoes.
     const narrowed = state.filter.split(",").map(t => t.trim()).filter(t => LINE_DRILL.test(t));
-    if (narrowed.length || spotHistory.length) {
+    if (narrowed.length) {
       const bar = document.createElement("div"); bar.className = "lback";
       if (spotHistory.length) {
         const b = document.createElement("button"); b.type = "button"; b.textContent = "← Back";
@@ -1316,19 +1317,17 @@
         b.addEventListener("click", back);
         bar.appendChild(b);
       }
-      if (narrowed.length) {
-        const what = document.createElement("span");
-        what.append("narrowed to ");
-        const code = document.createElement("code"); code.textContent = narrowed.join(",");
-        what.appendChild(code);
-        const all = document.createElement("button"); all.type = "button"; all.textContent = "× all lines";
-        all.title = "take the line and made-hand terms out of the spot, keep the rest";
-        all.addEventListener("click", () => {
-          $("filter").value = terms().filter(t => !LINE_DRILL.test(t)).join(",");
-          apply();
-        });
-        bar.append(what, all);
-      }
+      const what = document.createElement("span");
+      what.append("narrowed to ");
+      const code = document.createElement("code"); code.textContent = narrowed.join(",");
+      what.appendChild(code);
+      const all = document.createElement("button"); all.type = "button"; all.textContent = "× all lines";
+      all.title = "take the line and made-hand terms out of the spot, keep the rest";
+      all.addEventListener("click", () => {
+        $("filter").value = terms().filter(t => !LINE_DRILL.test(t)).join(",");
+        apply();
+      });
+      bar.append(what, all);
       host.appendChild(bar);
     }
 
