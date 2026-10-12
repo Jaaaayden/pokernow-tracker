@@ -14,6 +14,7 @@ from `actions`. Never make it the source of truth.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping
@@ -132,6 +133,7 @@ def load_hands(
                     is_forced=bool(r["is_forced"]),
                     all_in=bool(r["all_in"]),
                     amount_to=r["amount_to"],
+                    post_kind=r["post_kind"],
                 )
             )
 
@@ -169,16 +171,55 @@ def _rate(num: int, den: int) -> float | None:
     return round(100.0 * num / den, 1) if den else None
 
 
+def wilson(num: int, den: int, z: float = 1.96) -> tuple[float, float] | None:
+    """The Wilson score interval for `num` successes in `den` trials, as fractions.
+
+    None when there are no trials: an empty sample has no interval, the way it
+    has no rate. See SPEC.md, "Confidence intervals".
+    """
+    if den <= 0:
+        return None
+    p = num / den
+    z2 = z * z
+    centre = (p + z2 / (2 * den)) / (1 + z2 / den)
+    half = z * math.sqrt(p * (1 - p) / den + z2 / (4 * den * den)) / (1 + z2 / den)
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def _bb_ci(t: Tally) -> float | None:
+    """Half-width of bb/100's 95% interval: 1.96 · sd / √n · 100, from the sample
+    standard deviation of each hand's net in big blinds. None under two hands."""
+    n = t.bb_n
+    if n < 2:
+        return None
+    var = (t.bb_sq - t.bb_sum * t.bb_sum / n) / (n - 1)
+    return round(1.96 * math.sqrt(max(float(var), 0.0)) / math.sqrt(n) * 100, 2)
+
+
 #: Per-hand flags a player's row counts, and the per-street ones.
 _FLAGS = (
     "vpip", "vpip_opp", "pfr", "pfr_opp", "three_bet", "three_bet_opp",
     "fold_to_3bet", "fold_to_3bet_opp", "wtsd", "wtsd_opp", "wsd",
+    # SPEC.md: "Won when saw flop", "Steals and blind defense", "Squeeze and
+    # cold-call", and the limp and preflop-jam families. Several are `Facts`
+    # properties read from the stored facts.
+    "won_pot", "wwsf", "wwsf_nsd",
+    "steal", "steal_opp", "fold_to_steal", "fold_to_steal_opp", "three_bet_vs_steal",
+    "squeeze", "squeeze_opp", "cold_call", "cold_call_opp",
+    "limp", "limp_raise", "limp_call", "limp_fold",
+    "jam_pf", "jam_pf_opp",
 )
 _STREETS = ("flop", "turn", "river")
 _STREET_FLAGS = (
     "cbet", "cbet_opp", "fold_to_cbet", "fold_to_cbet_opp", "raise_cbet", "donk", "donk_opp",
     "check_raise", "check_raise_opp",
+    # SPEC.md, "Delayed c-bet, probe and float".
+    "delayed_cbet", "delayed_cbet_opp", "probe", "probe_opp",
+    "fold_to_probe", "fold_to_probe_opp", "float_bet", "float_opp",
 )
+#: The streets each of those families exists on. Delayed c-bets and probes need
+#: a postflop street before them; a float can follow the preflop raise.
+_LATE_STREETS = ("turn", "river")
 #: Per-street *action* counts rather than hand counts: one hand can add several.
 _STREET_COUNTS = ("aggressive", "agg_denom")
 
@@ -193,13 +234,16 @@ class Tally:
     added in cannot move a figure by so much as a rounding step.
     """
 
-    __slots__ = ("bb_n", "bb_sum", "counts", "hands", "net")
+    __slots__ = ("bb_n", "bb_sq", "bb_sum", "counts", "hands", "net")
 
     def __init__(self) -> None:
         self.hands = 0
         self.counts: Counter = Counter()
         self.net = 0
         self.bb_sum = Fraction(0)
+        #: Σ (net / bb)² over the same hands as `bb_sum`, exact: the spread behind
+        #: bb/100's confidence interval. See SPEC.md, "Confidence intervals".
+        self.bb_sq = Fraction(0)
         self.bb_n = 0
 
     def add(self, x: Facts) -> None:
@@ -212,7 +256,9 @@ class Tally:
         # Normalize each hand by *its own* big blind. Blind levels move within a
         # game, so dividing a whole session's net by one bb silently rescales history.
         if x.bb_size and x.complete:
-            self.bb_sum += Fraction(x.net) / Fraction(x.bb_size)
+            in_bb = Fraction(x.net, x.bb_size)
+            self.bb_sum += in_bb
+            self.bb_sq += in_bb * in_bb
             self.bb_n += 1
         for street in _STREETS:
             for attr in _STREET_FLAGS:
@@ -246,6 +292,7 @@ class Tally:
         self.counts.update(other.counts)
         self.net += other.net
         self.bb_sum += other.bb_sum
+        self.bb_sq += other.bb_sq
         self.bb_n += other.bb_n
         return self
 
@@ -267,6 +314,8 @@ def rates(t: Tally) -> dict:
     if not t.hands:
         return {"hands": 0}
     c = t.counts
+    # A limper facing the open: the three answers are every way out of it.
+    limp_faced = c["limp_raise"] + c["limp_call"] + c["limp_fold"]
     out = {
         "hands": t.hands,
         "vpip": _rate(c["vpip"], c["vpip_opp"]),
@@ -279,13 +328,44 @@ def rates(t: Tally) -> dict:
         "bb_per_100": round(float(100 * t.bb_sum / t.bb_n), 2) if t.bb_n else None,
         # The total behind bb/100: each complete hand's net in its own big blinds.
         "net_bb": round(float(t.bb_sum), 2) if t.bb_n else None,
+        "bb_per_100_ci": _bb_ci(t),
+        # Won when saw flop, and the part of it won without a showdown.
+        "wwsf": _rate(c["wwsf"], c["wtsd_opp"]),
+        "wwsf_nsd": _rate(c["wwsf_nsd"], c["wtsd_opp"]),
+        "ats": _rate(c["steal"], c["steal_opp"]),
+        "fold_to_steal": _rate(c["fold_to_steal"], c["fold_to_steal_opp"]),
+        "3bet_vs_steal": _rate(c["three_bet_vs_steal"], c["fold_to_steal_opp"]),
+        "squeeze": _rate(c["squeeze"], c["squeeze_opp"]),
+        "cold_call": _rate(c["cold_call"], c["cold_call_opp"]),
+        "limp_reraise": _rate(c["limp_raise"], limp_faced),
+        "jam_pf": _rate(c["jam_pf"], c["jam_pf_opp"]),
         "_opp": {
             "vpip": c["vpip_opp"],
             "3bet": c["three_bet_opp"],
             "fold_to_3bet": c["fold_to_3bet_opp"],
             "wtsd": c["wtsd_opp"],
+            "wwsf": c["wtsd_opp"],
+            "wwsf_nsd": c["wtsd_opp"],
+            "ats": c["steal_opp"],
+            "fold_to_steal": c["fold_to_steal_opp"],
+            "3bet_vs_steal": c["fold_to_steal_opp"],
+            "squeeze": c["squeeze_opp"],
+            "cold_call": c["cold_call_opp"],
+            "limp_reraise": limp_faced,
+            "jam_pf": c["jam_pf_opp"],
         },
     }
+    for street in _LATE_STREETS:
+        for key, num, den in (
+            ("delayed_cbet", "delayed_cbet", "delayed_cbet_opp"),
+            ("probe", "probe", "probe_opp"),
+            ("fold_to_probe", "fold_to_probe", "fold_to_probe_opp"),
+        ):
+            out[f"{key}_{street}"] = _rate(c[num, street], c[den, street])
+            out["_opp"][f"{key}_{street}"] = c[den, street]
+    for street in _STREETS:
+        out[f"float_{street}"] = _rate(c["float_bet", street], c["float_opp", street])
+        out["_opp"][f"float_{street}"] = c["float_opp", street]
     for street in _STREETS:
         faced_cbet = c["fold_to_cbet_opp", street]
         out[f"cbet_{street}"] = _rate(c["cbet", street], c["cbet_opp", street])

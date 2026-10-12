@@ -15,7 +15,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from ..logfmt.events import FLOP, POST_ANTE, POST_MISSING_SB, POST_STRADDLE, PREFLOP, RIVER, TURN
+from ..logfmt.parser import position_name
 from .cards import board_at
 
 POSTFLOP_STREETS = (FLOP, TURN, RIVER)
@@ -23,6 +24,15 @@ PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
 
 VOLUNTARY_COMMIT = {"call", "bet", "raise"}
 AGGRESSIVE = {"bet", "raise"}
+
+#: The seats an open from first in is a steal from. Heads-up the button is the
+#: small blind, and its open is a steal too. See SPEC.md, "Steals and blind defense".
+STEAL_SEATS = frozenset({"CO", "BTN", "SB", "BTN/SB"})
+#: The seats that defend against a steal.
+BLIND_SEATS = frozenset({"SB", "BB"})
+#: Forced posts that are not a live blind: they go to the pot without being the
+#: player's bet, so the player who made one still comes in cold.
+DEAD_POST_KINDS = frozenset({POST_ANTE, POST_MISSING_SB})
 
 #: Bet-size buckets, smallest first: under a fifth of the pot, a fifth to half,
 #: half to three-quarters, three-quarters to pot, over pot. See SPEC.md, "Bet
@@ -72,6 +82,9 @@ class HandAction:
     #: The raw cumulative "raises to N" figure. Sizing facts read this, because
     #: "opened to 4bb" is about the total, not the increment over the blind.
     amount_to: int | None = None
+    #: What a forced post was: sb, bb, ante, missed_bb, missing_sb or straddle.
+    #: None for a voluntary action, and for a post whose kind is not known.
+    post_kind: str | None = None
 
 
 @dataclass(slots=True)
@@ -276,6 +289,133 @@ class Facts:
     hole_cards: str | None = None
     board: tuple[str, ...] = ()
 
+    # --- foundation facts (SPEC.md: "Steals and blind defense", "Squeeze and
+    # cold-call", "Delayed c-bet, probe and float", "Stack depth", "Straddles",
+    # "Won when saw flop"). Hand-level ones carry the same value for everyone.
+    #: Someone posted a straddle. Same for everyone in the hand.
+    straddled: bool = False
+    #: Players who did not fold preflop, on a hand that dealt a flop; None when
+    #: no flop was dealt. Same for everyone in the hand.
+    players_flop: int | None = None
+    #: At their first voluntary preflop action, every earlier one was a fold.
+    first_in: bool = False
+    #: The hand's open was a steal: made first in from a steal seat, on a hand
+    #: whose seat labels can be trusted. Same for everyone in the hand.
+    steal_open: bool = False
+    #: Calls of the open made before this player's first decision facing it. None
+    #: when they never faced an open.
+    callers_before: int | None = None
+    #: Posted a live blind: small blind, big blind, straddle, or a returning
+    #: player's missed big blind -- chips in front of them before they acted.
+    #: Antes and dead small blinds are not live.
+    posted_blind: bool = False
+    #: Their starting stack against the deepest other stack dealt in, in big
+    #: blinds: min(own, max(others)) / bb. None when any of those is unknown.
+    eff_bb: float | None = None
+    #: The stack-to-pot ratio on the flop: the effective stack among the flop
+    #: players, less this player's preflop chips, over `pot_at["flop"]`. None
+    #: when they did not see the flop or a stack is unknown.
+    spr_flop: float | None = None
+    #: Collected chips from the pot. A 7-2 bounty is not the pot.
+    won_pot: bool = False
+    #: As the preflop aggressor, after every earlier postflop street checked
+    #: through: first to bet on this street (turn and river).
+    delayed_cbet_opp: dict[str, bool] = field(default_factory=dict)
+    delayed_cbet: dict[str, bool] = field(default_factory=dict)
+    #: Not the preflop aggressor, after the aggressor's check closed the previous
+    #: street: acted with no bet yet, before the aggressor (turn and river).
+    probe_opp: dict[str, bool] = field(default_factory=dict)
+    probe: dict[str, bool] = field(default_factory=dict)
+    #: The preflop aggressor facing that probe bet, before anyone raised it.
+    fold_to_probe_opp: dict[str, bool] = field(default_factory=dict)
+    fold_to_probe: dict[str, bool] = field(default_factory=dict)
+    #: Called on the previous street (preflop: called a raise), and the previous
+    #: street's aggressor checked to them: acted with no bet yet. `float_bet` is
+    #: the bet, named so it does not shadow the builtin.
+    float_opp: dict[str, bool] = field(default_factory=dict)
+    float_bet: dict[str, bool] = field(default_factory=dict)
+
+    # --- read from the facts above, never stored -----------------------------
+    @property
+    def position_label(self) -> str | None:
+        """Their seat's name, or None where it cannot be trusted: no seat, a dead
+        button or a dead blind. The rule `positional_report` follows."""
+        if self.seats_from_button is None or self.dead_button or self.blinds_irregular:
+            return None
+        return position_name(self.seats_from_button, self.n_dealt_in)
+
+    @property
+    def steal_opp(self) -> bool:
+        return self.first_in and self.position_label in STEAL_SEATS
+
+    @property
+    def steal(self) -> bool:
+        return self.steal_opp and self.opener
+
+    @property
+    def fold_to_steal_opp(self) -> bool:
+        return (
+            self.steal_open
+            and self.callers_before == 0
+            and self.position_label in BLIND_SEATS
+        )
+
+    @property
+    def fold_to_steal(self) -> bool:
+        return self.fold_to_steal_opp and self.pf_faced.get(2) == "fold"
+
+    @property
+    def three_bet_vs_steal(self) -> bool:
+        return self.fold_to_steal_opp and self.pf_faced.get(2) == "raise"
+
+    @property
+    def squeeze_opp(self) -> bool:
+        return (self.callers_before or 0) >= 1
+
+    @property
+    def squeeze(self) -> bool:
+        return self.squeeze_opp and self.pf_faced.get(2) == "raise"
+
+    @property
+    def cold_call_opp(self) -> bool:
+        return 2 in self.pf_faced and 1 not in self.pf_faced and not self.posted_blind
+
+    @property
+    def cold_call(self) -> bool:
+        return self.cold_call_opp and self.pf_faced.get(2) == "call"
+
+    @property
+    def limp(self) -> bool:
+        return self.pf_faced.get(1) == "call"
+
+    @property
+    def limp_raise(self) -> bool:
+        return self.limp and self.pf_faced.get(2) == "raise"
+
+    @property
+    def limp_call(self) -> bool:
+        return self.limp and self.pf_faced.get(2) == "call"
+
+    @property
+    def limp_fold(self) -> bool:
+        return self.limp and self.pf_faced.get(2) == "fold"
+
+    @property
+    def jam_pf(self) -> bool:
+        return bool(self.jam.get(PREFLOP))
+
+    @property
+    def jam_pf_opp(self) -> bool:
+        return self.vpip_opp
+
+    @property
+    def wwsf(self) -> bool:
+        return self.saw_flop and self.won_pot
+
+    @property
+    def wwsf_nsd(self) -> bool:
+        return self.wwsf and not self.wtsd
+
 
 def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
     """Walk preflop voluntary actions, tracking bet level. Returns the last aggressor."""
@@ -283,6 +423,8 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
     aggressor: str | None = None
     opener: str | None = None  # who made it level 2
     open_bb: float | None = None
+    folds_only = True  # every voluntary preflop action so far was a fold
+    open_calls = 0  # calls made at level 2 so far
 
     for a in hand.actions:
         if a.street != PREFLOP or a.is_forced:
@@ -293,15 +435,23 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
 
         # --- opportunity is recorded BEFORE the action resolves.
         # Rule 3 of SPEC.md: acting *is* the opportunity.
+        if not f.vpip_opp:
+            f.first_in = folds_only
         f.vpip_opp = True
         f.pfr_opp = True
         if level == 2 and a.pn_id != aggressor:
             f.three_bet_opp = True
         if level == 3 and a.pn_id == opener:
             f.fold_to_3bet_opp = True
+        if level == 2 and 2 not in f.pf_faced:
+            f.callers_before = open_calls
         # A preflop `bet` (no blind in front of it) takes the level exactly as a
         # raise does, so it is recorded as one.
         f.pf_faced.setdefault(level, "raise" if a.kind == "bet" else a.kind)
+        if a.kind != "fold":
+            folds_only = False
+        if level == 2 and a.kind == "call":
+            open_calls += 1
 
         # --- then apply it
         if a.kind == "fold":
@@ -322,9 +472,14 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
                     f.three_bet = True
                 aggressor = a.pn_id
 
+    # A steal is an open from first in, from a steal seat, on a hand whose seat
+    # labels can be trusted -- `position_label` is None on the rest.
+    o = facts.get(opener) if opener is not None else None
+    steal_open = o is not None and o.first_in and o.position_label in STEAL_SEATS
     for f in facts.values():
         f.pot_level = level
         f.open_bb = open_bb
+        f.steal_open = steal_open
     if aggressor is not None and aggressor in facts:
         facts[aggressor].pfa = True
     return aggressor
@@ -332,6 +487,13 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
 
 def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | None) -> None:
     prev_aggressor = preflop_aggressor
+    # The preflop aggressor stays the delayed c-better and the one probed into on
+    # every street; `prev_aggressor` moves. A street that checked through records
+    # who closed it, and `unbet` stays True while every postflop street so far was
+    # dealt and checked through. See SPEC.md, "Delayed c-bet, probe and float".
+    pfa = preflop_aggressor
+    closed_by: dict[str, str] = {}
+    unbet = True
 
     # Pot size *before* each action, forced posts included, so a bet can be
     # expressed as a fraction of what it was made into.
@@ -350,7 +512,14 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         street_actions = [a for a in hand.actions if a.street == street and not a.is_forced]
         if not street_actions:
             prev_aggressor = None
+            unbet = False
             continue
+
+        prev = PREV_STREET[street]
+        delayed_on = street != FLOP and unbet and pfa is not None
+        probe_on = street != FLOP and pfa is not None and closed_by.get(prev) == pfa
+        probe_by: str | None = None
+        probe_raised = False
 
         bet_made = False
         cbet_by: str | None = None
@@ -469,6 +638,36 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 elif a.kind == "raise":
                     f.raise_cbet[street] = True
 
+            # The streets after a missed c-bet. None of these can share a street
+            # with a c-bet or a donk opportunity: delayed c-bets and probes follow
+            # a street that checked through, which has no aggressor, and a float
+            # comes after the aggressor has acted, where a donk comes before.
+            if not bet_made:
+                if delayed_on and a.pn_id == pfa:
+                    f.delayed_cbet_opp[street] = True
+                    if a.kind == "bet":
+                        f.delayed_cbet[street] = True
+                if probe_on and a.pn_id != pfa and pfa not in acted:
+                    f.probe_opp[street] = True
+                    if a.kind == "bet":
+                        f.probe[street] = True
+                called_prev = f.vpip if street == FLOP else bool(f.called_bet.get(prev))
+                if (
+                    prev_aggressor is not None
+                    and a.pn_id != prev_aggressor
+                    and prev_aggressor in acted
+                    and called_prev
+                ):
+                    f.float_opp[street] = True
+                    if a.kind == "bet":
+                        f.float_bet[street] = True
+
+            # the preflop aggressor facing a probe, before anyone raises over it
+            if probe_by is not None and not probe_raised and a.pn_id == pfa:
+                f.fold_to_probe_opp[street] = True
+                if a.kind == "fold":
+                    f.fold_to_probe[street] = True
+
             # aggression frequency: checks excluded from both sides
             if a.kind in AGGRESSIVE:
                 f.aggressive[street] = f.aggressive.get(street, 0) + 1
@@ -482,11 +681,15 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                     cbet_size = sized[1] if sized is not None else None
                 if street not in f.bet_pot and sized is not None:
                     f.bet_pot[street], f.bet_size[street] = sized
+                if not bet_made and f.probe.get(street):
+                    probe_by = a.pn_id
                 bet_made = True
                 street_aggressor = a.pn_id
             elif a.kind == "raise":
                 if cbet_by is not None:
                     cbet_raised = True
+                if probe_by is not None:
+                    probe_raised = True
                 bet_made = True
                 street_aggressor = a.pn_id
 
@@ -504,8 +707,12 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         # A street with no bet ends on a check, and that check closed it. One
         # player checking alone -- everyone else all in -- decided nothing.
         last = street_actions[-1]
-        if street_aggressor is None and last.kind == "check" and len(acted) >= 2 and last.pn_id in facts:
-            facts[last.pn_id].check_back[street] = True
+        if street_aggressor is None and last.kind == "check" and len(acted) >= 2:
+            closed_by[street] = last.pn_id
+            if last.pn_id in facts:
+                facts[last.pn_id].check_back[street] = True
+        else:
+            unbet = False
 
         prev_aggressor = street_aggressor
 
@@ -727,5 +934,41 @@ def derive(hand: HandRow) -> list[Facts]:
         # `shows` lines -- see SPEC.md).
         f.wtsd = f.saw_flop and hand.went_to_showdown and not p.folded
         f.wsd = f.wtsd and p.collected > 0
+        f.won_pot = p.collected > 0
 
+    _foundation(hand, facts)
     return list(facts.values())
+
+
+def _foundation(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Straddles, players on the flop, live blinds and stack depth."""
+    straddled = any(a.is_forced and a.post_kind == POST_STRADDLE for a in hand.actions)
+    flop_players = [pid for pid, f in facts.items() if f.saw_flop]
+    players_flop = len(flop_players) if hand.saw_flop else None
+    blinds = {
+        a.pn_id for a in hand.actions
+        if a.street == PREFLOP and a.is_forced and a.amount > 0 and a.post_kind not in DEAD_POST_KINDS
+    }
+    stacks = {pid: p.starting_stack for pid, p in hand.players.items()}
+    preflop_put: dict[str, int] = {}
+    for a in hand.actions:
+        if a.street == PREFLOP:
+            preflop_put[a.pn_id] = preflop_put.get(a.pn_id, 0) + a.amount
+    behind = {
+        pid: max(stacks[pid] - preflop_put.get(pid, 0), 0)
+        for pid in flop_players if stacks[pid] is not None
+    }
+    flop_pot = next(iter(facts.values())).pot_at.get(FLOP) if facts else None
+
+    for pid, f in facts.items():
+        f.straddled = straddled
+        f.players_flop = players_flop
+        f.posted_blind = pid in blinds
+        own = stacks[pid]
+        others = [s for q, s in stacks.items() if q != pid]
+        # Judgement call 26: an unknown stack is unknown, not zero.
+        if hand.bb and own is not None and others and None not in others:
+            f.eff_bb = round(min(own, max(others)) / hand.bb, 2)
+        if f.saw_flop and flop_pot and len(behind) == len(flop_players) and len(flop_players) >= 2:
+            rest = [b for q, b in behind.items() if q != pid]
+            f.spr_flop = round(min(behind[pid], max(rest)) / flop_pot, 2)
