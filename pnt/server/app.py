@@ -748,8 +748,16 @@ def player_tags(
 
     Each tag carries the count it was judged on and the filter that puts those
     hands on the chart. See SPEC.md, "Tags", for every rule and threshold.
+
+    With no filter, the voluntary-show fun tags come last: shows are not `Facts`,
+    so a spot cannot narrow them.
     """
-    return {"player": alias, "filter": filter, **tags_for(_spot_facts(alias, filter, game))}
+    from pnt.stats.shows import with_show_tags
+
+    out = tags_for(_spot_facts(alias, filter, game))
+    if not filter:
+        out = with_show_tags(db(), alias, out, game)
+    return {"player": alias, "filter": filter, **out}
 
 
 @app.get("/hands/{hand_id}")
@@ -933,6 +941,8 @@ def hud(game_id: GameId) -> dict:
     `note` is what you have written about the player, or null -- the one thing
     on the card no log could have told it.
     """
+    from pnt.stats.shows import with_show_tags
+
     conn = db()
     latest = conn.execute(
         "SELECT hand_id FROM hands WHERE game_id = ? ORDER BY ord DESC LIMIT 1",
@@ -964,7 +974,7 @@ def hud(game_id: GameId) -> dict:
                 # The same figures over this game only.
                 "session": by_session.get(r["alias"], {"hands": 0}),
                 # Lifetime tags; a seat with no identity yet has none.
-                "tags": tags_for(facts_cached(conn, r["alias"]) if r["alias"] else []),
+                "tags": with_show_tags(conn, r["alias"], tags_for(facts_cached(conn, r["alias"]) if r["alias"] else [])),
                 # What you have written about them; null when nothing.
                 "note": notes.get(r["alias"], {}).get("note"),
             }

@@ -40,7 +40,7 @@ import sqlite3
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from .cards import DEALT, DRAW_DETAILS, board_at, hand_class, leaf_of, made_at, street_of_board
 from .queries import identities_of
-from .tags import strength_at
+from .tags import THRESHOLDS, _tag, strength_at
 
 #: Strongest first: the order the table prints them in.
 CLASSES = ("strong", "marginal", "draw", "air")
@@ -197,3 +197,50 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
         })
     out["coverage"] = round(100.0 * out["two_card"] / out["shows"], 1) if out["shows"] else None
     return out
+
+
+# --------------------------------------------------------------- the tags ---
+
+#: The two fun tags: id, label, the classes that count, and those classes in words.
+SHOW_TAGS = (
+    ("shows_bluffs", "SHOWS BLUFFS", ("air", "draw"), "air or a draw"),
+    ("shows_nuts", "SHOWS NUTS", ("strong",), "strong (top pair or better, or a premium preflop)"),
+)
+
+
+def show_tags(summary: dict) -> list[dict]:
+    """SHOWS BLUFFS or SHOWS NUTS from a `voluntary_shows` summary, or neither.
+
+    Fun tags. One fires when its side has at least THRESHOLDS["shows"]["hits"]
+    two-card shows and is more than THRESHOLDS["shows"]["pct"] percent of them,
+    so the two never fire together. A bluff is air or a draw: a hand that could
+    not have won where it stood. ``n`` is the two-card shows and ``hits`` that
+    side. No filter reproduces them, since shows are not `Facts`: the filter is
+    empty, ``by`` is ``shows``, and ``hand_ids`` lists the hands behind the hits.
+    """
+    t = THRESHOLDS["shows"]
+    n = summary["two_card"]
+    out = []
+    for id, label, hit, words in SHOW_TAGS:
+        hits = sum(summary["classes"][c] for c in hit)
+        if n and hits >= t["hits"] and 100.0 * hits / n > t["pct"]:
+            out.append(_tag(
+                id, f"{label} ×{hits}", "fun",
+                f"Of {n} two-card hands shown without being asked, {hits} were {words}. "
+                "Chosen reveals: what they want you to see, not their range.",
+                n, hits, "", by="shows",
+                hand_ids=[r["hand_id"] for r in summary["rows"] if r["class"] in hit],
+            ))
+    return out
+
+
+def with_show_tags(conn: sqlite3.Connection, alias: str | None, tags: dict, game: str | None = None) -> dict:
+    """A `tags_for` result with the show tags appended to its ``tags``, last
+    among the fun ones. No alias, or an unknown one, returns it unchanged."""
+    if not alias:
+        return tags
+    try:
+        extra = show_tags(voluntary_shows(conn, alias, game))
+    except ValueError:
+        return tags
+    return {**tags, "tags": [*tags["tags"], *extra]} if extra else tags

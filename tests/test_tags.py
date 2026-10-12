@@ -286,6 +286,55 @@ EXACT = {"folds_river", "folds_to_cbet", "sticky_vs_cbet", "auto_cbet", "rarely_
 HITS = {"limper", "donks"}
 #: Tags judged on shown hands: `n` is the hands their filter finds with cards known.
 SHOWN = {"no_bluff", "bluffs_river", "calls_down_light", "checks_back_weak", "traps"}
+#: Tags judged on voluntary shows (`shows.show_tags`): not `Facts`, so no filter.
+#: `n` is the player's two-card rows of `v_voluntary_shows`, and `hand_ids` the hits.
+VOLUNTARY = {"shows_bluffs", "shows_nuts"}
+
+
+def _summary(**classes) -> dict:
+    cls = {c: classes.get(c, 0) for c in ("strong", "marginal", "draw", "air")}
+    rows = [{"hand_id": i, "class": c} for c, k in cls.items() for i in range(k)]
+    return {"two_card": sum(cls.values()), "classes": cls, "rows": rows}
+
+
+def test_show_tags_need_a_count_and_more_than_half():
+    from pnt.stats.shows import show_tags
+
+    t = THRESHOLDS["shows"]
+    assert t == {"hits": 3, "pct": 50}
+    assert [x["id"] for x in show_tags(_summary(air=2, draw=1, strong=2))] == ["shows_bluffs"]
+    assert show_tags(_summary(air=2, strong=1)) == [], "two is under the count"
+    assert show_tags(_summary(air=3, strong=3)) == [], "half is not more than half"
+    nuts = show_tags(_summary(strong=4, marginal=1))
+    assert [x["id"] for x in nuts] == ["shows_nuts"]
+    assert (nuts[0]["n"], nuts[0]["hits"], nuts[0]["kind"], nuts[0]["label"]) == (5, 4, "fun", "SHOWS NUTS ×4")
+    assert show_tags(_summary()) == []
+
+
+def test_every_show_tag_reproduces_from_the_view(db):
+    from pnt.stats.queries import identities_of
+    from pnt.stats.shows import with_show_tags
+
+    seen = set()
+    for row in report(db):
+        alias = row["player"]
+        out = with_show_tags(db, alias, tags_for(facts_for(db, alias)))
+        ids = identities_of(db, alias)
+        q = ",".join("?" * len(ids))
+        two = {
+            r[0] for r in db.execute(
+                f"SELECT hand_id FROM v_voluntary_shows WHERE n_cards = 2 AND pn_id IN ({q})", ids
+            )
+        }
+        for tag in out["tags"]:
+            if tag["id"] not in VOLUNTARY:
+                continue
+            seen.add(tag["id"])
+            assert tag["kind"] == "fun" and tag["by"] == "shows" and tag["filter"] == ""
+            assert tag["n"] == len(two)
+            assert tag["hits"] == len(tag["hand_ids"]) and set(tag["hand_ids"]) <= two
+            assert tag is out["tags"][-1] or out["tags"][-1]["id"] in VOLUNTARY
+    assert "shows_nuts" in seen, "HSJ shows five strong hands of eight in the fixtures"
 
 
 def test_every_tag_reproduces_on_the_chart(db):

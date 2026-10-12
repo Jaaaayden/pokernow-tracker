@@ -181,6 +181,13 @@ def test_endpoint_answers_for_a_player_and_a_slash_name(client):
     assert one["shows"] <= body["shows"]
 
 
+def test_show_tags_reach_the_tags_endpoint_without_a_filter(client):
+    ids = [t["id"] for t in client.get("/players/HSJ/tags").json()["tags"]]
+    assert ids[-1] == "shows_nuts"
+    narrowed = client.get("/players/HSJ/tags", params={"filter": "players>=2"}).json()["tags"]
+    assert "shows_nuts" not in [t["id"] for t in narrowed], "a spot cannot narrow a show"
+
+
 def test_cli_prints_the_table_and_json(tmp_path):
     path = tmp_path / "shows.sqlite"
     conn = connect(path)
