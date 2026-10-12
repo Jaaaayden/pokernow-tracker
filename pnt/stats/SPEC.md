@@ -768,6 +768,76 @@ All aggression has no filter because a filter is an AND of terms and cannot say
 "bet or raised on some street". Its hands are listed by category key instead
 (`/bluffs/hands?category=aggression`).
 
+### Strength by street (slowplays)
+
+`made_flop=set|full_house|flush,line_flop=x*` asks one slowplay question.
+`slowplay.slowplay(facts, street, floor)` asks all of them at once: what the player
+did on one street with each made hand from `straight_flush` down to `floor`
+(`set` by default; any leaf, `two_pair` the usual wider one).
+
+A **row** is one leaf: the hands where the cards are known, `made_<street>` is
+that leaf, and they acted on the street, so its filter is
+`made_<street>=<leaf>,line_<street>=*`. A `total` row covers every leaf at once,
+`made_<street>>=<floor>`. A player who made the hand but was already all in from
+an earlier street had nothing to decide; they are counted as the row's `all_in`
+(`line_<street>=-`) and in no column.
+
+A **column** is what they did, read from `line[street]`. The columns partition
+every line, so the cells of a row add up to its `n`, and a cell's filter is the
+row's made-hand term plus the column's terms:
+
+| Column | Line | Filter terms | Slowplay |
+|---|---|---|---|
+| **bet** | starts `b` | `line_<s>=b*` | |
+| **raised** | starts `r`: raised the first bet they faced | `line_<s>=r*` | |
+| **check-raised** | starts `xr` | `line_<s>=xr*` | |
+| **check-called** | starts `xc` | `line_<s>=xc*` | yes |
+| **called** | starts `c`: called the first bet they faced | `line_<s>=c*` | yes |
+| **checked, no bet** | exactly `x`, and their check did not close the street | `line_<s>=x,!check_back_<s>` | yes |
+| **checked back** | exactly `x`, and their check closed it | `line_<s>=x,check_back_<s>` | yes |
+| **check-folded** | exactly `xf` | `line_<s>=xf` | |
+| **folded** | exactly `f` | `line_<s>=f` | |
+| **other** | any other line | `line_<s>=*` and `!=` each pattern above | |
+
+A line is the player's own letters only, and its first letter is their first
+decision. Only a check is followed by a decision of a different kind: action comes
+back to a player who checked only when someone bet, so the second letter is `c`,
+`r` or `f`. **other** is therefore `xb…` or `xx…`, which a complete log never
+writes; it exists so the columns add up even if one ever does. A bet keeps the
+whole line that follows it -- `bc` (bet, called a raise) and `bf` are bets -- as
+does a call: `cr` is a call.
+
+**`slowplay_pct`** is check-called + called + checked + checked back, over `n`.
+A check-raise is a trap too, but not a slow one: it puts money in on the street,
+so it has its own column and is left out of the share.
+
+**Checked, no bet** and **checked back** both read `x`, the street checked through.
+`check_back` tells them apart (see "Facing a bet, the aggressor, and checking
+back"): the check that closed the street is the in-position check-back; every other
+`x` is a check from first or a middle seat that nobody behind bet into. A lone check
+against a player already all in decided nothing and is never a check-back, so it
+lands in **checked, no bet**.
+
+**Coverage** is `known / hands`: `hands` is every hand they were in on the street
+(`action_<street>=*`), `known` those whose holding can be read there
+(`made_<street>>=high_card`). **Shown hands only, and the bias runs one way**: a
+strong hand that bet and got folds to is never shown, while one that checked or
+called usually reaches showdown. An opponent's slowplay share reads high for that
+reason. The hero's cards are known on every hand, so the hero's does not.
+
+`GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns the table,
+every cell with `n`, `pct` of its row, `filter` and `hand_ids`.
+`GET /slowplay` (same parameters, plus `min`) pools everyone's hands and adds
+`players`, each player's total row, highest slowplay share first. `pnt slowplay
+[alias] --street flop --floor set` prints both; the chart's **Strength by street**
+view draws the player's.
+
+The **SLOWPLAYS** tag (see "Exploit tags") is this table's flop `total` row at the
+default floor: `n` is the row's `n`, its hits the slowplays, and its filter the
+row's. Calibrated on the 13,300-hand database on 2026-10-11, where the pool sits at
+41% and the hero, every hand known, at 34%: 55% over 15 hands fires for one player
+of the seven with a sample and finds one more who is streaky.
+
 ---
 
 ## Decision points (nodes)
@@ -966,7 +1036,7 @@ Exploit tags are judged first because BALANCED depends on them.
 |---|---|
 | **STICKY** | CALLS DOWN LIGHT, STICKY VS CBET, INELASTIC VS 3BET |
 | **FIT OR FOLD** | FOLDS RIVER, FOLDS TO CBET, FOLDS TO 3BET, NO BLUFF, CHECKS BACK WEAK |
-| **TRAPPER** | TRAPS, RARELY CBETS |
+| **TRAPPER** | TRAPS, SLOWPLAYS, RARELY CBETS |
 | **GAMBLER** | JAM HAPPY, JAMS LIGHT, 4BETS LIGHT, BLUFFS RIVER, DONKS, AUTO CBET |
 
 Only tags that are not streaky count toward a style.
@@ -997,6 +1067,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **RARELY CBETS** | same | same | ≤ 35% | 25 | same |
 | **CHECKS BACK WEAK** | strong | `check_back` any street and WTSD, shown | ≤ 35% | 10 | `check_back,wtsd` (made) |
 | **TRAPS** | strong | same | ≥ 60% | 8 | same |
+| **SLOWPLAYS** | checked or called (the slowplay columns of "Strength by street") | a set or better on the flop, shown, that they acted on | ≥ 55% | 15 | `made_flop>=set,line_flop=*` (strength, flop) |
 | **DONKS** | Donk Bet (flop) | its opportunity | ≥ 35% | 15 | `donk_flop` |
 | **BIG = STRONG** / **BIG = BLUFF** | strong share of shown first bets, `large`+`overbet` against `blocker`+`small`+`medium`, any street | | gap ≥ 40 points | 6 each side | `wtsd` (sizing, `bet`, the street with most bets) |
 

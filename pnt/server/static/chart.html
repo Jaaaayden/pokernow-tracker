@@ -169,6 +169,18 @@
     .lrows .val { grid-column: 3; margin-bottom: 4px; font-size: 10px; }
     .lrows .lab { font-size: 11px; }
   }
+  /* --- strength by street --- */
+  .sp-ctl { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  .sp-wrap { overflow-x: auto; }
+  .sp-wrap table th.grp { text-align: center; color: var(--ink-2); border-bottom: 0; padding-bottom: 0; }
+  .sp-wrap table td.c { cursor: pointer; }
+  .sp-wrap table td.c:hover, .sp-wrap table td.c:focus-visible { outline: 1px solid var(--muted); outline-offset: -1px; }
+  .sp-wrap table td.c small { display: block; color: var(--muted); font-size: 11px; }
+  .sp-wrap table td.zero { color: var(--muted); }
+  .sp-wrap table td.slow { font-weight: 600; }
+  .sp-wrap table tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
+  .sp-foot { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .sp-foot button { font-size: 12px; padding: 0 6px; }
 
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 12px; }
   th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
@@ -443,6 +455,7 @@
       <button data-view="sizing" aria-pressed="false">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by kind of aggression">Bluff:value</button>
+      <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Strength by street</button>
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Hand review</button>
       <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Manual review</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
@@ -532,6 +545,7 @@
     <div id="sizing" class="sizing hidden"></div>
     <div id="lineview" class="lineview hidden"></div>
     <div id="bluffs" class="bv hidden"></div>
+    <div id="strength" class="hidden"></div>
     <div id="table" class="hidden"></div>
     <div id="foldeq" class="foldeq hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
@@ -717,7 +731,7 @@
     const opt = [...sel.options].find(o => o.value.toLowerCase() === want.toLowerCase());
     sel.value = opt ? opt.value : "";
   }
-  const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet",
+  const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet", floor: "set",
                   table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
                   game: null, games: null, played: true, satOut: false, session: null, manual: null, split: false };
@@ -739,7 +753,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -777,6 +791,7 @@
     state.lmode = q.get("lmode") === "action" ? "action" : "own";
     state.lstreet = ["flop", "turn", "river"].includes(q.get("lstreet")) ? q.get("lstreet") : "";
     state.bluffScope = q.get("scope") === "pool" ? "pool" : "player";
+    state.floor = SP_FLOORS.some(([f]) => f === q.get("floor")) ? q.get("floor") : "set";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -787,6 +802,7 @@
     if (state.by === "sizing") { q.set("street", state.street); q.set("kind", state.kind); }
     if (state.by === "lines") { if (state.lmode !== "own") q.set("lmode", state.lmode); if (state.lstreet) q.set("lstreet", state.lstreet); }
     if (state.by === "bluffs" && state.bluffScope === "pool") q.set("scope", "pool");
+    if (state.by === "strength") { q.set("street", state.street); q.set("floor", state.floor); }
     if (isListView(state.by)) {
       if (state.order && state.order !== ORDERS[state.by][0]) q.set("order", state.order);
       if (state.hide.size) q.set("hide", [...state.hide].join(","));
@@ -986,6 +1002,9 @@
         q.set("mode", state.lmode);
         if (state.lstreet) q.set("street", state.lstreet);
         data = await getJson(`/players/${player}/lines?` + q);
+      } else if (view === "strength") {
+        q.set("street", state.street); q.set("floor", state.floor);
+        data = await getJson(`/players/${player}/slowplay?` + q);
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -1109,6 +1128,7 @@
     lines: "What they had, by line",
     review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
     bluffs: "Value against bluffs, by kind of aggression",
+    strength: "Strength by street",
   };
 
   // ---- lines ---------------------------------------------------------------
@@ -1594,6 +1614,132 @@
     wrap.appendChild(note);
   }
 
+  // ---- strength by street ------------------------------------------------
+  // One row per made hand from the strongest down to a floor, one column per
+  // thing they did on the street; the columns partition the line, so a row's
+  // cells add up to its n. See SPEC.md, "Strength by street (slowplays)".
+  const SP_FLOORS = [["full_house", "full house"], ["flush", "flush"], ["straight", "straight"],
+                     ["set", "set"], ["two_pair", "two pair"], ["top_pair", "top pair"]];
+  // Column groups, in the order the server lists its categories within them.
+  const SP_GROUPS = [
+    ["Bet it", ["bet", "raise", "check_raise"]],
+    ["Slowplayed", ["check_call", "call", "checked", "checked_back"]],
+    ["Gave up", ["check_fold", "fold", "other"]],
+  ];
+  // A gave-up column with nothing in it, in any row, is left off: it is almost
+  // always empty for a strong hand and only widens the table.
+  const SP_OPTIONAL = new Set(["check_fold", "fold", "other"]);
+  const SP_LEAF = { trips: "trips (paired board)", total: "all of them" };
+  const spLeaf = (leaf) => SP_LEAF[leaf] || leaf.replace(/_/g, " ");
+  const SP_NOTE = "Each row is a made hand they had on this street, from the hands where it was shown. "
+    + "Shown hands only, and the bias runs one way: a strong hand that bet and got folds to is never shown, "
+    + "while one that checked or called usually reaches showdown, so anyone's slowplay share but your own reads high. "
+    + "Read coverage first. Click a cell for its hands; its filter is in the list's title.";
+
+  function renderStrengthTiles(d) {
+    setTileKeys(`in the hand on the ${d.street}`, "cards known", "coverage");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = d.known;
+    $("t-cov").textContent = fmtPct(d.coverage);
+    $("t-raise").textContent = fmtPct(d.total.slowplay_pct);
+    setRaiseKey("slowplayed", `${d.total.slowplay} of ${d.total.n} shown ${spLeaf(d.floor)}+ on the ${d.street}`);
+  }
+
+  function renderStrength(d) {
+    const wrap = $("strength");
+    wrap.replaceChildren();
+    const labels = Object.fromEntries(d.categories.map(c => [c.key, c.label]));
+
+    // The pickers: which street, and the weakest made hand counted.
+    const ctl = document.createElement("div"); ctl.className = "sp-ctl";
+    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Street");
+    for (const s of ["flop", "turn", "river"]) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = s;
+      b.setAttribute("aria-pressed", s === d.street);
+      b.addEventListener("click", () => { state.street = s; $("street").value = s; writeUrl(); load(); });
+      seg.appendChild(b);
+    }
+    const fl = document.createElement("label"); fl.textContent = "made at least ";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Weakest made hand counted");
+    for (const [v, text] of SP_FLOORS) {
+      const o = document.createElement("option"); o.value = v; o.textContent = text; sel.appendChild(o);
+    }
+    sel.value = d.floor;
+    sel.addEventListener("change", () => { state.floor = sel.value; writeUrl(); load(); });
+    fl.appendChild(sel);
+    ctl.append(seg, fl);
+    wrap.appendChild(ctl);
+
+    const rows = d.rows.filter(r => r.n > 0);
+    if (!rows.length) {
+      const p = document.createElement("p"); p.className = "muted";
+      p.textContent = `no shown ${spLeaf(d.floor)} or better that acted on the ${d.street} in this spot`;
+      wrap.appendChild(p);
+    } else {
+      const groups = SP_GROUPS.map(([name, keys]) =>
+        [name, keys.filter(k => !SP_OPTIONAL.has(k) || d.total.cells[k].n > 0)]).filter(([, keys]) => keys.length);
+      const t = document.createElement("table");
+      const th = (text, cls, span) => {
+        const e = document.createElement("th"); e.textContent = text;
+        if (cls) e.className = cls; if (span) e.colSpan = span; return e;
+      };
+      const top = document.createElement("tr");
+      top.append(th(""), th(""));
+      for (const [name, keys] of groups) top.appendChild(th(name, "grp", keys.length));
+      top.appendChild(th(""));
+      const head = document.createElement("tr");
+      head.append(th(`made on the ${d.street}`), th("n"));
+      for (const [, keys] of groups) for (const k of keys) head.appendChild(th(labels[k]));
+      head.appendChild(th("slowplay %"));
+      t.append(top, head);
+
+      const cellFor = (r, k) => {
+        const c = r.cells[k];
+        const slow = d.categories.find(x => x.key === k)?.slowplay;
+        const td = document.createElement("td");
+        td.textContent = c.n || "·";
+        if (!c.n) { td.className = "zero"; return td; }
+        const sm = document.createElement("small"); sm.textContent = fmtPct(c.pct); td.appendChild(sm);
+        td.className = "c" + (slow ? " slow" : "");
+        // Shaded by share of the row, slowplays in the accent, the rest in grey.
+        const tint = slow ? "var(--accent)" : "var(--muted)";
+        td.style.background = `color-mix(in srgb, ${tint} ${Math.round(c.pct * 0.45)}%, transparent)`;
+        const filter = [d.filter, c.filter].filter(Boolean).join(",");
+        td.title = `${c.n} of ${r.n} · ${filter}`;
+        td.tabIndex = 0; td.setAttribute("role", "button");
+        pickable(td, `${d.street} ${spLeaf(r.leaf)} · ${labels[k]} · ${filter}`, c.hand_ids);
+        return td;
+      };
+      for (const r of [...rows, d.total]) {
+        const tr = document.createElement("tr");
+        if (r === d.total) tr.className = "total";
+        const name = document.createElement("td"); name.textContent = spLeaf(r.leaf);
+        const n = document.createElement("td"); n.textContent = r.n;
+        tr.append(name, n);
+        for (const [, keys] of groups) for (const k of keys) tr.appendChild(cellFor(r, k));
+        const pct = document.createElement("td"); pct.textContent = fmtPct(r.slowplay_pct);
+        tr.appendChild(pct);
+        t.appendChild(tr);
+      }
+      const box = document.createElement("div"); box.className = "sp-wrap"; box.appendChild(t);
+      wrap.appendChild(box);
+    }
+
+    // What the table leaves out, said rather than dropped silently.
+    const foot = document.createElement("p"); foot.className = "sp-foot";
+    const never = d.rows.filter(r => r.n === 0).map(r => spLeaf(r.leaf));
+    if (never.length) foot.append(`Never shown acting with: ${never.join(", ")}. `);
+    if (d.total.all_in) {
+      foot.append(`${d.total.all_in} more were all in before the ${d.street}, with nothing to decide `);
+      const b = document.createElement("button"); b.type = "button"; b.textContent = "list ›";
+      b.addEventListener("click", () => openHands(`${d.street} · all in already · ${d.total.all_in_filter}`, d.total.all_in_ids));
+      foot.append(b, ". ");
+    }
+    foot.append("Slowplayed is a check or a call: a check-raise is a trap too, but puts money in, so it is counted as betting it.");
+    wrap.appendChild(foot);
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -1603,23 +1749,26 @@
     $("bluffs").classList.toggle("hidden", view !== "bluffs");
     if (view === "bluffs") { renderBluffs(d); return; }
     const review = isListView(view);
-    const table = state.table && !review;
+    const strength = view === "strength"; // already a table: no grid/table switch
+    const table = state.table && !review && !strength;
     if (view === SESSION_VIEW) renderSessionTiles(d);
     else if (view === MANUAL_VIEW) renderManualTiles(d);
     else if (review) renderReviewTiles(d, view);
     else if (view === "sizing") renderSizingTiles(d);
     else if (view === LINES_VIEW) renderLinesTiles(d);
+    else if (strength) renderStrengthTiles(d);
     else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
     $("note").textContent = review ? REVIEW_NOTE[view]
       : view === "sizing" ? KIND_NOTE[d.kind]
       : view === LINES_VIEW ? LINES_NOTE
+      : strength ? SP_NOTE
       : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? `${RANGE_NOTE} ${JAM_NOTE}` : RANGE_NOTE;
     $("colorseg").classList.toggle("hidden", view !== "preflop");
     $("sizingctl").classList.toggle("hidden", view !== "sizing");
     $("linesctl").classList.toggle("hidden", view !== LINES_VIEW);
     $("reviewctl").classList.toggle("hidden", !review);
-    $("tabletoggle").classList.toggle("hidden", review);
+    $("tabletoggle").classList.toggle("hidden", review || strength);
     $("card-title").textContent = TITLE[view];
     $("grid").classList.toggle("hidden", view !== "preflop" || table);
     $("scale").classList.toggle("hidden", view !== "preflop" || table);
@@ -1629,7 +1778,9 @@
     $("table").classList.toggle("hidden", !table);
     $("foldeq").classList.toggle("hidden", view !== "sizing");
     $("review").classList.toggle("hidden", !review);
+    $("strength").classList.toggle("hidden", !strength);
     applyLayout();
+    if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
     if (view === MANUAL_VIEW) { renderManual(d); return; }
     if (review) { renderReview(d, view); return; }

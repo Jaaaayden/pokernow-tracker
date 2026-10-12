@@ -1196,3 +1196,55 @@ def pool_fold_equity(
     conn = db()
     facts = fold_pool_facts(conn, game, _predicate(conn, filter))
     return {"player": None, "filter": filter, **fold_equity(facts)}
+
+
+# ---- strength by street (slowplays) ------------------------------------------
+# Imported inside the endpoints so this block stands alone. See SPEC.md,
+# "Strength by street".
+
+
+@app.get("/players/{alias}/slowplay")
+def player_slowplay(
+    alias: str,
+    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
+    floor: Annotated[str, Query(description="The weakest made hand counted, e.g. 'set' or 'two_pair'.")] = "set",
+    filter: Annotated[str | None, Query(description="e.g. 'srp,players=2'")] = None,
+    game: str | None = None,
+) -> dict:
+    """What a player did on one street with each strong made hand: bet, raised,
+    check-raised, or slowplayed it with a check or a call. Every cell carries the
+    filter that finds its hands. Built from shown hands, so read coverage first."""
+    from pnt.stats.slowplay import slowplay
+
+    facts = _spot_facts(alias, filter, game)
+    try:
+        out = slowplay(facts, street, floor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"player": alias, "filter": filter, **out}
+
+
+@app.get("/slowplay")
+def pool_slowplay(
+    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
+    floor: Annotated[str, Query(description="The weakest made hand counted, e.g. 'set' or 'two_pair'.")] = "set",
+    filter: Annotated[str | None, Query(description="e.g. 'srp,players=2'")] = None,
+    game: str | None = None,
+    min: Annotated[int, Query(ge=1, description="Strong hands a player needs to be listed.")] = 1,
+) -> dict:
+    """The same table over everyone's hands pooled, plus each player's total row
+    ranked by slowplay share: who traps. Derived afresh, like a filtered /stats."""
+    from pnt.stats.queries import facts_by_player
+    from pnt.stats.slowplay import by_player, check_floor, slowplay
+
+    conn = db()
+    pred = _predicate(conn, filter)
+    try:
+        floor = check_floor(floor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    grouped, aliases, _ = facts_by_player(conn, game)
+    if pred is not None:
+        grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
+    out = slowplay([f for facts in grouped.values() for f in facts], street, floor)
+    return {"filter": filter, **out, "players": by_player(grouped, aliases, street, floor, min)}
