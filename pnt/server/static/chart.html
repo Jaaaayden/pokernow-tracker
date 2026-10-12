@@ -343,6 +343,27 @@
     .scale .bar { order: -1; flex: 1 1 100%; gap: 1px; }
     .scale .bar i { flex: 1 1 0; width: auto; height: 8px; }
   }
+
+  /* --- results by pot type ---
+     Won and lost as one bar from zero, in the profit and loss colours the other
+     pages use (--up, --down); kept on this view so the page's own tokens stay as
+     they are. The figures stay in ink: the bar carries the sign. */
+  #results { --up: #1f7a4d; --down: #b93a39; display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #results { --up: #4cc38a; --down: #e66e6d; } }
+  :root[data-theme="dark"] #results { --up: #4cc38a; --down: #e66e6d; }
+  #results h3 { font-size: 13px; font-weight: 600; margin: 0; }
+  #results table { margin-top: 6px; min-width: 620px; }
+  #results td.role { padding-left: 22px; color: var(--ink-2); }
+  #results td.diverge { width: 28%; min-width: 120px; }
+  #results .zero { position: relative; height: 14px; }
+  #results .zero::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; border-left: 1px solid var(--axis); }
+  #results .zero i { position: absolute; top: 0; height: 100%; min-width: 2px; }
+  #results .zero i.up { left: 50%; background: var(--up); border-radius: 0 4px 4px 0; }
+  #results .zero i.down { right: 50%; background: var(--down); border-radius: 4px 0 0 4px; }
+  #results tr.empty td { color: var(--muted); }
+  #results .worst { font-size: 11px; margin-left: 6px; padding: 0 6px; border: 1px solid var(--flag); border-radius: 999px; color: var(--flag); }
+  #results tr.pick td:first-child::after { content: none; }
+  #results .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 </style>
 </head>
 <body>
@@ -365,6 +386,7 @@
       <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Manual review</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
+      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
     </span>
   </div>
   <div class="pnote" id="pnote"></div>
@@ -436,6 +458,7 @@
     <div id="scale" class="scale"></div>
     <div id="bars" class="bars hidden"></div>
     <div id="sizing" class="sizing hidden"></div>
+    <div id="results" class="hidden"></div>
     <div id="table" class="hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
@@ -642,7 +665,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW];
+  const VIEWS = ["preflop", "made", "sizing", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "results"];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -874,6 +897,8 @@
       } else if (view === "sizing") {
         q.set("street", state.street); q.set("kind", state.kind);
         data = await getJson(`/players/${player}/sizing?` + q);
+      } else if (view === "results") {
+        data = await getJson(`/players/${player}/results?` + q);
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -1001,7 +1026,120 @@
   const TITLE = {
     preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
     review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
+    results: "Big blinds won and lost",
   };
+
+  // ---- results by pot type ----------------------------------------------------
+  // Three tables over the same hands -- pot type (split by who raised last), seat,
+  // position after the flop -- each adding up to the spot's total. The bar is net
+  // bb from zero, on one scale across all three, so a row's bar is comparable with
+  // any other's. A row is its filter: clicking it adds the terms to the spot and
+  // lists the hands. In-position rows have no filter term yet, so they list their
+  // hands by id and leave the spot alone. See "Results by pot type" in SPEC.md.
+  const RESULTS_NOTE = "Each complete hand's net in its own big blinds, added up; a hand whose log stops early counts"
+    + " among the hands and in no bb figure. Walk is the big blind folded to; limped is every other pot nobody raised,"
+    + " the folds around to someone's walk included. Click a row to add it to the spot and list its hands.";
+  function renderResults(d) {
+    const wrap = $("results");
+    wrap.replaceChildren();
+    const tot = d.total;
+    setTileKeys("hands in this spot ›", "net bb, complete hands", "bb/100");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb).replace(" bb", "");
+    $("t-cov").textContent = tot.bb_per_100 == null ? "–" : tot.bb_per_100.toFixed(1);
+    const flat = (t) => t.rows.flatMap(r => [r, ...(r.roles || [])]);
+    const potRows = flat(d.tables.find(t => t.key === "pot"));
+    const worst = potRows.find(r => r.worst);
+    const parent = worst && potRows.find(r => r.roles?.includes(worst));
+    $("t-raise").textContent = worst ? (parent ? `${parent.label} · ${worst.label}` : worst.label) : "–";
+    setRaiseKey("worst pot, by bb/100", worst ? `${worst.bb_per_100.toFixed(1)} bb/100 · of rows with ${d.min_hands}+ hands`
+      : `no losing row of ${d.min_hands}+ hands`);
+    $("note").textContent = RESULTS_NOTE;
+    $("tabletoggle").classList.add("hidden"); // this view is a table already
+    $("table").classList.add("hidden");
+
+    const max = Math.max(1, ...d.tables.flatMap(flat).map(r => Math.abs(r.net_bb ?? 0)));
+    const num = (v) => v == null ? "–" : v.toFixed(1);
+    const COLS = ["", "", "hands", "net bb", "bb/100", "VPIP", "saw flop", "WTSD", "W$SD"];
+    const TIPS = {
+      VPIP: "share of these hands they put chips in voluntarily",
+      "saw flop": "share of these hands they saw a flop",
+      WTSD: "went to showdown, of the hands that saw a flop",
+      "W$SD": "won at showdown, of the showdowns",
+    };
+
+    for (const table of d.tables) {
+      const block = document.createElement("div");
+      const h = document.createElement("h3"); h.textContent = table.title;
+      const t = document.createElement("table");
+      const head = document.createElement("tr");
+      COLS.forEach((c) => {
+        const th = document.createElement("th"); th.textContent = c;
+        if (TIPS[c]) th.title = TIPS[c];
+        head.appendChild(th);
+      });
+      t.appendChild(head);
+      const add = (r, role) => {
+        const tr = document.createElement("tr");
+        const name = document.createElement("td");
+        if (role) name.className = "role";
+        name.textContent = r.label;
+        if (r.worst) {
+          const tag = document.createElement("span"); tag.className = "worst"; tag.textContent = "worst";
+          tag.title = `the lowest bb/100 in this table among rows of ${d.min_hands}+ hands`;
+          name.appendChild(tag);
+        }
+        const bar = document.createElement("td"); bar.className = "diverge";
+        const zero = document.createElement("div"); zero.className = "zero";
+        if (r.net_bb) {
+          const i = document.createElement("i");
+          i.className = r.net_bb > 0 ? "up" : "down";
+          i.style.width = (Math.abs(r.net_bb) / max * 50) + "%";
+          zero.appendChild(i);
+        }
+        bar.appendChild(zero);
+        tr.append(name, bar);
+        for (const v of [r.hands, r.net_bb == null ? "–" : fmtBb(r.net_bb).replace(" bb", ""), num(r.bb_per_100),
+                         fmtPct(r.vpip_pct), fmtPct(r.saw_flop_pct), fmtPct(r.wtsd), fmtPct(r.wsd)]) {
+          const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+        }
+        const where = r.filter == null ? "no filter term says this yet, so the hands are listed as they are"
+          : `adds ${r.filter} to the spot`;
+        tr.title = `${r.label}: ${r.hands} hands, ${r.bb_hands} with a known result`
+          + (r.net_bb == null ? "" : `, ${fmtBb(r.net_bb)}`) + ` · ${where}`;
+        if (!r.hands) tr.classList.add("empty");
+        else {
+          tr.classList.add("pick");
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
+          tr.setAttribute("aria-label", `${r.label} · ${r.hands} hands — list them`);
+          const title = role ? `${role} · ${r.label}` : r.label;
+          const open = () => {
+            if (r.filter == null) { openHands(`${table.title} · ${title}`, r.hand_ids); return; }
+            const cur = terms();
+            for (const term of r.filter.split(",")) if (!cur.includes(term)) cur.push(term);
+            $("filter").value = cur.join(",");
+            apply();
+            openHands(title, null);
+          };
+          tr.addEventListener("click", open);
+          tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+        }
+        t.appendChild(tr);
+      };
+      for (const r of table.rows) {
+        add(r, null);
+        for (const role of r.roles || []) add(role, r.label);
+      }
+      block.append(h, t);
+      if (table.key === "ip") {
+        const p = document.createElement("p"); p.className = "why";
+        p.textContent = "In or out of position is decided on the flop, so a hand that never saw one is its own row.";
+        block.appendChild(p);
+      }
+      wrap.appendChild(block);
+    }
+  }
 
   function render() {
     const d = state.data;
@@ -1029,12 +1167,14 @@
     $("scale").classList.toggle("hidden", view !== "preflop" || table);
     $("bars").classList.toggle("hidden", view !== "made" || table);
     $("sizing").classList.toggle("hidden", view !== "sizing" || table);
+    $("results").classList.toggle("hidden", view !== "results");
     $("table").classList.toggle("hidden", !table);
     $("review").classList.toggle("hidden", !review);
     applyLayout();
     if (view === SESSION_VIEW) { renderSession(d); return; }
     if (view === MANUAL_VIEW) { renderManual(d); return; }
     if (review) { renderReview(d, view); return; }
+    if (view === "results") { renderResults(d); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "");
     else renderSizing(d);
