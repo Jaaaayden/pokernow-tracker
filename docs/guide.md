@@ -206,6 +206,15 @@ from the same URL (the page alone is at `/stats.html`). Pick a street to swap th
 postflop columns, toggle the c-bet size mix, and click a player to open their range
 chart in the spot you are looking at.
 
+Three columns cover the blind war, which is most of a short-handed home game.
+**ATS** (attempt to steal) is how often they open when it folds to them in the
+cutoff, button or small blind. **F2S** (fold to steal) and **3BvS** (3-bet vs
+steal) are how a player in the small or big blind answers a steal nobody called. A
+blind who folds a lot is one to open wider against, and a wide stealer is one to
+defend and 3-bet against. Hands with a dead button or a dead blind are left out of
+all three, since the seats are guesses there. The range chart's **Steal**, **Fold
+to steal** and **3-bet vs steal** chips show the hands behind each column.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.

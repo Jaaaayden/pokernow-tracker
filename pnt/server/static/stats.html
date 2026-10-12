@@ -140,6 +140,11 @@
     ["pfr", "PFR", "pct", "vpip"],
     ["3bet", "3Bet", "pct", "3bet"],
     ["fold_to_3bet", "F3B", "pct", "fold_to_3bet"],
+    // Blind war (SPEC.md, "Steals and blind defense"): ATS over steal chances, and
+    // fold to steal and 3-bet vs steal over the steals faced from a blind.
+    ["ats", "ATS", "pct", "ats"],
+    ["fold_to_steal", "F2S", "pct", "fold_to_steal"],
+    ["3bet_vs_steal", "3BvS", "pct", "3bet_vs_steal"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["bb_per_100", "bb/100", "num", null],
@@ -159,6 +164,7 @@
     af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
+    ats: "steal chances", fold_to_steal: "steals faced from a blind", "3bet_vs_steal": "steals faced from a blind",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -190,6 +196,14 @@
       + "together is an aggressive player, a wide gap means they call far more than they raise."],
     "3bet": ["Three-Bet", "How often they re-raised someone's open, making it the third level of betting."],
     fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
+    ats: ["Attempt To Steal",
+      "Folded to them in the cutoff, button or small blind, how often they raised. "
+      + "Dead-button and dead-blind hands are left out, since the seats are guesses there."],
+    fold_to_steal: ["Fold to Steal",
+      "In the small or big blind, facing a steal nobody called, how often they folded. "
+      + "High means you can open wider from late position when they are in the blinds."],
+    "3bet_vs_steal": ["Three-Bet vs Steal",
+      "Over the same steals as F2S, how often they re-raised. Counts in 3Bet as well."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     bb_per_100: ["Big blinds per 100 hands",
