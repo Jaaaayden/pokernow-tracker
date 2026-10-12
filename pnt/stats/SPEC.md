@@ -1214,7 +1214,9 @@ blind folding"; `wtsd` and `wsd` are the stat rows' own.
 **The worst row.** In each table, the lowest bb/100 among the rows standing on
 at least **100 hands with a known result** (`WORST_MIN_HANDS`) is marked
 `worst` -- and only when it is losing. Role rows are candidates alongside their
-pot type: the worst place to be is usually one side of a pot.
+pot type: the worst place to be is usually one side of a pot. The **no flop**
+row is never a candidate: it pays the blinds and nothing else, so it is losing
+for everyone and would be marked in almost every table.
 
 Judgement calls:
 

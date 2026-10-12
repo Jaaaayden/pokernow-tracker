@@ -148,6 +148,9 @@ def _ip_table(facts: list[Facts]) -> list[dict]:
     if groups["unknown"]:
         rows.append(_row("unknown", "saw flop, order unknown", None, groups["unknown"]))
     rows.append(_row("no_flop", "no flop", "!saw_flop", groups["no_flop"]))
+    # Never the worst: a hand with no flop loses its blinds by nature, so its row
+    # is below zero for everyone and says nothing about how the flop was played.
+    rows[-1]["rank"] = False
     return rows
 
 
@@ -159,7 +162,8 @@ def _mark_worst(rows: Iterable[dict], min_hands: int) -> None:
     first, and a table where nothing is losing marks nothing.
     """
     flat = [x for r in rows for x in (r, *r.get("roles", ()))]
-    ok = [r for r in flat if r["bb_hands"] >= min_hands and r["bb_per_100"] is not None]
+    ok = [r for r in flat
+          if r.get("rank", True) and r["bb_hands"] >= min_hands and r["bb_per_100"] is not None]
     if not ok:
         return
     worst = min(ok, key=lambda r: r["bb_per_100"])

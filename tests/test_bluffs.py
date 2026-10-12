@@ -180,3 +180,19 @@ def test_cli_prints_a_player_and_the_pool(db, tmp_path):
     assert result.exit_code == 0, result.output
     body = json.loads(result.output)
     assert {r["key"] for r in body["rows"]} == set(CATEGORY)
+
+
+def test_the_chart_hides_every_other_view_on_bluff_value():
+    """Bluff:value renders apart from `render()`'s toggles, so it hides the other
+    views itself: every part `render()` toggles must be on its list, or the view
+    switched from stays on screen under it."""
+    import re
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "pnt" / "server" / "static" / "chart.html").read_text("utf-8")
+    body = html[html.index("function renderBluffs("):]
+    hidden = set(re.findall(r'"(\w+)"', body[body.index("for (const id of [") : body.index("]) {")]))
+    render = html[html.index("  function render() {"):]
+    render = render[: render.index("applyLayout();")]
+    toggled = set(re.findall(r'\$\("(\w+)"\)\.classList\.toggle\("hidden"', render)) - {"bluffs"}
+    assert toggled and toggled <= hidden, toggled - hidden

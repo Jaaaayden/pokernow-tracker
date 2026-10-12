@@ -12,3 +12,6 @@ dist/
 
 # Personal list of game links
 links.txt
+
+# Session handoff notes (see /handoff)
+HANDOFF.md

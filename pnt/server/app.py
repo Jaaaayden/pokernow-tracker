@@ -478,7 +478,7 @@ def pots(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/players/{alias}/allin")
+@app.get("/players/{alias:path}/allin")
 def player_allin(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'vs=henry'")] = None,
@@ -493,7 +493,7 @@ def player_allin(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/players/{alias}/review")
+@app.get("/players/{alias:path}/review")
 def player_review(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
@@ -576,7 +576,7 @@ class PlayerNoteRequest(BaseModel):
     note: str = ""
 
 
-@app.post("/players/{alias}/note")
+@app.post("/players/{alias:path}/note")
 def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()]) -> dict:
     """Write down what you know about a player, or clear the note.
 
@@ -597,7 +597,7 @@ def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()]) -> 
     }
 
 
-@app.get("/players/{alias}/positions")
+@app.get("/players/{alias:path}/positions")
 def positions(alias: str, split_by_size: bool = False) -> list[dict]:
     try:
         return positional_report(db(), alias, pool=not split_by_size)
@@ -622,7 +622,7 @@ def _spot_facts(
     return [f for f in facts if pred(f)] if pred is not None else facts
 
 
-@app.get("/players/{alias}/stats")
+@app.get("/players/{alias:path}/stats")
 def player_stats(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
@@ -632,7 +632,7 @@ def player_stats(
     return {"player": alias, "filter": filter, **aggregate(_spot_facts(alias, filter, game))}
 
 
-@app.get("/players/{alias}/range")
+@app.get("/players/{alias:path}/range")
 def player_range(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'opener,open_bb>=4,srp'")] = None,
@@ -649,7 +649,7 @@ def player_range(
     return {"player": alias, "filter": filter, "by": by, **out}
 
 
-@app.get("/players/{alias}/sizing")
+@app.get("/players/{alias:path}/sizing")
 def player_sizing(
     alias: str,
     street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
@@ -662,7 +662,7 @@ def player_sizing(
     return {"player": alias, "filter": filter, **sizing_tells(facts, street, kind)}
 
 
-@app.get("/players/{alias}/hands")
+@app.get("/players/{alias:path}/hands")
 def player_hands(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'cbet_flop=overbet'")] = None,
@@ -696,7 +696,7 @@ def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
     return rows
 
 
-@app.get("/players/{alias}/flagged")
+@app.get("/players/{alias:path}/flagged")
 def player_flagged(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
@@ -715,7 +715,7 @@ def player_flagged(
     return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
 
 
-@app.get("/players/{alias}/sat-out")
+@app.get("/players/{alias:path}/sat-out")
 def player_sat_out(alias: str, game: str) -> dict:
     """The hands of one game the player was not dealt into: the session view's "Sat out".
 
@@ -729,7 +729,7 @@ def player_sat_out(alias: str, game: str) -> dict:
     return {"player": alias, "game": game, "hands": _with_marks(conn, rows, game)}
 
 
-@app.get("/players/{alias}/games")
+@app.get("/players/{alias:path}/games")
 def player_game_list(alias: str) -> list[dict]:
     """Every game one player was dealt into, newest first: the session view's picker."""
     try:
@@ -738,7 +738,7 @@ def player_game_list(alias: str) -> list[dict]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/players/{alias}/tags")
+@app.get("/players/{alias:path}/tags")
 def player_tags(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'players>=4'")] = None,
@@ -1053,7 +1053,7 @@ def rename(req: Annotated[RenameRequest, Body()]) -> dict:
     return {"old": req.old, "new": req.new.strip()}
 
 
-@app.get("/players/{alias}/results")
+@app.get("/players/{alias:path}/results")
 def player_results(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'position=BTN'")] = None,
@@ -1083,7 +1083,7 @@ def _lines(facts: list[Facts], mode: str, street: str | None, min: int) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/players/{alias}/lines")
+@app.get("/players/{alias:path}/lines")
 def player_lines(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
@@ -1127,7 +1127,7 @@ def pool_lines(
 # --- bluff:value -----------------------------------------------------------------
 
 
-@app.get("/players/{alias}/bluffs")
+@app.get("/players/{alias:path}/bluffs")
 def player_bluffs(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
@@ -1190,7 +1190,7 @@ def pool_bluff_hands(
     cat = CATEGORY[category]
     return {"category": category, "cls": cls, "label": cat["label"], "street": cat["street"],
             "filter": filter, "total": total, "hands": _with_marks(conn, hands, game)}
-@app.get("/players/{alias}/fold_equity")
+@app.get("/players/{alias:path}/fold_equity")
 def player_fold_equity(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'srp,flop=ace_high'")] = None,
@@ -1221,7 +1221,7 @@ def pool_fold_equity(
 # "Strength by street".
 
 
-@app.get("/players/{alias}/slowplay")
+@app.get("/players/{alias:path}/slowplay")
 def player_slowplay(
     alias: str,
     street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",

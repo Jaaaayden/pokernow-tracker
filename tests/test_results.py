@@ -16,7 +16,7 @@ from pnt.ingest.importer import import_csv
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter
 from pnt.stats.queries import display_names, facts_for, report, tally
-from pnt.stats.results import WORST_MIN_HANDS, results_breakdown
+from pnt.stats.results import WORST_MIN_HANDS, _mark_worst, results_breakdown
 from tests.conftest import ALL_LOGS, TRUNCATED, local_client
 
 
@@ -187,6 +187,17 @@ def test_one_player_pinned(db):
     assert [r["key"] for r in out["tables"][1]["rows"] if r["worst"]] == ["BB"]
     ip = {r["key"]: (r["hands"], r["net_bb"]) for r in out["tables"][2]["rows"]}
     assert ip == {"ip": (73, -105.8), "oop": (89, -792.0), "no_flop": (69, 3.4)}
+    assert out["tables"][2]["rows"][-1]["rank"] is False, "no flop is never up for worst"
+
+
+def test_no_flop_is_never_the_worst():
+    """A losing no-flop row on plenty of hands is passed over for a smaller loss."""
+    rows = [
+        {"key": "ip", "bb_hands": 200, "bb_per_100": -5.0, "worst": False},
+        {"key": "no_flop", "bb_hands": 900, "bb_per_100": -40.0, "worst": False, "rank": False},
+    ]
+    _mark_worst(rows, WORST_MIN_HANDS)
+    assert [r["key"] for r in rows if r["worst"]] == ["ip"]
 
 
 def test_nothing_is_worst_when_nothing_is_losing(db):

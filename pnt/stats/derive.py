@@ -399,9 +399,9 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 bettor = a.pn_id
             b = facts.get(bettor) if bettor is not None else None
             if b is not None and a.pn_id == bettor:
-                if street in b.faced_check_raise and street not in b.faced_check_raise_action:
-                    if a.kind in ANSWERS:
-                        b.faced_check_raise_action[street] = a.kind
+                if (street in b.faced_check_raise and street not in b.faced_check_raise_action
+                        and a.kind in ANSWERS):
+                    b.faced_check_raise_action[street] = a.kind
             elif b is not None and a.kind == "raise" and prior == "x":
                 b.faced_check_raise[street] = True
 

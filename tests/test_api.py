@@ -267,6 +267,16 @@ def test_merge_endpoint(client):
     assert after["genericpoker"]["hands"] == total
 
 
+def test_a_name_with_a_slash_reaches_its_endpoints(client):
+    """PokerNow names like `9/2` arrive as `9%2F2`, decoded to a slash before routing."""
+    assert client.post("/aliases/rename", json={"old": "genericpoker", "new": "9/2"}).status_code == 200
+    for path in ("stats", "range?by=made", "results", "lines", "bluffs", "fold_equity", "hands"):
+        r = client.get(f"/players/9%2F2/{path}")
+        assert r.status_code == 200, (path, r.text)
+    assert client.get("/players/9%2F2/stats").json()["hands"] > 0
+    assert client.post("/players/9%2F2/note", json={"note": "slash"}).json()["note"] == "slash"
+
+
 def test_merge_unknown_alias_404s(client):
     r = client.post("/aliases/merge", json={"source": "ghost", "target": "genericpoker"})
     assert r.status_code == 404
@@ -422,7 +432,7 @@ def test_spot_help_lists_every_term(client):
     } <= set(body)
     assert any(t["term"] == "vs=NAME" for g in body["groups"] for t in g["terms"])
     # The values the panel offers for the line, made-hand, answer and !flag slots.
-    assert list(body["sizes"])[0] == "blocker"
+    assert next(iter(body["sizes"])) == "blocker"
     assert body["answers"] == ["fold", "call", "raise"]
     assert {"set", "trips", "pair", "draw"} <= set(body["made"])
     assert "cbet_flop" in body["flags"]
@@ -560,8 +570,8 @@ def test_flagging_a_hand_round_trips_and_lands_on_manual_review(client):
     assert cleared == {"game_id": HU_GAME, "hand_number": hand["hand_number"], "flagged": False, "flagged_at": None}
     assert client.get("/players/genericpoker/flagged").json()["hands"] == []
     # Unflagging keeps the mark and the note: three separate judgements.
-    kept = [h for h in client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"]
-            if h["hand_id"] == hand["hand_id"]][0]
+    kept = next(h for h in client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"]
+                if h["hand_id"] == hand["hand_id"])
     assert kept["reviewed"] and kept["note"] == "turn sizing?"
 
 
