@@ -1436,5 +1436,81 @@ def alias_import(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
     typer.echo(f"moved {moved} identity row(s); {unknown} id(s) not in this database yet")
 
 
+#: `pnt slowplay`: one short heading per column of `slowplay.CATEGORIES`.
+_SLOWPLAY_HEADS = {
+    "bet": "bet", "raise": "raise", "check_raise": "x-r", "check_call": "x-c", "call": "call",
+    "checked": "x", "checked_back": "x-back", "check_fold": "x-f", "fold": "fold", "other": "other",
+}
+
+
+@app.command()
+def slowplay(
+    alias: str = typer.Argument(None, help="One player; everyone pooled, then ranked, when omitted."),
+    db: Path = DbOpt,
+    street: str = typer.Option("flop", "--street", help="flop, turn or river."),
+    floor: str = typer.Option("set", "--floor", help="The weakest made hand counted: set, two_pair, straight..."),
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,players=2'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    min_n: int = typer.Option(5, "--min", help="Pooled: strong hands a player needs to be ranked."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """What they did on a street with a strong made hand: bet it, raised it, or
+    slowplayed it with a check or a call.
+
+    One row per made hand from the strongest down to --floor, one column per line.
+    Built from shown hands: a strong hand that bet and got folds to is never shown,
+    so anyone's slowplay share but your own reads high. Read coverage first.
+    """
+    from .stats.slowplay import CATEGORIES, by_player
+    from .stats.slowplay import slowplay as slowplay_report
+
+    conn = connect(db)
+    try:
+        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        if alias:
+            grouped = {0: facts_for(conn, alias, game)}
+            aliases = {0: alias}
+        else:
+            grouped, aliases, _ = facts_by_player(conn, game)
+        if pred is not None:
+            grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
+        out = slowplay_report([f for facts in grouped.values() for f in facts], street, floor)
+        if not alias:
+            out["players"] = by_player(grouped, aliases, street, out["floor"], min_n)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps({"player": alias, "filter": filter_, **out}, indent=2))
+        return
+
+    keys = [k for k, *_ in CATEGORIES]
+    typer.echo(f"{alias or 'everyone'}  {street}, {out['floor']} and up  filter: {filter_ or '(none)'}")
+    typer.echo(
+        f"in the hand on the {street}: {out['hands']}   cards known: {out['known']} ({_fmt(out['coverage'])}%)"
+    )
+    typer.echo(
+        "shown hands only: a strong hand that bet and got folds to is never shown, so "
+        "the slowplay share reads high for anyone whose cards you do not always see.\n"
+    )
+    header = f"{'made':<16}{'n':>5}" + "".join(f"{_SLOWPLAY_HEADS[k]:>7}" for k in keys) + f"{'slow%':>7}"
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for row in [*out["rows"], out["total"]]:
+        if not row["n"] and row is not out["total"]:
+            continue
+        cells = "".join(f"{row['cells'][k]['n'] or '.':>7}" for k in keys)
+        typer.echo(f"{row['leaf']:<16}{row['n']:>5}{cells}{_fmt(row['slowplay_pct']):>7}")
+    if out["total"]["all_in"]:
+        typer.echo(f"\n{out['total']['all_in']} more were all in before the {street}, with nothing to decide.")
+    typer.echo(f"slowplays: x-c, call, x and x-back. Each cell is a spot filter, "
+               f"made_{street}=<made>,line_{street}=<line>; --json prints them.")
+    if alias:
+        return
+    typer.echo(f"\nwho slowplays, of {min_n}+ strong hands acted on:")
+    _print_table(out["players"], "player", 16, [
+        ("n", "n", 5), ("slowplay", "slow", 6), ("slowplay_pct", "slow%", 7), ("coverage", "cov%", 7),
+    ])
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
