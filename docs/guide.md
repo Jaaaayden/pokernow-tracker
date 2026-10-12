@@ -155,6 +155,23 @@ whoever now holds the IDs, and deleting a game never removes a player you have
 written about. Notes are not in `aliases.csv`, so they stay in the database.
 `POST /players/{alias}/note` writes one, and `/players` and `/hud/{game}` return them.
 
+### 7-2 bounties
+
+Above the list, the players page keeps the 7-2 side bet's leaderboard: for each
+player who has won or paid a bounty, how many and how many chips (and big blinds)
+each way, ranked by net. A side bet only moves chips, so the net column sums to
+zero. Click a row to open that player's card. Under it is how often you were dealt
+72 and how often you played it; the two counts open those hands on the chart. That
+part is yours only, from the logs you downloaded: anyone else's folded 72 is never
+seen.
+
+```bash
+pnt bounties                # the leaderboard and your 72s
+pnt bounties --game <id>    # one game
+```
+
+`GET /bounties` returns the same. See SPEC.md, "7-2 bounty ledger".
+
 ## Stats
 
 `pnt stats` lists every player, most hands first. It prints `--`, not `0`, when a
