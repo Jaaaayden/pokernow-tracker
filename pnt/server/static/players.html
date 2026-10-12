@@ -96,6 +96,24 @@
   .err { color: var(--down); margin: 10px 0; }
   .hidden { display: none !important; }
   .empty { color: var(--muted); padding: 16px 2px; }
+
+  /* 7-2 bounties leaderboard */
+  .bounty { padding: 12px 14px 10px; margin-bottom: 18px; }
+  .bounty h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .bounty h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: 12.5px; }
+  .bounty .bnote { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
+  .bounty table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  .bounty th { text-align: right; color: var(--muted); font-weight: 500; font-size: 12px; padding: 3px 6px; }
+  .bounty td { text-align: right; padding: 4px 6px; border-top: 1px solid var(--grid); white-space: nowrap; }
+  .bounty th:first-child, .bounty td:first-child { text-align: left; white-space: normal; }
+  .bounty td.dim { color: var(--muted); }
+  .bounty td.up { color: var(--up); font-weight: 600; }
+  .bounty td.down { color: var(--down); font-weight: 600; }
+  .bounty tbody tr { cursor: pointer; }
+  .bounty tbody tr:hover td { background: var(--mid); }
+  .bounty .hero72 { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+  .bounty .hero72 + .hero72 { margin-top: 4px; }
+  @media (max-width: 560px) { .bounty .wide { display: none; } }
 </style>
 </head>
 <body>
@@ -108,6 +126,7 @@
     combined history immediately; nothing is stored, so nothing needs recomputing.</p>
 
   <div class="err hidden" id="err"></div>
+  <div class="card bounty hidden" id="bounties"></div>
   <div id="list"></div>
 </main>
 
@@ -412,10 +431,98 @@
     } catch (e) { toast("Rename failed: " + e.message); }
   }
 
+  // ---- 7-2 bounties: the side bet's leaderboard, and how often hero plays 72 --
+  // Self-contained: one container above the list, one call below. A row opens
+  // that player's card in the list; the 72 counts link to the chart on the
+  // filter that finds their hands.
+  const signed = (n) => (n > 0 ? "+" : "") + fmt(n);
+  async function loadBounties() {
+    const box = $("bounties");
+    let data;
+    try { data = await api("/bounties"); } catch { return; }  // a fun extra: never break the page
+    box.replaceChildren();
+    if (!data.players.length && !data.hero.length) { box.classList.add("hidden"); return; }
+    const h2 = el("h2", null, "7-2 bounties");
+    if (data.players.length) h2.appendChild(el("small", null,
+      `${fmt(data.total.bounties)} collected · ${fmt(data.total.won)} chips changed hands`));
+    box.appendChild(h2);
+    box.appendChild(el("p", "bnote", "Win a pot with 7-2 and everyone at the table pays you. "
+      + "A side bet: chips only move between players, so the net column sums to zero."
+      + (data.balance ? ` (It is ${signed(data.balance)} off: a payment named someone not dealt in.)` : "")));
+
+    if (data.players.length) {
+      const t = el("table");
+      const head = el("tr");
+      for (const [h, cls] of [["player", ""], ["won", ""], ["chips", "wide"], ["paid", ""],
+                              ["chips", "wide"], ["net", ""], ["net bb", ""], ["of hands", "wide"]]) {
+        head.appendChild(el("th", cls, h));
+      }
+      const thead = el("thead"); thead.appendChild(head); t.appendChild(thead);
+      const tbody = el("tbody");
+      for (const r of data.players) {
+        const tr = el("tr");
+        const net = r.net.chips;
+        tr.appendChild(el("td", null, r.player));
+        tr.appendChild(el("td", null, fmt(r.won.count)));
+        tr.appendChild(el("td", "dim wide", fmt(r.won.chips)));
+        tr.appendChild(el("td", null, fmt(r.paid.count)));
+        tr.appendChild(el("td", "dim wide", fmt(r.paid.chips)));
+        tr.appendChild(el("td", net > 0 ? "up" : net < 0 ? "down" : "", signed(net)));
+        tr.appendChild(el("td", null, r.net.bb == null ? "—" : signed(r.net.bb)));
+        const of = el("td", "dim wide", fmt(r.hands));
+        of.title = `${r.bounty_hands} bounty hand${r.bounty_hands === 1 ? "" : "s"} of ${fmt(r.hands)} dealt in`
+          + (r.bb_known < r.bounty_hands ? `; ${r.bounty_hands - r.bb_known} with no big blind on record, left out of bb` : "");
+        tr.appendChild(of);
+        tr.title = `Open ${r.player} in the list below`;
+        tr.addEventListener("click", () => {
+          if (!players.some((p) => p.alias === r.player)) return;
+          openAlias = r.player;
+          render();
+          const open = $("list").querySelector(".card.open");
+          if (open) open.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        tbody.appendChild(tr);
+      }
+      t.appendChild(tbody);
+      box.appendChild(t);
+    } else {
+      box.appendChild(el("div", "bnote", "No bounty has been paid yet."));
+    }
+
+    // Hero only: anyone else's 72 is seen only when shown, and a folded one never is.
+    for (const h of data.hero) {
+      const line = el("div", "hero72");
+      // No filter when they showed a 72 in a log they do not own: the chart
+      // would count it too, and its n would not match.
+      const chartLink = (text, filter) => {
+        if (!filter) {
+          const s = el("span", null, text);
+          s.title = "Not linked: the chart's filter would also count the 72s they showed in logs they do not own.";
+          return s;
+        }
+        const a = el("a", "link", text);
+        a.href = "/chart?" + new URLSearchParams({ player: h.player, filter });
+        a.target = "_blank"; a.rel = "noopener";
+        a.title = `Open ${h.player}'s ${filter} hands in the chart`;
+        return a;
+      };
+      line.append(document.createTextNode(`${h.player} was `),
+        chartLink(`dealt 72 ${fmt(h.dealt_72)}×`, h.dealt_filter),
+        document.createTextNode(" and "),
+        chartLink(`played it ${fmt(h.played_72)}×`, h.played_filter),
+        document.createTextNode(
+          (h.played_pct == null ? "" : ` (${h.played_pct}%)`)
+          + ` · cards known on ${fmt(h.known)} of ${fmt(h.hands)} hands in the logs they downloaded.`));
+      box.appendChild(line);
+    }
+    box.classList.remove("hidden");
+  }
+
   load().catch((e) => {
     $("err").textContent = "could not load players: " + (e.message || e);
     $("err").classList.remove("hidden");
   });
+  loadBounties();
 })();
 </script>
 </body>

@@ -1773,5 +1773,53 @@ def slowplay(
     ])
 
 
+@app.command()
+def bounties(
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """The 7-2 bounty ledger: who has collected and paid the side bet, ranked by net,
+    and how often you played 72 when you were dealt it.
+
+    The 72 counts are yours only, from the logs you downloaded: anyone else's 72 is
+    seen only when it is shown, and a folded one never is.
+    """
+    from .stats.bounty import ledger
+
+    conn = connect(db)
+    out = ledger(conn, game)
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+
+    typer.echo(f"7-2 bounties  {game or 'all games'}")
+    if not out["players"]:
+        typer.echo("(no bounty has been paid)")
+    else:
+        header = f"{'player':<22}{'won':>5}{'chips':>8}{'paid':>6}{'chips':>8}{'net':>8}{'net bb':>9}{'hands':>7}"
+        typer.echo(header)
+        typer.echo("-" * len(header))
+        for r in out["players"]:
+            typer.echo(
+                f"{r['player'][:21]:<22}{r['won']['count']:>5}{r['won']['chips']:>8}"
+                f"{r['paid']['count']:>6}{r['paid']['chips']:>8}{r['net']['chips']:>+8}"
+                f"{_fmt(r['net']['bb']):>9}{r['hands']:>7}"
+            )
+        t = out["total"]
+        typer.echo(f"\n{t['bounties']} bounties, {t['won']} chips changed hands.")
+        if out["balance"]:
+            typer.echo(f"the ledger is {out['balance']:+} off zero: a payment named someone not dealt in.")
+    for h in out["hero"]:
+        typer.echo(
+            f"\n{h['player']}: dealt 72 {h['dealt_72']} times, played {h['played_72']}"
+            f" ({_fmt(h['played_pct'])}%), cards known on {h['known']} of {h['hands']} hands."
+        )
+        why = "" if h["dealt_filter"] and h["played_filter"] else (
+            "   (none: it would also find a 72 they showed in a log they do not own)"
+        )
+        typer.echo(f"  filters: {h['dealt_filter'] or '(none)'} / {h['played_filter'] or '(none)'}{why}")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

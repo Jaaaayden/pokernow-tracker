@@ -1250,6 +1250,46 @@ Judgement calls:
    `filter: null` and their `hand_ids`; the chart lists those hands without
    touching the spot. An `ip` flag would make them clickable like the rest.
 
+### 7-2 bounty ledger
+
+Who has collected and paid the 7-2 side bet. `bounty.py` mirrors this section;
+`GET /bounties`, `pnt bounties` and the leaderboard on the players page read it.
+SQL over `hand_players.bounty`, the signed side-bet result already in `net`,
+resolved to people through `player_identities`. Nothing is derived.
+
+| Figure | Numerator | Denominator / coverage |
+|---|---|---|
+| **won** | hands with `bounty > 0`: count, Σ chips, Σ chips / that hand's big blind | `hands`: every hand the player was dealt into |
+| **paid** | hands with `bounty < 0`, the same three, as positive figures | the same |
+| **net** | won − paid, in chips and in bb | `bb_known`: bounty hands with a big blind on record |
+| **dealt 72** | hero's hands whose cards are `72o` or `72s` (`hand=72`) | `known / hands`: hero's hands with cards known, of hero's hands |
+| **played 72** | of those, the ones with `vpip` (`hand=72,vpip`) | dealt 72 |
+
+**hero** is whoever owns a log: the player behind `games.hero_pn_id`, over that
+game's hands only. A database holding several people's logs has one hero row each.
+
+The ledger lists only players with at least one bounty hand, ranked by net chips.
+Across them, **net sums to zero**: a side bet moves chips and creates none.
+`balance` reports the sum anyway, because a payment to or from a player not dealt
+into the hand is booked on one side only (`parser._apply_bounty`).
+
+Judgement calls:
+
+1. **Incomplete hands are not excluded.** The bounty is settled after `-- ending
+   hand --`, so a log that stops mid-hand has no bounty lines for that hand: there
+   is nothing to exclude, and the bb/100 rule in "Money" never comes up.
+2. **A bounty hand with no big blind on record adds its chips but no bb figure**,
+   and `bb_known` says how many hands the bb figures stand on.
+3. **Hero's 72 counts use only the logs hero owns.** There `Your hand is` names
+   hero's cards on every hand; in someone else's log hero's cards are known only
+   when shown, and a shown 72 is nearly always a played one. The filters run over
+   every hand of the player, so a 72 they showed in a log they do not own would
+   join the count. Where one has, that figure's filter (`dealt_filter`,
+   `played_filter`) is null and the page shows the count unlinked.
+4. **No filter term finds a bounty hand**, so the leaderboard rows open the
+   player's card rather than a hand list. A `bounty` flag would make them
+   drillable like the rest.
+
 ---
 
 ## Hand review
