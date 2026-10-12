@@ -44,6 +44,7 @@ from pnt.ingest.importer import (
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.derive import Facts
 from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown, pool_facts
 from pnt.stats.live import snapshot
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
@@ -1045,3 +1046,58 @@ def rename(req: Annotated[RenameRequest, Body()]) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"old": req.old, "new": req.new.strip()}
+
+
+# ---- the action-line explorer -------------------------------------------------
+
+_LINES_MODE = f"^({'|'.join(MODES)})$"
+
+
+def _lines(facts: list[Facts], mode: str, street: str | None, min: int) -> dict:
+    try:
+        return line_breakdown(facts, mode, street or None, min)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/players/{alias}/lines")
+def player_lines(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
+    mode: Annotated[str, Query(pattern=_LINES_MODE, description="own: their line; action: the whole street")] = "own",
+    street: Annotated[str | None, Query(pattern="^(flop|turn|river)?$")] = None,
+    min: Annotated[int, Query(ge=1, description="Hide lines with fewer hands.")] = DEFAULT_MIN,
+    game: str | None = None,
+) -> dict:
+    """One player's hands in a spot, grouped by the line they took after the flop,
+    with how often each line was nutted, strong, marginal, a draw or air when shown.
+
+    Every group carries the `filter` that finds exactly its hands. See SPEC.md,
+    "Strength by line".
+    """
+    facts = _spot_facts(alias, filter, game)
+    return {"player": alias, "filter": filter, **_lines(facts, mode, street, min)}
+
+
+@app.get("/lines")
+def pool_lines(
+    filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
+    mode: Annotated[str, Query(pattern=_LINES_MODE)] = "own",
+    street: Annotated[str | None, Query(pattern="^(flop|turn|river)?$")] = None,
+    min: Annotated[int, Query(ge=1)] = DEFAULT_MIN,
+    game: str | None = None,
+) -> dict:
+    """The same over every player's hands: what the pool has behind each line.
+
+    Hand ids are left out: one hand is a row per player in it, and a list of
+    every hand in the database is not something a view can use.
+    """
+    conn = db()
+    pred = _predicate(conn, filter)
+    facts = pool_facts(conn, game)
+    if pred is not None:
+        facts = [f for f in facts if pred(f)]
+    out = _lines(facts, mode, street, min)
+    for g in out["groups"]:
+        del g["hand_ids"]
+    return {"player": None, "filter": filter, **out}
