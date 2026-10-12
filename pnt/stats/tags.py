@@ -75,6 +75,10 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "fourbets_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "jams_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "limper": {"pct": 45, "n": 30},
+    # The blind war (SPEC.md, "Steals and blind defense"). This pool defends wide:
+    # it folds a blind to 30% of steals and attempts 44% of them, so the lines sit
+    # clear of the pool rather than at an online regular's numbers.
+    "folds_to_steal": {"pct": 35, "n": 30},
     "jam_happy": {"pct": 3, "hits": 5, "post_pct": 8, "post_hits": 8},
     "folds_to_cbet": {"pct": 50, "n": 25},
     "sticky_vs_cbet": {"pct": 30, "n": 25},
@@ -278,6 +282,7 @@ def _rates() -> dict[str, tuple[Callable[[Facts], bool], Callable[[Facts], bool]
             lambda f: f.hole_cards is not None and bool(f.jam.get("preflop")),
         ),
         "limper": (lambda f: f.pf_faced.get(1) == "call", lambda f: 1 in f.pf_faced),
+        "folds_to_steal": (lambda f: f.fold_to_steal, lambda f: f.fold_to_steal_opp),
         "jam_preflop": (lambda f: bool(f.jam.get("preflop")), lambda f: f.vpip_opp),
         "jam_postflop": (lambda f: any(f.jam.get(s) for s in POSTFLOP_STREETS), lambda f: f.saw_flop),
         "folds_to_cbet": (lambda f: bool(f.fold_to_cbet.get("flop")), lambda f: bool(f.fold_to_cbet_opp.get("flop"))),
@@ -445,6 +450,10 @@ def _exploits(p: dict) -> list[dict]:
 
     rate_tag("limper", "LIMPER", r["limper"], True,
              "Limped {pct}% of unopened pots ({hits} of {n}). Iso-raise.", "limp")
+    rate_tag("folds_to_steal", "FOLDS TO STEAL", r["folds_to_steal"], True,
+             "Folded a blind to a steal nobody called {pct}% of the time ({hits} of {n}). "
+             "Open wider from the cutoff, button and small blind when they are in the blinds.",
+             "fold_to_steal_opp")
 
     th, pre, post = t["jam_happy"], r["jam_preflop"], r["jam_postflop"]
     if pre["hits"] >= th["hits"] and pre["pct"] is not None and pre["pct"] >= th["pct"]:

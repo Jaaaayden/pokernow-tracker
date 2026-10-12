@@ -8,6 +8,7 @@ parts built on them (SPEC.md, "Steals and blind defense").
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -124,3 +125,42 @@ def test_dead_button_and_dead_blind_hands_are_left_out(flag):
         assert not any(parse_filter(term)(f) for f in dead), (flag, term)
     for f in dead:
         assert not (f.steal_opp or f.steal or f.fold_to_steal_opp or f.fold_to_steal or f.three_bet_vs_steal)
+
+
+# ------------------------------------------------------------------ tags ----
+
+
+def _tag(rows, id: str):
+    from pnt.stats.tags import tags_for
+
+    return next((t for t in tags_for(rows)["tags"] if t["id"] == id), None)
+
+
+def _blind(n: int, answers: dict[str, int]) -> list:
+    """`n` copies of the big blind facing the button's steal, answered `answers`
+    times each way (call / raise), the rest folds."""
+    b = {f.pn_id: f for f in derive(_steal_hand())}["B"]
+    out = []
+    for answer, k in [*answers.items(), ("fold", n - sum(answers.values()))]:
+        out += [replace(b, hand_id=len(out) + i, pf_faced={**b.pf_faced, 2: answer}) for i in range(k)]
+    return out
+
+
+def test_folds_to_steal_fires_at_its_threshold_and_not_under_its_sample():
+    from pnt.stats.tags import THRESHOLDS
+
+    assert THRESHOLDS["folds_to_steal"] == {"pct": 35, "n": 30}
+    # 11 folds of 30 is 36.7%: over the line.
+    t = _tag(_blind(30, {"call": 19}), "folds_to_steal")
+    assert t and (t["n"], t["hits"], t["kind"], t["filter"]) == (30, 11, "exploit", "fold_to_steal_opp")
+    assert t["label"] == "FOLDS TO STEAL" and "11 of 30" in t["tip"]
+    assert _tag(_blind(30, {"call": 20}), "folds_to_steal") is None, "10 of 30 is 33.3%, under the line"
+    assert _tag(_blind(29, {"call": 10}), "folds_to_steal") is None, "29 steals faced is under the sample"
+    assert all(parse_filter("fold_to_steal_opp")(f) for f in _blind(30, {}))
+
+
+def test_folds_to_steal_ignores_dead_button_hands():
+    """Thirty dead-button folds are no evidence: the seat names are guesses."""
+    rows = [replace(f, dead_button=True) for f in _blind(30, {})]
+    assert not any(f.fold_to_steal_opp for f in rows)
+    assert _tag(rows, "folds_to_steal") is None
