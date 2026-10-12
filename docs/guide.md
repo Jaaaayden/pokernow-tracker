@@ -465,6 +465,23 @@ The rules, the thresholds, and the hands these games play on purpose (7-2, 9-2 a
 K-2o are never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
 "Tags". `GET /players/{alias}/tags` returns the same as JSON.
 
+### Shows without being asked
+
+```bash
+pnt shows henry          # what henry turned over after a fold or an uncontested pot
+```
+
+Some players show the bluff that got a fold, to needle the table; others show only
+the big hand they laid down, to look tight. Open a player on the
+[players page](http://127.0.0.1:52000/players.html) and **Shows without being asked**
+lists every hand they showed after it ended, split by how it ended for them (folded,
+won uncontested, or mucked at showdown), with each two-card show read as strong,
+marginal, a draw or air on the board as it stood when they folded. One-card shows are
+counted only. These are the hands they *chose* to show you, so read them as what they
+want you to believe, not as their range. The range charts leave them out for the same
+reason. A player whose shows are mostly air or draws gets a **SHOWS BLUFFS** fun tag,
+and one whose shows are mostly strong gets **SHOWS NUTS**.
+
 ## Hand review
 
 ```bash

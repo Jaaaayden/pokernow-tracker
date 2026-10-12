@@ -89,6 +89,9 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "donks": {"pct": 35, "n": 15},
     "size_tell": {"gap": 40, "n": 6},
     "fun": {"hits": 2},
+    # Voluntary shows (`shows.show_tags`): one side of the two-card shows, at
+    # least `hits` of them and more than `pct` percent.
+    "shows": {"hits": 3, "pct": 50},
     # archetypes
     "maniac": {"pfr_excess": 15, "af_flop": 60, "jam_pct": 3, "3bet": 18},
     "station": {"fold_to_cbet": 30, "fold_to_cbet_n": 25, "wtsd": 38, "wtsd_n": 40, "pfr_ratio": 0.5},
