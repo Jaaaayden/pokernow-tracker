@@ -1773,5 +1773,70 @@ def slowplay(
     ])
 
 
+#: `pnt winnings`: one session's figures, after its game id.
+_WINNINGS_COLUMNS = [
+    ("hands", "Hands", 7),
+    ("net_bb", "Net bb", 10),
+    ("bb_per_100", "bb/100", 9),
+    ("red", "Red", 9),
+    ("blue", "Blue", 9),
+]
+
+
+@app.command()
+def winnings(
+    alias: str,
+    db: Path = DbOpt,
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'position=BTN'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    adjusted: bool = typer.Option(False, "--adjusted", help="Add the all-in adjusted total."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Red line and blue line: net bb won without showdown and at showdown, and per session.
+
+    Blue is every hand they took to showdown, red every other hand; the two add
+    up to the total. Incomplete hands count as hands but in no bb figure. --json
+    prints every point of the three lines.
+    """
+    from .stats.winnings import allin_adjusted, winnings_series
+
+    conn = connect(db)
+    try:
+        facts = facts_for(conn, alias, game)
+        if filter_:
+            pred = parse_filter(filter_, display_names(conn))
+            facts = [f for f in facts if pred(f)]
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    out = winnings_series(facts, allin_adjusted(conn, facts) if adjusted else None)
+    if as_json:
+        typer.echo(json.dumps({"player": alias, "filter": filter_, **out}, indent=2))
+        return
+
+    t = out["totals"]
+    typer.echo(f"{alias}  filter: {filter_ or '(none)'}")
+    typer.echo(f"hands: {t['hands']}   with a known result: {t['bb_hands']}")
+    typer.echo(f"total:  {_fmt(t['net_bb'])} bb   ({_fmt(t['bb_per_100'])} bb/100)")
+    for key, label in (("red", "red (no showdown)"), ("blue", "blue (showdown)")):
+        line = t[key]
+        typer.echo(f"{label + ':':<20}{_fmt(line['net_bb']):>9} bb over {line['bb_hands']} hands"
+                   f"   filter: {line['filter']}")
+    if "adjusted" in t:
+        a = t["adjusted"]
+        typer.echo(f"{'all-in adjusted:':<20}{_fmt(a['net_bb']):>9} bb   "
+                   f"{a['allin_hands']} all-in showdown(s) paid by equity"
+                   + (f", {a['skipped']} skipped (a live hand mucked)" if a["skipped"] else ""))
+    typer.echo("\nby session, oldest first:")
+    if not out["sessions"]:
+        typer.echo("(no rows)")
+        return
+    header = "game_id".ljust(26) + "date".ljust(12) + "".join(h.rjust(w) for _, h, w in _WINNINGS_COLUMNS)
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for s in out["sessions"]:
+        line = s["game_id"][:25].ljust(26) + (s["first_ts"] or "--")[:10].ljust(12)
+        typer.echo(line + "".join(_fmt(s.get(c)).rjust(w) for c, _, w in _WINNINGS_COLUMNS))
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

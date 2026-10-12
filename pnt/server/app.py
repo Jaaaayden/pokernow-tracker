@@ -1266,3 +1266,28 @@ def pool_slowplay(
         grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
     out = slowplay([f for facts in grouped.values() for f in facts], street, floor)
     return {"filter": filter, **out, "players": by_player(grouped, aliases, street, floor, min)}
+
+
+# ---- red line and blue line ----------------------------------------------------
+# Imported inside the endpoint so this block stands alone. See SPEC.md, "Red and
+# blue lines".
+
+
+@app.get("/players/{alias:path}/winnings")
+def player_winnings(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'position=BTN'")] = None,
+    game: str | None = None,
+    adjusted: Annotated[bool, Query(description="Add the all-in adjusted line.")] = False,
+) -> dict:
+    """One player's cumulative net bb in hand order, split on showdown: the blue
+    line is the hands they took to showdown, the red line every other hand. With
+    `adjusted`, a third line pays each all-in showdown by equity. Plus net bb per
+    session. Incomplete hands are in no line, as in bb/100. See SPEC.md, "Red and
+    blue lines"."""
+    from pnt.stats.winnings import allin_adjusted, winnings_series
+
+    conn = db()
+    facts = _spot_facts(alias, filter, game, conn)
+    adj = allin_adjusted(conn, facts) if adjusted else None
+    return {"player": alias, "filter": filter, **winnings_series(facts, adj)}
