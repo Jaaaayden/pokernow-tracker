@@ -96,6 +96,24 @@
   .err { color: var(--down); margin: 10px 0; }
   .hidden { display: none !important; }
   .empty { color: var(--muted); padding: 16px 2px; }
+
+  /* Head to head: the pool's matrix above the list, and each player's table. */
+  details.h2h-pool { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+    margin-bottom: 14px; padding: 0 14px; }
+  details.h2h-pool > summary { cursor: pointer; padding: 11px 0; font-weight: 600; }
+  details.h2h-pool > summary small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  details.h2h-pool[open] > summary { border-bottom: 1px solid var(--grid); }
+  .h2h-scroll { overflow-x: auto; margin: 10px 0 12px; }
+  table.h2h { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  table.h2h th { color: var(--muted); font-weight: 500; padding: 4px 6px; text-align: right; white-space: nowrap; }
+  table.h2h th.l, table.h2h td.l { text-align: left; }
+  table.h2h td { padding: 4px 6px; border-top: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  table.h2h td.dim { color: var(--muted); }
+  table.h2h .up { color: var(--up); }
+  table.h2h .down { color: var(--down); }
+  table.h2h td.self { background: var(--mid); }
+  table.h2h.list { width: 100%; }
+  .h2h-foot { color: var(--muted); font-size: 12px; margin: 0 0 10px; max-width: 80ch; }
 </style>
 </head>
 <body>
@@ -108,6 +126,10 @@
     combined history immediately; nothing is stored, so nothing needs recomputing.</p>
 
   <div class="err hidden" id="err"></div>
+  <details class="h2h-pool" id="h2h-pool">
+    <summary>Who pays whom <small>big blinds each row won from each column</small></summary>
+    <div id="h2h-pool-body"></div>
+  </details>
   <div id="list"></div>
 </main>
 
@@ -151,6 +173,7 @@
   async function load() {
     players = await api("/players");
     players.sort((a, b) => b.hands - a.hands);
+    resetH2h();
     $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
       + ` · ${players.reduce((n, p) => n + p.n_ids, 0)} PokerNow ids`;
     render();
@@ -253,6 +276,7 @@
     rn.addEventListener("click", (e) => { e.stopPropagation(); doRename(p); });
     acts.appendChild(rn);
     body.appendChild(acts);
+    body.appendChild(h2hPanel(p));
     body.appendChild(notePanel(p, pnote));
 
     if (players.length > 1) body.appendChild(mergePanel(p));
@@ -411,6 +435,179 @@
       toast(`Renamed to ${next.trim()}.`);
     } catch (e) { toast("Rename failed: " + e.message); }
   }
+
+  // ---- head to head ------------------------------------------------------
+  // The money between two players (/players/{alias}/h2h) and the pool's matrix
+  // (/h2h). A hand with one winner settles exactly; with several, each loser's
+  // loss is split by what each winner won (SPEC.md, "Head to head"). Both are
+  // fetched only when shown, and forgotten whenever the list reloads, since a
+  // merge or a rename changes whose money it was.
+  const h2hCache = new Map();
+  let h2hPool = null;
+
+  function resetH2h() {
+    h2hCache.clear();
+    h2hPool = null;
+    if ($("h2h-pool").open) paintPool();
+  }
+
+  const signed = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
+  const tone = (x) => (x > 0.05 ? "up" : x < -0.05 ? "down" : "");
+
+  function chartHref(player, filter) {
+    const q = new URLSearchParams({ player });
+    if (filter) q.set("filter", filter);
+    return "/chart?" + q;
+  }
+
+  function shortfall(skipped) {
+    const n = skipped.incomplete + skipped.unbalanced + skipped.no_bb;
+    return n ? ` ${fmt(n)} hand${n === 1 ? "" : "s"} moved no money (the log stopped early, or the chips do not balance).` : "";
+  }
+
+  function h2hPanel(p) {
+    const wrap = el("div", "sub");
+    wrap.appendChild(el("p", null, `Head to head: the big blinds ${p.alias} won from each opponent, biggest either way first.`));
+    // Built for every card on each render; only the open one asks the server.
+    if (p.alias !== openAlias) return wrap;
+    const hit = h2hCache.get(p.alias);
+    if (hit) {
+      wrap.appendChild(h2hTable(p, hit));
+      return wrap;
+    }
+    const wait = el("div", "h2h-foot", "loading…");
+    wrap.appendChild(wait);
+    api(`/players/${encodeURIComponent(p.alias)}/h2h`).then((data) => {
+      h2hCache.set(p.alias, data);
+      wait.replaceWith(h2hTable(p, data));
+    }).catch((e) => { wait.textContent = "could not load head to head: " + e.message; });
+    return wrap;
+  }
+
+  function h2hTable(p, data) {
+    const frag = document.createDocumentFragment();
+    if (!data.rows.length) {
+      frag.appendChild(el("div", "h2h-foot", "No hands with anyone else yet."));
+      return frag;
+    }
+    const scroll = el("div", "h2h-scroll");
+    const t = el("table", "h2h list");
+    const hr = document.createElement("tr");
+    for (const [h, cls, tip] of [
+      ["opponent", "l", ""],
+      ["hands", "", "Dealt in together"],
+      ["net bb", "", `What ${p.alias} won from them; negative is lost to them`],
+      ["SD", "", "Both still in at a showdown"],
+      ["split", "", "Hands where money moved between them by the multiway rule rather than exactly"],
+      ["FB by", "", `${p.alias}'s failed bluffs that they called or raised. ${data.failed_bluff_note}`],
+      ["FB vs", "", `Their failed bluffs that ${p.alias} called or raised`],
+      ["chart", "", `The hands vs=<opponent> finds: they were still in when ${p.alias} last acted`],
+    ]) {
+      const th = el("th", cls, h);
+      if (tip) th.title = tip;
+      hr.appendChild(th);
+    }
+    t.appendChild(hr);
+    for (const r of data.rows) {
+      const tr = document.createElement("tr");
+      tr.appendChild(el("td", "l", r.opponent));
+      const hands = el("td", null, fmt(r.hands));
+      if (r.counted !== r.hands) {
+        hands.textContent += "*";
+        hands.title = `money counted on ${fmt(r.counted)} of ${fmt(r.hands)}: the rest are short a ledger`;
+      }
+      tr.appendChild(hands);
+      const net = el("td", tone(r.net_bb), signed(r.net_bb));
+      net.title = `${fmt(r.flow_hands)} hands moved chips between them, ${fmt(r.split_hands)} by the multiway rule`
+        + (r.bounty_bb ? `; ${signed(r.bounty_bb)}bb of it 7-2 bounties` : "");
+      tr.appendChild(net);
+      tr.appendChild(el("td", "dim", fmt(r.showdowns)));
+      tr.appendChild(el("td", "dim", fmt(r.split_hands)));
+      const by = el("td", null, fmt(r.failed_bluffs));
+      by.title = `judged on ${fmt(r.bluff_known)} of ${fmt(r.bluff_spots)} lost pots where they answered a bet: the rest showed no cards`;
+      tr.appendChild(by);
+      const vs = el("td", null, fmt(r.failed_bluffs_against));
+      vs.title = `judged on ${fmt(r.bluff_known_against)} of ${fmt(r.bluff_spots_against)} lost pots where ${p.alias} answered a bet`;
+      tr.appendChild(vs);
+      const td = el("td");
+      if (r.filter) {
+        const a = el("a", "link", `${fmt(r.n)} ↗`);
+        a.href = chartHref(p.alias, r.filter);
+        a.target = "_blank"; a.rel = "noopener";
+        a.title = `Open ${p.alias}'s chart on ${r.filter}`;
+        a.addEventListener("click", (e) => e.stopPropagation());
+        td.appendChild(a);
+      } else {
+        td.textContent = "—";
+        td.title = "No one vs= term names only this player: another answers to the same name, ignoring case";
+      }
+      tr.appendChild(td);
+      t.appendChild(tr);
+    }
+    scroll.appendChild(t);
+    frag.appendChild(scroll);
+    frag.appendChild(el("p", "h2h-foot",
+      `Net ${signed(data.net_bb)}bb against the table over ${fmt(data.hands)} hands. A hand with one winner `
+      + "settles exactly; with several, each loser's loss is split by what each winner won."
+      + shortfall(data.skipped)));
+    return frag;
+  }
+
+  async function paintPool() {
+    const box = $("h2h-pool-body");
+    if (h2hPool) { box.replaceChildren(poolMatrix(h2hPool)); return; }
+    box.replaceChildren(el("div", "h2h-foot", "loading…"));
+    try {
+      h2hPool = await api("/h2h");
+      box.replaceChildren(poolMatrix(h2hPool));
+    } catch (e) {
+      box.replaceChildren(el("div", "err", "could not load who pays whom: " + e.message));
+    }
+  }
+
+  function poolMatrix(data) {
+    const frag = document.createDocumentFragment();
+    if (data.players.length < 2) {
+      frag.appendChild(el("div", "h2h-foot", "Needs two players who have sat together."));
+      return frag;
+    }
+    const names = data.players.map((x) => x.player);
+    const scroll = el("div", "h2h-scroll");
+    const t = el("table", "h2h");
+    const hr = document.createElement("tr");
+    hr.appendChild(el("th", "l", "won from →"));
+    for (const n of names) hr.appendChild(el("th", null, n));
+    hr.appendChild(el("th", null, "total"));
+    t.appendChild(hr);
+    for (const row of data.players) {
+      const tr = document.createElement("tr");
+      tr.appendChild(el("td", "l", row.player));
+      const cells = data.cells[row.player] || {};
+      for (const n of names) {
+        const c = cells[n];
+        if (n === row.player) { tr.appendChild(el("td", "self")); continue; }
+        if (!c) { tr.appendChild(el("td", "dim", "·")); continue; }
+        const td = el("td", tone(c.net_bb), c.net_bb.toFixed(0));
+        td.title = `${row.player} ${c.net_bb >= 0 ? "won" : "lost"} ${Math.abs(c.net_bb).toFixed(1)}bb `
+          + `${c.net_bb >= 0 ? "from" : "to"} ${n} over ${fmt(c.hands)} hands together`
+          + (c.counted !== c.hands ? ` (${fmt(c.counted)} with all their chips)` : "")
+          + `, ${fmt(c.showdowns)} showdowns, ${fmt(c.split_hands)} split by the multiway rule`;
+        tr.appendChild(td);
+      }
+      tr.appendChild(el("td", tone(row.net_bb), signed(row.net_bb)));
+      t.appendChild(tr);
+    }
+    scroll.appendChild(t);
+    frag.appendChild(scroll);
+    frag.appendChild(el("p", "h2h-foot",
+      `Over ${fmt(data.hands)} hands. Each cell is what the row's player won from the column's; `
+      + "the cell across the diagonal is the same number, negated. A hand with one winner settles "
+      + "exactly; with several, each loser's loss is split by what each winner won. Hover a cell "
+      + "for the hands behind it." + shortfall(data.skipped)));
+    return frag;
+  }
+
+  $("h2h-pool").addEventListener("toggle", () => { if ($("h2h-pool").open) paintPool(); });
 
   load().catch((e) => {
     $("err").textContent = "could not load players: " + (e.message || e);

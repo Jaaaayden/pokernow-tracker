@@ -155,6 +155,27 @@ whoever now holds the IDs, and deleting a game never removes a player you have
 written about. Notes are not in `aliases.csv`, so they stay in the database.
 `POST /players/{alias}/note` writes one, and `/players` and `/hud/{game}` return them.
 
+### Head to head
+
+`vs=henry` shows how you play against henry; head to head shows how much money
+went between you. Open a player's row on the players page for a **Head to head**
+table: one row per opponent, biggest money either way first, with the hands you
+played together, the big blinds you won from them (negative is lost), showdowns,
+and each side's failed bluffs into the other. The last column opens your chart
+on `vs=<opponent>` and says how many hands it will find. **Who pays whom**, above
+the list, is the same for every pair at once: each cell is what the row's player
+won from the column's, so the cell across the diagonal is the same number negated.
+
+A hand with one winner settles exactly: every loser's chips went to them. With
+several winners (a chop, a side pot) each loser's loss is split by what each
+winner won, and a hand whose log stopped early moves no money. Bounties go to
+whoever they were paid to. SPEC.md, "Head to head", has the rule in full.
+
+```bash
+pnt h2h            # the pool's matrix
+pnt h2h henry      # henry against each opponent
+```
+
 ## Stats
 
 `pnt stats` lists every player, most hands first. It prints `--`, not `0`, when a
