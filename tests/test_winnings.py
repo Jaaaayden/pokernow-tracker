@@ -195,3 +195,13 @@ def test_cli_prints_the_totals_and_sessions(tmp_path):
     assert json.loads(result.output)["totals"]["hands"] == 129
     result = CliRunner().invoke(cli.app, ["winnings", "nobody", "--db", str(path)])
     assert result.exit_code != 0 and "unknown alias" in result.output
+
+
+def test_the_chart_draws_the_lines():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "pnt" / "server" / "static" / "chart.html").read_text("utf-8")
+    assert "function renderWinnings(" in html and "/winnings?" in html
+    # Drawn at the top of the Results card, from the data fetched beside /results.
+    assert "renderWinnings(d.winnings)" in html.split("function renderResults(")[1]
+    assert "data.winnings = await" in html

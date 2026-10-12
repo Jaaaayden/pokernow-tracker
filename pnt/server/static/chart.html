@@ -492,6 +492,43 @@
   #results .worst { font-size: 11px; margin-left: 6px; padding: 0 6px; border: 1px solid var(--flag); border-radius: 999px; color: var(--flag); }
   #results tr.pick td:first-child::after { content: none; }
   #results .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+
+  /* --- red line and blue line, at the top of Results ---
+     Red is the hands that never reached showdown, blue the ones that did, grey
+     their sum; the all-in adjusted total is a dashed grey. Each line keeps its own
+     colour in both themes. */
+  #winnings { --red: #c4372f; --blue: #2a78d6; --total: #52514e; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #winnings { --red: #e66e6d; --blue: #6da7ec; --total: #c3c2b7; }
+  }
+  :root[data-theme="dark"] #winnings { --red: #e66e6d; --blue: #6da7ec; --total: #c3c2b7; }
+  #winnings .wlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  #winnings .wlegend button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  #winnings .wlegend button:hover, #winnings .wlegend button:focus-visible { color: var(--ink); text-decoration: underline; outline: 0; }
+  #winnings .wlegend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+  #winnings .wlegend .red i { border-color: var(--red); }
+  #winnings .wlegend .blue i { border-color: var(--blue); }
+  #winnings .wlegend .total i { border-color: var(--total); }
+  #winnings .wlegend .adjusted i { border-color: var(--muted); border-top-style: dashed; }
+  #winnings .wcap { color: var(--muted); font-size: 12px; min-height: 1.4em; margin: 4px 0 0; overflow-wrap: anywhere; }
+  #winnings svg { display: block; width: 100%; height: auto; max-height: 280px; }
+  #winnings svg.sessions { max-height: 110px; margin-top: 6px; }
+  #winnings svg text { fill: var(--muted); font-size: 11px; font-family: system-ui, sans-serif; }
+  #winnings .wzero { stroke: var(--axis); stroke-width: 1; }
+  #winnings .wguide { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  #winnings polyline { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
+  #winnings polyline.red { stroke: var(--red); }
+  #winnings polyline.blue { stroke: var(--blue); }
+  #winnings polyline.total { stroke: var(--total); stroke-width: 2; }
+  #winnings polyline.adjusted { stroke: var(--muted); stroke-dasharray: 4 3; }
+  #winnings .wdot { fill: var(--surface); stroke-width: 1.6; }
+  #winnings .wdot.red { stroke: var(--red); }
+  #winnings .wdot.blue { stroke: var(--blue); }
+  #winnings .wdot.total { stroke: var(--total); }
+  #winnings rect.up { fill: var(--up); }
+  #winnings rect.down { fill: var(--down); }
+  #winnings rect.bar { cursor: pointer; }
+  #winnings rect.bar:hover, #winnings rect.bar:focus-visible { opacity: 0.75; outline: 0; }
 </style>
 </head>
 <body>
@@ -1072,7 +1109,12 @@
         q.set("street", state.street); q.set("floor", state.floor);
         data = await getJson(`/players/${player}/slowplay?` + q);
       } else if (view === "results") {
+        // The red and blue lines ride along: same player and spot. A server too
+        // old to have them costs the graph, not the view.
+        const wq = new URLSearchParams(q); wq.set("adjusted", "true");
+        const w = getJson(`/players/${player}/winnings?` + wq).catch(e => ({ error: String(e.message || e) }));
         data = await getJson(`/players/${player}/results?` + q);
+        data.winnings = await w;
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -1951,6 +1993,8 @@
   function renderResults(d) {
     const wrap = $("results");
     wrap.replaceChildren();
+    const graph = renderWinnings(d.winnings);
+    if (graph) wrap.appendChild(graph);
     const tot = d.total;
     setTileKeys("hands in this spot ›", "net bb, complete hands", "bb/100");
     $("t-hands").textContent = d.hands;
@@ -2048,6 +2092,177 @@
       }
       wrap.appendChild(block);
     }
+  }
+
+  // ---- red line and blue line -------------------------------------------------
+  // Cumulative net bb in hand order, split on whether the player went to
+  // showdown: blue the showdowns, red everything else, grey their sum, and a
+  // dashed grey for the total with each all-in showdown paid by equity. Under it,
+  // one bar per session. Ported from allin.html's renderGraph: hand rolled, since
+  // four lines and a zero axis do not need a library. Clicking red or blue in the
+  // legend adds its term to the spot; a point opens its hand; a bar its session.
+  // See "Red and blue lines" in SPEC.md.
+  function renderWinnings(w) {
+    if (!w) return null;
+    const box = document.createElement("div");
+    box.id = "winnings";
+    const h = document.createElement("h3");
+    h.textContent = "Red line, blue line";
+    h.title = "red: net bb on hands that never reached showdown · blue: on hands that did";
+    box.appendChild(h);
+    const cap = document.createElement("p"); cap.className = "wcap";
+    if (w.error) {
+      cap.textContent = `no graph: ${w.error}`;
+      box.appendChild(cap);
+      return box;
+    }
+    const t = w.totals, pts = w.points;
+    const signed = (v) => v == null ? "–" : fmtBb(v);
+    const coverage = `${t.bb_hands} of ${t.hands} hands with a known result`;
+    const adj = t.adjusted && t.adjusted.allin_hands ? t.adjusted : null;
+
+    const legend = document.createElement("div"); legend.className = "wlegend";
+    const chip = (cls, text, tip, filter, title) => {
+      const el = document.createElement(filter ? "button" : "span");
+      el.className = cls;
+      const i = document.createElement("i");
+      el.append(i, text);
+      el.title = tip;
+      if (filter) el.addEventListener("click", () => drillLine(filter, title));
+      legend.appendChild(el);
+    };
+    chip("total", `total ${signed(t.net_bb)}`, `${coverage}; ${t.bb_per_100 == null ? "–" : t.bb_per_100.toFixed(1)} bb/100`);
+    chip("red", `no showdown ${signed(t.red.net_bb)} · ${t.red.bb_hands}`,
+      `${t.red.bb_hands} of ${t.red.hands} hands with a known result · adds ${t.red.filter} to the spot`,
+      t.red.filter, "no showdown");
+    chip("blue", `showdown ${signed(t.blue.net_bb)} · ${t.blue.bb_hands}`,
+      `${t.blue.bb_hands} of ${t.blue.hands} hands with a known result · adds ${t.blue.filter} to the spot`,
+      t.blue.filter, "went to showdown");
+    if (adj) {
+      chip("adjusted", `all-in adjusted ${signed(adj.net_bb)}`,
+        `the total with ${adj.allin_hands} all-in showdown${adj.allin_hands === 1 ? "" : "s"} paid by equity`
+        + (adj.skipped ? `; ${adj.skipped} skipped, a live hand was mucked` : ""));
+    }
+    box.appendChild(legend);
+    const rest = () => {
+      cap.textContent = `${coverage}, oldest first`
+        + (adj && adj.skipped ? ` · ${adj.skipped} all-in showdown${adj.skipped === 1 ? "" : "s"} not adjusted: a live hand was mucked` : "");
+    };
+    if (!pts.length) {
+      cap.textContent = `no hand in this spot has a known result (${coverage})`;
+      box.appendChild(cap);
+      return box;
+    }
+
+    const NS = "http://www.w3.org/2000/svg";
+    const mkIn = (svg) => (tag, attrs, text) => {
+      const e = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+      if (text != null) e.textContent = text;
+      svg.appendChild(e);
+      return e;
+    };
+    const W = 800, H = 240, L = 58, R = 14, T = 12, B = 26;
+    const n = pts.length;
+    const series = { total: [0], red: [0], blue: [0] };
+    if (adj) series.adjusted = [0];
+    for (const p of pts) for (const k of Object.keys(series)) series[k].push(p[k]);
+    // A loop, not Math.min(...): a big player's four lines outrun the argument limit.
+    let lo = 0, hi = 0;
+    for (const arr of Object.values(series)) for (const v of arr) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const x = (i) => L + i * (W - L - R) / n;
+    const y = (v) => hi === lo ? T + (H - T - B) / 2 : T + (hi - v) * (H - T - B) / (hi - lo);
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `cumulative net bb over ${n} hands: total ${signed(t.net_bb)},`
+      + ` no showdown ${signed(t.red.net_bb)}, showdown ${signed(t.blue.net_bb)}`);
+    const mk = mkIn(svg);
+    mk("line", { class: "wzero", x1: L, x2: W - R, y1: y(0), y2: y(0) });
+    // The top, the bottom, and zero where it has room between them.
+    const labels = hi === lo ? [0] : [hi, lo];
+    if (hi !== lo && Math.min(y(0) - y(hi), y(lo) - y(0)) >= 14) labels.push(0);
+    for (const v of labels) mk("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v === 0 ? "0" : signed(v));
+    mk("text", { x: W - R, y: H - 6, "text-anchor": "end" }, `${n} hand${n === 1 ? "" : "s"}, oldest first`);
+    const line = (arr) => arr.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    for (const k of ["adjusted", "red", "blue", "total"]) {
+      if (series[k]) mk("polyline", { class: k, points: line(series[k]) });
+    }
+    const guide = mk("line", { class: "wguide hidden", x1: 0, x2: 0, y1: T, y2: H - B });
+    const dots = ["red", "blue", "total"].map(k => [k, mk("circle", { class: `wdot ${k} hidden`, r: 3.2 })]);
+    const hit = mk("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" });
+    const point = (i) => {
+      const p = pts[i - 1];
+      guide.classList.remove("hidden");
+      guide.setAttribute("x1", x(i)); guide.setAttribute("x2", x(i));
+      for (const [k, dot] of dots) {
+        dot.classList.remove("hidden");
+        dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(series[k][i]));
+      }
+      const when = p.ts ? new Date(p.ts) : null;
+      cap.textContent = `#${p.hand_number}${when && !isNaN(when) ? " · " + SESSION_DATE.format(when) : ""}`
+        + ` · this hand ${fmtBb(p.net_bb)} ${p.sd ? "at showdown" : "without showdown"}`
+        + ` · total ${fmtBb(p.total)} = red ${fmtBb(p.red)} + blue ${fmtBb(p.blue)}`
+        + (adj ? ` · adjusted ${fmtBb(p.adjusted)}${p.allin ? " (all-in)" : ""}` : "");
+    };
+    const locate = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) * W / rect.width;
+      return Math.max(1, Math.min(n, Math.round((px - L) * n / (W - L - R))));
+    };
+    hit.addEventListener("mousemove", (ev) => point(locate(ev)));
+    hit.addEventListener("mouseleave", () => {
+      guide.classList.add("hidden");
+      for (const [, dot] of dots) dot.classList.add("hidden");
+      rest();
+    });
+    hit.addEventListener("click", (ev) => {
+      const i = locate(ev);
+      point(i);
+      openHands(`hand #${pts[i - 1].hand_number}`, [pts[i - 1].hand_id]);
+    });
+    box.appendChild(svg);
+
+    // One bar per session, net bb from zero, oldest on the left. No filter term
+    // names a game, so a bar lists its hands by id and leaves the spot alone.
+    const sessions = w.sessions || [];
+    if (sessions.length > 1) {
+      const SH = 90, ST = 6, SB = 6;
+      const bars = document.createElementNS(NS, "svg");
+      bars.setAttribute("class", "sessions");
+      bars.setAttribute("viewBox", `0 0 ${W} ${SH}`);
+      bars.setAttribute("role", "group");
+      bars.setAttribute("aria-label", `net bb in each of ${sessions.length} sessions`);
+      const bk = mkIn(bars);
+      const vals = sessions.map(s => s.net_bb ?? 0);
+      const blo = Math.min(0, ...vals), bhi = Math.max(0, ...vals);
+      const by = (v) => bhi === blo ? ST + (SH - ST - SB) / 2 : ST + (bhi - v) * (SH - ST - SB) / (bhi - blo);
+      const slot = (W - L - R) / sessions.length;
+      const bw = Math.max(1, Math.min(28, slot * 0.7));
+      bk("text", { x: L - 6, y: by(0) + 4, "text-anchor": "end" }, "sessions");
+      sessions.forEach((s, i) => {
+        const v = s.net_bb ?? 0;
+        const top = Math.min(by(v), by(0)), ht = Math.max(1, Math.abs(by(v) - by(0)));
+        const r = bk("rect", { class: `bar ${v >= 0 ? "up" : "down"}`, x: (L + i * slot + (slot - bw) / 2).toFixed(1),
+          y: top.toFixed(1), width: bw.toFixed(1), height: ht.toFixed(1), tabindex: 0, role: "button" });
+        const d = new Date(s.first_ts);
+        const when = isNaN(d) ? s.game_id : SESSION_DATE.format(d);
+        const say = `${when} · ${signed(s.net_bb)} over ${s.bb_hands} of ${s.hands} hands`
+          + ` (red ${signed(s.red)}, blue ${signed(s.blue)}) · click to list them`;
+        r.setAttribute("aria-label", say);
+        const tip = document.createElementNS(NS, "title"); tip.textContent = say; r.appendChild(tip);
+        const open = () => openHands(`session ${when}`, s.hand_ids);
+        r.addEventListener("mouseenter", () => { cap.textContent = say; });
+        r.addEventListener("mouseleave", rest);
+        r.addEventListener("click", open);
+        r.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+      });
+      bk("line", { class: "wzero", x1: L, x2: W - R, y1: by(0), y2: by(0) });
+      box.appendChild(bars);
+    }
+    rest();
+    box.appendChild(cap);
+    return box;
   }
 
   function render() {
