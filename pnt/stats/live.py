@@ -93,11 +93,14 @@ def hand_row(parsed: ParsedHand, hand_id: int = 0) -> HandRow:
                 all_in=a.all_in,
                 amount_to=a.amount_to,
                 post_kind=a.post_kind,
+                ord=a.ord,
             )
             for a in parsed.actions
         ],
         board=board,
         run_count=parsed.run_count,
+        board_ords=dict(parsed.board_ords),
+        clock_ms=parsed.clock_ms,
     )
 
 

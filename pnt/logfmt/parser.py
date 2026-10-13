@@ -21,6 +21,7 @@ rate is then quietly too low for exactly the players who sit out most.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
@@ -84,6 +85,9 @@ class ParsedAction:
     is_forced: bool
     all_in: bool
     post_kind: str | None = None
+    #: The `ord` of the log line this action came from (epoch ms * 100 + seq), so
+    #: the action can be put back on the clock. See SPEC.md, "Timing tells".
+    ord: int | None = None
 
 
 @dataclass(slots=True)
@@ -115,6 +119,13 @@ class ParsedHand:
     #: Cards shown after ``-- ending hand #N --``, keyed by pn_id. Deliberately
     #: separate from `HandPlayer.hole_cards` -- see `_apply_voluntary_show`.
     voluntary_shows: dict[str, VoluntaryShow] = field(default_factory=dict)
+    #: The `ord` of each betting street's board line, run one only: what the first
+    #: decision on a street is timed from. See SPEC.md, "Timing tells".
+    board_ords: dict[str, int] = field(default_factory=dict)
+    #: The longest a decision could take when the hand began, in ms: the table's
+    #: decision limit plus a full time bank, from its ``Game Config Changes`` lines.
+    #: None when the table turned the clock off.
+    clock_ms: int | None = None
 
     @property
     def went_to_showdown(self) -> bool:
@@ -303,6 +314,7 @@ class _HandBuilder:
                 is_forced=True,
                 all_in=ev.all_in,
                 post_kind=ev.kind,
+                ord=ev.ord,
             )
         )
 
@@ -329,6 +341,7 @@ class _HandBuilder:
                 amount_to=ev.amount_to,
                 is_forced=False,
                 all_in=ev.all_in,
+                ord=ev.ord,
             )
         )
 
@@ -345,6 +358,7 @@ class _HandBuilder:
             # best and would wipe a live street's commitments at worst.
             self.street = ev.street
             self._committed.clear()
+            self.hand.board_ords[ev.street] = ev.ord
 
     def uncalled(self, ev: E.UncalledReturn) -> None:
         p = self.hand.players.get(ev.player.pn_id)
@@ -421,6 +435,27 @@ def _apply_voluntary_show(hand: ParsedHand, ev: E.Shows) -> None:
     show.ord = ev.ord
 
 
+#: PokerNow's default decision clock: 20 s to act, plus a 10 s time bank.
+DEFAULT_DECISION_S, DEFAULT_TIME_BANK_S = 20, 10
+_CLOCK_SETTINGS = {
+    "limit": re.compile(r"^\* Decision Limit Time: .*» (\S+)\s*$", re.MULTILINE),
+    "bank": re.compile(r"^\* Max Time Bank: .*» (\S+)\s*$", re.MULTILINE),
+}
+
+
+def _apply_clock(clock: dict[str, int | None], raw: str) -> None:
+    """Read a ``Game Config Changes`` line's clock settings into `clock`.
+
+    The new value is the one after the ``»``. One that is not a number of seconds
+    (a clock switched off) leaves the clock unknown, rather than guessed.
+    """
+    for key, rx in _CLOCK_SETTINGS.items():
+        m = rx.search(raw)
+        if m:
+            value = m.group(1)
+            clock[key] = int(value[:-1]) if value.endswith("s") and value[:-1].isdigit() else None
+
+
 def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     """Parse `order`-ascending raw entries into hands.
 
@@ -434,6 +469,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     #: The most recently finished hand. The 7-2 bounty and voluntary shows arrive
     #: *between* hands, after the hand-end line, so they have no open builder.
     last: ParsedHand | None = None
+    #: The table's decision clock as configured so far, in seconds.
+    clock: dict[str, int | None] = {"limit": DEFAULT_DECISION_S, "bank": DEFAULT_TIME_BANK_S}
 
     for raw in entries:
         ev = classify(raw.entry, raw.ord)
@@ -447,6 +484,13 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
                 last = builder.finish(complete=False)
                 result.hands.append(last)
             builder = _HandBuilder(game_id, ev, raw.at)
+            if clock["limit"] is not None:
+                builder.hand.clock_ms = 1000 * (clock["limit"] + (clock["bank"] or 0))
+            continue
+
+        if isinstance(ev, E.Noise) and ev.kind == "config_change":
+            # Takes effect from the next hand: a hand under way keeps its clock.
+            _apply_clock(clock, ev.raw)
             continue
 
         if isinstance(ev, E.BlindChange):

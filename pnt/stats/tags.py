@@ -29,7 +29,7 @@ from functools import lru_cache
 
 from ..logfmt.events import PREFLOP, RIVER
 from .cards import board_at, hand_class, hand_pct, made_hand, street_of_board
-from .derive import POSTFLOP_STREETS, Facts
+from .derive import POSTFLOP_STREETS, TEMPO_CUTS, Facts
 from .slowplay import SLOWPLAY, strong_column
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
@@ -108,6 +108,10 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     # pool's own lift is about 2 points; the largest player's is 3.0 on 307.
     "tilts": {"gap": 5, "n": 100},
     "fun": {"hits": 2},
+    # Timing tells (SPEC.md, "Timing tells"): the tempo cuts, by action class. No
+    # tag reads them yet; they live here so every calibrated cut is in one place,
+    # and this is the same dict `derive.tempo_of` reads.
+    "tempo": TEMPO_CUTS,
     # Voluntary shows (`shows.show_tags`): one side of the two-card shows, at
     # least `hits` of them and more than `pct` percent.
     "shows": {"hits": 3, "pct": 50},

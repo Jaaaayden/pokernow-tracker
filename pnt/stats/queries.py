@@ -73,7 +73,8 @@ def load_hands(
     for r in conn.execute(
         f"""SELECT h.hand_id, h.game_id, h.hand_number, h.n_dealt_in, h.dead_button,
                    h.blinds_irregular, h.went_to_showdown, h.board_json, h.ts,
-                   h.complete, h.run_count, COALESCE(h.bb, g.bb) AS bb
+                   h.complete, h.run_count, COALESCE(h.bb, g.bb) AS bb,
+                   h.board_ords, h.clock_ms
             FROM hands h LEFT JOIN games g ON g.game_id = h.game_id
             {where} ORDER BY h.ord""",
         params,
@@ -97,6 +98,8 @@ def load_hands(
             actions=[],
             board=tuple(runs[0]) if runs else (),
             run_count=r["run_count"] or 1,
+            board_ords=json.loads(r["board_ords"]) if r["board_ords"] else {},
+            clock_ms=r["clock_ms"],
         )
 
     for r in conn.execute(
@@ -135,6 +138,7 @@ def load_hands(
                     all_in=bool(r["all_in"]),
                     amount_to=r["amount_to"],
                     post_kind=r["post_kind"],
+                    ord=r["ord"],
                 )
             )
 

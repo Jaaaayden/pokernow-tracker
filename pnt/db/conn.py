@@ -52,6 +52,13 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # starts empty everywhere, which is exactly what an older database held, since
     # `players.notes` existed from the start but nothing wrote to it.
     ("players", "notes_at", "TEXT"),
+    # Timing tells (SPEC.md, "Timing tells"): when each action and each board line
+    # was logged, and the table's decision clock. NULL on every row imported before
+    # the columns existed -- not timed, never zero seconds -- until `pnt rebuild`
+    # re-parses the stored raw entries, which carry every line's time.
+    ("actions", "ord", "INTEGER"),
+    ("hands", "board_ords", "TEXT"),  # JSON {street: ord} of the run-one board lines
+    ("hands", "clock_ms", "INTEGER"),  # decision limit plus a full time bank, in ms
 )
 
 

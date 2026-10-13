@@ -85,6 +85,9 @@ class HandAction:
     #: What a forced post was: sb, bb, ante, missed_bb, missing_sb or straddle.
     #: None for a voluntary action, and for a post whose kind is not known.
     post_kind: str | None = None
+    #: The `ord` of the log line it came from (epoch ms * 100 + seq). None on rows
+    #: imported before `actions.ord` existed: untimed, never zero seconds.
+    ord: int | None = None
 
 
 @dataclass(slots=True)
@@ -124,6 +127,12 @@ class HandRow:
     board: tuple[str, ...] = ()
     #: How many boards were dealt: 2 when the players ran it twice.
     run_count: int = 1
+    #: The `ord` of each street's run-one board line, by street; empty on hands
+    #: imported before it was stored. See SPEC.md, "Timing tells".
+    board_ords: dict[str, int] = field(default_factory=dict)
+    #: Decision limit plus a full time bank, in ms, when the hand began. None when
+    #: unknown or the clock was off.
+    clock_ms: int | None = None
 
 
 @dataclass(slots=True)
@@ -352,6 +361,15 @@ class Facts:
     #: Hours since their first timestamped hand in this game. None when this
     #: hand has no timestamp.
     session_hour: float | None = None
+
+    # --- timing tells (SPEC.md, "Timing tells"). Their first voluntary decision
+    # on each street, preflop included. No key where it cannot be timed: no
+    # decision there, or a hand imported before `actions.ord` was stored, which
+    # is untimed and never zero seconds.
+    #: Milliseconds from the previous post, action or board line in the hand.
+    think_ms: dict[str, int] = field(default_factory=dict)
+    #: That decision's bucket, one of TEMPO_BUCKETS.
+    tempo: dict[str, str] = field(default_factory=dict)
 
     # --- read from the facts above, never stored -----------------------------
     @property
@@ -956,6 +974,7 @@ def derive(hand: HandRow) -> list[Facts]:
         f.won_pot = p.collected > 0
 
     _foundation(hand, facts)
+    _timing(hand, facts)
     return list(facts.values())
 
 
@@ -991,3 +1010,83 @@ def _foundation(hand: HandRow, facts: dict[str, Facts]) -> None:
         if f.saw_flop and flop_pot and len(behind) == len(flop_players) and len(flop_players) >= 2:
             rest = [b for q, b in behind.items() if q != pid]
             f.spr_flop = round(min(behind[pid], max(rest)) / flop_pot, 2)
+
+
+# --- timing tells (SPEC.md, "Timing tells") ------------------------------------
+
+#: How long a decision took, fastest first. `pre` is a check, call or fold that
+#: came so soon after the action before it that it was pre-selected with
+#: PokerNow's buttons; `timeout` is a fold or check the clock made for them.
+TEMPO_BUCKETS = ("pre", "snap", "normal", "tank", "timeout")
+
+#: The cuts, by action class, calibrated on the pool's 115,469 timed decisions
+#: (14,720 hands, 2026-10-12). The times have no natural gap, so each cut is a
+#: percentile choice, near the pool's p20 and p80 for its class. Mirrored in
+#: SPEC.md; `tags.THRESHOLDS["tempo"]` is this same dict.
+TEMPO_CUTS: dict[str, float] = {
+    # A bet or raise: snap under 2 s, tank over 5 s.
+    "aggressive_snap_ms": 2000,
+    "aggressive_tank_ms": 5000,
+    # A check, call or fold: snap up to 1 s, tank over 3.5 s.
+    "passive_snap_ms": 1000,
+    "passive_tank_ms": 3500,
+    # Pre-selected: a check, call or fold at most this long after a voluntary
+    # action. PokerNow logs a pre-selected action one server step (~0.85 s) after
+    # the action that set it off, so these land in a spike just under 1 s.
+    "pre_ms": 1000,
+    # A fold or check from the full clock (limit plus bank) to this much past it.
+    "timeout_ms": 1000,
+    # The relative buckets: under half, and over twice, the player's own median.
+    "rel_snap": 0.5,
+    "rel_tank": 2.0,
+}
+
+#: The actions PokerNow's buttons can pre-select.
+PASSIVE = frozenset({"check", "call", "fold"})
+
+
+def tempo_of(kind: str, think_ms: int, after_action: bool, clock_ms: int | None) -> str:
+    """The TEMPO_BUCKETS bucket of one decision of `kind` that took `think_ms`.
+
+    `after_action` says the time runs from a voluntary action, not a post or a
+    board line: only then can a check, call or fold have been pre-selected.
+    """
+    c = TEMPO_CUTS
+    if kind in ("fold", "check") and clock_ms is not None and clock_ms <= think_ms < clock_ms + c["timeout_ms"]:
+        return "timeout"
+    if kind in PASSIVE:
+        if after_action and think_ms <= c["pre_ms"]:
+            return "pre"
+        if think_ms <= c["passive_snap_ms"]:
+            return "snap"
+        return "tank" if think_ms > c["passive_tank_ms"] else "normal"
+    if think_ms < c["aggressive_snap_ms"]:
+        return "snap"
+    return "tank" if think_ms > c["aggressive_tank_ms"] else "normal"
+
+
+def _timing(hand: HandRow, facts: dict[str, Facts]) -> None:
+    """Time each player's first voluntary decision on each street.
+
+    The clock runs from the previous post, action or board line in the hand --
+    never from chat (a join, a seat request) logged in between. The first decision
+    on a postflop street is timed from that street's board line, the first preflop
+    one from the last blind posted. A line's time is its `ord` // 100, in ms.
+    """
+    anchor: int | None = None
+    after_action = False
+    street: str | None = None
+    decided: set[tuple[str, str]] = set()
+    for a in hand.actions:
+        if a.street != street:
+            street = a.street
+            if street != PREFLOP:
+                anchor, after_action = hand.board_ords.get(street), False
+        if not a.is_forced and (a.pn_id, street) not in decided:
+            decided.add((a.pn_id, street))
+            f = facts.get(a.pn_id)
+            if f is not None and a.ord is not None and anchor is not None and a.ord >= anchor:
+                think = a.ord // 100 - anchor // 100
+                f.think_ms[street] = think
+                f.tempo[street] = tempo_of(a.kind, think, after_action, hand.clock_ms)
+        anchor, after_action = a.ord, not a.is_forced

@@ -42,7 +42,7 @@ from .cards import (
     made_at,
     street_of_board,
 )
-from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, Facts
+from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, TEMPO_BUCKETS, Facts
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
 Predicate = Callable[[Facts], bool]
@@ -746,6 +746,12 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("session_hand>=N", "session_hand>=100", "their hand count this session, from 1"),
         ("session_hour>=N", "session_hour>=3", "hours since their first hand this session"),
     )),
+    ("Timing", (
+        ("think_preflop>=N", "think_preflop>=10", "seconds their first preflop decision took"),
+        ("think_<street>>=N", "think_river>=5", "seconds their first decision on that street took, from the board or the last action"),
+        ("tempo_preflop=TEMPO", "tempo_preflop=pre", "that preflop decision's tempo: pre, snap, normal, tank or timeout"),
+        ("tempo_<street>=TEMPO", "tempo_river=tank", "that street's tempo; != for any other timed one"),
+    )),
     ("Not", (
         ("!FLAG", "!cbet_flop", "any flag above, negated"),
     )),
@@ -823,6 +829,7 @@ def vocabulary() -> dict:
         "textures": list(TEXTURE_TAGS),
         "exclusive": [list(g) for g in EXCLUSIVE],
         "texture_families": [list(g) for g in TEXTURE_FAMILIES],
+        "tempos": list(TEMPO_BUCKETS),
     }
 
 
@@ -872,6 +879,8 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
                              ``callers_before`` comparisons
       ``steal``              opened first in from a steal seat; also the steal, squeeze,
                              cold-call, probe, delayed c-bet and float families
+      ``think_river>=5``     seconds their first river decision took; ``tempo_river=tank``
+                             its bucket (pre, snap, normal, tank, timeout), preflop included
       ``!cbet_flop``         any flag, negated
     """
     terms = [t.strip() for t in expr.split(",") if t.strip()]
@@ -938,6 +947,11 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             preds.append(action)
             continue
 
+        tempo = _tempo_term(term)
+        if tempo is not None:
+            preds.append(tempo)
+            continue
+
         made = _made_term(term)
         if made is not None:
             preds.append(made)
@@ -968,9 +982,41 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "
             f"line_<street>=PATTERN or line=flop/turn/river; action_<street>= or action= likewise; "
             f"made_<street>=HAND or made=HAND; "
+            f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
             f"!flag; or flop=/turn=/river=/board= with a texture tag"
         )
 
     if not preds:
         return lambda f: True
     return lambda f: all(p(f) for p in preds)
+
+
+# --- timing tells (SPEC.md, "Timing tells"): how long their first decision on a
+# street took, in seconds, and its tempo bucket. A decision that could not be
+# timed -- a hand imported before the clock was stored -- has neither, and no
+# term here matches it, `!=` included.
+TEMPO_STREETS = ("preflop", *STREETS)
+for _s in TEMPO_STREETS:
+    NUMERIC[f"think_{_s}"] = lambda f, s=_s: f.think_ms[s] / 1000 if s in f.think_ms else None
+
+#: The tempo terms: `tempo_river=tank`, `tempo_flop!=pre`.
+TEMPO_TERMS = tuple(f"tempo_{s}" for s in TEMPO_STREETS)
+
+
+def _tempo_term(term: str) -> Predicate | None:
+    for name in TEMPO_TERMS:
+        for op in ("!=", "="):
+            prefix = f"{name}{op}"
+            if not term.startswith(prefix):
+                continue
+            bucket = term[len(prefix):].strip().lower()
+            if bucket not in TEMPO_BUCKETS:
+                raise ValueError(f"unknown tempo {bucket!r}. Known: {', '.join(TEMPO_BUCKETS)}")
+            street, want = name.removeprefix("tempo_"), op == "="
+
+            def pred(f: Facts, street=street, bucket=bucket, want=want) -> bool:
+                got = f.tempo.get(street)
+                return got is not None and (got == bucket) == want
+
+            return pred
+    return None
