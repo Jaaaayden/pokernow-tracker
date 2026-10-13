@@ -1703,6 +1703,54 @@ Judgement calls:
 4. **No filter term names a game**, so a session bar carries its `hand_ids`
    within the spot and the chart lists those hands without touching the spot.
 
+### Give-up funnel
+
+Where one player's flops went, inside whatever spot is on the chart. `funnel.py`
+mirrors this section; `GET /players/{alias}/funnel` and the last tables of the
+chart's **Results** view read it. WWSF and W$WSF themselves are defined in "Won
+when saw flop"; the stats page shows them as columns.
+
+| Row | Counts | Filter (`n`) | Share of |
+|---|---|---|---|
+| **saw the flop** | `saw_flop` | `saw_flop` | — |
+| **reached the turn** | had a turn `seq` key: still in when the turn began, all-in included | `saw_flop,action_turn=*` | flops seen, and the row above |
+| **reached the river** | the same on the river | `saw_flop,action_river=*` | the same |
+| **went to showdown** | `wtsd` | `saw_flop,wtsd` | the same |
+| **won at showdown** | `wsd` | `saw_flop,won_sd` | the same |
+| **won the pot** (WWSF) | `saw_flop` and `won_pot` | `saw_flop,won_pot` | flops seen |
+| ↳ **without showdown** (W$WSF) | and not `wtsd` | `saw_flop,won_pot,!wtsd` | flops seen |
+| **folded the `<street>`** | `fold_street == <street>`, flop, turn, river | `saw_flop,fold_street=<street>` | `of`: hands that reached it, `saw_flop[,action_<street>=*]` |
+| ↳ **as the previous street's aggressor** | and `pfa` on the flop, `aggressor[prev]` on the turn and river | `…,pfa` / `…,aggressor_<prev>` | `of`: hands that reached it so |
+| ↳ **not the aggressor** | and not that | `…,!pfa` / `…,!aggressor_<prev>` | `of`: the same |
+
+Every count is over every hand in the spot, so each row's `filter`, added to the
+spot, finds exactly its `n`, and a fold row's `of_filter` its `of`. A fold row's
+`pct` is `n / of`; its `share` is `n` over every fold after the flop.
+**`complete`** says how many of the flops seen come from a log that ran to the
+end, the funnel's `known / n`.
+
+Judgement calls:
+
+1. **"Reached" is the whole-street sequence's key**, which every player still in
+   when the street began has, an all-in player included (call 33 in "Known
+   judgement calls"). A player all in on the flop reached the turn and the river:
+   they were in the pot when those cards came.
+2. **The steps are not forced nested; they nest by derivation.** Showdown is the
+   stat rows' own `wtsd`, so the funnel's last two steps are WTSD and W$SD exactly.
+   A showdown always reached the river, since a board that ran out keys every
+   street, and a test holds the steps non-increasing on every fixture log.
+3. **Won at showdown is the funnel's last step; WWSF is beside it, not in it.**
+   WWSF counts pots won without a showdown too, so it can exceed the showdowns.
+   Showdown wins plus the wins without one are WWSF exactly.
+4. **Not the aggressor is everyone else who reached the street**, not only the
+   callers of the last bet: a street that checked through had no aggressor, and
+   in a limped pot nobody is the preflop aggressor, so all their folds are here.
+5. **A hand cut short counts as far as its log got.** It reached no further, and
+   its fold, if any, is counted; leaving it out would break the filter
+   reproduction, since no term says "complete". `complete` shows how many there are.
+6. **Preflop folds are not in the fold table.** It is about flops seen; preflop
+   folds are VPIP's question.
+
 ---
 
 ## Hand review

@@ -529,6 +529,14 @@
   #winnings rect.down { fill: var(--down); }
   #winnings rect.bar { cursor: pointer; }
   #winnings rect.bar:hover, #winnings rect.bar:focus-visible { opacity: 0.75; outline: 0; }
+
+  /* --- the give-up funnel, at the end of Results ---
+     One bar per row from zero to 100%: of the flops seen for the steps, of the
+     hands that reached the street for the folds. One colour; the figures say the rest. */
+  #funnel td.share { width: 28%; min-width: 120px; }
+  #funnel .fill { position: relative; height: 14px; background: var(--mid); border-radius: 4px; }
+  #funnel .fill i { position: absolute; left: 0; top: 0; height: 100%; min-width: 1px; background: var(--accent); border-radius: 4px; }
+  #funnel tr.sub td { color: var(--ink-2); }
 </style>
 </head>
 <body>
@@ -1113,8 +1121,10 @@
         // old to have them costs the graph, not the view.
         const wq = new URLSearchParams(q); wq.set("adjusted", "true");
         const w = getJson(`/players/${player}/winnings?` + wq).catch(e => ({ error: String(e.message || e) }));
+        const fn = getJson(`/players/${player}/funnel?` + q).catch(e => ({ error: String(e.message || e) }));
         data = await getJson(`/players/${player}/results?` + q);
         data.winnings = await w;
+        data.funnel = await fn;
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -2092,6 +2102,8 @@
       }
       wrap.appendChild(block);
     }
+    const funnelBox = renderFunnel(d.funnel);
+    if (funnelBox) wrap.appendChild(funnelBox);
   }
 
   // ---- red line and blue line -------------------------------------------------
@@ -2262,6 +2274,103 @@
     }
     rest();
     box.appendChild(cap);
+    return box;
+  }
+
+  // ---- the give-up funnel -----------------------------------------------------
+  // The last tables of Results, over the same spot. The steps narrow from the
+  // flops seen to the showdowns won, each with its share of the flops and of the
+  // step above; WWSF and its no-showdown part sit under them. The fold table says
+  // on which street they let go after the flop, as the previous street's
+  // aggressor or not, each over the hands that reached that street the same way.
+  // A row is its filter: clicking adds the terms to the spot and lists the hands.
+  // See "Give-up funnel" in SPEC.md.
+  function renderFunnel(f) {
+    if (!f) return null;
+    const box = document.createElement("div");
+    box.id = "funnel";
+    const note = (text) => { const p = document.createElement("p"); p.className = "why"; p.textContent = text; return p; };
+    if (f.error) {
+      const h = document.createElement("h3"); h.textContent = "Give-up funnel";
+      box.append(h, note(`no funnel: ${f.error}`));
+      return box;
+    }
+    const bar = (pct) => {
+      const td = document.createElement("td"); td.className = "share";
+      const fill = document.createElement("div"); fill.className = "fill";
+      if (pct) { const i = document.createElement("i"); i.style.width = Math.min(100, pct) + "%"; fill.appendChild(i); }
+      td.appendChild(fill);
+      return td;
+    };
+    const table = (title, cols, tips) => {
+      const block = document.createElement("div");
+      const h = document.createElement("h3"); h.textContent = title;
+      const t = document.createElement("table");
+      const head = document.createElement("tr");
+      for (const c of cols) {
+        const th = document.createElement("th"); th.textContent = c;
+        if (tips[c]) th.title = tips[c];
+        head.appendChild(th);
+      }
+      t.appendChild(head);
+      block.append(h, t);
+      box.appendChild(block);
+      return { block, t };
+    };
+    // One row: its label, a bar, its figures, and a click that drills its filter.
+    const row = (t, r, cells, pct, say, sub) => {
+      const tr = document.createElement("tr");
+      if (sub) tr.className = "sub";
+      const name = document.createElement("td");
+      if (sub) name.className = "role";
+      name.textContent = r.label;
+      tr.append(name, bar(pct));
+      for (const v of cells) { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }
+      tr.title = `${say} · adds ${r.filter} to the spot`;
+      if (!r.n) tr.classList.add("empty");
+      else {
+        tr.classList.add("pick");
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        tr.setAttribute("aria-label", `${say} — list them`);
+        const open = () => drillLine(r.filter, `funnel · ${sub ? sub + " · " : ""}${r.label}`);
+        tr.addEventListener("click", open);
+        tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+      }
+      t.appendChild(tr);
+    };
+
+    const steps = table("Give-up funnel: of the flops they saw", ["", "", "hands", "of flops", "of the row above"], {
+      "of flops": "share of the flops they saw in this spot",
+      "of the row above": "share of the step before: how many of those went on",
+    });
+    for (const s of f.steps) {
+      row(steps.t, s, [s.n, fmtPct(s.pct), fmtPct(s.step_pct)], s.pct,
+        `${s.label}: ${s.n} of ${f.flops} flops seen`);
+    }
+    for (const w of f.won) {
+      row(steps.t, w, [w.n, fmtPct(w.pct), ""], w.pct, `${w.label}: ${w.n} of ${f.flops} flops seen`, w.key === "wwsf_nsd" ? "won the pot" : null);
+    }
+    const cut = f.flops - f.complete;
+    steps.block.appendChild(note(`${f.complete} of ${f.flops} flops come from a log that ran to the end`
+      + (cut ? `; the other ${cut} stop early and reached no further than their log.` : ".")
+      + " Won the pot is WWSF: collecting from it, at showdown or not; a 7-2 bounty is not the pot."));
+
+    const folds = table("Where they folded after the flop", ["", "", "folds", "of hands", "fold %", "of all folds"], {
+      "of hands": "the hands that reached that street the same way: every fold row is a share of these",
+      "fold %": "how often reaching the street that way ended in a fold there",
+      "of all folds": `share of their ${f.total_folds} folds after the flop`,
+    });
+    for (const r of f.folds) {
+      row(folds.t, r, [r.n, r.of, fmtPct(r.pct), fmtPct(r.share)], r.pct,
+        `${r.label}: ${r.n} folds of ${r.of} hands that reached it`);
+      for (const x of r.roles) {
+        row(folds.t, x, [x.n, x.of, fmtPct(x.pct), fmtPct(x.share)], x.pct,
+          `${r.label}, ${x.label}: ${x.n} folds of ${x.of}`, r.label);
+      }
+    }
+    folds.block.appendChild(note("Not the aggressor is everyone else who reached the street: a caller of the last bet,"
+      + " or anyone on a street that checked through. Flop folds are split by the preflop aggressor."));
     return box;
   }
 
