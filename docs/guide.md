@@ -239,6 +239,13 @@ Each sub-row is the spot with that term added, and clicking it opens that chart.
 two rows' postflop counts sum to the player's whole row. *Min hands* applies to the
 whole row, so check the sample on hover before trusting a thin sub-row.
 
+*Straddle* splits each player into the hands someone straddled (`straddled`) and
+the rest (`!straddled`). The two rows' hands sum to the whole row's. Straddles are
+common in home games and push everyone's opens wider, so watch who loosens up
+(VPIP and PFR climb) and who keeps folding. A straddle is not a raise: a straddled
+pot nobody raised is still limped (level 1), so `3bet_pot` and the other pot types
+mean the same thing in both rows.
+
 The postflop columns also cover the bets a missed c-bet leaves open. **DCB** is the
 preflop raiser's delayed c-bet, **Probe** is betting into a preflop raiser who checked
 the last street back, **F2P** is that raiser folding to the probe, and **Float** is
@@ -482,6 +489,13 @@ that street the same way. Low WWSF beside a normal WTSD means they give up too
 much: keep betting at them. Click any row to narrow the spot to its hands and list
 them. WWSF and W$WSF are also columns on the stats page, and
 `GET /players/{alias}/funnel` returns the tables as JSON.
+
+**Straddled pots.** The **Pot** chip row ends with **straddled**, which goes with
+any pot type rather than replacing it (`srp,straddled` is a single-raised
+straddled pot). Results follows the spot, so to see where a player wins and loses
+in straddled pots, add `straddled` to the Spot: the red and blue lines and the
+pot type, seat and position tables then cover those hands only. Swap it for
+`!straddled` to compare against the rest.
 
 Every cell, bar and size opens the list of hands behind it, and clicking a hand
 replays it. Each row names who the hand was against and whether the player closed

@@ -761,8 +761,12 @@
     ["River bet", "bet_river", "their first river bet"],
     ["Faced c-bet", "faced_cbet_flop", "faced a flop c-bet, by its size"],
   ];
-  // Pot type: one of these at a time, since a pot is only ever one of them.
-  const POT_TYPES = [["limped", "limped"], ["single-raised", "srp"], ["3-bet pot", "3bet_pot"], ["4-bet pot+", "4bet_pot"]];
+  // Pot type: one of these at a time, since a pot is only ever one of them. An
+  // entry marked "toggle" is not a pot level but goes with any of them (a
+  // straddled pot is still limped, single-raised or 3-bet), so it switches on and
+  // off by itself.
+  const POT_TYPES = [["limped", "limped"], ["single-raised", "srp"], ["3-bet pot", "3bet_pot"], ["4-bet pot+", "4bet_pot"],
+    ["straddled", "straddled", "toggle"]];
   // What they did after the flop, as toggles that compose with everything
   // above. These are the spots the player tags open, so a tag sent from the
   // HUD lights the chips it is made of.
@@ -3682,13 +3686,16 @@
   {
     const row = document.createElement("div"); row.className = "presets";
     const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "Pot";
-    lbl.title = "how many times it was raised preflop";
+    lbl.title = "how many times it was raised preflop, and whether someone straddled";
     row.appendChild(lbl);
-    const group = POT_TYPES.map(([, term]) => term);
-    for (const [text, term] of POT_TYPES) {
-      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = term;
+    const group = POT_TYPES.filter(([, , kind]) => kind !== "toggle").map(([, term]) => term);
+    for (const [text, term, kind] of POT_TYPES) {
+      const toggle = kind === "toggle";
+      if (toggle) { const s = document.createElement("span"); s.className = "sep"; row.appendChild(s); }
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+      b.title = toggle ? `${term}: someone straddled (goes with any pot type)` : term;
       b.dataset.term = term;
-      b.addEventListener("click", () => { setOneOf(group, term); apply(); });
+      b.addEventListener("click", () => { if (toggle) toggleTerm(term); else setOneOf(group, term); apply(); });
       row.appendChild(b);
     }
     $("pottype").appendChild(row);
