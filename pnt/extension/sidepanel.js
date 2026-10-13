@@ -371,6 +371,14 @@
   // and sits well away from the lifetime one. Neither direction is "good" for
   // a VPIP, so it is one colour, not red and green.
   const DRIFT_POINTS = 10, DRIFT_MIN_OPP = 10;
+  // And the lifetime figure must sit outside the session's 95% range (Wilson), so
+  // a 10-point gap a small sample could give by chance stays white. On the six
+  // fixture logs this keeps 12 of the 19 marks; on a 59-game database, 274 of 421.
+  const DRIFT_NEEDS_CI = true;
+  const outsideCi = (pct, n, life) => {
+    const ci = PNT.wilson(pct / 100, n);
+    return !!ci && (life < 100 * ci[0] || life > 100 * ci[1]);
+  };
   const sample = (st, k) => (k === "hands" ? null : st._opp?.[OPP_KEY[k]]);
 
   // One card per seat. The live hand's roster when there is one -- it is the
@@ -464,14 +472,19 @@
     const now = el("span", null, fmt(ss[k]));
     const nOpp = sample(ss, k), lOpp = sample(st, k);
     if (typeof ss[k] === "number" && typeof st[k] === "number" && k !== "hands"
-        && (nOpp ?? 0) >= DRIFT_MIN_OPP && Math.abs(ss[k] - st[k]) >= DRIFT_POINTS) {
+        && (nOpp ?? 0) >= DRIFT_MIN_OPP && Math.abs(ss[k] - st[k]) >= DRIFT_POINTS
+        && (!DRIFT_NEEDS_CI || outsideCi(ss[k], nOpp, st[k]))) {
       now.className = "drift";
     }
     into.append(now, el("small", "life", fmt(st[k])));
-    const of = (v, n) => (n == null ? fmt(v) : `${fmt(v)}% of ${n}`);
+    const of = (v, n) => {
+      if (n == null) return fmt(v);
+      const ci = PNT.ciText(v, n);
+      return `${fmt(v)}% of ${n}` + (ci ? `, ${ci}` : "");
+    };
     return `${tip}\n\n` + (k === "hands"
       ? `this session: ${fmt(ss[k])} hands · lifetime: ${fmt(st[k])}`
-      : `this session: ${of(ss[k], nOpp)} · lifetime: ${of(st[k], lOpp)}`);
+      : `this session: ${of(ss[k], nOpp)}\nlifetime: ${of(st[k], lOpp)}`);
   }
 
   // Compact: every player in one table, a row each, and nothing else -- the
