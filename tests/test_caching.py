@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from pnt.db.conn import connect, generation
+from pnt.db.conn import bump_generation, connect, generation, path_of, writing
 from pnt.ingest.importer import (
     import_csv,
     merge_players,
@@ -234,6 +234,32 @@ def test_after_a_rebuild_a_players_facts_derive_that_game_alone(db, monkeypatch)
     assert calls == [HU_GAME]
     assert after == q.facts_for(db, "genericpoker")
 
+
+
+def test_a_rebuild_in_the_middle_of_a_read_cannot_mix_old_and_new_hand_ids(db, monkeypatch):
+    """Live capture rebuilds a game while the HUD reads it. A rebuild gives the game
+    new hand ids, so a piece kept on the stamp read before it must never meet the
+    hand order read after it: that was a KeyError and a 500 on every player view."""
+    before = q.facts_cached(db, "genericpoker")
+    with writing(db):  # a write elsewhere: the next read misses, HU_GAME's stamp holds
+        bump_generation(db)
+    other = connect(path_of(db))
+    fired = []
+    real = q.identities_of
+
+    def identities_of(conn, alias):  # read between the game stamps and the hand order
+        if not fired:
+            fired.append(rebuild_game(other, HU_GAME))
+        return real(conn, alias)
+
+    monkeypatch.setattr(q, "identities_of", identities_of)
+    during = q.facts_cached(db, "genericpoker")
+    assert fired
+    assert [f.hand_id for f in during] == [f.hand_id for f in before]  # the snapshot before it
+    monkeypatch.setattr(q, "identities_of", real)
+    after = q.facts_cached(db, "genericpoker")
+    assert {f.hand_id for f in after} != {f.hand_id for f in before}  # the rebuild's new ids
+    assert after == q.facts_for(db, "genericpoker")
 
 def test_a_merge_regroups_the_tallies_without_deriving_anything(db, monkeypatch):
     q.report(db)

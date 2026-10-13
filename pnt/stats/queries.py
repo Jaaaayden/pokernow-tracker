@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Self
 
-from ..db.conn import generation, path_of
+from ..db.conn import generation, path_of, reading
 from ..logfmt.parser import position_name
 from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 from .tilt import annotate
@@ -557,7 +557,16 @@ def facts_cached(
     answer does not change until the hand is rebuilt. On a miss, only the games
     whose stamp moved are derived again. Callers must not mutate the rows they
     get back.
+
+    Every read is made against one snapshot. A game rebuilt mid-call gets new
+    hand ids, and a cached piece kept on the stamp read before the rebuild would
+    not match the hand order read after it.
     """
+    with reading(conn):
+        return _facts_cached(conn, alias, game_id)
+
+
+def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> list[Facts]:
     gen = generation(conn)
     path = path_of(conn)
     stamps = _game_stamps(conn, game_id) if gen is not None and path else None

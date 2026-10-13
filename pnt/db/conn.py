@@ -91,6 +91,26 @@ def writing(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     conn.commit()
 
 
+@contextmanager
+def reading(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """Run several reads against one snapshot of the database.
+
+    Outside a transaction every SELECT sees the latest commit, so a reader that
+    asks two questions can get answers from either side of a write: the game
+    stamps from before a rebuild and the hand ids from after it. A deferred
+    `BEGIN` pins the snapshot at the first read under WAL, without blocking the
+    writers. Inside a transaction already, the reads share it, so this does nothing.
+    """
+    if conn.in_transaction:
+        yield conn
+        return
+    conn.execute("BEGIN")
+    try:
+        yield conn
+    finally:
+        conn.rollback()  # read-only: nothing to keep
+
+
 #: Key in `meta` holding the derivation generation.
 GENERATION_KEY = "derivation"
 
