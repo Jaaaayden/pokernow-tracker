@@ -24,7 +24,7 @@ from .filters import DECISIONS, parse_filter
 from .tags import strength_at
 
 __all__ = [
-    "Node", "candidates", "decision_of", "decisions", "nodes_for", "resolve",
+    "Node", "candidates", "decision_of", "decisions", "nodes_for", "players_term", "resolve",
     "showings", "street_of_board", "texture_terms",
 ]
 
@@ -52,6 +52,17 @@ _POT_LABEL = {"3bet_pot": "3-bet pots", "srp": "single-raised pots"}
 _STREET_INDEX = {PREFLOP: 0, FLOP: 1, TURN: 2, RIVER: 3}
 
 
+def players_term(n: int | None) -> str | None:
+    """The `players_flop` term a postflop node carries: heads-up or multiway.
+
+    Two groups and not the exact count, the same split as the stats page's
+    "Split by: players on the flop" -- a 4-way flop is read with the 3-way ones.
+    """
+    if n is None:
+        return None
+    return f"players_flop={n}" if n <= 2 else "players_flop>=3"
+
+
 @dataclass(slots=True)
 class Node:
     """One decision point on a player's path through a hand."""
@@ -69,13 +80,19 @@ class Node:
     situation: str | None = None
     #: None while the decision is still pending.
     decision: str | None = None
+    #: How many saw the flop, on postflop nodes: derive's `players_flop`.
+    players_flop: int | None = None
+
+    @property
+    def players(self) -> str | None:
+        return players_term(self.players_flop)
 
     @property
     def filter(self) -> str | None:
         if self.situation is None:
             return None
-        parts = [self.position, *self.pf_history, self.pot, *self.post_history, self.situation]
-        return ",".join(p for p in parts if p)
+        return _join(self.position, self.pf_history, self.pot, self.post_history, self.situation,
+                     self.players)
 
     @property
     def key(self) -> tuple[str, int | str] | None:
@@ -92,6 +109,7 @@ class Node:
             "label": self.label,
             "filter": self.filter,
             "decision": self.decision,
+            "players_flop": self.players_flop,
         }
 
 
@@ -143,7 +161,8 @@ def _preflop_term(node: Node, decision: str) -> str | None:
 
 def _postflop_node(pid: str, street: str, st: _Street, prev_aggressor: str | None,
                    all_in_at: dict[str, int], seq: int, position: str | None,
-                   pf_history: list[str], pot: str, post_history: list[str]) -> Node:
+                   pf_history: list[str], pot: str, post_history: list[str],
+                   players_flop: int | None = None) -> Node:
     kind: str | None
     situation: str | None
     if not st.bet_made and pid == prev_aggressor:
@@ -176,6 +195,7 @@ def _postflop_node(pid: str, street: str, st: _Street, prev_aggressor: str | Non
         pot=pot,
         post_history=list(post_history),
         situation=situation,
+        players_flop=players_flop,
     )
 
 
@@ -237,6 +257,9 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
             _preflop_node(pending_for, level, opener, position[pending_for], pf_history[pending_for])
         )
     pot = _POT_TERM.get(level, "4bet_pot")
+    # derive's `players_flop`: everyone who did not fold preflop, once a flop is out.
+    folded_pf = {a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"}
+    players_flop = sum(1 for pid in hand.players if pid not in folded_pf)
 
     # --- postflop: the street walk of derive._postflop
     pot_before: dict[int, int] = {}
@@ -260,7 +283,7 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
             if pid in paths:
                 node = _postflop_node(
                     pid, street, st, prev_aggressor, all_in_at, a.seq,
-                    position[pid], pf_history[pid], pot, post_history[pid],
+                    position[pid], pf_history[pid], pot, post_history[pid], players_flop,
                 )
                 node.decision = a.kind
                 paths[pid].append(node)
@@ -283,6 +306,7 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
                 _postflop_node(
                     pending_for, street, st, prev_aggressor, all_in_at, next_seq,
                     position[pending_for], pf_history[pending_for], pot, post_history[pending_for],
+                    players_flop,
                 )
             )
         prev_aggressor = st.aggressor
@@ -296,8 +320,9 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
 Candidate = tuple[str, list[str], tuple[str, int | str]]
 
 
-def _join(position: str | None, pf: list[str], pot: str | None, post: list[str], situation: str) -> str:
-    return ",".join(p for p in [position, *pf, pot, *post, situation] if p)
+def _join(position: str | None, pf: list[str], pot: str | None, post: list[str], situation: str | None,
+          players: str | None = None) -> str:
+    return ",".join(p for p in [position, *pf, pot, players, *post, situation] if p)
 
 
 def _parent(last: str, remaining: list[str]) -> tuple[str, int]:
@@ -345,14 +370,19 @@ def candidates(node: Node) -> list[Candidate]:
             notes = [*notes, f"their {_LEVEL_LABEL[level]} spot"]
 
     key = (node.kind, node.street)
-    pos, pf, pot, post, situation = (
+    pos, pf, pot, post, situation, players = (
         node.position, list(node.pf_history), node.pot, list(node.post_history), node.situation,
+        node.players,
     )
     notes = []
-    add(_join(pos, pf, pot, post, situation), notes, key)
+    add(_join(pos, pf, pot, post, situation, players), notes, key)
     if "=" in situation:
         situation = situation.split("=", 1)[0]
         notes = [*notes, "any size"]
+        add(_join(pos, pf, pot, post, situation, players), notes, key)
+    if players:
+        players = None
+        notes = [*notes, "any number of players"]
         add(_join(pos, pf, pot, post, situation), notes, key)
     if post:
         post = []

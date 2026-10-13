@@ -79,6 +79,11 @@
   @media (max-width: 620px) { .key dl { grid-template-columns: 1fr; gap: 2px 0; }
     .key dd { margin: 0 0 8px; } }
   .hidden { display: none !important; }
+  /* "Split by": a player's sub-rows, one per group, under their whole row. */
+  tr.split-head td { border-top: 1px solid var(--axis); }
+  tr.split-sub td { font-size: 13px; color: var(--ink-2); }
+  tr.split-sub td.name { padding-left: 22px; }
+  tr.split-sub td.name a { color: var(--ink-2); }
 </style>
 </head>
 <body>
@@ -98,6 +103,8 @@
       <button data-street="river" aria-pressed="false">River</button>
     </span>
     <button id="sizetoggle" aria-pressed="false" title="show the c-bet size mix for this street">C-bet sizes</button>
+    <label for="split">Split by</label>
+    <select id="split" title="show each player's rows split into groups, under their row for the whole spot"></select>
     <a class="link" href="/players.html">players &rsaquo;</a>
     <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
     <a class="link" id="allinlink" href="/allin.html" style="margin-left:12px">all-in EV &rsaquo;</a>
@@ -114,6 +121,8 @@
         aggressor, and no fold or raise for anyone else.</li>
       <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
       <li>Click a player for their range chart in the same spot.</li>
+      <li><b>Split by</b> puts a sub-row per group under each player: their stats in the spot
+        with that group's term added. Players on the flop splits heads-up from 3+ way flops.</li>
     </ul>
   </div>
   <div class="err hidden" id="err"></div>
@@ -196,7 +205,23 @@
       "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
   };
 
-  const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
+  // "Split by": each player becomes a group of sub-rows, one per entry, under
+  // their row for the whole spot. The shape, kept simple so a new split is one
+  // entry here and nothing else:
+  //   SPLITS[key] = null (no split) | [["sub-row label", "filter term"], ...]
+  // Each term is ANDed with the spot box, so a sub-row is exactly
+  // `/stats?filter=<spot>,<term>` and reproduces on the chart. The page's min
+  // hands applies to the whole row; the sub-rows are fetched with no minimum.
+  // SPLIT_NAMES is the menu text (the key is used without one). Every term here
+  // is parsed by tests/test_multiway.py.
+  const SPLITS = {
+    none: null,
+    multiway: [["HU", "players_flop=2"], ["3+ way", "players_flop>=3"]],
+  };
+  const SPLIT_NAMES = { none: "nothing", multiway: "players on the flop" };
+
+  const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [],
+    split: "none", subs: null };
 
   // alias -> what you have written about them (players page, chart or HUD), shown
   // as a 📝 beside the name. From /players, which is a plain join and costs nothing
@@ -219,6 +244,7 @@
     state.sizes = q.get("sizes") === "1";
     state.sort = q.get("sort") || "hands";
     state.dir = q.get("dir") === "asc" ? 1 : -1;
+    state.split = SPLITS[q.get("split")] ? q.get("split") : "none";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -228,6 +254,7 @@
     if (state.sizes) q.set("sizes", "1");
     if (state.sort !== "hands") q.set("sort", state.sort);
     if (state.dir === 1) q.set("dir", "asc");
+    if (state.split !== "none") q.set("split", state.split);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
     const c = new URLSearchParams();
@@ -281,21 +308,35 @@
   // Bumped by every load: an answer for controls since changed is dropped, so a
   // slow load cannot land after a quicker, newer one and be what is left on show.
   let loadSeq = 0;
+  async function fetchStats(filter, min) {
+    const q = new URLSearchParams({ min_hands: min });
+    if (filter) q.set("filter", filter);
+    const r = await fetch("/stats?" + q, { headers: { accept: "application/json" } });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.detail || `${r.status} ${r.statusText}`);
+    }
+    return r.json();
+  }
+  const withTerm = (term) => [state.filter, term].filter(Boolean).join(",");
   async function load() {
     const seq = ++loadSeq;
     $("card").classList.add("loading");
     $("err").classList.add("hidden");
-    const q = new URLSearchParams({ min_hands: state.min });
-    if (state.filter) q.set("filter", state.filter);
+    const groups = SPLITS[state.split] || [];
     try {
-      const r = await fetch("/stats?" + q, { headers: { accept: "application/json" } });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.detail || `${r.status} ${r.statusText}`);
-      }
-      const rows = await r.json();
+      const [rows, ...parts] = await Promise.all([
+        fetchStats(state.filter, state.min),
+        ...groups.map(([, term]) => fetchStats(withTerm(term), 1)),
+      ]);
       if (seq !== loadSeq) return;
       state.rows = rows;
+      // player -> one entry per group: [label, term, their row, or null with no hands there]
+      const byPlayer = parts.map((part) => new Map(part.map((r) => [r.player, r])));
+      state.subs = groups.length
+        ? new Map(rows.map((r) => [r.player,
+            groups.map(([label, term], i) => [label, term, byPlayer[i].get(r.player) || null])]))
+        : null;
       if (state.rows.length && !("raise_cbet_flop" in state.rows[0])) {
         throw new Error("the running server is older than this page: restart `pnt service`");
       }
@@ -346,9 +387,31 @@
       + "An unknown rate is left blank rather than shown as zero.");
   }
 
+  // The "Split by" sub-rows under one player's row: one per group, linked to
+  // their chart in the spot with that group's term added. A group they have no
+  // hands in is a row of blanks with 0 hands, not a missing row.
+  function renderSplitRows(player, fillCells) {
+    return (state.subs?.get(player) || []).map(([label, term, row]) => {
+      const tr = document.createElement("tr");
+      tr.className = "split-sub";
+      const name = document.createElement("td"); name.className = "name";
+      const a = document.createElement("a");
+      const q = new URLSearchParams({ player, filter: withTerm(term) });
+      if (theme) q.set("theme", theme);
+      a.href = "/chart?" + q;
+      a.textContent = label;
+      a.title = `${player}, ${label}: the spot with ${term} added`;
+      name.appendChild(a);
+      tr.appendChild(name);
+      fillCells(tr, row || { player, hands: 0 });
+      return tr;
+    });
+  }
+
   function render() {
     const cols = columns();
-    $("subtitle").textContent = `${state.rows.length} players · ${state.filter || "all hands"} · ${state.street} columns`;
+    const split = state.subs ? ` · split by ${SPLIT_NAMES[state.split] || state.split}` : "";
+    $("subtitle").textContent = `${state.rows.length} players · ${state.filter || "all hands"} · ${state.street} columns${split}`;
     const t = document.createElement("table");
 
     if (state.sizes) {
@@ -384,6 +447,18 @@
     for (const [key, text, , , tip] of cols) addHead(key, text, tip);
     t.appendChild(head);
 
+    const fillCells = (tr, row) => {
+      for (const [key, , kind, opp] of cols) {
+        const td = document.createElement("td");
+        const v = value(row, key);
+        td.textContent = fmt(v, kind);
+        if (v == null) td.className = "dim";
+        else if (key === "bb_per_100") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
+        const title = sampleTitle(row, key, opp);
+        if (title) td.title = title;
+        tr.appendChild(td);
+      }
+    };
     for (const row of sorted()) {
       const tr = document.createElement("tr");
       const name = document.createElement("td"); name.className = "name";
@@ -402,17 +477,12 @@
         name.appendChild(m);
       }
       tr.appendChild(name);
-      for (const [key, , kind, opp] of cols) {
-        const td = document.createElement("td");
-        const v = value(row, key);
-        td.textContent = fmt(v, kind);
-        if (v == null) td.className = "dim";
-        else if (key === "bb_per_100") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
-        const title = sampleTitle(row, key, opp);
-        if (title) td.title = title;
-        tr.appendChild(td);
-      }
+      fillCells(tr, row);
       t.appendChild(tr);
+      if (state.subs) {
+        tr.className = "split-head";
+        for (const sub of renderSplitRows(row.player, fillCells)) t.appendChild(sub);
+      }
     }
 
     const wrap = $("table");
@@ -442,6 +512,15 @@
     if (m) state.sort = `${m[1]}_${state.street}`;
     writeUrl(); render();
   }));
+  for (const key of Object.keys(SPLITS)) {
+    const o = document.createElement("option");
+    o.value = key; o.textContent = SPLIT_NAMES[key] || key;
+    $("split").appendChild(o);
+  }
+  $("split").addEventListener("change", () => {
+    state.split = $("split").value;
+    writeUrl(); load();
+  });
   $("sizetoggle").addEventListener("click", () => {
     state.sizes = !state.sizes;
     $("sizetoggle").setAttribute("aria-pressed", state.sizes);
@@ -453,6 +532,7 @@
   $("filter").value = state.filter;
   $("minhands").value = state.min;
   $("sizetoggle").setAttribute("aria-pressed", state.sizes);
+  $("split").value = state.split;
   document.querySelectorAll("[data-street]").forEach(x => x.setAttribute("aria-pressed", x.dataset.street === state.street));
   writeUrl();
   load();
