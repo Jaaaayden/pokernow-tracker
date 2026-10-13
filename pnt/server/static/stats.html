@@ -119,6 +119,8 @@
       <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of the c-bets faced.</li>
       <li>A <b>lead</b> takes the street out of the c-bet columns: no c-bet chance for the
         aggressor, and no fold or raise for anyone else.</li>
+      <li><b>DCB, Probe, F2P and Float</b> are the bets a missed c-bet leaves open. DCB, Probe
+        and F2P need a checked-through street before them, so they show on the turn and river only.</li>
       <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
       <li>Click a player for their range chart in the same spot.</li>
       <li><b>Split by</b> puts a sub-row per group under each player: their stats in the spot
@@ -164,17 +166,26 @@
     ["bb_per_100_ci", "±", "ci", null],
   ];
   // Postflop columns, per street. Fold and Raise share one denominator: the
-  // c-bets the player faced.
+  // c-bets the player faced. [key, header, opportunity key, streets it exists
+  // on]; no streets means all three. A delayed c-bet and a probe need a street
+  // that checked through before them, so they start on the turn.
+  const LATER = ["turn", "river"];
   const POSTFLOP = [
     ["cbet", "C-Bet", "cbet"],
     ["fold_to_cbet", "Fold vs C-Bet", "fold_to_cbet"],
     ["raise_cbet", "Raise C-Bet", "fold_to_cbet"],
     ["donk", "Lead (Donk)", "donk"],
+    ["delayed_cbet", "DCB", "delayed_cbet", LATER],
+    ["probe", "Probe", "probe", LATER],
+    ["fold_to_probe", "F2P", "fold_to_probe", LATER],
+    ["float", "Float", "float"],
     ["af", "Agg %", "af"],
   ];
   const SIZES = [["blocker", "<⅕"], ["small", "⅕–½"], ["medium", "½–¾"], ["large", "¾–pot"], ["overbet", "over"]];
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
+    delayed_cbet: "delayed c-bet chances", probe: "probe chances", fold_to_probe: "probes faced",
+    float: "float chances",
     af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
@@ -194,6 +205,17 @@
       + `Fold vs C-Bet, so fold + call + raise = 100%.`,
     donk: (s) => `Lead, or donk bet. They bet the ${s} into the ${PREV[s]} aggressor, before `
       + `that player gets to act. A bet after a checked-through street is a probe, not a lead.`,
+    delayed_cbet: (s) => `Delayed c-bet. They raised preflop, every street before the ${s} `
+      + `checked through, and they bet the ${s} with no bet in front of them.`,
+    probe: (s) => `Probe. The preflop raiser checked the ${PREV[s]} back, and they bet the ${s} `
+      + `into them before the raiser got to act. Low means the raiser's checked-back `
+      + `${PREV[s]}s go unpunished.`,
+    fold_to_probe: (s) => `Fold to probe. They raised preflop, checked the ${PREV[s]} back, and `
+      + `folded to a ${s} probe. Counted before anyone raises over it.`,
+    float: (s) => (s === "flop"
+      ? "Float. They called the preflop raise, the raiser checked the flop to them, "
+      : `Float. They called on the ${PREV[s]}, its aggressor checked the ${s} to them, `)
+      + "and they bet. High means a check-raise from that aggressor has a bet to raise.",
     af: (s) => `Aggression Frequency. Of everything they did on the ${s} bar checking, how often `
       + `it was a bet or a raise rather than a call or a fold. Counts actions, not hands, and `
       + `is the one column here that does not depend on who the aggressor was.`,
@@ -304,7 +326,8 @@
     const s = state.street;
     const base = BASE.map(([k, h, kind, opp]) =>
       [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
-    const post = POSTFLOP.map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
+    const post = POSTFLOP.filter(([, , , streets]) => !streets || streets.includes(s))
+      .map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
     const sizes = state.sizes
       ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
           `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
@@ -480,7 +503,7 @@
 
     if (state.sizes) {
       const groups = document.createElement("tr");
-      for (const [text, span] of [["", 1 + BASE.length + POSTFLOP.length], [`c-bet sizes on the ${state.street}`, SIZES.length]]) {
+      for (const [text, span] of [["", 1 + cols.length - SIZES.length], [`c-bet sizes on the ${state.street}`, SIZES.length]]) {
         const th = document.createElement("th");
         th.className = "group"; th.colSpan = span; th.textContent = text;
         groups.appendChild(th);

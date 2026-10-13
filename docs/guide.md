@@ -239,6 +239,15 @@ Each sub-row is the spot with that term added, and clicking it opens that chart.
 two rows' postflop counts sum to the player's whole row. *Min hands* applies to the
 whole row, so check the sample on hover before trusting a thin sub-row.
 
+The postflop columns also cover the bets a missed c-bet leaves open. **DCB** is the
+preflop raiser's delayed c-bet, **Probe** is betting into a preflop raiser who checked
+the last street back, **F2P** is that raiser folding to the probe, and **Float** is
+betting when the aggressor you called checks to you. DCB, Probe and F2P need a
+checked-through street first, so they appear on the turn and river only. A player
+who never probes lets you check back the flop for free. One who always floats makes
+your turn check-raise a weapon. The chart's Lines view has **probe** and **float**
+chips for the turn.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.
@@ -529,6 +538,10 @@ The player to act is marked.
   path reads *arrived with …*: the range they brought here, on this street's board,
   never a borrowed fold/call/raise mix. When even the widest spot is empty, the
   card says *no data*.
+- **After a missed c-bet.** Delayed c-bet, probe, facing-a-probe and float spots
+  are tracked spots of their own (`probe_turn_opp`, `float_river_opp`), so the card
+  answers them from those hands. A player with no history of one at all is shown
+  their last tracked spot instead, as *arrived with …*.
 - **Board narrowing.** Postflop, each step is first tried narrowed to boards like
   this one (highest card, paired or not), and kept that way while at least *min
   shown hands to narrow by board* survive it (5 by default, in the settings).
