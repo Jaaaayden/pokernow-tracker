@@ -429,7 +429,8 @@
       const tr = document.createElement("tr");
       const td = el("td");
       const a = el("a", "link", `#${r.hand_number}`);
-      a.href = `/hands/${r.hand_id}`;
+      // The chart lists the one hand and replays it (its `hand=` param).
+      a.href = "/chart?" + new URLSearchParams({ player: d.player, hand: r.hand_id });
       a.target = "_blank"; a.rel = "noopener";
       a.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}`;
       td.appendChild(a);
@@ -579,13 +580,27 @@
       }
       const thead = el("thead"); thead.appendChild(head); t.appendChild(thead);
       const tbody = el("tbody");
+      // A count links to the chart on the filter that finds its hands; the link
+      // stops the click, so the rest of the row still opens the card.
+      const countCell = (r, side, filter) => {
+        const td = el("td");
+        const n = r[side].count;
+        if (!n || !filter) { td.textContent = fmt(n); return td; }
+        const a = el("a", "link", fmt(n));
+        a.href = "/chart?" + new URLSearchParams({ player: r.player, filter });
+        a.target = "_blank"; a.rel = "noopener";
+        a.title = `Open the ${fmt(n)} hand${n === 1 ? "" : "s"} ${r.player} ${side} a bounty in, in the chart`;
+        a.addEventListener("click", (e) => e.stopPropagation());
+        td.appendChild(a);
+        return td;
+      };
       for (const r of data.players) {
         const tr = el("tr");
         const net = r.net.chips;
         tr.appendChild(el("td", null, r.player));
-        tr.appendChild(el("td", null, fmt(r.won.count)));
+        tr.appendChild(countCell(r, "won", r.won_filter));
         tr.appendChild(el("td", "dim wide", fmt(r.won.chips)));
-        tr.appendChild(el("td", null, fmt(r.paid.count)));
+        tr.appendChild(countCell(r, "paid", r.paid_filter));
         tr.appendChild(el("td", "dim wide", fmt(r.paid.chips)));
         tr.appendChild(el("td", net > 0 ? "up" : net < 0 ? "down" : "", signed(net)));
         tr.appendChild(el("td", null, r.net.bb == null ? "—" : signed(r.net.bb)));

@@ -8,6 +8,7 @@ must still never see them.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -179,6 +180,35 @@ def test_endpoint_answers_for_a_player_and_a_slash_name(client):
     assert client.get("/players/nobody/shows").status_code == 404
     one = client.get("/players/9/2/shows", params={"game": MULTIWAY_GAME}).json()
     assert one["shows"] <= body["shows"]
+
+
+def test_every_shown_hand_is_in_the_list_its_chart_link_opens(client):
+    """A shown hand links to `/chart?player=<alias>&hand=<id>`, which lists the
+    player's hands and keeps that one: it has to be among them, slash name too."""
+    assert client.post("/aliases/rename", json={"old": "genericpoker", "new": "9/2"}).status_code == 200
+    checked = 0
+    for alias in ("9/2", "hsj", "HSJ", "getting even"):
+        shows = client.get(f"/players/{alias}/shows").json()
+        listed = {h["hand_id"] for h in client.get(f"/players/{alias}/hands").json()["hands"]}
+        for r in shows["rows"]:
+            assert r["hand_id"] in listed, (alias, r["hand_number"])
+            checked += 1
+    assert checked
+
+
+def test_the_chart_opens_a_linked_hand():
+    """The players page links each shown hand to the chart's `hand=` param, which
+    readUrl reads and the boot opens as a one-hand list with its replay."""
+    static = Path(__file__).resolve().parents[1] / "pnt" / "server" / "static"
+    chart = static.joinpath("chart.html").read_text("utf-8")
+    read_url = chart[chart.index("const readUrl = () => {"):chart.index("const writeUrl = () => {")]
+    assert 'state.hand = ' in read_url and 'q.get("hand")' in read_url
+    boot = chart[chart.index("  readUrl();\n"):]
+    assert "openHands(" in boot and 'pntReplay.show($("replay"), state.hand)' in boot
+    players = static.joinpath("players.html").read_text("utf-8")
+    shows = players[players.index("function showsBody("):players.index("function mergePanel(")]
+    assert '"/chart?" + new URLSearchParams({ player: d.player, hand: r.hand_id })' in shows
+    assert "/hands/" not in shows, "raw JSON is not a link to read"
 
 
 def test_show_tags_reach_the_tags_endpoint_without_a_filter(client):

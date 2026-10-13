@@ -160,8 +160,10 @@ written about. Notes are not in `aliases.csv`, so they stay in the database.
 Above the list, the players page keeps the 7-2 side bet's leaderboard: for each
 player who has won or paid a bounty, how many and how many chips (and big blinds)
 each way, ranked by net. A side bet only moves chips, so the net column sums to
-zero. Click a row to open that player's card. Under it is how often you were dealt
-72 and how often you played it; the two counts open those hands on the chart. That
+zero. The won and paid counts open those hands on the chart (`bounty_won`,
+`bounty_paid`); click anywhere else on a row to open that player's card. Under it
+is how often you were dealt 72 and how often you played it; the two counts open
+those hands on the chart. That
 part is yours only, from the logs you downloaded: anyone else's folded 72 is never
 seen.
 
@@ -571,8 +573,10 @@ the big hand they laid down, to look tight. Open a player on the
 lists every hand they showed after it ended, split by how it ended for them (folded,
 won uncontested, or mucked at showdown), with each two-card show read as strong,
 marginal, a draw or air on the board as it stood when they folded. One-card shows are
-counted only. These are the hands they *chose* to show you, so read them as what they
-want you to believe, not as their range. The range charts leave them out for the same
+counted only. Click a hand's number to replay it on the chart. Any chart link can
+do the same with `hand=<id>`, as in `/chart?player=henry&hand=1234`. These are the
+hands they *chose* to show you, so read them as what they want you to believe, not
+as their range. The range charts leave them out for the same
 reason. A player whose shows are mostly air or draws gets a **SHOWS BLUFFS** fun tag,
 and one whose shows are mostly strong gets **SHOWS NUTS**.
 

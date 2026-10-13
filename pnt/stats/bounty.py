@@ -12,6 +12,9 @@ Per player:
 ``paid``  the same for hands with a negative bounty, as positive figures.
 ``net``   won minus paid, in chips and in bb.
 
+Each row carries the filters that find its hands, ``bounty_won`` and
+``bounty_paid``: run over every hand of the player, each finds exactly its count.
+
 A side bet moves chips between players and creates none, so the ledger's net
 sums to zero across everyone. The one way it cannot is a payment to or from a
 player the log never dealt into that hand, which the parser drops on one side
@@ -40,6 +43,9 @@ from .queries import display_names
 SEVEN_DEUCE = frozenset({"72o", "72s"})
 DEALT_FILTER = "hand=72"
 PLAYED_FILTER = "hand=72,vpip"
+#: The terms that find a leaderboard row's bounty hands, one each way.
+WON_FILTER = "bounty_won"
+PAID_FILTER = "bounty_paid"
 
 
 def _bb(chips: float, n_known: int) -> float | None:
@@ -97,6 +103,8 @@ def _players(conn: sqlite3.Connection, game: str | None) -> list[dict]:
             "won_n": 0, "won": 0, "won_bb": 0.0,
             "paid_n": 0, "paid": 0, "paid_bb": 0.0,
             "bb_known": 0, "bounty_hands": 0,
+            # Only a person the chart can open gets filters; a bare id has no alias.
+            "linked": r["alias"] is not None,
         })
         chips = r["bounty"]
         side = "won" if chips > 0 else "paid"
@@ -119,6 +127,8 @@ def _players(conn: sqlite3.Connection, game: str | None) -> list[dict]:
             # A hand with no big blind on record adds its chips but no bb figure.
             "bb_known": known,
             "bounty_hands": a["bounty_hands"],
+            "won_filter": WON_FILTER if a["linked"] else None,
+            "paid_filter": PAID_FILTER if a["linked"] else None,
         })
     rows.sort(key=lambda r: (-r["net"]["chips"], -r["won"]["count"], r["player"].casefold()))
     return rows

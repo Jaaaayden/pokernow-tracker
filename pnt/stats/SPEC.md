@@ -1682,9 +1682,13 @@ Judgement calls:
    every hand of the player, so a 72 they showed in a log they do not own would
    join the count. Where one has, that figure's filter (`dealt_filter`,
    `played_filter`) is null and the page shows the count unlinked.
-4. **No filter term finds a bounty hand**, so the leaderboard rows open the
-   player's card rather than a hand list. A `bounty` flag would make them
-   drillable like the rest.
+4. **Each row's counts carry the filter that finds their hands**: `won_filter`
+   is `bounty_won` (`bounty > 0`) and `paid_filter` is `bounty_paid`
+   (`bounty < 0`), so run over every hand of the player through
+   `/players/{alias}/hands` each lists exactly its count. The page links the two
+   counts to the chart on them; the rest of the row still opens the player's
+   card. A bounty paid to or by a PokerNow ID with no player row has no alias to
+   open, so its filters are null.
 
 ### Red and blue lines
 
