@@ -5,6 +5,7 @@ and the tempo bucket it falls in. See SPEC.md, "Timing tells".
 from __future__ import annotations
 
 import sqlite3
+from collections import Counter
 
 import pytest
 
@@ -212,3 +213,152 @@ def test_think_terms_read_seconds_and_tempo_terms_read_buckets():
     assert not parse_filter("tempo_flop!=snap")(b)
     with pytest.raises(ValueError, match="unknown tempo"):
         parse_filter("tempo_river=slow")
+
+
+def test_every_timing_term_is_documented():
+    from pnt.stats.filters import TEMPO_TERMS, VOCABULARY, vocabulary
+
+    documented = {t.replace("<street>", s).split(">")[0].split("=")[0].split("!")[0]
+                  for _, terms in VOCABULARY for t, _, _ in terms for s in ("flop", "turn", "river")}
+    for name in (*TEMPO_TERMS, "think_preflop", "think_flop", "think_turn", "think_river"):
+        assert name in documented, name
+    assert vocabulary()["tempos"] == list(TEMPO_BUCKETS)
+
+
+# ----------------------------------------------------------------- report -----
+
+
+@pytest.fixture(scope="module")
+def db():
+    conn = connect(":memory:")
+    for path in ALL_LOGS + EDGE_LOGS:
+        import_csv(conn, path)
+    return conn
+
+
+def _every_row(out: dict):
+    """(filter, n) of every row a timing report prints."""
+    for st in out["streets"]:
+        yield st["filter"], st["timed"]
+        for b in st["buckets"]:
+            yield b["filter"], b["n"]
+    for block in (out["spots"], out.get("relative", {}).get("spots", [])):
+        for sp in block:
+            yield sp["filter"], sp["n"]
+            for r in sp["rows"]:
+                yield r["filter"], r["n"]
+
+
+def test_every_row_reproduces_from_its_filter(db):
+    from pnt.stats.queries import display_names, facts_for, report
+    from pnt.stats.timing import timing_report
+
+    names = display_names(db)
+    seen = Counter()
+    for row in report(db):
+        alias = row["player"]
+        everything = facts_for(db, alias)
+        for spot in ("", "srp", "position=BB"):
+            pred = parse_filter(spot, names) if spot else None
+            facts = [f for f in everything if pred is None or pred(f)]
+            out = timing_report(facts, baseline=everything, with_ids=True)
+            for flt, n in _every_row(out):
+                combined = parse_filter(",".join(t for t in (spot, flt) if t), names)
+                assert sum(1 for f in everything if combined(f)) == n, (alias, spot, flt)
+                seen[flt.split(",")[-1]] += n
+            for sp in (*out["spots"], *out["relative"]["spots"]):
+                assert sum(r["n"] for r in sp["rows"]) == sp["timed"] <= sp["n"], (alias, sp["key"])
+                for r in sp["rows"]:
+                    assert len(r["hand_ids"]) == r["n"] and r["known"] <= r["n"]
+    assert seen["tempo_river=tank"] and seen["tempo_flop=pre"], "the fixtures have both"
+
+
+def test_the_pool_splits_owners_from_shown_hands(db):
+    from pnt.stats.fold_equity import pool_facts
+    from pnt.stats.queries import display_names
+    from pnt.stats.timing import owners, timing_report
+
+    facts = pool_facts(db)
+    own = owners(db)
+    assert own, "the fixtures' logs have owners"
+    out = timing_report(facts, owners=own, who=display_names(db))
+    assert "hand_ids" not in out["spots"][0]["rows"][0]
+    for sp in out["spots"]:
+        for r in sp["rows"]:
+            assert r["own"]["n"] + r["others"]["n"] == r["n"]
+            assert r["own"]["known"] + r["others"]["known"] == r["known"]
+            # An owner's cards are known on every hand of their own log.
+            assert r["own"]["known"] == r["own"]["n"]
+            pred = parse_filter(r["filter"])
+            assert sum(1 for f in facts if pred(f)) == r["n"]
+    assert set(out["thin"]) == {"flop_call", "turn_call", "river_bet", "river_call"}
+
+
+def test_a_database_from_before_the_clock_asks_for_a_rebuild(db):
+    from pnt.stats.timing import needs_rebuild, timing_report
+
+    assert not needs_rebuild(db)
+    conn = connect(":memory:")
+    import_csv(conn, ALL_LOGS[0])
+    conn.execute("UPDATE actions SET ord = NULL")
+    assert needs_rebuild(conn)
+    out = timing_report([f for h in load_hands(conn) for f in derive(h)])
+    assert out["timed"]["timed"] == 0 and out["timed"]["rebuild"]
+    assert all(sp["timed"] == 0 for sp in out["spots"])
+
+
+# ----------------------------------------------------------------- server -----
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
+    import importlib
+
+    from pnt.ingest.importer import rename_player
+    from tests.conftest import local_client
+
+    monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
+    from pnt.server import app as app_module
+
+    importlib.reload(app_module)
+    conn = connect(tmp_path / "api.sqlite")
+    for path in ALL_LOGS:
+        import_csv(conn, path)
+    rename_player(conn, "genericpoker", "9/2")
+    conn.close()
+    return local_client(app_module.app)
+
+
+def test_the_endpoints_carry_rows_that_reproduce(client):
+    body = client.get("/players/HSJ/timing").json()
+    assert body["player"] == "HSJ" and body["hands"] > 0 and not body["timed"]["rebuild"]
+    row = next(r for sp in body["spots"] for r in sp["rows"] if r["n"])
+    one = client.get("/players/HSJ/stats", params={"filter": row["filter"]}).json()
+    assert one["hands"] == row["n"] == len(row["hand_ids"])
+    assert body["relative"]["spots"] and body["relative"]["medians_ms"]
+    spot = client.get("/players/HSJ/timing", params={"filter": "srp"}).json()
+    assert spot["filter"] == "srp" and spot["hands"] < body["hands"]
+    assert client.get("/players/9%2F2/timing").json()["hands"] > 0
+    assert client.get("/players/HSJ/timing", params={"filter": "tempo_river=slow"}).status_code == 400
+    assert client.get("/players/ghost/timing").status_code == 404
+
+    pool = client.get("/timing").json()
+    assert pool["player"] is None and pool["players"] >= 2
+    r = next(r for sp in pool["spots"] for r in sp["rows"] if r["n"])
+    assert "hand_ids" not in r and {"own", "others"} <= r.keys()
+    stats = client.get("/stats", params={"filter": r["filter"]}).json()
+    assert sum(p["hands"] for p in stats) == r["n"]
+
+
+def _read(*parts: str) -> str:
+    return ROOT.joinpath(*parts).read_text("utf-8")
+
+
+def test_the_chart_has_the_view():
+    html = _read("pnt", "server", "static", "chart.html")
+    assert 'data-view="timing"' in html and "function renderTiming(" in html
+    assert "/timing?" in html and "timing: " in html
+    views = html[html.index("const VIEWS = ["):]
+    views = views[: views.index("];")]
+    assert '"timing"' in views and views.index('"timing"') < views.index('"results"')

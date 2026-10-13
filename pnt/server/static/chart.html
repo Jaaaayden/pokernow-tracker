@@ -504,6 +504,23 @@
   #tilt td.moved { color: var(--flag); font-weight: 600; }
   #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 
+  /* --- timing tells: what the hands were, by how long the decision took ---
+     A table per spot, a row per tempo bucket, with the strength tiers as one
+     stacked bar in the Lines view's colours. The pool comes first. */
+  #timing { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
+  #timing h3 { font-size: 13px; font-weight: 600; margin: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #timing table { margin-top: 6px; min-width: 600px; }
+  #timing td small { color: var(--muted); margin-left: 3px; }
+  #timing tr.spot td { font-weight: 600; padding-top: 10px; }
+  #timing tr.empty td { color: var(--muted); }
+  #timing td.tbar { width: 30%; min-width: 120px; }
+  #timing .tbar span { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: var(--mid); }
+  #timing .tbar i { display: block; height: 100%; }
+  #timing .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  #timing .warn { color: var(--flag); font-size: 12px; margin: 0; }
+  #timing td.cellpick { cursor: pointer; }
+  #timing td.cellpick:hover { background: var(--mid); }
+
   /* --- red line and blue line, at the top of Results ---
      Red is the hands that never reached showdown, blue the ones that did, grey
      their sum; the all-in adjusted total is a dashed grey. Each line keeps its own
@@ -576,6 +593,7 @@
       <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
+      <button data-view="timing" aria-pressed="false" title="how long they took to act, and what the hands were: snap, normal or tank">Timing</button>
     </span>
     <span class="seg" role="group" aria-label="Review views">
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
@@ -673,6 +691,7 @@
     <div id="table" class="hidden"></div>
     <div id="foldeq" class="foldeq hidden"></div>
     <div id="tilt" class="hidden"></div>
+    <div id="timing" class="hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
@@ -935,7 +954,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "results"];
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "results"];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -1190,6 +1209,8 @@
         data = await getJson(`/players/${player}/slowplay?` + q);
       } else if (view === "tilt") {
         data = await getJson(`/players/${player}/tilt?` + q);
+      } else if (view === "timing") {
+        data = await loadTiming(quiet, live);
       } else if (view === "results") {
         // The red and blue lines ride along: same player and spot. A server too
         // old to have them costs the graph, not the view.
@@ -1345,6 +1366,7 @@
     strength: "Strength by street",
     results: "Big blinds won and lost",
     tilt: "After a big loss, and through the night",
+    timing: "How long they took, and what they had",
   };
 
   // ---- lines ---------------------------------------------------------------
@@ -1738,7 +1760,7 @@
     $("note").textContent = BV_NOTE;
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review", "tilt"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing"]) {
       $(id).classList.add("hidden");
     }
     $("card-title").textContent = TITLE.bluffs;
@@ -2564,6 +2586,200 @@
     }
   }
 
+  // ---- timing tells --------------------------------------------------------------
+  // How long each first decision on a street took, and what the hands were, by
+  // tempo bucket: the pool first (every player, every hand), then this player's,
+  // against the pool's cuts or against their own median, then their pace street
+  // by street. A player's row is its filter: clicking adds the terms to the spot
+  // and lists the hands. The pool's rows name nobody, so they carry their filter
+  // in the hover instead. See "Timing tells" in SPEC.md.
+  let timingRel = false; // this player's buckets cut from their own median
+  const TEMPO_WORD = { pre: "pre-selected", snap: "snap", normal: "normal", tank: "tank", timeout: "timed out" };
+
+  async function loadTiming(quiet, live) {
+    const q = new URLSearchParams();
+    if (state.filter) q.set("filter", state.filter);
+    const key = state.filter || "";
+    // The pool is every hand in the database and takes a second or two: kept per
+    // spot, and asked again on a quiet reload, when the HUD says there are new hands.
+    const held = !quiet && state.timingPool?.key === key ? state.timingPool.data : null;
+    const poolReq = held ? Promise.resolve(held)
+      : getJson("/timing?" + q).catch(e => ({ error: String(e.message || e) }));
+    const data = await getJson(`/players/${encodeURIComponent(state.player)}/timing?` + q);
+    const pool = await poolReq;
+    if (live() && !pool.error) state.timingPool = { key, data: pool };
+    data.pool = pool;
+    return data;
+  }
+
+  function tempoRange(b, bet, cuts, rel) {
+    const s = (ms) => `${+(ms / 1000).toFixed(2)} s`;
+    if (b === "pre") return `≤ ${s(cuts.pre_ms)} after the last action`;
+    const [lo, hi] = rel || (bet ? [cuts.aggressive_snap_ms, cuts.aggressive_tank_ms]
+      : [cuts.passive_snap_ms, cuts.passive_tank_ms]);
+    if (b === "snap") return `${bet || rel ? "<" : "≤"} ${s(lo)}`;
+    if (b === "tank") return `> ${s(hi)}`;
+    return `${s(lo)}–${s(hi)}`;
+  }
+
+  function renderTiming(d) {
+    const wrap = $("timing");
+    wrap.replaceChildren();
+    const cov = d.timed;
+    const river = d.streets.find(s => s.street === "river");
+    setTileKeys("hands in this spot ›", "first decisions timed", "coverage");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = cov.timed;
+    $("t-cov").textContent = cov.decisions ? fmtPct(100 * cov.timed / cov.decisions) : "–";
+    $("t-raise").textContent = river.median_ms == null ? "–" : `${(river.median_ms / 1000).toFixed(1)} s`;
+    setRaiseKey("median river decision", `${river.timed} timed`);
+    $("note").textContent = d.note + " Click a row of theirs to add it to the spot and list its hands.";
+    $("tabletoggle").classList.add("hidden"); // this view is a table already
+    $("table").classList.add("hidden");
+    const para = (cls, text) => { const p = document.createElement("p"); p.className = cls; p.textContent = text; return p; };
+    if (cov.rebuild || d.pool?.timed?.rebuild) {
+      wrap.appendChild(para("warn", "Some hands have no times: they were stored before this version. "
+        + "Run `pnt rebuild` once to time every hand from the logs already stored."));
+    }
+
+    const td = (text, small, title) => {
+      const c = document.createElement("td");
+      c.append(text);
+      if (small != null) { const sm = document.createElement("small"); sm.textContent = small; c.appendChild(sm); }
+      if (title) c.title = title;
+      return c;
+    };
+    const tierBar = (c) => {
+      const cell = document.createElement("td"); cell.className = "tbar";
+      const bar = document.createElement("span");
+      for (const [t] of TIERS) {
+        const v = c.counts[t];
+        if (!v) continue;
+        const i = document.createElement("i"); i.style.flex = `${v} 1 0`; i.style.background = tierColor(t);
+        bar.appendChild(i);
+      }
+      cell.appendChild(bar);
+      cell.title = TIERS.map(([t]) => `${t} ${c.counts[t]}`).join(" · ") + ` — of ${c.known} known`;
+      return cell;
+    };
+    const value = (c) => td(fmtPct(c.value), ` ${c.known}/${c.n}`,
+      c.value_ci ? `value: nutted or strong, of the ${c.known} known · 95% interval ${c.value_ci[0]}–${c.value_ci[1]}%` : "no cards known");
+
+    // One table: a header row per spot, a row per bucket.
+    function spotTable(spots, { pool, rel }) {
+      const t = document.createElement("table");
+      const head = document.createElement("tr");
+      const cols = [["", ""], ["time", "how long the first decision on the street took"], ["n", "decisions in the bucket"],
+        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands"],
+        ["draw", ""], ["air", ""]];
+      if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out"],
+        ["owners, own cards", "the logs' owners, whose every card their own log shows"]);
+      for (const [c, tip] of cols) { const th = document.createElement("th"); th.textContent = c; if (tip) th.title = tip; head.appendChild(th); }
+      t.appendChild(head);
+      for (const sp of spots) {
+        const bet = sp.key.endsWith("_bet");
+        const h = document.createElement("tr"); h.className = "spot";
+        const name = td(sp.label, ` ${sp.timed} timed of ${sp.n}`);
+        name.colSpan = cols.length;
+        h.appendChild(name);
+        t.appendChild(h);
+        for (const r of sp.rows) {
+          const tr = document.createElement("tr");
+          const word = TEMPO_WORD[r.bucket];
+          tr.append(td(word), td(tempoRange(r.bucket, bet, d.cuts, rel ? rel[sp.street] : null)), td(String(r.n)),
+            tierBar(r), value(r), td(fmtPct(r.draw)), td(fmtPct(r.air)));
+          if (pool) tr.append(value(r.others), value(r.own));
+          if (!r.n) tr.classList.add("empty");
+          if (pool) tr.title = `${sp.label}, ${word}: ${r.filter} — add it to a player's spot to list their hands`;
+          else if (r.n) {
+            tr.classList.add("pick"); tr.tabIndex = 0; tr.setAttribute("role", "button");
+            tr.title = `${sp.label}, ${word}: adds ${r.filter} to the spot`;
+            const open = () => drillLine(r.filter, `${sp.label} · ${word}`);
+            tr.addEventListener("click", open);
+            tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+          }
+          t.appendChild(tr);
+        }
+      }
+      return t;
+    }
+
+    // The pool.
+    const pb = document.createElement("div");
+    const ph = document.createElement("h3");
+    const pool = d.pool;
+    ph.textContent = pool && !pool.error ? `The pool: every player, ${pool.hands} player-hands` : "The pool";
+    pb.appendChild(ph);
+    if (!pool || pool.error) pb.appendChild(para("why", pool?.error ? `The pool could not be read: ${pool.error}` : "loading…"));
+    else {
+      pb.appendChild(spotTable(pool.spots, { pool: true }));
+      pb.appendChild(para("why", "A slow call has been stronger than a quick one: more value, fewer draws. A long think "
+        + "before a river bet has meant value, not a bluff: air is about the same share in every bucket. River calls "
+        + "carry no timing signal. Bluffs that got a fold are never shown, so the shown rows lean to value."));
+      const rb = pool.thin?.river_bet;
+      if (rb) {
+        pb.appendChild(para("why", `Per player the cells are thin: of ${rb.players} players with river bets known, `
+          + (rb.full.length ? `only ${rb.full.join(" and ")} ${rb.full.length === 1 ? "has" : "have"}` : "none has")
+          + ` ${pool.min_cell} known hands in every bucket. Read the pool first.`));
+      }
+    }
+    wrap.appendChild(pb);
+
+    // This player.
+    const mb = document.createElement("div");
+    const mh = document.createElement("h3");
+    mh.append(`${d.player}`);
+    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Cut the buckets from");
+    for (const [rel, text, tip] of [[false, "pool's cuts", "the same seconds for everyone"],
+      [true, "own median", "half and twice their own median time on the street"]]) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = tip;
+      b.setAttribute("aria-pressed", rel === timingRel);
+      b.addEventListener("click", () => { if (timingRel !== rel) { timingRel = rel; renderTiming(d); } });
+      seg.appendChild(b);
+    }
+    mh.appendChild(seg);
+    mb.appendChild(mh);
+    const rel = timingRel && d.relative;
+    mb.appendChild(spotTable(rel ? d.relative.spots : d.spots, { pool: false, rel: rel ? d.relative.cuts_ms : null }));
+    if (rel) {
+      const med = Object.entries(d.relative.medians_ms).map(([s, ms]) => `${s} ${(ms / 1000).toFixed(1)} s`).join(" · ");
+      mb.appendChild(para("why", `Their median decision, pre-selected clicks and timeouts left out: ${med}.`));
+    }
+    wrap.appendChild(mb);
+
+    // Their pace, street by street.
+    const sb = document.createElement("div");
+    const sh = document.createElement("h3"); sh.textContent = "Their pace: the first decision on each street";
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    for (const c of ["", "timed", "median", "middle half", ...d.buckets.map(b => TEMPO_WORD[b])]) {
+      const th = document.createElement("th"); th.textContent = c; head.appendChild(th);
+    }
+    t.appendChild(head);
+    const sec = (ms) => ms == null ? "–" : `${(ms / 1000).toFixed(1)} s`;
+    for (const st of d.streets) {
+      const tr = document.createElement("tr");
+      tr.append(td(st.street), td(String(st.timed)), td(sec(st.median_ms)),
+        td(st.p25_ms == null ? "–" : `${sec(st.p25_ms)}–${sec(st.p75_ms)}`));
+      for (const b of st.buckets) {
+        const c = td(fmtPct(b.pct), ` ${b.n}`, `${st.street}, ${TEMPO_WORD[b.bucket]}: ${b.n} of ${st.timed}`);
+        if (b.n) {
+          c.classList.add("cellpick"); c.tabIndex = 0; c.setAttribute("role", "button");
+          const open = () => drillLine(b.filter, `${st.street} · ${TEMPO_WORD[b.bucket]}`);
+          c.addEventListener("click", open);
+          c.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+        }
+        tr.appendChild(c);
+      }
+      t.appendChild(tr);
+    }
+    sb.append(sh, t, para("why", "Timed from the action or board line before it, never from chat. Pre is a check, call or "
+      + "fold within 1 s of the action before it, which PokerNow's buttons pre-select; after a board line it cannot be told "
+      + "from a quick click and counts as a snap."));
+    wrap.appendChild(sb);
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -2606,6 +2822,7 @@
     $("review").classList.toggle("hidden", !review);
     $("strength").classList.toggle("hidden", !strength);
     $("tilt").classList.toggle("hidden", view !== "tilt");
+    $("timing").classList.toggle("hidden", view !== "timing");
     applyLayout();
     if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
@@ -2613,6 +2830,7 @@
     if (review) { renderReview(d, view); return; }
     if (view === "results") { renderResults(d); return; }
     if (view === "tilt") { renderTilt(d); return; }
+    if (view === "timing") { renderTiming(d); return; }
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);

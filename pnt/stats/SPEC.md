@@ -2015,6 +2015,124 @@ Judgement calls:
    together, and narrow one by the other (`session_hour>=3,!post_loss`) to tell
    them apart.
 
+### Timing tells
+
+How long a player took to act, and what their hands were when they took that
+long. `derive._timing` writes the facts, `timing.py` mirrors the report, and
+`GET /players/{alias}/timing`, `GET /timing` (the pool), the chart's **Timing**
+view and `pnt timing` read it.
+
+**The clock.** Every log line carries `ord` = epoch ms × 100 + a sequence, and
+the parser keeps it: `actions.ord` for each post and action, and
+`hands.board_ords` for each street's run-one board line. A line's time is
+`ord // 100` in ms. Hands stored before these columns existed have them NULL:
+their decisions are **untimed**, never zero seconds, and `pnt rebuild` times
+them from the raw lines.
+
+```
+think_ms[s] = time of their first voluntary action on street s
+              - time of the line before it that was a post, an action, or s's board line
+tempo[s]    = the bucket of that decision (below)
+```
+
+Only their **first** voluntary decision on each street is timed, preflop
+included. The first decision on a postflop street is timed from its board line,
+the first preflop one from the last blind posted. Chat inside a hand (a join, a
+seat request, a stand-up) never restarts the clock. No key when the decision
+cannot be timed.
+
+**Buckets**, by action class. The pool's times have no natural gap, so each cut
+is a percentile choice, near the pool's p20 and p80 for the class (115,469
+decisions over 14,720 hands, 2026-10-12). `derive.TEMPO_CUTS` holds them, and
+`tags.THRESHOLDS["tempo"]` is the same dict:
+
+| Bucket | Bet or raise | Check, call or fold |
+|---|---|---|
+| **pre** | never | ≤ 1 s after a voluntary action (`pre_ms`) |
+| **snap** | < 2 s (`aggressive_snap_ms`) | ≤ 1 s after a post or a board line (`passive_snap_ms`) |
+| **normal** | 2–5 s | 1–3.5 s |
+| **tank** | > 5 s (`aggressive_tank_ms`) | > 3.5 s (`passive_tank_ms`) |
+| **timeout** | never | a fold or check from the full clock to 1 s past it (`timeout_ms`) |
+
+The **full clock** (`hands.clock_ms`) is the table's decision limit plus a full
+time bank when the hand began, from its `Game Config Changes` lines:
+`Decision Limit Time` and `Max Time Bank`, PokerNow's default 20 s + 10 s.
+A limit switched off leaves it NULL, and nothing times out.
+
+The filter terms are `think_<street>` (seconds, preflop included:
+`think_river>=5`) and `tempo_<street>=BUCKET` / `!=BUCKET`. Neither matches an
+untimed decision, `!=` included.
+
+**The report.** Four spots, each the player's first decision on the street:
+**flop call** (`line_flop=c*`), **turn call** (`line_turn=c*`), **river bet**
+(`line_river=b*`) and **river call** (`line_river=c*`). A row per bucket the
+decision can land in: a bet has snap, normal and tank; a call has pre, normal and
+tank, since a postflop call always follows a bet and its quick end is the pre
+window. Each row:
+
+| Figure | Numerator | Denominator |
+|---|---|---|
+| **n** | decisions in the spot and bucket (`<spot>,tempo_<s>=<bucket>`) | – |
+| **value** | known hands nutted or strong on that street (`lines.tier_at`) | known hands in the row |
+| **draw**, **air** | known hands of that tier | known hands in the row |
+| **known / n** | hands whose cards are known | n |
+
+Value carries its Wilson interval. A spot's **timed** is its decisions with a
+time; the rows sum to it. Timeouts are left out of every spot (a call or a bet
+never times out anyway).
+
+- **The pool** (`GET /timing`) is every player's rows. Each row's strength is also
+  split by whose cards they are: **owners, own cards** -- the player who captured
+  the log, in that log, whose every card it shows -- and **others, shown** --
+  everyone else, at showdown. No hand ids. `thin` lists, per spot, the players
+  with `MIN_CELL` = 30 known hands in every bucket.
+- **One player** (`GET /players/{alias}/timing`) adds each row's hand ids, a
+  street-by-street pace table (decisions timed, median and middle half without
+  timeouts, and each bucket's share, each with its filter), and `relative`: the
+  same spots bucketed against their own median on the street -- snap under half of
+  it, tank over twice it (`rel_snap`, `rel_tank`), pre kept as it is, timeouts
+  out. The median is over their whole record in the game scope, not the spot, and
+  leaves out pre and timeouts. A relative row's filter states the cut in seconds:
+  `line_flop=c*,think_flop>3.4,tempo_flop!=pre,tempo_flop!=timeout`.
+
+Every row's filter, added to the spot, finds exactly its `n`.
+
+**What the pool showed** (14,974 hands, 2026-10-13). A slow flop or turn call is
+stronger than a quick one: value 15% → 20% → 42% on flop calls (pre, normal,
+tank), draws 23% → 21% → 11%; turn calls 26% → 32% → 58%. A river bet after a
+tank is value, not a bluff: value 54% → 62% → 71% (snap, normal, tank) with air
+flat at 9–11%. River calls carry no timing signal (59%, 61%, 60%). Two players
+have 30 known hands in every river-bet bucket.
+
+Judgement calls:
+
+1. **Anchored on hand lines, never on chat.** About 0.7% of actions have a join,
+   seat request or stand-up logged between them and the line before; timing from
+   the literal previous line would shorten those by a median 2.3 s.
+2. **Pre is not snap.** PokerNow logs a pre-selected check, call or fold one
+   server step (~0.85 s) after the action that set it off, so these sit in a
+   spike just under 1 s that bets and raises never show. About 70% of the window
+   is pre-selected clicks, and the rest cannot be told apart, so the whole window
+   is labelled pre and kept out of snap. Under 300 ms is not a signal: 0.08% of
+   actions.
+3. **No pre after a board line or a post.** The spike is absent after a board
+   line: a new street clears PokerNow's pre-selection. A quick action there is a
+   snap.
+4. **Timeouts are the clock's decision.** A fold or check within 1 s past the
+   limit plus a full bank is PokerNow acting for them; counting it as a tank
+   would read an empty chair as a long think. A bank already spent times out
+   earlier, at the bare limit, and is not detected: those stay tanks.
+5. **First decision per street only.** A check-raise's raise is a second decision
+   and untimed. The first decision is within about 0.15 s of all decisions at
+   every percentile up to p75, so little is lost.
+6. **Distraction and lag are noise, not removed.** Nothing in the log marks a
+   player looking away, and network lag cannot be separated from thinking. The
+   strength gradient survives both on this pool, but some tanks are people not
+   looking.
+7. **The pool leads.** Per-player medians run from about 1.0 s to 2.7 s, and
+   most players have under 50 known hands per bucket. The relative buckets answer
+   "slow for them"; the pool answers "what slow has meant here".
+
 ---
 
 ## Hand review
