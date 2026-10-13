@@ -143,6 +143,7 @@
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["bb_per_100", "bb/100", "num", null],
+    ["bb_per_100_ci", "±", "ci", null],
   ];
   // Postflop columns, per street. Fold and Raise share one denominator: the
   // c-bets the player faced.
@@ -194,6 +195,10 @@
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     bb_per_100: ["Big blinds per 100 hands",
       "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
+    bb_per_100_ci: ["95% interval on bb/100",
+      "How far their true win rate could sit from bb/100, either way, given how much their results "
+      + "swing hand to hand. A +5 ± 30 is not yet a winner: the figure means little until the ± is smaller "
+      + "than it. Blank under two complete hands."],
   };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [] };
@@ -263,19 +268,48 @@
     if (v == null) return "–";
     if (kind === "int") return String(v);
     if (kind === "num") return (v > 0 ? "+" : "") + v.toFixed(2);
+    if (kind === "ci") return "±" + v.toFixed(1);
     return v.toFixed(1) + "%";
   };
 
-  // Every rate carries the sample it came from, so a 100% off two hands reads as one.
+  // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
+  // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
+  // "Confidence intervals"); the HUD's spot.js carries the same copy.
+  function wilson(p, n, z = 1.96) {
+    if (!(n > 0) || p == null) return null;
+    const z2 = z * z;
+    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return [Math.max(0, centre - half), Math.min(1, centre + half)];
+  }
+
+  // A rate in percent over n chances, as hover text: "± 8.6 pts (95%: 31.2–48.5%)".
+  // Wilson is lopsided near 0% and 100%, so the range is printed beside the ±.
+  function ciText(pct, n) {
+    const ci = pct == null ? null : wilson(pct / 100, n);
+    if (!ci) return "";
+    const [lo, hi] = ci.map((x) => 100 * x);
+    return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
+  }
+
+  // Every rate carries the sample it came from, so a 100% off two hands reads as
+  // one, and the 95% range that sample allows. Display only: tags keep their own
+  // minimum samples.
   function sampleTitle(row, key, opp) {
     if (key.startsWith("size:")) {
       const mix = row[`cbet_${state.street}_sizes`];
       return mix ? `${mix[key.slice(5)].n} of their ${state.street} c-bets` : "";
     }
+    if (key === "bb_per_100" || key === "bb_per_100_ci") {
+      const v = row.bb_per_100, ci = row.bb_per_100_ci;
+      if (v == null || ci == null) return "";
+      return `95%: ${fmt(v - ci, "num")} to ${fmt(v + ci, "num")} bb/100`;
+    }
     if (!opp) return "";
     const n = row._opp?.[opp];
     if (n == null) return "";
-    return `${n} ${OPP_NOUN[opp.replace(/_(flop|turn|river)$/, "")] || "chances"}`;
+    const ci = ciText(row[key], n);
+    return `${n} ${OPP_NOUN[opp.replace(/_(flop|turn|river)$/, "")] || "chances"}` + (ci ? ` · ${ci}` : "");
   }
 
   // Bumped by every load: an answer for controls since changed is dropped, so a

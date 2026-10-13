@@ -71,6 +71,8 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
         "bb_hands": t.bb_n,
         "net_bb": r.get("net_bb"),
         "bb_per_100": r.get("bb_per_100"),
+        # Its 95% half-width (SPEC.md, "Confidence intervals"); the chart's tile hover.
+        "bb_per_100_ci": r.get("bb_per_100_ci"),
         # Shares of every hand in the row: how often they put chips in, and how
         # often they saw a flop. What separates "lost playing it" from "lost the
         # blind folding it".

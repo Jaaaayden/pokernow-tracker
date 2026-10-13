@@ -189,7 +189,27 @@
     return { shown: [...arch, ...rest.slice(0, room)], hidden: rest.slice(room) };
   }
 
-  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips };
+  // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
+  // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
+  // "Confidence intervals"); stats.html and chart.html carry the same copy.
+  function wilson(p, n, z = 1.96) {
+    if (!(n > 0) || p == null) return null;
+    const z2 = z * z;
+    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return [Math.max(0, centre - half), Math.min(1, centre + half)];
+  }
+
+  // A rate in percent over n chances, as hover text: "± 8.6 pts (95%: 31.2–48.5%)".
+  // Wilson is lopsided near 0% and 100%, so the range is printed beside the ±.
+  function ciText(pct, n) {
+    const ci = pct == null ? null : wilson(pct / 100, n);
+    if (!ci) return "";
+    const [lo, hi] = ci.map((x) => 100 * x);
+    return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
+  }
+
+  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);
