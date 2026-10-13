@@ -140,6 +140,7 @@
     ["pfr", "PFR", "pct", "vpip"],
     ["3bet", "3Bet", "pct", "3bet"],
     ["fold_to_3bet", "F3B", "pct", "fold_to_3bet"],
+    ["limp_reraise", "LRR", "pct", "limp_reraise"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["bb_per_100", "bb/100", "num", null],
@@ -159,6 +160,7 @@
     af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
+    limp_reraise: "limps that faced a raise",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -190,6 +192,10 @@
       + "together is an aggressive player, a wide gap means they call far more than they raise."],
     "3bet": ["Three-Bet", "How often they re-raised someone's open, making it the third level of betting."],
     fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
+    limp_reraise: ["Limp-Reraise",
+      "They limped, someone raised, and they re-raised. Over every limp that faced that raise "
+      + "(re-raise, call or fold). A limp-reraise is usually a big hand, so a high number "
+      + "means their limp can be a trap."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     bb_per_100: ["Big blinds per 100 hands",
