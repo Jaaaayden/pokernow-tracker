@@ -15,6 +15,31 @@ Stat definitions belong in [`SPEC.md`](../pnt/stats/SPEC.md). Anything built fro
 this list gets its numerator, denominator and exclusions pinned there first, the
 same as every other stat.
 
+## Status: all 16 built (October 2026)
+
+Every idea in the ranking below has been built. The write-ups stay as the record
+of why each one exists; [`guide.md`](guide.md) says how to use them and SPEC.md
+pins what they count.
+
+| # | Idea | Where it lives |
+|---|---|---|
+| 1 | Red line / blue line | Top of the chart's **Results** view, `/players/{alias}/winnings`, `pnt winnings` |
+| 2 | WWSF and the give-up funnel | WWSF and W$WSF columns on `/stats`; funnel tables under Results, `/players/{alias}/funnel` |
+| 3 | Multiway vs heads-up | **Split by** on `/stats`; `players_flop`; a players step in the HUD's spot search |
+| 4 | Steal and blind defense | ATS, F2S and 3BvS columns; chart chips; FOLDS TO STEAL and STEALS WIDE tags |
+| 5 | Head-to-head money flow | Each player's card and the "Who pays whom" matrix on `/players`, `pnt h2h` |
+| 6 | Voluntary-show tells | "Shows without being asked" on `/players`, `pnt shows`, SHOWS BLUFFS / SHOWS NUTS |
+| 7 | Confidence intervals | ± ranges on hover in `/stats`, the chart and the HUD; the ± column beside bb/100 |
+| 8 | Delayed c-bet, probe and float | DCB, Probe, F2P and Float columns; HUD spots; Lines chips |
+| 9 | Tilt and session dynamics | The chart's **Tilt** view, `post_loss` and the session terms, the HUD's "tilt?" chip, TILTS |
+| 10 | Stack-depth splits | Stack depth in **Split by**, the JAM column, Depth and SPR chips |
+| 11 | Squeeze and cold-call | SQZ and CC columns, chart chips, NEVER SQUEEZES |
+| 12 | Limp-reraise | LRR column, Limped chips, LIMP-RERAISE = STRONG |
+| 13 | Straddled pots | Straddle in **Split by**, the straddled chip on the Pot row |
+| 14 | Leak finder for the hero | "Your leaks" on `/stats`, `/leaks`, `pnt leaks` |
+| 15 | Timing tells | The chart's **Timing** view, `tempo_<street>=` and `think_<street>`, the HUD clock, `pnt timing` (needs one `pnt rebuild`) |
+| 16 | 7-2 bounty ledger | The leaderboard on `/players`, `/bounties`, `pnt bounties` |
+
 ## Already planned
 
 These features are already in the current feature batch, so they are left out of the
