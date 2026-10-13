@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from ..logfmt.parser import position_name
 from .cards import board_at, board_texture, street_of_board
-from .derive import POSTFLOP_STREETS, Facts, HandRow, size_bucket
+from .derive import POSTFLOP_STREETS, PREV_STREET, VOLUNTARY_COMMIT, Facts, HandRow, size_bucket
 from .filters import DECISIONS, parse_filter
 from .tags import strength_at
 
@@ -56,7 +56,8 @@ _STREET_INDEX = {PREFLOP: 0, FLOP: 1, TURN: 2, RIVER: 3}
 class Node:
     """One decision point on a player's path through a hand."""
 
-    #: preflop | cbet | faced_cbet | donk, or None when nothing tracks the spot.
+    #: preflop | cbet | faced_cbet | donk | delayed_cbet | probe | faced_probe |
+    #: float, or None when nothing tracks the spot.
     kind: str | None
     street: str
     #: The preflop bet level, for preflop nodes.
@@ -106,6 +107,18 @@ class _Street:
     aggressor: str | None = None
     last_aggression: str | None = None  # bet | raise
     acted: set[str] = field(default_factory=set)
+    # After a missed c-bet (SPEC.md, "Delayed c-bet, probe and float"). `pfa` is
+    # the preflop aggressor on every street; the two flags say whether this
+    # street can hold a delayed c-bet or a probe at all; `floaters` are the
+    # players who called on the street before (on the flop, put chips in preflop);
+    # `called` collects this street's callers for the next one.
+    pfa: str | None = None
+    delayed_on: bool = False
+    probe_on: bool = False
+    probe_by: str | None = None
+    probe_raised: bool = False
+    floaters: set[str] = field(default_factory=set)
+    called: set[str] = field(default_factory=set)
 
 
 def _preflop_node(pid: str, level: int, opener: str | None, position: str | None,
@@ -141,6 +154,33 @@ def _preflop_term(node: Node, decision: str) -> str | None:
     return None
 
 
+def _missed_cbet_spot(pid: str, street: str, st: _Street,
+                      prev_aggressor: str | None) -> tuple[str, str, str] | None:
+    """(kind, situation, label) for the spots a missed c-bet leaves open, or None.
+
+    The conditions are `derive._postflop`'s for the delayed c-bet, probe, float
+    and fold-to-probe facts. SPEC.md shows the first three disjoint from the
+    c-bet and the donk bet, and from each other, and facing a probe never shares
+    a street with facing a c-bet, so the order here decides nothing.
+    """
+    if not st.bet_made:
+        if st.delayed_on and pid == st.pfa:
+            return "delayed_cbet", f"delayed_cbet_{street}_opp", f"{street} delayed c-bet spot"
+        if st.probe_on and pid != st.pfa and st.pfa not in st.acted:
+            return "probe", f"probe_{street}_opp", f"{street} probe spot"
+        if (
+            prev_aggressor is not None
+            and pid != prev_aggressor
+            and prev_aggressor in st.acted
+            and pid in st.floaters
+        ):
+            return "float", f"float_{street}_opp", f"{street} float spot"
+        return None
+    if st.probe_by is not None and not st.probe_raised and pid == st.pfa:
+        return "faced_probe", f"faced_probe_{street}", f"facing {street} probe"
+    return None
+
+
 def _postflop_node(pid: str, street: str, st: _Street, prev_aggressor: str | None,
                    all_in_at: dict[str, int], seq: int, position: str | None,
                    pf_history: list[str], pot: str, post_history: list[str]) -> Node:
@@ -160,6 +200,8 @@ def _postflop_node(pid: str, street: str, st: _Street, prev_aggressor: str | Non
         kind = "faced_cbet"
         situation = f"faced_cbet_{street}={st.cbet_size}" if st.cbet_size else f"faced_cbet_{street}"
         label = f"facing {street} c-bet" + (f" ({st.cbet_size})" if st.cbet_size else "")
+    elif (missed := _missed_cbet_spot(pid, street, st, prev_aggressor)) is not None:
+        kind, situation, label = missed
     else:
         kind, situation = None, None
         if not st.bet_made:
@@ -190,6 +232,13 @@ def _postflop_term(node: Node, decision: str, amount: int, pot_before: int) -> s
             return f"raised_cbet_{s}"
     if node.kind == "donk" and decision == "bet":
         return f"donk_{s}"
+    if node.kind in ("delayed_cbet", "probe", "float") and decision == "bet":
+        return f"{node.kind}_{s}"
+    if node.kind == "faced_probe" and decision in ("call", "raise"):
+        # No fact names the answer to a probe beyond the fold, but the preflop
+        # aggressor had not acted on the street before it, so their line there
+        # starts with the answer.
+        return f"faced_probe_{s},line_{s}={decision[0]}*"
     return None
 
 
@@ -250,10 +299,25 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
     next_seq = max((a.seq for a in hand.actions), default=0) + 1
 
     prev_aggressor = aggressor
+    # derive._postflop's missed-c-bet state: who closed each checked-through
+    # street, and whether every postflop street so far checked through.
+    pfa = aggressor
+    closed_by: dict[str, str] = {}
+    unbet = True
+    vpip = {
+        a.pn_id for a in hand.actions
+        if a.street == PREFLOP and not a.is_forced and a.kind in VOLUNTARY_COMMIT
+    }
+    called_prev: set[str] = vpip
     for street in POSTFLOP_STREETS:
         if _STREET_INDEX[street] > _STREET_INDEX[current]:
             break
-        st = _Street()
+        st = _Street(
+            pfa=pfa,
+            delayed_on=street != FLOP and unbet and pfa is not None,
+            probe_on=pfa is not None and closed_by.get(PREV_STREET[street]) == pfa,
+            floaters=called_prev,
+        )
         street_actions = [a for a in hand.actions if a.street == street and not a.is_forced]
         for a in street_actions:
             pid = a.pn_id
@@ -266,17 +330,23 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
                 paths[pid].append(node)
                 term = _postflop_term(node, a.kind, a.amount, pot_before[a.seq])
                 if term:
-                    post_history[pid].append(term)
+                    post_history[pid].extend(term.split(","))
             if a.kind == "bet":
                 before = pot_before[a.seq]
                 size = size_bucket(a.amount, before) if before > 0 else None
                 if not st.bet_made and pid == prev_aggressor:
                     st.cbet_by, st.cbet_size = pid, size
+                if not st.bet_made and st.probe_on and pid != pfa and pfa not in st.acted:
+                    st.probe_by = pid
                 st.bet_made, st.aggressor, st.last_aggression = True, pid, "bet"
             elif a.kind == "raise":
                 if st.cbet_by is not None:
                     st.cbet_raised = True
+                if st.probe_by is not None:
+                    st.probe_raised = True
                 st.bet_made, st.aggressor, st.last_aggression = True, pid, "raise"
+            elif a.kind == "call" and st.bet_made:
+                st.called.add(pid)
             st.acted.add(pid)
         if pending_for in paths and street == current:
             paths[pending_for].append(
@@ -286,6 +356,15 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
                 )
             )
         prev_aggressor = st.aggressor
+        called_prev = st.called
+        # A street with no bet that a check closed, two or more having acted, was
+        # checked through -- `check_back`. Anything else, an empty street included,
+        # ends the run of checked-through streets a delayed c-bet needs.
+        last = street_actions[-1] if street_actions else None
+        if last is not None and st.aggressor is None and last.kind == "check" and len(st.acted) >= 2:
+            closed_by[street] = last.pn_id
+        else:
+            unbet = False
 
     return paths
 
@@ -382,6 +461,17 @@ _KIND_DECISIONS = {
     "cbet": ("bet", "check"),
     "faced_cbet": ("fold", "call", "raise"),
     "donk": ("bet", "check"),
+    "delayed_cbet": ("bet", "check"),
+    "probe": ("bet", "check"),
+    "float": ("bet", "check"),
+    "faced_probe": ("fold", "call", "raise"),
+}
+
+#: The bet-or-check spots after a missed c-bet: kind -> (opportunity, bet) facts.
+_MISSED_CBET_FACTS = {
+    "delayed_cbet": ("delayed_cbet_opp", "delayed_cbet"),
+    "probe": ("probe_opp", "probe"),
+    "float": ("float_opp", "float_bet"),
 }
 
 
@@ -410,6 +500,17 @@ def decision_of(f: Facts, key: tuple[str, int | str]) -> str | None:
         if f.donk.get(s):
             return "bet"
         return "check" if f.donk_opp.get(s) else None
+    if kind in _MISSED_CBET_FACTS:
+        opp, bet = _MISSED_CBET_FACTS[kind]
+        if getattr(f, bet).get(s):
+            return "bet"
+        return "check" if getattr(f, opp).get(s) else None
+    if kind == "faced_probe":
+        if not f.fold_to_probe_opp.get(s):
+            return None
+        # Facing the probe is the preflop aggressor's first decision facing a bet
+        # on the street: nobody raised in front of them, or it would not count.
+        return "fold" if f.fold_to_probe.get(s) else f.faced_bet_action.get(s)
     return None
 
 
@@ -481,7 +582,15 @@ def label_of(key: tuple[str, int | str]) -> str:
     kind, at = key
     if kind == "preflop":
         return _LEVEL_LABEL.get(int(at), "preflop")
-    return {"cbet": f"{at} c-bet spot", "faced_cbet": f"facing {at} c-bet", "donk": f"{at} lead spot"}[kind]
+    return {
+        "cbet": f"{at} c-bet spot",
+        "faced_cbet": f"facing {at} c-bet",
+        "donk": f"{at} lead spot",
+        "delayed_cbet": f"{at} delayed c-bet spot",
+        "probe": f"{at} probe spot",
+        "faced_probe": f"facing {at} probe",
+        "float": f"{at} float spot",
+    }[kind]
 
 
 def _decision_at(path: list[Node], key: tuple[str, int | str]) -> str | None:
@@ -504,7 +613,8 @@ def resolve(
 
     Widens the node along `candidates()` until at least `min_hands` hands match;
     None when nothing does. A node nothing tracks is answered from the nearest
-    earlier node on the path that has a filter. Only completed hands count: the
+    earlier node on the path that has a filter, and so is a missed-c-bet spot
+    (`_ANCESTOR_FALLBACK`) whose whole ladder is empty. Only completed hands count: the
     hand in progress must not be evidence about itself.
 
     With a `board`, each rung is first tried narrowed to boards like this one
@@ -523,46 +633,57 @@ def resolve(
     if not path:
         return None
     live = path[-1]
-    node = live
-    street = node.street
-    notes: list[str] = []
-    if node.situation is None:
-        for earlier in reversed(path[:-1]):
-            if earlier.situation is not None:
-                notes = [f"{node.label} is not a tracked spot; showing {earlier.label}"]
-                node = earlier
-                break
-        else:
-            return None
+    street = live.street
+    tries: list[tuple[Node, list[str]]] = []
+    earlier = _nearest_tracked(path[:-1])
+    if live.situation is not None:
+        tries.append((live, []))
+        if live.kind in _ANCESTOR_FALLBACK and earlier is not None:
+            tries.append((earlier, [f"no {live.label} hands; showing {earlier.label}"]))
+    elif earlier is not None:
+        tries.append((earlier, [f"{live.label} is not a tracked spot; showing {earlier.label}"]))
     complete = [f for f in facts if f.complete]
     need = max(1, min_hands)
     terms = texture_terms(board, street)
-    for filt, relaxed, key in candidates(node):
-        decided = _decision_at(path, key)
-        attempts = [(f"{filt},{','.join(terms[:k])}", terms[:k]) for k in range(len(terms), 0, -1)]
-        attempts.append((filt, []))
-        for attempt, used in attempts:
-            pred = parse_filter(attempt)
-            hit = [f for f in complete if pred(f)]
-            if len(hit) < need:
-                continue
-            shown = showings(hit, key, street)
-            if used and _shown(shown, decided) < min_known:
-                continue
-            return {
-                "filter": attempt,
-                "hands": len(hit),
-                "known": sum(f.hole_cards is not None for f in hit),
-                "exact": not notes and not relaxed,
-                "relaxed": [*notes, *relaxed],
-                "decisions": decisions(hit, key),
-                "decision": decided,
-                "arrived": key != live.key,
-                "street": street,
-                "texture": used,
-                "showings": shown,
-                "kind": key[0],
-                "at": key[1],
-                "label": label_of(key),
-            }
+    for node, notes in tries:
+        for filt, relaxed, key in candidates(node):
+            decided = _decision_at(path, key)
+            attempts = [(f"{filt},{','.join(terms[:k])}", terms[:k]) for k in range(len(terms), 0, -1)]
+            attempts.append((filt, []))
+            for attempt, used in attempts:
+                pred = parse_filter(attempt)
+                hit = [f for f in complete if pred(f)]
+                if len(hit) < need:
+                    continue
+                shown = showings(hit, key, street)
+                if used and _shown(shown, decided) < min_known:
+                    continue
+                return {
+                    "filter": attempt,
+                    "hands": len(hit),
+                    "known": sum(f.hole_cards is not None for f in hit),
+                    "exact": not notes and not relaxed,
+                    "relaxed": [*notes, *relaxed],
+                    "decisions": decisions(hit, key),
+                    "decision": decided,
+                    "arrived": key != live.key,
+                    "street": street,
+                    "texture": used,
+                    "showings": shown,
+                    "kind": key[0],
+                    "at": key[1],
+                    "label": label_of(key),
+                }
     return None
+
+
+#: The spots the HUD answered from an earlier node before they were tracked
+#: (SPEC.md, "Delayed c-bet, probe and float"). A player with no history of one,
+#: even widened all the way, is still answered from that earlier node -- the
+#: range they arrived with -- rather than with no data.
+_ANCESTOR_FALLBACK = frozenset({"delayed_cbet", "probe", "faced_probe", "float"})
+
+
+def _nearest_tracked(path: list[Node]) -> Node | None:
+    """The last node on `path` that has a filter."""
+    return next((n for n in reversed(path) if n.situation is not None), None)

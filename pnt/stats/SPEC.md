@@ -1217,6 +1217,41 @@ reported `filter` carries it (so a chart following the spot narrows too) and
 `texture` lists the terms used, while `exact` still speaks of the node alone.
 Preflop nodes are never narrowed.
 
+### Spots after a missed c-bet
+
+The bets the "Delayed c-bet, probe and float" section defines are nodes too, so
+the HUD answers them from the hands behind them rather than from an earlier node.
+Their conditions are that section's, read before the action as the table above
+reads its own; none can share a node with a c-bet, lead or facing-a-c-bet spot.
+
+| Condition | Kind | Situation | Decision → history term |
+|---|---|---|---|
+| The PFA, every earlier postflop street checked through, no bet yet (turn, river) | `delayed_cbet` | `delayed_cbet_S_opp` | bet → `delayed_cbet_S`; check → nothing |
+| Not the PFA, the PFA's check closed the street before, no bet yet, PFA yet to act (turn, river) | `probe` | `probe_S_opp` | bet → `probe_S`; check → nothing |
+| The PFA facing that probe before anyone raises it (turn, river) | `faced_probe` | `faced_probe_S` | call → `faced_probe_S,line_S=c*`; raise → `faced_probe_S,line_S=r*`; fold ends the path |
+| Called on the street before (flop: put chips in preflop), its aggressor has acted, no bet yet | `float` | `float_S_opp` | bet → `float_S`; check → nothing |
+
+The decision mix is bet / check for the first, second and fourth, and fold / call /
+raise facing a probe, where call and raise are `faced_bet_action` (the PFA had not
+acted on the street before the probe, so facing it is their first decision facing a
+bet there).
+
+These nodes widen along the postflop ladder of "Finding the closest spot" like any
+other.
+
+Judgement calls:
+
+1. **The answer to a probe is read from the line.** No fact records a call or a
+   raise of a probe the way `called_cbet_S` / `raised_cbet_S` do, so the history
+   carries `line_S=c*` / `line_S=r*` beside `faced_probe_S`: the PFA's line on the
+   street starts with their answer, and the pair reproduces exactly.
+2. **No history at all still has an answer.** Before these spots were tracked, the
+   HUD answered them from the nearest earlier tracked node on the path. When even
+   the widest form of one of these four is empty, it still does -- marked `arrived`,
+   with the note "no *spot* hands; showing *earlier spot*" -- rather than turn a
+   player with a thin history into *no data*. The c-bet, lead and facing-a-c-bet
+   spots keep their *no data*.
+
 ### What they showed up with
 
 Beside the decision mix, every resolved spot reports `showings`: per decision, the

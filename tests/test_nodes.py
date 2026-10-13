@@ -94,7 +94,9 @@ def test_hand_18_walk(hu):
         ("facing 3bet", "call", "position=BTN/SB,opener,faced_3bet"),
         ("facing flop c-bet (small)", "call",
          "position=BTN/SB,opener,faced_3bet=call,3bet_pot,faced_cbet_flop=small"),
-        ("checked to (turn)", "bet", None),
+        # gp, the flop's aggressor, checked the turn to the flop caller: a float.
+        ("turn float spot", "bet",
+         "position=BTN/SB,opener,faced_3bet=call,3bet_pot,called_cbet_flop,float_turn_opp"),
         ("facing river bet", "call", None),
     ]
     assert _walk(hu[18], GP) == [
@@ -299,8 +301,8 @@ def test_decision_of_agrees_with_the_walk(parsed_every):
     reads off that player's Facts at the node's key: the walk and derive agree.
 
     The one translation: PokerNow lets a player fold with no bet in front of
-    them, and at a c-bet or lead spot that has always counted as declining to
-    bet -- a check."""
+    them, and at a c-bet, lead, delayed c-bet, probe or float spot that has
+    always counted as declining to bet -- a check."""
     checked = 0
     for result in parsed_every.values():
         for parsed in result.hands:
@@ -311,7 +313,7 @@ def test_decision_of_agrees_with_the_walk(parsed_every):
                     if node.key is None or node.decision is None:
                         continue
                     want = node.decision
-                    if node.kind in ("cbet", "donk") and want == "fold":
+                    if node.kind in ("cbet", "donk", "delayed_cbet", "probe", "float") and want == "fold":
                         want = "check"
                     assert decision_of(facts[pid], node.key) == want, (parsed.hand_number, pid, node)
                     checked += 1
