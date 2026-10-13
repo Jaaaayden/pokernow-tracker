@@ -402,6 +402,8 @@ view to see the hands they showed doing it, and add **top 15% shown**
 (`hand_pct<=15`) to count how many were big hands. A limp-reraise that everyone
 folded to is never shown, so the shown range leans strong. The same rate is the
 **LRR** column on `/stats`: limp-reraises over every limp that faced a raise.
+When at least five of a player's limp-reraises were shown and 60% or more of them
+were top-15% hands, they get the **LIMP-RERAISE = STRONG** tag.
 
 **Results** opens with the red line and the blue line: the player's net big blinds
 over time, split into the hands they took to showdown (blue) and every other hand

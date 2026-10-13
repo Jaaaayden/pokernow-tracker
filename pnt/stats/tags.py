@@ -75,6 +75,12 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "fourbets_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "jams_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "limper": {"pct": 45, "n": 30},
+    # The light-hand rule in reverse: shown limp-reraises at or under `hand_pct`
+    # (the "strong" preflop cutoff). Calibrated 2026-10-12 on the 14,720-hand
+    # database: of the eight players with a shown limp-reraise it fires for two
+    # (68% and 75% strong) and a third at 60% on one session only; the hero,
+    # every hand known, sits at 22%.
+    "limp_reraise_strong": {"hits": 3, "n": 5, "pct": 60, "hand_pct": 15},
     "jam_happy": {"pct": 3, "hits": 5, "post_pct": 8, "post_hits": 8},
     "folds_to_cbet": {"pct": 50, "n": 25},
     "sticky_vs_cbet": {"pct": 30, "n": 25},
@@ -278,6 +284,10 @@ def _rates() -> dict[str, tuple[Callable[[Facts], bool], Callable[[Facts], bool]
             lambda f: f.hole_cards is not None and bool(f.jam.get("preflop")),
         ),
         "limper": (lambda f: f.pf_faced.get(1) == "call", lambda f: 1 in f.pf_faced),
+        "limp_reraise_strong": (
+            lambda f: hand_pct(hand_class(f.hole_cards)) <= t["limp_reraise_strong"]["hand_pct"],
+            lambda f: f.hole_cards is not None and f.limp_raise,
+        ),
         "jam_preflop": (lambda f: bool(f.jam.get("preflop")), lambda f: f.vpip_opp),
         "jam_postflop": (lambda f: any(f.jam.get(s) for s in POSTFLOP_STREETS), lambda f: f.saw_flop),
         "folds_to_cbet": (lambda f: bool(f.fold_to_cbet.get("flop")), lambda f: bool(f.fold_to_cbet_opp.get("flop"))),
@@ -445,6 +455,15 @@ def _exploits(p: dict) -> list[dict]:
 
     rate_tag("limper", "LIMPER", r["limper"], True,
              "Limped {pct}% of unopened pots ({hits} of {n}). Iso-raise.", "limp")
+
+    # Their limp can be a trap: the limp-reraises they showed were big hands.
+    th, m = t["limp_reraise_strong"], r["limp_reraise_strong"]
+    if m["n"] >= th["n"] and m["hits"] >= th["hits"] and m["pct"] >= th["pct"]:
+        out.append(_tag("limp_reraise_strong", "LIMP-RERAISE = STRONG", "exploit",
+                        f"Limp-reraised with a top-{th['hand_pct']:.0f}% hand {m['hits']} of {m['n']} shown "
+                        f"times ({m['pct']}%). Fold to their limp-reraise without a big hand. Shown only: "
+                        "a limp-reraise everyone folded to is never seen.",
+                        m["n"], m["hits"], "limp,faced_open=raise"))
 
     th, pre, post = t["jam_happy"], r["jam_preflop"], r["jam_postflop"]
     if pre["hits"] >= th["hits"] and pre["pct"] is not None and pre["pct"] >= th["pct"]:

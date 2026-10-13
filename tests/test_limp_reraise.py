@@ -65,3 +65,37 @@ def test_the_three_limp_chips_split_every_limp_that_faced_a_raise(db):
     for row in report(db):
         facts = facts_for(db, row["player"])
         assert sum(1 for f in facts for p in preds if p(f)) == sum(1 for f in facts if den(f))
+
+
+# ------------------------------------------------------------------ tag -----
+
+
+def _limp_reraises(hole_cards: list[str | None]) -> list:
+    from pnt.stats.derive import Facts
+
+    base = {"pn_id": "p", "n_dealt_in": 6, "seats_from_button": 0, "dead_button": False}
+    return [
+        Facts(hand_id=i, pf_faced={1: "call", 2: "raise"}, hole_cards=h, **base)
+        for i, h in enumerate(hole_cards)
+    ]
+
+
+def test_limp_reraise_strong_needs_a_count_a_sample_and_a_share():
+    from pnt.stats.tags import THRESHOLDS, tags_for
+
+    def fired(rows) -> dict | None:
+        return next((t for t in tags_for(rows)["tags"] if t["id"] == "limp_reraise_strong"), None)
+
+    assert THRESHOLDS["limp_reraise_strong"] == {"hits": 3, "n": 5, "pct": 60, "hand_pct": 15}
+    four = fired(_limp_reraises(["AhAd", "KhKd", "QhQd", "7h2d", None, None]))
+    assert four is None, "three strong of four shown is under the sample of five"
+    tag = fired(_limp_reraises(["AhAd", "KhKd", "QhQd", "7h2d", "9c4d", None]))
+    assert tag is not None and (tag["n"], tag["hits"], tag["pct"]) == (5, 3, 60.0)
+    assert tag["label"] == "LIMP-RERAISE = STRONG" and tag["kind"] == "exploit"
+    assert tag["filter"] == "limp,faced_open=raise" and "Shown" in tag["tip"]
+    assert fired(_limp_reraises(["AhAd", "KhKd", "7h2d", "9c4d", "8c3d"])) is None, "40% is under the share"
+    # A limp that called the raise is not a limp-reraise, whatever it held.
+    calls = _limp_reraises(["AhAd"] * 6)
+    for f in calls:
+        f.pf_faced[2] = "call"
+    assert fired(calls) is None
