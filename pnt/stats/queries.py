@@ -25,6 +25,7 @@ from typing import Self
 from ..db.conn import generation, path_of
 from ..logfmt.parser import position_name
 from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
+from .tilt import annotate
 
 
 def load_hands(
@@ -437,6 +438,8 @@ def facts_by_player(
             pid, alias = ident.get(fact.pn_id, (-1, fact.pn_id))
             grouped[pid].append(fact)
             aliases[pid] = alias
+    for facts in grouped.values():
+        annotate(facts)  # the session facts: see tilt.py
     return grouped, aliases, hands
 
 
@@ -593,6 +596,8 @@ def facts_cached(
         fresh[gid] = piece
     # facts_for's order: by hand, oldest first, and within a hand as derived.
     facts = sorted((f for _, piece in fresh.values() for f in piece), key=lambda f: order[f.hand_id])
+    # The session facts, per game: a reused piece is filled again, to the same values.
+    annotate(facts)
 
     if len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
         _FACTS_CACHE.pop(next(iter(_FACTS_CACHE)))
@@ -685,9 +690,9 @@ def facts_for(
     if not ids:
         return []
     wanted = set(ids)
-    return [
-        f for hand in load_hands(conn, game_id, ids) for f in derive(hand) if f.pn_id in wanted
-    ]
+    return annotate(
+        [f for hand in load_hands(conn, game_id, ids) for f in derive(hand) if f.pn_id in wanted]
+    )
 
 
 def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) -> list[dict]:

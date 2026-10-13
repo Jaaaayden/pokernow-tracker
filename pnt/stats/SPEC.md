@@ -1703,6 +1703,92 @@ Judgement calls:
 4. **No filter term names a game**, so a session bar carries its `hand_ids`
    within the spot and the chart lists those hands without touching the spot.
 
+### Session dynamics
+
+How a player plays after a big loss, and as the night wears on. `tilt.py` mirrors
+this section; `GET /players/{alias}/tilt` and the chart's **Tilt** view read it, and
+the HUD's "tilt?" chip is its last row.
+
+These are context *across* hands, which `derive` cannot see from one hand. So
+`tilt.annotate` makes one pass after derivation and writes four facts onto every
+row. It runs wherever a player's hands are listed (`facts_for`, `facts_cached`,
+`facts_by_player`, and the pools of `fold_equity` and `lines`), before any spot
+filter, so the context is always the whole session rather than the hands a filter
+left. A *session* is one `game_id`; a *run* is one PokerNow ID's hands in it,
+ordered by `hand_number`.
+
+```
+big loss          = a complete hand with a known big blind where net / bb <= -BIG_LOSS_BB
+session_hand      = the hand's 1-based place in the run
+hands_since_loss  = session_hand - session_hand of the run's last big loss before this hand
+                    (None before any)
+loss_bb           = that loss's size in big blinds, positive (None with the above)
+session_hour      = (ts - ts of the run's first timestamped hand) in hours
+                    (None when this hand has no ts)
+post_loss         = hands_since_loss <= WINDOW
+```
+
+`BIG_LOSS_BB` = 40 and `WINDOW` = 20, calibrated on the 14,720-hand database on
+2026-10-12. Hands at -40 bb or worse are 2.7% of complete hands (1,121 of them).
+Within each player, VPIP after a loss against their own other hands is +2.0
+points over the next 20 hands, and less over a longer window (+1.6 at 30, +1.2
+at 50). Pooled across players, VPIP is 70.2% in hands 1-10 after a loss, 70.0% in
+11-20, and 67.3% in 21-30, against 67.6% overall.
+
+The filter terms are `post_loss`, `hands_since_loss`, `session_hand` and
+`session_hour`. A row nobody annotated (one derived on its own, like the all-in
+population) has no session context, and every one of them is False on it.
+
+**The report**, over one player's hands in a spot:
+
+| Row | Hands | Filter |
+|---|---|---|
+| **all hands** | every hand in the spot | none |
+| **next 20 hands after a loss** | `post_loss` | `post_loss` |
+| **every other hand** | the rest | `!post_loss` |
+| **first hour** | `session_hour` < 1 | `session_hour<1` |
+| **second hour** | 1 <= `session_hour` < 2 | `session_hour>=1,session_hour<2` |
+| **third hour** | 2 <= `session_hour` < 3 | `session_hour>=2,session_hour<3` |
+| **three hours in** | `session_hour` >= 3 | `session_hour>=3` |
+
+Each row gives VPIP and PFR over `vpip_opp` (as in the stat table), aggression
+frequency over every postflop street together (Σ bets and raises over Σ bets,
+raises, calls and folds: an action count), and bb/100 with its interval over the
+row's complete hands. Each figure carries its denominator. The window row and the
+other-hands row together are all hands. The hour bands together are the hands with
+a timestamp, and `clock` gives that count beside the total. `vpip_gap` is the
+window's VPIP less all hands'. Every row's filter, added to the spot, finds
+exactly its hands.
+
+**The HUD** gives each seat `post_loss` for the hand they play *next* in that
+game. It reads their latest hand there: when it was a big loss, the next hand is
+the first of a window; otherwise it is `hands_since_loss` + 1, still inside while
+that is at most `WINDOW`. `post_loss_since` and `post_loss_bb` say which loss.
+
+Judgement calls:
+
+1. **A session is a game.** A loss never carries into the next `game_id`, even
+   one started the same night: the window measures the minutes after a pot, and a
+   new table is a break.
+2. **Hands are counted per player, not per table.** `hands_since_loss` counts the
+   hands *they* were dealt into, so hands spent away from the table do not use up
+   the window.
+3. **Only a complete hand can be the loss.** This is the rule bb/100 follows: a
+   log that stops mid-hand reads as a loss that never happened. The incomplete
+   hand still counts inside a window opened by an earlier loss.
+4. **A new big loss restarts the window** and gives it its own size. Windows
+   never stack.
+5. **The baseline is all hands, the window included.** That is what the tag
+   compares against, so a player whose windows are a large share of their hands
+   is measured against a baseline their windows pull up. The every-other-hand row
+   gives the clean comparison.
+6. **The clock is the player's own.** `session_hour` counts from *their* first
+   hand of the game, not the table's, so a late arrival starts at zero.
+7. **Hour bands and the window overlap.** Losses pile up as a night goes on, so
+   a late band holds more post-loss hands than an early one. Read the two tables
+   together, and narrow one by the other (`session_hour>=3,!post_loss`) to tell
+   them apart.
+
 ---
 
 ## Hand review

@@ -31,6 +31,7 @@ from .cards import MADE_LEAVES, leaf_of, made_at
 from .derive import POSTFLOP_STREETS, Facts, derive
 from .queries import load_hands
 from .tags import strength_at
+from .tilt import annotate
 
 #: How hands are grouped: by their own line, or by the whole street's sequence.
 MODES = ("own", "action")
@@ -338,4 +339,4 @@ def pool_facts(conn: sqlite3.Connection, game_id: str | None = None) -> list[Fac
     two rows, one from each seat -- the pool's ``xB`` and ``Xb`` are the same
     streets read from opposite chairs.
     """
-    return [f for hand in load_hands(conn, game_id) for f in derive(hand)]
+    return annotate([f for hand in load_hands(conn, game_id) for f in derive(hand)])
