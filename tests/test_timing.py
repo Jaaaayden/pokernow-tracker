@@ -351,6 +351,51 @@ def test_the_endpoints_carry_rows_that_reproduce(client):
     assert sum(p["hands"] for p in stats) == r["n"]
 
 
+def test_the_cli_prints_the_tables(tmp_path):
+    import json
+
+    from typer.testing import CliRunner
+
+    from pnt import cli
+
+    path = tmp_path / "cli.sqlite"
+    conn = connect(path)
+    for log in ALL_LOGS:
+        import_csv(conn, log)
+    conn.close()
+    run = lambda *args: CliRunner().invoke(cli.app, ["timing", *args, "--db", str(path)])
+    out = run("HSJ")
+    assert out.exit_code == 0, out.output
+    assert "River bet" in out.output and "line_river=b*,tempo_river=tank" in out.output
+    assert "pnt rebuild" not in out.output
+    out = run("HSJ", "--relative")
+    assert out.exit_code == 0 and "own median cuts" in out.output and "tempo_flop!=pre" in out.output
+    out = run()
+    assert out.exit_code == 0 and "owners, own cards" in out.output and "thin per player" in out.output
+    body = json.loads(run("HSJ", "--json", "--filter", "srp").output)
+    assert body["filter"] == "srp" and body["spots"]
+    assert run("nobody").exit_code != 0
+
+
+def test_a_restart_says_when_a_rebuild_is_needed(tmp_path, capsys):
+    from pnt import cli
+
+    path = tmp_path / "hint.sqlite"
+    conn = connect(path)
+    import_csv(conn, ALL_LOGS[0])
+    conn.close()
+    cli._rebuild_hint(str(path))
+    assert "pnt rebuild" not in capsys.readouterr().out
+    conn = connect(path)
+    conn.execute("UPDATE actions SET ord = NULL")
+    conn.commit()
+    conn.close()
+    cli._rebuild_hint(str(path))
+    assert "Run `pnt rebuild` once" in capsys.readouterr().out
+    cli._rebuild_hint(str(tmp_path / "missing.sqlite"))  # no database: nothing to say
+    assert capsys.readouterr().out == ""
+
+
 def _read(*parts: str) -> str:
     return ROOT.joinpath(*parts).read_text("utf-8")
 
