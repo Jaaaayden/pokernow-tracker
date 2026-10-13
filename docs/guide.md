@@ -437,6 +437,16 @@ to one, raises one and leads in the selected spot. The **Jammed** and **Called
 jam** chip rows write the all-in terms for you, and the **Pot ≥** box and **vs**
 picker write `pot>=` and `vs=`.
 
+**Is their limp a trap?** The **Limped** chip row splits a player's limps that
+someone raised behind into **limp-reraise**, **limp-call** and **limp-fold**
+(`limp,faced_open=raise|call|fold`). Pick limp-reraise on the Preflop or Made
+view to see the hands they showed doing it, and add **top 15% shown**
+(`hand_pct<=15`) to count how many were big hands. A limp-reraise that everyone
+folded to is never shown, so the shown range leans strong. The same rate is the
+**LRR** column on `/stats`: limp-reraises over every limp that faced a raise.
+When at least five of a player's limp-reraises were shown and 60% or more of them
+were top-15% hands, they get the **LIMP-RERAISE = STRONG** tag.
+
 **Results** opens with the red line and the blue line: the player's net big blinds
 over time, split into the hands they took to showdown (blue) and every other hand
 (red), which add up to the grey total. A blue line that climbs while the red one

@@ -134,6 +134,31 @@ A limper whose next decision is facing a 3-bet -- someone opened and someone els
 3-bet before it came back -- never faced the open, so is in neither side of
 limp-reraise. An all-in call is not a jam ("Jams").
 
+### Limp-reraise readout
+
+Where the Limp-reraise rate above is shown. Nothing new is derived: every figure
+is a filter over the existing facts.
+
+| Where | Shows | Numerator | Denominator | Filter (num / den) |
+|---|---|---|---|---|
+| `/stats` **LRR** column | `limp_reraise` from `rates()` | `limp_raise` | `limp_raise` + `limp_call` + `limp_fold` (`_opp["limp_reraise"]`) | `limp,faced_open=raise` / `limp,faced_open` |
+| chart **Limped** chips | the range, made hands and lines of each answer | | | `limp,faced_open=raise`, `=call`, `=fold` |
+| chart **top 15% shown** chip | the shown hands at or under `hand_pct` 15 | | | `hand_pct<=15` |
+
+Exclusions are the rate's: a limper whose next decision faced a 3-bet is in none
+of the three chips.
+
+Judgement calls:
+
+1. **The three chips partition the denominator.** A limper facing the open can
+   only re-raise, call or fold (`pf_faced` never records a check at level 2), so
+   the chips' hand counts add up to the column's opportunity count.
+2. **15 is the strong cutoff.** `hand_pct<=15` is `PREFLOP_STRENGTH["strong"]`
+   (roughly 77+, ATs+, KQs, AJo+), the same line "What they showed up with" draws.
+3. **The shown range leans strong.** A limp-reraise that everyone folded to is
+   never shown, so the chart's note says so whenever the spot is a limp-reraise
+   on the Preflop or Made view.
+
 ### Steals and blind defense
 
 A steal is an open from late position that nobody in front of it wanted: the
@@ -1422,6 +1447,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **NEVER SQUEEZES** | Squeeze | its opportunity (`squeeze_opp`) | ≤ 3% | 25 | `squeeze_opp` |
 | **FOLDS TO STEAL** | Fold to Steal | its opportunity (a blind facing a steal nobody called; no dead button or dead blind) | ≥ 35% | 30 | `fold_to_steal_opp` |
 | **STEALS WIDE** | ATS (`steal`) | `steal_opp` (first in from CO, BTN or SB; no dead button or dead blind) | ≥ 55% | 30 | `steal_opp` |
+| **LIMP-RERAISE = STRONG** | shown limp-reraises at or under `hand_pct` 15 (the strong cutoff) | `limp_raise`, shown | ≥ 3 and ≥ 60% | 5 | `limp,faced_open=raise` |
 | **JAM HAPPY** | preflop jams ≥ 5 and ≥ 3% of VPIP opportunities, else postflop jams ≥ 8 and ≥ 8% of flops seen | | | | `jam` |
 | **FOLDS TO CBET** | Fold to C-Bet (flop) | its opportunity | ≥ 50% | 25 | `faced_cbet_flop` |
 | **STICKY VS CBET** | same | same | ≤ 30% | 25 | same |

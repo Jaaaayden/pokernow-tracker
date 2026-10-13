@@ -158,6 +158,7 @@
     ["ats", "ATS", "pct", "ats"],
     ["fold_to_steal", "F2S", "pct", "fold_to_steal"],
     ["3bet_vs_steal", "3BvS", "pct", "3bet_vs_steal"],
+    ["limp_reraise", "LRR", "pct", "limp_reraise"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["wwsf", "WWSF", "pct", "wwsf"],
@@ -192,6 +193,7 @@
     wwsf: "flops seen", wwsf_nsd: "flops seen",
     squeeze: "opens with a caller in front of them", cold_call: "opens faced cold",
     ats: "steal chances", fold_to_steal: "steals faced from a blind", "3bet_vs_steal": "steals faced from a blind",
+    limp_reraise: "limps that faced a raise",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -246,6 +248,10 @@
       + "High means you can open wider from late position when they are in the blinds."],
     "3bet_vs_steal": ["Three-Bet vs Steal",
       "Over the same steals as F2S, how often they re-raised. Counts in 3Bet as well."],
+    limp_reraise: ["Limp-Reraise",
+      "They limped, someone raised, and they re-raised. Over every limp that faced that raise "
+      + "(re-raise, call or fold). A limp-reraise is usually a big hand, so a high number "
+      + "means their limp can be a trap."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     wwsf: ["Won When Saw Flop",

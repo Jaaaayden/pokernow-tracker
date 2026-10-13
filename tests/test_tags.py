@@ -323,7 +323,7 @@ EXACT = {"folds_river", "folds_to_cbet", "sticky_vs_cbet", "auto_cbet", "rarely_
 #: Tags whose `hits` is exactly the hands their filter finds.
 HITS = {"limper", "donks"}
 #: Tags judged on shown hands: `n` is the hands their filter finds with cards known.
-SHOWN = {"no_bluff", "bluffs_river", "calls_down_light", "checks_back_weak", "traps"}
+SHOWN = {"no_bluff", "bluffs_river", "calls_down_light", "checks_back_weak", "traps", "limp_reraise_strong"}
 #: Tags judged on voluntary shows (`shows.show_tags`): not `Facts`, so no filter.
 #: `n` is the player's two-card rows of `v_voluntary_shows`, and `hand_ids` the hits.
 VOLUNTARY = {"shows_bluffs", "shows_nuts"}

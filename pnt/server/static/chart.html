@@ -587,6 +587,7 @@
   <div class="lines" id="lines"></div>
   <div class="lines" id="actions"></div>
   <div class="lines" id="jams"></div>
+  <div class="lines" id="limps"></div>
   <div class="presets textures" id="textures"><span class="lbl">Flop</span></div>
 
   <div class="tiles">
@@ -784,6 +785,32 @@
   const jamPattern = (key) => new RegExp(`^${key}(_(${JAM_STREETS.join("|")}))?$`);
   const JAM_TERM = /^(faced_|called_)?jam(_\w+)?$/;
   const JAM_NOTE = "A jam everyone folds to is never shown, so a jam range that looks like all value may only mean the bluffs got through.";
+  // Limp chips: what a limper did when someone raised behind them (SPEC.md,
+  // "Decision points": Limp-reraise). Each chip writes two terms, `limp` and the
+  // decision at the open, and the row holds one of the three at a time. The last
+  // chip narrows any spot to the shown hands in the top 15% (`hand_pct<=15`, the
+  // "strong" preflop cutoff), so the hands tile counts the strong ones.
+  const LIMP_ROW = [
+    ["limp-reraise", "limp,faced_open=raise", "limped, then re-raised the open"],
+    ["limp-call", "limp,faced_open=call", "limped, then called the open"],
+    ["limp-fold", "limp,faced_open=fold", "limped, then folded to the open"],
+  ];
+  const LIMP_STRONG = ["top 15% shown", "hand_pct<=15", "shown hands in the top 15% of starting hands"];
+  const LIMP_NOTE = "A limp-reraise everyone folds to is never shown, so a shown limp-reraise range that looks like all big hands may only mean the bluffs got through.";
+  const isLimpReraise = (filter) => {
+    const ts = (filter || "").split(",").map(t => t.trim());
+    return ts.includes("limp") && ts.includes("faced_open=raise");
+  };
+  // Replace whichever limp chip is pressed with `pair`'s two terms, or clear the
+  // row when `pair` was the one already pressed.
+  function setLimpTerms(pair) {
+    const want = pair.split(",");
+    const cur = terms();
+    const pressed = want.every(t => cur.includes(t));
+    const next = cur.filter(t => t !== "limp" && t !== "faced_open" && !t.startsWith("faced_open="));
+    if (!pressed) next.push(...want);
+    $("filter").value = next.join(",");
+  }
   const terms = () => $("filter").value.split(",").map(t => t.trim()).filter(Boolean);
   const hasTerm = (t) => terms().includes(t);
   function toggleTerm(t) {
@@ -836,6 +863,7 @@
   }
   function syncChips() {
     document.querySelectorAll("button[data-term]").forEach(b => b.setAttribute("aria-pressed", hasTerm(b.dataset.term)));
+    document.querySelectorAll("button[data-terms]").forEach(b => b.setAttribute("aria-pressed", b.dataset.terms.split(",").every(hasTerm)));
     const current = $("filter").value.trim();
     document.querySelectorAll("button[data-preset]").forEach(b => b.setAttribute("aria-pressed", b.dataset.preset === current));
     $("clear").disabled = !current;
@@ -2432,6 +2460,7 @@
       : view === LINES_VIEW ? LINES_NOTE
       : strength ? SP_NOTE
       : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? `${RANGE_NOTE} ${JAM_NOTE}` : RANGE_NOTE;
+    if ((view === "preflop" || view === "made") && isLimpReraise(d.filter)) $("note").textContent += ` ${LIMP_NOTE}`;
     $("colorseg").classList.toggle("hidden", view !== "preflop");
     $("sizingctl").classList.toggle("hidden", view !== "sizing");
     $("linesctl").classList.toggle("hidden", view !== LINES_VIEW);
@@ -3583,6 +3612,25 @@
       row.appendChild(b);
     }
     $("jams").appendChild(row);
+  }
+  {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "Limped";
+    lbl.title = "what they did when someone raised behind their limp";
+    row.appendChild(lbl);
+    for (const [text, pair, what] of LIMP_ROW) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = `${pair}: ${what}`;
+      b.dataset.terms = pair;
+      b.addEventListener("click", () => { setLimpTerms(pair); apply(); });
+      row.appendChild(b);
+    }
+    const sep = document.createElement("span"); sep.className = "sep"; row.appendChild(sep);
+    const [text, term, what] = LIMP_STRONG;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = `${term}: ${what}`;
+    b.dataset.term = term;
+    b.addEventListener("click", () => { toggleTerm(term); apply(); });
+    row.appendChild(b);
+    $("limps").appendChild(row);
   }
   for (const t of TEXTURES) {
     if (!t) { const s = document.createElement("span"); s.className = "sep"; $("textures").appendChild(s); continue; }
