@@ -407,6 +407,17 @@ session, or click red or blue in the legend to narrow the spot to those hands.
 `pnt winnings <alias>` prints the totals and the session table, and
 `GET /players/{alias}/winnings` returns every point.
 
+**Results** ends with the give-up funnel. Of the flops the player saw, it shows how
+many turns, rivers and showdowns they were still in for, and how many showdowns
+they won. Under that is **WWSF** (won when saw flop: how often a flop ended with
+them collecting the pot) and the part of it they won without a showdown. A second
+table shows where they folded after the flop, each street split by whether they
+had been the previous street's aggressor, as a share of the hands that reached
+that street the same way. Low WWSF beside a normal WTSD means they give up too
+much: keep betting at them. Click any row to narrow the spot to its hands and list
+them. WWSF and W$WSF are also columns on the stats page, and
+`GET /players/{alias}/funnel` returns the tables as JSON.
+
 Every cell, bar and size opens the list of hands behind it, and clicking a hand
 replays it. Each row names who the hand was against and whether the player closed
 the action (`IP` or `OOP` rather than a seat, since every postflop stat here is
