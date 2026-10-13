@@ -206,6 +206,12 @@ from the same URL (the page alone is at `/stats.html`). Pick a street to swap th
 postflop columns, toggle the c-bet size mix, and click a player to open their range
 chart in the spot you are looking at.
 
+A VPIP of 45% on 20 hands and one on 2,000 look the same in a table, so hover a rate
+for its sample and its 95% range (a Wilson interval): `20 preflop decisions · ± 20.0
+pts (95%: 25.8–65.8%)`. The `±` column beside bb/100 does the same for the win rate,
+from how much each hand's result swings; a +5 ± 30 is not yet a winner. The range is
+only a display: the tags keep their own minimum samples.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.
@@ -446,7 +452,10 @@ back. Either mode stays as you left it.
 **Player cards.** Everyone dealt into the latest hand gets a card with VPIP, PFR,
 3-bet, fold to 3-bet, c-bet and WTSD, each shown twice: this session first, with
 lifetime in grey beside it. A session figure turns blue when it sits 10 or more
-points from lifetime on at least 10 chances. Hover a figure for both samples.
+points from lifetime on at least 10 chances, and lifetime falls outside the
+session's 95% range, so a gap a small sample could give by chance stays white.
+Hover a figure for both samples and each one's range: `45% of 20, ± 20.0 pts (95%:
+25.8–65.8%)` says tonight's 45% could be anything from a quarter to two thirds.
 
 **Tags** sit under each name: the archetype filled in, the exploits outlined and the
 fun ones dashed. Hover a chip for the evidence and the count. Click it to open the
