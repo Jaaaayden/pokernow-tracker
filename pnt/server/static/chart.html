@@ -895,6 +895,7 @@
     state.lstreet = ["flop", "turn", "river"].includes(q.get("lstreet")) ? q.get("lstreet") : "";
     state.bluffScope = q.get("scope") === "pool" ? "pool" : "player";
     state.floor = SP_FLOORS.some(([f]) => f === q.get("floor")) ? q.get("floor") : "set";
+    state.hand = /^\d+$/.test(q.get("hand") || "") ? Number(q.get("hand")) : null; // opened once, at boot
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -3516,6 +3517,12 @@
   document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
   document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
   loadPlayers().then(load).catch(e => { $("err").textContent = String(e.message || e); $("err").classList.remove("hidden"); });
+  // `hand=<id>` (a link to one hand, e.g. the players page's shown hands): list
+  // that hand and replay it, as if its row had been clicked.
+  if (state.hand && state.player) {
+    openHands("the linked hand", [state.hand]);
+    pntReplay.show($("replay"), state.hand);
+  }
 })();
 </script>
 <script src="/filter-help.js"></script>

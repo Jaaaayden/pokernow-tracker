@@ -429,7 +429,8 @@
       const tr = document.createElement("tr");
       const td = el("td");
       const a = el("a", "link", `#${r.hand_number}`);
-      a.href = `/hands/${r.hand_id}`;
+      // The chart lists the one hand and replays it (its `hand=` param).
+      a.href = "/chart?" + new URLSearchParams({ player: d.player, hand: r.hand_id });
       a.target = "_blank"; a.rel = "noopener";
       a.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}`;
       td.appendChild(a);
