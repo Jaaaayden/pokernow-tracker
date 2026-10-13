@@ -96,7 +96,7 @@ def test_stats_page_has_the_columns_with_tips_and_sample_nouns():
     base = block("BASE")
     for key, opp in COLUMNS.items():
         assert re.search(rf'\["{re.escape(key)}", "[^"]+", "pct", "{re.escape(opp)}"\]', base), key
-        assert re.search(rf'^\s+("{re.escape(key)}"|{re.escape(key)}):', block("BASE_TIP"), re.M), key
+        assert re.search(rf'^\s+("{re.escape(key)}"|{re.escape(key)}):', block("BASE_TIP"), re.MULTILINE), key
         assert re.search(rf'("{re.escape(opp)}"|\b{re.escape(opp)}): "', block("OPP_NOUN")), opp
 
 
