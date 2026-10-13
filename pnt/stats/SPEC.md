@@ -517,6 +517,40 @@ dealt.
 
 Filter: `players_flop=2` (heads-up on the flop), `players_flop>=3` (multiway).
 
+### Multiway vs heads-up
+
+The stats page's **Split by: players on the flop** shows each player as two
+sub-rows, one per group, under their row for the whole spot:
+
+| Group | Term ANDed with the spot | Holds |
+|---|---|---|
+| **HU** | `players_flop=2` | Exactly two players saw the flop |
+| **3+ way** | `players_flop>=3` | Three or more saw it |
+
+Every rate keeps its own numerator and denominator; the split only narrows the
+hands to one group, so a sub-row is reproduced by its filter (`<spot>,<term>`) on
+the chart or `/stats`. Hands with no flop are in neither group. Because the two
+terms partition the flop hands, each player's two sub-rows sum to their whole
+row on every postflop count: flops seen (the WTSD denominator), c-bet chances,
+c-bets faced and so on.
+
+The HUD's closest-spot search carries the same group on every postflop node
+(see "Decision points (nodes)").
+
+Judgement calls:
+
+1. **Two groups, not the exact count.** A 4-way flop is read with the 3-way
+   ones: four-handed flops are too rare to stand alone, and what changes a
+   c-bet is the second caller, not the third.
+2. **`players_flop` is a hand fact, so `hands` in a sub-row counts the player's
+   hands in that group, flop seen or not.** Their two `hands` sum to the hands a
+   flop was dealt on, not to the flops they saw. The preflop columns of a
+   sub-row likewise describe hands that went on to be heads-up or multiway:
+   context for the postflop columns, not a preflop tendency of its own.
+3. **The page's minimum hands applies to the whole row.** A player who clears it
+   is shown with both groups, however few hands each holds; every rate there
+   carries its sample size on hover.
+
 ### Won when saw flop
 
 | Fact / Stat | Numerator | Denominator | Exclusions |
@@ -1136,16 +1170,17 @@ progress can be looked up in the player's history the way any spot is.
 `nodes.py` mirrors this section; the live HUD reads it through `/live`.
 
 Each player's path through a hand is one node per voluntary action, plus a
-pending one for the player to act. A node's filter is built from five parts, in
+pending one for the player to act. A node's filter is built from six parts, in
 this order:
 
-    position, *preflop history, pot type, *postflop history, situation
+    position, *preflop history, pot type, players, *postflop history, situation
 
 | Part | Content |
 |---|---|
 | **position** | `position=<POS>`; withheld on dead-button and irregular-blind hands, as every positional view does |
 | **preflop history** | The terms this player's earlier preflop decisions earned (table below) |
 | **pot type** | `limped` / `srp` / `3bet_pot` / `4bet_pot` from `pot_level`, from the first postflop node on |
+| **players** | `players_flop=2` or `players_flop>=3` from `players_flop` (everyone who did not fold preflop), on postflop nodes; the groups of "Multiway vs heads-up" |
 | **postflop history** | The terms their earlier postflop decisions earned |
 | **situation** | The term for this decision point, or none when nothing tracks it |
 
@@ -1171,7 +1206,7 @@ this order:
 
 So a button who opens, calls a 3-bet and then faces a small c-bet walks
 `position=BTN,unopened` → `position=BTN,opener,faced_3bet` →
-`position=BTN,opener,faced_3bet=call,3bet_pot,faced_cbet_flop=small`.
+`position=BTN,opener,faced_3bet=call,3bet_pot,players_flop=2,faced_cbet_flop=small`.
 
 Every node with a filter and a decision satisfies its own filter on the finished
 hand's `Facts`, and so does every history term it adds. That is the test that
@@ -1194,9 +1229,9 @@ situation. A player facing a 5-bet with no history of it is shown their 4-bet
 spot: the range they arrived with.
 
 Postflop node: (1) as is; (2) any size (`faced_cbet_S=small` → `faced_cbet_S`);
-(3) without postflop history; (4) without `position=`; (5) without preflop
-history; (6) the pot one level down (`4bet_pot` → `3bet_pot` → `srp`, `limped` →
-`srp`); (7) without a pot type.
+(3) any number of players (without `players_flop`); (4) without postflop history;
+(5) without `position=`; (6) without preflop history; (7) the pot one level down
+(`4bet_pot` → `3bet_pot` → `srp`, `limped` → `srp`); (8) without a pot type.
 
 A node nothing tracks (facing a bet in a limped pot, say) is answered from the
 nearest earlier node on the path that has a filter, marked as such.

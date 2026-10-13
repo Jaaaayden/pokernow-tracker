@@ -156,7 +156,8 @@
    * ("pre call · flop check"); `title` has the full node labels. The spot line
    * has the latest one, so it is left off -- unless they folded, when the spot
    * line has nothing to add and the fold itself belongs here. Empty before
-   * they have acted. */
+   * they have acted. A flop three or more saw leads with "3-way" (the count),
+   * since their spot was looked up among multiway flops alone. */
   function pathText(p) {
     const path = Array.isArray(p?.path) ? p.path : [];
     const earlier = p?.folded ? path : path.slice(0, -1);
@@ -166,7 +167,10 @@
       const street = (label.match(/\((flop|turn|river)\)/) || [])[1] || "pre";
       return `${street} ${decision}`;
     }).filter(Boolean);
-    return { text: steps.join(" · "), title: earlier.join("\n") };
+    const n = p?.node?.players_flop;
+    const way = n >= 3 ? [`${n}-way`] : [];
+    const title = [...(way.length ? [`${n} players saw the flop`] : []), ...earlier];
+    return { text: [...way, ...steps].join(" · "), title: title.join("\n") };
   }
 
   /** The hover text of a tag chip: the evidence, then the count it rests on. */

@@ -232,6 +232,13 @@ defend and 3-bet against. Hands with a dead button or a dead blind are left out 
 all three, since the seats are guesses there. The range chart's **Steal**, **Fold
 to steal** and **3-bet vs steal** chips show the hands behind each column.
 
+**Split by** puts sub-rows under each player. *Players on the flop* gives one row
+for heads-up flops (`players_flop=2`) and one for three or more (`players_flop>=3`),
+so a 60% c-bet that drops to 20% three-way stands out: their multiway bet is value.
+Each sub-row is the spot with that term added, and clicking it opens that chart. The
+two rows' postflop counts sum to the player's whole row. *Min hands* applies to the
+whole row, so check the sample on hover before trusting a thin sub-row.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.
@@ -514,7 +521,10 @@ The player to act is marked.
 
 - **Widening.** A spot with no history is widened one step at a time until one has
   data: first to any position, then to the spot they arrived from (a 5-bet with
-  nothing behind it shows their 4-bet spot), then to the pot type. A widened spot
+  nothing behind it shows their 4-bet spot), then to the pot type. A postflop spot
+  starts out among flops with as many players (heads-up, or three or more), and its
+  first step after any size is *any number of players*. A flop three or more saw
+  puts "3-way" (or 4-way, and so on) at the start of the line. A widened spot
   is shown with **≈**, and the hover says how. A spot answered from earlier on the
   path reads *arrived with …*: the range they brought here, on this street's board,
   never a borrowed fold/call/raise mix. When even the widest spot is empty, the

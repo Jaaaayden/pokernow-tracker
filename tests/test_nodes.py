@@ -93,27 +93,27 @@ def test_hand_18_walk(hu):
         ("unopened", "raise", "position=BTN/SB,unopened"),
         ("facing 3bet", "call", "position=BTN/SB,opener,faced_3bet"),
         ("facing flop c-bet (small)", "call",
-         "position=BTN/SB,opener,faced_3bet=call,3bet_pot,faced_cbet_flop=small"),
+         "position=BTN/SB,opener,faced_3bet=call,3bet_pot,players_flop=2,faced_cbet_flop=small"),
         ("checked to (turn)", "bet", None),
         ("facing river bet", "call", None),
     ]
     assert _walk(hu[18], GP) == [
         ("facing open", "raise", "position=BB,faced_open"),
-        ("flop c-bet spot", "bet", "position=BB,3bet,3bet_pot,cbet_flop_opp"),
-        ("turn c-bet spot", "check", "position=BB,3bet,3bet_pot,cbet_flop=small,cbet_turn_opp"),
+        ("flop c-bet spot", "bet", "position=BB,3bet,3bet_pot,players_flop=2,cbet_flop_opp"),
+        ("turn c-bet spot", "check", "position=BB,3bet,3bet_pot,players_flop=2,cbet_flop=small,cbet_turn_opp"),
         ("facing turn bet", "call", None),
-        ("river lead spot", "bet", "position=BB,3bet,3bet_pot,cbet_flop=small,donk_river_opp"),
+        ("river lead spot", "bet", "position=BB,3bet,3bet_pot,players_flop=2,cbet_flop=small,donk_river_opp"),
     ]
 
 
 def test_hand_10_walk(hu):
     assert _walk(hu[10], GP) == [
         ("facing open", "call", "position=BB,faced_open"),
-        ("flop lead spot", "bet", "position=BB,called_open,srp,donk_flop_opp"),
-        ("turn c-bet spot", "bet", "position=BB,called_open,srp,donk_flop,cbet_turn_opp"),
+        ("flop lead spot", "bet", "position=BB,called_open,srp,players_flop=2,donk_flop_opp"),
+        ("turn c-bet spot", "bet", "position=BB,called_open,srp,players_flop=2,donk_flop,cbet_turn_opp"),
     ]
     assert _walk(hu[10], CHRIS)[-1] == (
-        "facing turn c-bet (large)", "fold", "position=BTN/SB,opener,srp,faced_cbet_turn=large",
+        "facing turn c-bet (large)", "fold", "position=BTN/SB,opener,srp,players_flop=2,faced_cbet_turn=large",
     )
 
 
@@ -122,12 +122,12 @@ def test_hand_92_limped_pot_has_untracked_flop(hu):
     assert chris[0] == ("unopened", "call", "position=BTN/SB,unopened")
     assert chris[1] == ("checked to (flop)", "bet", None)
     assert chris[2] == ("facing flop raise", "call", None)
-    assert chris[3][2] == "position=BTN/SB,limp,limped,faced_cbet_turn=small"
-    assert chris[4][2] == "position=BTN/SB,limp,limped,called_cbet_turn,faced_cbet_river=small"
+    assert chris[3][2] == "position=BTN/SB,limp,limped,players_flop=2,faced_cbet_turn=small"
+    assert chris[4][2] == "position=BTN/SB,limp,limped,players_flop=2,called_cbet_turn,faced_cbet_river=small"
     gp = _walk(hu[92], GP)
     assert gp[0] == ("unopened", "check", "position=BB,unopened")
     assert gp[1] == ("first in (flop)", "check", None)
-    assert gp[3][2] == "position=BB,limped,cbet_turn_opp"
+    assert gp[3][2] == "position=BB,limped,players_flop=2,cbet_turn_opp"
 
 
 def test_every_node_satisfies_its_own_filter(parsed_every):
