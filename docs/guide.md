@@ -607,6 +607,27 @@ The rules, the thresholds, and the hands these games play on purpose (7-2, 9-2 a
 K-2o are never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
 "Tags". `GET /players/{alias}/tags` returns the same as JSON.
 
+### Your leaks
+
+```bash
+pnt leaks                # your top three leaks, then every stat outside its band
+pnt leaks --all          # every stat judged, inside its band or not
+```
+
+The same rules turned on yourself. The stats page opens with a **Your leaks** panel
+whenever a log names its owner (the logs you download yourself do). Twelve of your
+stats (VPIP, PFR, 3-bet, ATS, fold to steal, flop c-bet, fold to flop c-bet, WTSD,
+W$SD, WWSF, turn probe and flop float) are held against a band of ordinary values,
+and your fold share against each size of bet is held against that size's
+break-even. Each one outside its band gets a cost in bb per 100 hands and a
+confidence, which is how much of its 95% range sits outside the band, and the top
+three by cost × confidence are listed. Click one to open those hands on your chart.
+The cost is where the money went, not proof of what a different decision would
+have won. The bands are judgement values, not what this pool's winners do: a pool
+of nine has too few winners to measure. The rules are in
+[`SPEC.md`](../pnt/stats/SPEC.md), "Leak finder", and `GET /leaks` returns the same
+as JSON.
+
 ### Shows without being asked
 
 ```bash
