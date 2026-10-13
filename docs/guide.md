@@ -221,6 +221,15 @@ behind it. The range chart's **Squeeze** and **Cold call** chips put the same ha
 on the chart, and **Got squeezed** is the other side: they called an open and then
 faced a 3-bet.
 
+Three columns cover the blind war, which is most of a short-handed home game.
+**ATS** (attempt to steal) is how often they open when it folds to them in the
+cutoff, button or small blind. **F2S** (fold to steal) and **3BvS** (3-bet vs
+steal) are how a player in the small or big blind answers a steal nobody called. A
+blind who folds a lot is one to open wider against, and a wide stealer is one to
+defend and 3-bet against. Hands with a dead button or a dead blind are left out of
+all three, since the seats are guesses there. The range chart's **Steal**, **Fold
+to steal** and **3-bet vs steal** chips show the hands behind each column.
+
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
 the database (hands, players, log lines and parse misses), links to every page, and
 lists the handful of commands worth knowing when something looks wrong.

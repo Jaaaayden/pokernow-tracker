@@ -78,6 +78,11 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     # Squeeze (SPEC.md, "Squeeze and cold-call"). Every regular squeezes 8-19% on
     # the 14,720-hand database (2026-10-12); 0 of 25 at the pool's 13% is a 3% fluke.
     "never_squeezes": {"pct": 3, "n": 25},
+    # The blind war (SPEC.md, "Steals and blind defense"). This pool defends wide:
+    # it folds a blind to 30% of steals and attempts 44% of them, so the lines sit
+    # clear of the pool rather than at an online regular's numbers.
+    "folds_to_steal": {"pct": 35, "n": 30},
+    "steals_wide": {"pct": 55, "n": 30},
     "jam_happy": {"pct": 3, "hits": 5, "post_pct": 8, "post_hits": 8},
     "folds_to_cbet": {"pct": 50, "n": 25},
     "sticky_vs_cbet": {"pct": 30, "n": 25},
@@ -282,6 +287,8 @@ def _rates() -> dict[str, tuple[Callable[[Facts], bool], Callable[[Facts], bool]
         ),
         "limper": (lambda f: f.pf_faced.get(1) == "call", lambda f: 1 in f.pf_faced),
         "squeeze": (lambda f: f.squeeze, lambda f: f.squeeze_opp),
+        "folds_to_steal": (lambda f: f.fold_to_steal, lambda f: f.fold_to_steal_opp),
+        "steals_wide": (lambda f: f.steal, lambda f: f.steal_opp),
         "jam_preflop": (lambda f: bool(f.jam.get("preflop")), lambda f: f.vpip_opp),
         "jam_postflop": (lambda f: any(f.jam.get(s) for s in POSTFLOP_STREETS), lambda f: f.saw_flop),
         "folds_to_cbet": (lambda f: bool(f.fold_to_cbet.get("flop")), lambda f: bool(f.fold_to_cbet_opp.get("flop"))),
@@ -452,6 +459,13 @@ def _exploits(p: dict) -> list[dict]:
     rate_tag("never_squeezes", "NEVER SQUEEZES", r["squeeze"], False,
              "Squeezed {pct}% of the time ({hits} of {n} opens with a caller in front of them). "
              "Open and flat ahead of them: they let a raise and a call through.", "squeeze_opp")
+    rate_tag("folds_to_steal", "FOLDS TO STEAL", r["folds_to_steal"], True,
+             "Folded a blind to a steal nobody called {pct}% of the time ({hits} of {n}). "
+             "Open wider from the cutoff, button and small blind when they are in the blinds.",
+             "fold_to_steal_opp")
+    rate_tag("steals_wide", "STEALS WIDE", r["steals_wide"], True,
+             "Opened {pct}% of the times it folded to them in the cutoff, button or small blind "
+             "({hits} of {n}). Defend your blinds wider and 3-bet their steals.", "steal_opp")
 
     th, pre, post = t["jam_happy"], r["jam_preflop"], r["jam_postflop"]
     if pre["hits"] >= th["hits"] and pre["pct"] is not None and pre["pct"] >= th["pct"]:
