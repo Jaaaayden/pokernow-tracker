@@ -777,6 +777,49 @@ Judgement calls:
    player all in preflop has 0 behind and an SPR of 0, and so does everyone who
    saw the flop against them alone.
 
+### Stack-depth splits
+
+The stats page's **Split by: stack depth** shows each player as four sub-rows,
+one per bucket of `eff_bb` ("Stack depth"), under their row for the whole spot:
+
+| Bucket | Term ANDed with the spot |
+|---|---|
+| **<40bb** | `eff_bb<40` |
+| **40–100bb** | `eff_bb>=40,eff_bb<100` |
+| **100–200bb** | `eff_bb>=100,eff_bb<200` |
+| **200bb+** | `eff_bb>=200` |
+
+The chart's **Depth** chip row writes the same terms, one bucket at a time, and
+an **SPR ≤3** chip beside it writes `spr_flop<=3`. The **JAM** column is
+`jam_pf` over `jam_pf_opp` ("Decision points"): all-in preflop bets and raises
+over preflop decisions, the rate a depth split moves most.
+
+Every rate keeps its own numerator and denominator; a sub-row is reproduced by
+its filter (`<spot>,<term>`). The buckets are half-open and meet exactly, so a
+player's four sub-rows sum to their whole row on every count -- hands, preflop
+decisions, flops seen -- over the hands whose `eff_bb` is known.
+
+Judgement calls:
+
+1. **Unknown-stack hands are in no bucket.** `eff_bb` is None for everyone in a
+   hand with one unknown stack ("Stack depth" call 1), which no comparison
+   matches, so the sub-rows can sum to fewer hands than the whole row. The
+   difference is the hands with an unknown stack, not a rounding error.
+2. **Lower bound in, upper bound out.** 40bb exactly is in 40–100, 100bb in
+   100–200, 200bb in 200+. `eff_bb` is rounded to two places first.
+3. **The split's depth is not the hand review's.** Review rows (`review._eff`,
+   `review._spr`) measure the effective stack and SPR between the flagged player
+   and *that flag's villains*: the smallest of their stacks, the question being
+   how much was at risk in that confrontation. `eff_bb` measures this player
+   against the *deepest other stack dealt in*, before any action, so it exists
+   for every hand, a preflop fold included, and never needs a villain. The two
+   agree heads-up and differ multiway: a 100bb player who tangles with a 30bb
+   player at a table with a 200bb stack is a 30bb review row and a 100bb depth
+   hand. Both are kept on purpose; neither replaces the other.
+4. **The page's minimum hands applies to the whole row**, as in "Multiway vs
+   heads-up": a player who clears it shows all four buckets, however thin each
+   is, with the sample on hover.
+
 ### Board texture
 
 `flop=<tag>`, `turn=<tag>`, `river=<tag>` and `board=<tag>` (the board as dealt,

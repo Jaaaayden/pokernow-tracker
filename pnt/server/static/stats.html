@@ -160,6 +160,10 @@
     ["fold_to_steal", "F2S", "pct", "fold_to_steal"],
     ["3bet_vs_steal", "3BvS", "pct", "3bet_vs_steal"],
     ["limp_reraise", "LRR", "pct", "limp_reraise"],
+    // Preflop jam (SPEC.md, "Decision points"): all-in bets and raises over
+    // their preflop decisions. Read it with the depth split: a 25bb jammer is
+    // normal, a 150bb one is not.
+    ["jam_pf", "JAM", "pct", "jam_pf"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["wwsf", "WWSF", "pct", "wwsf"],
@@ -195,6 +199,7 @@
     squeeze: "opens with a caller in front of them", cold_call: "opens faced cold",
     ats: "steal chances", fold_to_steal: "steals faced from a blind", "3bet_vs_steal": "steals faced from a blind",
     limp_reraise: "limps that faced a raise",
+    jam_pf: "preflop decisions",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -253,6 +258,9 @@
       "They limped, someone raised, and they re-raised. Over every limp that faced that raise "
       + "(re-raise, call or fold). A limp-reraise is usually a big hand, so a high number "
       + "means their limp can be a trap."],
+    jam_pf: ["Preflop jam",
+      "How often they bet or raised all-in preflop, over the same preflop decisions as VPIP. "
+      + "Mostly a short-stack move, so split by stack depth before calling someone a maniac."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     wwsf: ["Won When Saw Flop",
@@ -282,8 +290,10 @@
     none: null,
     multiway: [["HU", "players_flop=2"], ["3+ way", "players_flop>=3"]],
     straddle: [["straddled", "straddled"], ["not straddled", "!straddled"]],
+    depth: [["<40bb", "eff_bb<40"], ["40–100bb", "eff_bb>=40,eff_bb<100"], ["100–200bb", "eff_bb>=100,eff_bb<200"], ["200bb+", "eff_bb>=200"]],
   };
   const SPLIT_NAMES = { none: "nothing", multiway: "players on the flop", straddle: "straddle" };
+  SPLIT_NAMES.depth = "stack depth";
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [],
     split: "none", subs: null };
