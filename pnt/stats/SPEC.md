@@ -1455,6 +1455,32 @@ hands with a known big blind as bb/100 itself (`n` = `Tally.bb_n`), and None und
 two of them. `Tally.bb_sq` keeps Σx² as an exact fraction, so it adds across
 games like `bb_sum`.
 
+### Intervals on the pages
+
+Display only: no tag, threshold or minimum sample reads an interval.
+
+| Where | What it shows |
+|---|---|
+| `/stats` page, a rate's hover | its `_opp` sample, then `± h pts (95%: lo–hi%)`, `h = (hi − lo)/2` |
+| `/stats` page, `±` column | `bb_per_100_ci`; bb/100's hover is `bb/100 ± ci` |
+| Chart tiles | slowplayed share over `total.n`; Results' bb/100 over `bb_hands` (`/results` rows carry `bb_per_100_ci`) |
+| HUD figure hover | the session's and the lifetime's range, each over its own `_opp` |
+
+The pages and `spot.js` each carry a copy of `wilson(p, n)` taking the rate as a
+fraction; a test holds every copy to `queries.wilson`.
+
+Judgement calls:
+1. The pages rebuild `num` from the rounded percentage (`p = pct / 100`). The
+   rounding moves `p` by at most 0.05 points, far inside any interval.
+2. Coverage tiles get no interval. Coverage counts these exact hands; it is not an
+   estimate of anything larger.
+3. The HUD's blue drift mark also needs the lifetime figure outside the session's
+   interval (`DRIFT_NEEDS_CI` in `sidepanel.js`), on top of the 10-point gap and 10
+   chances. Lifetime includes the session, so this is conservative. On the six
+   fixture logs it keeps 12 of 19 marks.
+4. Aggression frequency counts actions, not hands, so its interval treats each
+   action as its own trial. It reads a little narrow for that.
+
 ### All-in EV
 
 What a player's all-ins were *worth* beside what they *took*. `equity.py` computes

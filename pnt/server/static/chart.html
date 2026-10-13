@@ -1212,6 +1212,26 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+
+  // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
+  // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
+  // "Confidence intervals"); stats.html and the HUD's spot.js carry the same copy.
+  function wilson(p, n, z = 1.96) {
+    if (!(n > 0) || p == null) return null;
+    const z2 = z * z;
+    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return [Math.max(0, centre - half), Math.min(1, centre + half)];
+  }
+
+  // A rate in percent over n chances, as hover text: "± 8.6 pts (95%: 31.2–48.5%)".
+  // Wilson is lopsided near 0% and 100%, so the range is printed beside the ±.
+  function ciText(pct, n) {
+    const ci = pct == null ? null : wilson(pct / 100, n);
+    if (!ci) return "";
+    const [lo, hi] = ci.map((x) => 100 * x);
+    return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
+  }
   // How each cell's habitual size was decided; see typical_size() in ranges.py.
   const BASIS = {
     mean: "mean; these raises agree",
@@ -1883,6 +1903,7 @@
     $("t-cov").textContent = fmtPct(d.coverage);
     $("t-raise").textContent = fmtPct(d.total.slowplay_pct);
     setRaiseKey("slowplayed", `${d.total.slowplay} of ${d.total.n} shown ${spLeaf(d.floor)}+ on the ${d.street}`);
+    tileTip("t-raise", ciText(d.total.slowplay_pct, d.total.n));
   }
 
   function renderStrength(d) {
@@ -2000,6 +2021,9 @@
     $("t-hands").textContent = d.hands;
     $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb).replace(" bb", "");
     $("t-cov").textContent = tot.bb_per_100 == null ? "–" : tot.bb_per_100.toFixed(1);
+    tileTip("t-cov", tot.bb_per_100 == null || tot.bb_per_100_ci == null ? ""
+      : `± ${tot.bb_per_100_ci.toFixed(1)} bb/100 (95%: ${(tot.bb_per_100 - tot.bb_per_100_ci).toFixed(1)} to `
+        + `${(tot.bb_per_100 + tot.bb_per_100_ci).toFixed(1)}) over ${tot.bb_hands} complete hands`);
     const flat = (t) => t.rows.flatMap(r => [r, ...(r.roles || [])]);
     const potRows = flat(d.tables.find(t => t.key === "pot"));
     const worst = potRows.find(r => r.worst);
@@ -2327,8 +2351,16 @@
   }
 
   // The tile captions the range views print; the review views swap in their own.
+  // Every tile renderer starts here, so it also clears the last view's hover text.
   function setTileKeys(hands, known, cov) {
     $("t-hands-k").textContent = hands; $("t-known-k").textContent = known; $("t-cov-k").textContent = cov;
+    for (const id of ["t-known", "t-cov", "t-raise"]) tileTip(id, "");
+  }
+  // Hover text on the tile around a figure: the ± on a tile that shows a sampled
+  // rate. Coverage gets none: it counts these exact hands, it does not estimate.
+  function tileTip(id, text) {
+    const tile = $(id).parentElement;
+    if (text) tile.title = text; else tile.removeAttribute("title");
   }
 
   function renderRangeTiles(d) {

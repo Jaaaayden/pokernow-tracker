@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips } = require("./spot.js");
+const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText } = require("./spot.js");
 
 // One decision's shown hands, in the server's five buckets.
 const row = (hands, known, over = {}) =>
@@ -196,4 +196,23 @@ test("the archetype always gets a chip; the rest are capped with the overflow na
   assert.deepEqual(tagChips(tags.slice(1), 1).shown.map((t) => t.id), ["no_bluff"]);
   assert.deepEqual(tagChips([tags[0]], 3), { shown: [tags[0]], hidden: [] });
   assert.deepEqual(tagChips(null), { shown: [], hidden: [] });
+});
+
+test("wilson is the 95% score interval, and ciText prints it as a ± and a range", () => {
+  // queries.wilson(5, 10) in Python: (0.23659, 0.76341).
+  const [lo, hi] = wilson(0.5, 10);
+  assert.ok(Math.abs(lo - 0.23659) < 1e-5 && Math.abs(hi - 0.76341) < 1e-5);
+  assert.equal(wilson(0.5, 0), null, "no chances, no interval");
+  assert.equal(wilson(null, 10), null);
+  // Lopsided at the edges, and clipped to [0, 1].
+  assert.equal(wilson(0, 10)[0], 0);
+  assert.equal(wilson(1, 10)[1], 1);
+  // More hands, a narrower range.
+  const width = ([a, b]) => b - a;
+  assert.ok(width(wilson(0.45, 2000)) < width(wilson(0.45, 20)));
+
+  assert.equal(ciText(45, 20), "± 20.0 pts (95%: 25.8–65.8%)");
+  assert.equal(ciText(0, 10), "± 13.9 pts (95%: 0.0–27.8%)");
+  assert.equal(ciText(null, 10), "", "an unknown rate has no range");
+  assert.equal(ciText(30, 0), "");
 });
