@@ -142,6 +142,8 @@
     ["fold_to_3bet", "F3B", "pct", "fold_to_3bet"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
+    ["wwsf", "WWSF", "pct", "wwsf"],
+    ["wwsf_nsd", "W$WSF", "pct", "wwsf_nsd"],
     ["bb_per_100", "bb/100", "num", null],
   ];
   // Postflop columns, per street. Fold and Raise share one denominator: the
@@ -159,6 +161,7 @@
     af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
+    wwsf: "flops seen", wwsf_nsd: "flops seen",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -192,6 +195,12 @@
     fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
+    wwsf: ["Won When Saw Flop",
+      "Of the flops they saw, how often they collected the pot, with or without a showdown. "
+      + "A 7-2 bounty is not the pot. Low beside a normal WTSD means they give up too much: keep betting at them."],
+    wwsf_nsd: ["Won Without Showdown, of flops seen",
+      "Of the flops they saw, how often they took the pot with nobody left to show down against. "
+      + "Part of WWSF, over the same flops: WWSF less this is the flops won at showdown."],
     bb_per_100: ["Big blinds per 100 hands",
       "Their win rate. Positive is profit. Hands from a log that stopped mid-hand are excluded."],
   };
