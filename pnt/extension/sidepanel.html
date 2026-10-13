@@ -62,6 +62,9 @@
   .pnote-edit .hint { color: #898781; font-size: 9px; }
   .card.act .name { color: #ffd166; }
   .card.act .name::before { content: "▶ "; font-size: 8px; }
+  /* The clock on the player to act: seconds since the action reached them. */
+  .clock { margin-left: 4px; font-size: 9px; color: #ffd166; font-variant-numeric: tabular-nums; }
+  .clock:empty { display: none; }
 
   /* Tag chips: the archetype filled, exploits outlined, the fun ones dashed. All
      of them, wrapping: the card has the height the table row did not. */

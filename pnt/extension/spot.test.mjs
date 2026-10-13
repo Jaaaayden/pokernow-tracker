@@ -4,7 +4,17 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText } = require("./spot.js");
+const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText } = require("./spot.js");
+
+test("the acting clock reads seconds, then minutes, and nothing when unknown", () => {
+  assert.equal(clockText(0), "0s");
+  assert.equal(clockText(7999), "7s");
+  assert.equal(clockText(59_999), "59s");
+  assert.equal(clockText(65_000), "1:05");
+  assert.equal(clockText(null), "");
+  assert.equal(clockText(-5), "");
+  assert.equal(clockText(NaN), "");
+});
 
 // One decision's shown hands, in the server's five buckets.
 const row = (hands, known, over = {}) =>

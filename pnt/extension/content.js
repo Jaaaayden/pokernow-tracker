@@ -59,6 +59,7 @@
     poked: 0,           // why the next poll runs: 1 the table changed, n > 1 the nth look for its log line
     pokedWhileRunning: false,
     tableActing: null,  // the name on the table's decision-current seat (watch.js)
+    tableActingAt: null, // Date.now() when the action reached them: the HUD's clock
   };
 
   const send = (msg) => new Promise((resolve) => {
@@ -80,7 +81,7 @@
       seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
       live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
       text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live,
-      tableActing: state.tableActing,
+      tableActing: state.tableActing, tableActingAt: state.tableActingAt,
     },
   });
 
@@ -254,7 +255,11 @@
       // Who is to act goes to the panel now, not after the log: the chart can
       // move to them while the poll is still out, backing off, or walking history.
       const acting = PNT.tableActing(document);
-      if (acting !== state.tableActing) { state.tableActing = acting; report(); }
+      if (acting !== state.tableActing) {
+        state.tableActing = acting;
+        state.tableActingAt = acting ? Date.now() : null;
+        report();
+      }
       const sig = PNT.tableSignature(document);
       if (sig === last) return;
       const first = last === null;

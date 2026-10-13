@@ -407,3 +407,10 @@ def test_the_chart_has_the_view():
     views = html[html.index("const VIEWS = ["):]
     views = views[: views.index("];")]
     assert '"timing"' in views and views.index('"timing"') < views.index('"results"')
+
+
+def test_the_side_panel_runs_a_clock_on_the_player_to_act():
+    content = _read("pnt", "extension", "content.js")
+    panel = _read("pnt", "extension", "sidepanel.js")
+    assert "tableActingAt: state.tableActingAt" in content
+    assert "snap.tableActingAt" in panel and "PNT.clockText(" in panel and "clockChip()" in panel
