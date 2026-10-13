@@ -43,6 +43,7 @@ from .cards import (
     street_of_board,
 )
 from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, Facts
+from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
 Predicate = Callable[[Facts], bool]
 
@@ -197,6 +198,14 @@ for _s in STREETS:
     #: as pot fractions: `faced_bet_river>=1` is facing a pot-sized bet or bigger.
     NUMERIC[f"faced_bet_{_s}"] = lambda f, s=_s: f.faced_bet_pot.get(s)
     NUMERIC[f"raised_bet_{_s}"] = lambda f, s=_s: f.raise_pot.get(s)
+
+# --- session dynamics (SPEC.md, "Session dynamics"): context across a player's
+# hands in one game, filled by `tilt.annotate` before any filter runs. A row
+# nobody annotated has no session context, and every one of these is False on it.
+FLAGS["post_loss"] = post_loss
+NUMERIC["hands_since_loss"] = lambda f: f.hands_since_loss
+NUMERIC["session_hand"] = lambda f: f.session_hand or None
+NUMERIC["session_hour"] = lambda f: f.session_hour
 
 #: name -> getter for the size-bucket terms (`cbet_flop=medium`, `bet_river=overbet`,
 #: `faced_cbet_turn=large`). The buckets are SIZE_BUCKETS; see SPEC.md.
@@ -730,6 +739,12 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Opponent", (
         ("vs=NAME", "vs=henry", "played against that player"),
         ("vs!=NAME", "vs!=henry", "not against that player"),
+    )),
+    ("Session", (
+        ("post_loss", "post_loss", f"the {WINDOW} hands after losing {BIG_LOSS_BB} bb or more in one hand, same session"),
+        ("hands_since_loss<=N", "hands_since_loss<=5", "their hands since that big loss: 1 is the next hand"),
+        ("session_hand>=N", "session_hand>=100", "their hand count this session, from 1"),
+        ("session_hour>=N", "session_hour>=3", "hours since their first hand this session"),
     )),
     ("Not", (
         ("!FLAG", "!cbet_flop", "any flag above, negated"),

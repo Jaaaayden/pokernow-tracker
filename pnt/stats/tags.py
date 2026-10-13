@@ -31,6 +31,7 @@ from ..logfmt.events import PREFLOP, RIVER
 from .cards import board_at, hand_class, hand_pct, made_hand, street_of_board
 from .derive import POSTFLOP_STREETS, Facts
 from .slowplay import SLOWPLAY, strong_column
+from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
 #: Hands these games play on purpose (the 7-2 bounty and its cousins). They are
 #: fun-tag material and never evidence of a bad call: a 72o that called a 3-bet
@@ -102,6 +103,10 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "slowplays": {"pct": 55, "n": 15},
     "donks": {"pct": 35, "n": 15},
     "size_tell": {"gap": 40, "n": 6},
+    # VPIP in the post-loss window (SPEC.md, "Session dynamics") at least `gap`
+    # points over all their hands, on `n` preflop decisions in the window. The
+    # pool's own lift is about 2 points; the largest player's is 3.0 on 307.
+    "tilts": {"gap": 5, "n": 100},
     "fun": {"hits": 2},
     # Voluntary shows (`shows.show_tags`): one side of the two-card shows, at
     # least `hits` of them and more than `pct` percent.
@@ -333,6 +338,9 @@ def counts(facts: Iterable[Facts]) -> Counter:
             c[f"tables.{f.n_dealt_in}"] += 1
         c["af_flop.hits"] += f.aggressive.get("flop", 0)
         c["af_flop.n"] += f.agg_denom.get("flop", 0)
+        if f.vpip_opp and post_loss(f):  # TILTS: VPIP in the post-loss window
+            c["tilts.n"] += 1
+            c["tilts.hits"] += f.vpip
         for name, (num, den) in rates.items():
             if den(f):
                 c[f"{name}.n"] += 1
@@ -390,6 +398,7 @@ def profile(facts: list[Facts] | Counter) -> dict:
             **{name: m(name) for name in _SHOWN},
             **{name: m(name) for name in _rates() if name not in ("3bet", "wtsd")},
             "slowplays": m("slowplays"),
+            "tilts": m("tilts"),
             "size_tell": {
                 "small": m("size_tell.small"),
                 "big": m("size_tell.big"),
@@ -522,6 +531,15 @@ def _exploits(p: dict) -> list[dict]:
              "made_flop>=set,line_flop=*", "strength", street="flop")
     rate_tag("donks", "DONKS", r["donks"], True,
              "Led into the aggressor on {pct}% of flops ({hits} of {n}). Expect leads; raise them.", "donk_flop")
+
+    th, m = t["tilts"], r["tilts"]
+    if m["n"] >= th["n"] and m["pct"] is not None and p["vpip"] is not None and m["pct"] - p["vpip"] >= th["gap"]:
+        out.append(_tag(
+            "tilts", "TILTS", "exploit",
+            f"VPIP {m['pct']}% in the {WINDOW} hands after losing {BIG_LOSS_BB} bb or more ({m['hits']} of {m['n']}), "
+            f"against {p['vpip']}% over all their hands. After a big pot they play wider: value bet them thinner.",
+            m["n"], m["hits"], "post_loss,acted_preflop", baseline=p["vpip"],
+        ))
 
     th, m = t["size_tell"], r["size_tell"]
     small, big = m["small"], m["big"]

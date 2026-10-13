@@ -525,6 +525,8 @@
         name.classList.add("noted");
         name.title += `\n\n📝 ${note}`;
       }
+      const tilt = tiltChip(s);
+      if (tilt) name.appendChild(tilt);
       row.append(name);
       for (const [k, , tip] of COLS) {
         const td = el("td");
@@ -537,6 +539,25 @@
     const wrap = el("div", "grid");
     wrap.append(table);
     return wrap;
+  }
+
+  // "tilt?": their next hand falls inside the window after a big loss this
+  // session (SPEC.md, "Session dynamics"). A prompt to look, not a verdict: the
+  // chip opens the chart's Tilt view, where their own post-loss figures say
+  // whether a loss changes how they play.
+  function tiltChip(s) {
+    if (!s.post_loss || !s.alias) return null;
+    const chip = el("span", "tag tilt", "tilt?");
+    const when = s.post_loss_since === 1 ? "on their last hand" : `${s.post_loss_since} hands ago`;
+    chip.title = `Lost ${s.post_loss_bb} bb ${when}, this session: inside the post-loss window.`
+      + " Click to see how they play after a big loss.";
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pinned = s.alias;
+      setFollow(false);
+      selectPlayer(s.alias, "", { by: "tilt" });
+    });
+    return chip;
   }
 
   function card(s, lv) {
@@ -584,6 +605,8 @@
       });
       tags.appendChild(chip);
     }
+    const tilt = tiltChip(s);
+    if (tilt) tags.appendChild(tilt);
     c.appendChild(tags);
 
     // The numbers: this session, then lifetime in grey.

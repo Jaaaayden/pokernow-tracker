@@ -493,6 +493,17 @@
   #results tr.pick td:first-child::after { content: none; }
   #results .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 
+  /* --- tilt: after a big loss, and through the night ---
+     Plain tables; a VPIP or PFR that moved from all hands by the gap worth a
+     look is marked in the flag colour, the way the worst pot is on Results. */
+  #tilt { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
+  #tilt h3 { font-size: 13px; font-weight: 600; margin: 0; }
+  #tilt table { margin-top: 6px; min-width: 560px; }
+  #tilt tr.empty td { color: var(--muted); }
+  #tilt td small { color: var(--muted); margin-left: 3px; }
+  #tilt td.moved { color: var(--flag); font-weight: 600; }
+  #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+
   /* --- red line and blue line, at the top of Results ---
      Red is the hands that never reached showdown, blue the ones that did, grey
      their sum; the all-in adjusted total is a dashed grey. Each line keeps its own
@@ -564,6 +575,7 @@
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
+      <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
     </span>
     <span class="seg" role="group" aria-label="Review views">
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
@@ -660,6 +672,7 @@
     <div id="strength" class="hidden"></div>
     <div id="table" class="hidden"></div>
     <div id="foldeq" class="foldeq hidden"></div>
+    <div id="tilt" class="hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
@@ -898,7 +911,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "results"];
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "results"];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -1151,6 +1164,8 @@
       } else if (view === "strength") {
         q.set("street", state.street); q.set("floor", state.floor);
         data = await getJson(`/players/${player}/slowplay?` + q);
+      } else if (view === "tilt") {
+        data = await getJson(`/players/${player}/tilt?` + q);
       } else if (view === "results") {
         // The red and blue lines ride along: same player and spot. A server too
         // old to have them costs the graph, not the view.
@@ -1305,6 +1320,7 @@
     bluffs: "Value against bluffs, by kind of aggression",
     strength: "Strength by street",
     results: "Big blinds won and lost",
+    tilt: "After a big loss, and through the night",
   };
 
   // ---- lines ---------------------------------------------------------------
@@ -1698,7 +1714,7 @@
     $("note").textContent = BV_NOTE;
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt"]) {
       $(id).classList.add("hidden");
     }
     $("card-title").textContent = TITLE.bluffs;
@@ -2436,6 +2452,94 @@
     return box;
   }
 
+  // ---- tilt and session dynamics ---------------------------------------------
+  // Two tables over the spot's hands: all of them against the hands just after a
+  // big loss and every other hand, then by hours since their first hand of the
+  // night. Each row is its filter: clicking one adds the terms to the spot and
+  // lists the hands. See "Session dynamics" in SPEC.md.
+  const TILT_GAP = 5; // points of VPIP or PFR from all hands that get marked
+  function renderTilt(d) {
+    const wrap = $("tilt");
+    wrap.replaceChildren();
+    const [loss, hour] = d.tables;
+    const base = loss.rows.find(r => r.key === "all");
+    const post = loss.rows.find(r => r.key === "post_loss");
+    setTileKeys("hands in this spot ›", `in the ${d.window} hands after a loss`, "VPIP after a loss, points");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = post.hands;
+    $("t-cov").textContent = d.vpip_gap == null ? "–" : `${d.vpip_gap > 0 ? "+" : ""}${d.vpip_gap.toFixed(1)}`;
+    $("t-raise").textContent = d.losses;
+    setRaiseKey(`losses of ${d.big_loss_bb}+ bb`, `${d.sessions} session${d.sessions === 1 ? "" : "s"}`);
+    $("note").textContent = `A big loss is one hand that lost ${d.big_loss_bb} bb or more; the window is the next ${d.window} `
+      + "hands they played in the same session, and a new loss starts it again. Every figure carries its n: VPIP and PFR "
+      + "over their preflop decisions, aggression over postflop bets, raises, calls and folds, bb/100 over complete hands. "
+      + `The hour bands need a timestamp: ${d.clock.known} of ${d.clock.n} hands have one. `
+      + "Click a row to add it to the spot and list its hands.";
+    $("tabletoggle").classList.add("hidden"); // this view is a table already
+    $("table").classList.add("hidden");
+
+    const COLS = [["", ""], ["hands", ""], ["VPIP", "voluntarily put chips in, of their preflop decisions"],
+      ["PFR", "raised preflop, of their preflop decisions"],
+      ["AF", "aggression after the flop: bets and raises over bets, raises, calls and folds"],
+      ["bb/100", "over complete hands with a known big blind, ± its 95% interval"]];
+    const pct = (v, n, key) => {
+      const td = document.createElement("td");
+      td.append(v == null ? "–" : v.toFixed(1) + "%");
+      const sm = document.createElement("small"); sm.textContent = `/${n}`; td.appendChild(sm);
+      td.title = `${n} in the denominator`;
+      if (key && v != null && base[key] != null && Math.abs(v - base[key]) >= TILT_GAP) {
+        const gap = v - base[key];
+        td.classList.add("moved");
+        td.title += ` · ${gap > 0 ? "+" : ""}${gap.toFixed(1)} points from all hands`;
+      }
+      return td;
+    };
+    for (const table of [loss, hour]) {
+      const block = document.createElement("div");
+      const h = document.createElement("h3"); h.textContent = table.title;
+      const t = document.createElement("table");
+      const head = document.createElement("tr");
+      for (const [c, tip] of COLS) {
+        const th = document.createElement("th"); th.textContent = c;
+        if (tip) th.title = tip;
+        head.appendChild(th);
+      }
+      t.appendChild(head);
+      for (const r of table.rows) {
+        const tr = document.createElement("tr");
+        const name = document.createElement("td"); name.textContent = r.label;
+        const n = document.createElement("td"); n.textContent = r.hands;
+        const bb = document.createElement("td");
+        bb.append(r.bb_per_100 == null ? "–" : r.bb_per_100.toFixed(1));
+        const sm = document.createElement("small");
+        sm.textContent = (r.bb_per_100_ci == null ? "" : `±${r.bb_per_100_ci.toFixed(0)} `) + `/${r.bb_hands}`;
+        bb.appendChild(sm);
+        const isBase = r.key === "all";
+        tr.append(name, n, pct(r.vpip, r.vpip_n, isBase ? null : "vpip"), pct(r.pfr, r.pfr_n, isBase ? null : "pfr"),
+                  pct(r.af, r.af_n, null), bb);
+        tr.title = `${r.label}: ${r.hands} hands · ` + (r.filter ? `adds ${r.filter} to the spot` : "the whole spot");
+        if (!r.hands) tr.classList.add("empty");
+        else {
+          tr.classList.add("pick");
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
+          tr.setAttribute("aria-label", `${r.label} · ${r.hands} hands — list them`);
+          const open = () => r.filter ? drillLine(r.filter, r.label) : openHands(r.label, null);
+          tr.addEventListener("click", open);
+          tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); open(); } });
+        }
+        t.appendChild(tr);
+      }
+      block.append(h, t);
+      if (table.key === "hour") {
+        const p = document.createElement("p"); p.className = "why";
+        p.textContent = "Hours since their own first hand of the session, so a player who sat down late starts at zero.";
+        block.appendChild(p);
+      }
+      wrap.appendChild(block);
+    }
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -2477,12 +2581,14 @@
     $("foldeq").classList.toggle("hidden", view !== "sizing");
     $("review").classList.toggle("hidden", !review);
     $("strength").classList.toggle("hidden", !strength);
+    $("tilt").classList.toggle("hidden", view !== "tilt");
     applyLayout();
     if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
     if (view === MANUAL_VIEW) { renderManual(d); return; }
     if (review) { renderReview(d, view); return; }
     if (view === "results") { renderResults(d); return; }
+    if (view === "tilt") { renderTilt(d); return; }
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);

@@ -338,6 +338,21 @@ class Facts:
     float_opp: dict[str, bool] = field(default_factory=dict)
     float_bet: dict[str, bool] = field(default_factory=dict)
 
+    # --- session dynamics (SPEC.md, "Session dynamics"). Context across hands,
+    # which `derive` cannot see: `tilt.annotate` fills these over one player's
+    # hands in one game, wherever a player's hands are listed. A row nobody
+    # annotated keeps the defaults, and no session term matches it.
+    #: Hands since their last hand in this game that lost `tilt.BIG_LOSS_BB` or
+    #: more: 1 is the hand straight after it. None before any such loss.
+    hands_since_loss: int | None = None
+    #: The size of that loss in big blinds, positive. None with the above.
+    loss_bb: float | None = None
+    #: Their own hand count in this game, from 1. 0 on a row never annotated.
+    session_hand: int = 0
+    #: Hours since their first timestamped hand in this game. None when this
+    #: hand has no timestamp.
+    session_hour: float | None = None
+
     # --- read from the facts above, never stored -----------------------------
     @property
     def position_label(self) -> str | None:

@@ -272,6 +272,19 @@ heads-up instead. Hands with a dead button or a dead blind are left out of this 
 only, because the position label is best-effort there. They still count in
 `pnt stats`.
 
+### Tilt and session dynamics
+
+The chart's **Tilt** view (also at `GET /players/{alias}/tilt`) answers "is he a
+different player after losing a big pot?" It compares the 20 hands after any hand
+that lost 40 bb or more in the same session against all their hands and against
+every other hand, and then splits their hands by hours since they sat down. Each
+row shows VPIP, PFR, postflop aggression and bb/100 with their sample sizes.
+Clicking a row adds its filter to the spot. The same context works as filter terms
+anywhere: `post_loss`, `hands_since_loss<=5`, `session_hand>=100` and
+`session_hour>=3`. In the HUD, a **tilt?** chip sits on any player whose next hand
+falls inside that 20-hand window. Clicking it opens their Tilt view, so you can
+check whether a loss has ever changed how they play.
+
 ## Filters
 
 The Holdem Manager approach: pick a spot, then look at behaviour inside it. Every
