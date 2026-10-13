@@ -239,6 +239,15 @@ Each sub-row is the spot with that term added, and clicking it opens that chart.
 two rows' postflop counts sum to the player's whole row. *Min hands* applies to the
 whole row, so check the sample on hover before trusting a thin sub-row.
 
+*Stack depth* splits each player by effective stack at the deal (their stack
+against the deepest other one): under 40bb, 40–100, 100–200 and 200+. With rebuys
+and uneven stacks, the same player at 30bb and at 250bb is a different opponent,
+and the **JAM** column (all-in preflop bets and raises, over their preflop
+decisions) is where it shows first. A hand with an unknown stack is in no bucket,
+so the four rows can add up to fewer hands than the whole row. The range chart's
+**Depth** chips write the same buckets into the spot, and **SPR ≤3** narrows it to
+flops where one or two bets get the stacks in.
+
 The postflop columns also cover the bets a missed c-bet leaves open. **DCB** is the
 preflop raiser's delayed c-bet, **Probe** is betting into a preflop raiser who checked
 the last street back, **F2P** is that raiser folding to the probe, and **Float** is
