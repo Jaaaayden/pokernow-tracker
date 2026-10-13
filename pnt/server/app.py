@@ -1361,3 +1361,23 @@ def player_winnings(
     facts = _spot_facts(alias, filter, game, conn)
     adj = allin_adjusted(conn, facts) if adjusted else None
     return {"player": alias, "filter": filter, **winnings_series(facts, adj)}
+
+
+# ---- the give-up funnel ----------------------------------------------------------
+# Imported inside the endpoint so this block stands alone. See SPEC.md, "Give-up
+# funnel".
+
+
+@app.get("/players/{alias:path}/funnel")
+def player_funnel(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Of the flops one player saw in a spot: how many turns, rivers and showdowns
+    they reached and how many showdowns they won; WWSF and its no-showdown part;
+    and where they folded, as the previous street's aggressor or not. Every row's
+    `filter` finds exactly its `n`, and a fold row's `of_filter` its `of`."""
+    from pnt.stats.funnel import funnel
+
+    return {"player": alias, "filter": filter, **funnel(_spot_facts(alias, filter, game))}
