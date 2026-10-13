@@ -75,6 +75,9 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "fourbets_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "jams_light": {"hits": 3, "light_pct": 15, "hand_pct": 50},
     "limper": {"pct": 45, "n": 30},
+    # Squeeze (SPEC.md, "Squeeze and cold-call"). Every regular squeezes 8-19% on
+    # the 14,720-hand database (2026-10-12); 0 of 25 at the pool's 13% is a 3% fluke.
+    "never_squeezes": {"pct": 3, "n": 25},
     "jam_happy": {"pct": 3, "hits": 5, "post_pct": 8, "post_hits": 8},
     "folds_to_cbet": {"pct": 50, "n": 25},
     "sticky_vs_cbet": {"pct": 30, "n": 25},
@@ -278,6 +281,7 @@ def _rates() -> dict[str, tuple[Callable[[Facts], bool], Callable[[Facts], bool]
             lambda f: f.hole_cards is not None and bool(f.jam.get("preflop")),
         ),
         "limper": (lambda f: f.pf_faced.get(1) == "call", lambda f: 1 in f.pf_faced),
+        "squeeze": (lambda f: f.squeeze, lambda f: f.squeeze_opp),
         "jam_preflop": (lambda f: bool(f.jam.get("preflop")), lambda f: f.vpip_opp),
         "jam_postflop": (lambda f: any(f.jam.get(s) for s in POSTFLOP_STREETS), lambda f: f.saw_flop),
         "folds_to_cbet": (lambda f: bool(f.fold_to_cbet.get("flop")), lambda f: bool(f.fold_to_cbet_opp.get("flop"))),
@@ -445,6 +449,9 @@ def _exploits(p: dict) -> list[dict]:
 
     rate_tag("limper", "LIMPER", r["limper"], True,
              "Limped {pct}% of unopened pots ({hits} of {n}). Iso-raise.", "limp")
+    rate_tag("never_squeezes", "NEVER SQUEEZES", r["squeeze"], False,
+             "Squeezed {pct}% of the time ({hits} of {n} opens with a caller in front of them). "
+             "Open and flat ahead of them: they let a raise and a call through.", "squeeze_opp")
 
     th, pre, post = t["jam_happy"], r["jam_preflop"], r["jam_postflop"]
     if pre["hits"] >= th["hits"] and pre["pct"] is not None and pre["pct"] >= th["pct"]:
