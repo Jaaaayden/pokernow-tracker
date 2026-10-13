@@ -527,6 +527,7 @@ def update_cmd(
     typer.echo(
         "The extension reloads itself within a minute; reopen the side panel if it closes."
         " If the HUD still runs the old version, reload it once at chrome://extensions."
+        " If the restart above asked for `pnt rebuild`, run it once."
     )
 
 
