@@ -16,7 +16,7 @@ from pnt import cli
 from pnt.db.conn import connect
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import import_csv, ingest_entries, rebuild_game
-from pnt.stats.bounty import DEALT_FILTER, PLAYED_FILTER, ledger
+from pnt.stats.bounty import DEALT_FILTER, PAID_FILTER, PLAYED_FILTER, WON_FILTER, ledger
 from pnt.stats.filters import parse_filter
 from pnt.stats.queries import display_names, facts_for
 from tests.conftest import ALL_LOGS, EDGE_LOGS, HU_GAME, local_client
@@ -77,6 +77,23 @@ def test_a_game_with_no_bounties_has_an_empty_ledger(bdb):
 def test_only_bounty_players_are_listed(bdb):
     names = {r["player"] for r in ledger(bdb)["players"]}
     assert names == {"Win", "Pay1", "Pay2"}
+
+
+def test_every_leaderboard_row_reproduces_from_its_filters(bdb):
+    """The won and paid counts link to the chart on `bounty_won` / `bounty_paid`:
+    over every hand of the player, each filter finds exactly its count."""
+    names = display_names(bdb)
+    checked = 0
+    for r in ledger(bdb)["players"]:
+        assert r["won_filter"] == WON_FILTER and r["paid_filter"] == PAID_FILTER, r
+        every = facts_for(bdb, r["player"])
+        assert len(every) == r["hands"]
+        for key, side in (("won_filter", "won"), ("paid_filter", "paid")):
+            pred = parse_filter(r[key], names)
+            assert sum(map(pred, every)) == r[side]["count"], (r["player"], key)
+            assert sum(abs(f.bounty) for f in every if pred(f)) == r[side]["chips"]
+            checked += 1
+    assert checked == 6
 
 
 def test_hero_72_counts(bdb):
@@ -173,6 +190,11 @@ def test_bounties_endpoint_and_cli(tmp_path, monkeypatch):
     assert [r["player"] for r in body["players"]] == ["Win", "Pay1", "Pay2"]
     assert body["balance"] == 0 and body["hero"]
     assert client.get("/bounties", params={"game": GAME}).json()["total"]["bounties"] == 1
+    # Each count's filter, run where the chart link runs it, lists that many hands.
+    for r in body["players"]:
+        for key, side in (("won_filter", "won"), ("paid_filter", "paid")):
+            hands = client.get(f"/players/{r['player']}/hands", params={"filter": r[key]}).json()["hands"]
+            assert len(hands) == r[side]["count"], (r["player"], key)
 
     run = CliRunner().invoke
     res = run(cli.app, ["bounties", "--db", str(path), "--json"])
