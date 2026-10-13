@@ -159,6 +159,44 @@ def test_inelastic_reads_either_the_fold_rate_or_the_shown_calls():
     assert "folds_to_3bet" in ids(both) and "inelastic_vs_3bet" not in ids(both)
 
 
+def test_never_squeezes_needs_its_sample_and_a_near_zero_rate():
+    th = THRESHOLDS["never_squeezes"]
+    assert th == {"pct": 3, "n": 25}
+    n = int(th["n"])
+    flats = many(n - 1, callers_before=1, pf_faced={2: "call"})
+    assert "never_squeezes" not in ids(tags_for(flats)), "one short of the minimum sample"
+    flats.append(mk(99, callers_before=2, pf_faced={2: "fold"}))
+    tag = next(t for t in tags_for(flats)["tags"] if t["id"] == "never_squeezes")
+    assert (tag["n"], tag["hits"], tag["pct"], tag["kind"]) == (n, 0, 0.0, "exploit")
+    assert tag["filter"] == "squeeze_opp" and tag["label"] == "NEVER SQUEEZES"
+    assert "shown" not in tag["tip"]
+    # One squeeze in 25 is 4%: over the line.
+    flats[0] = mk(0, callers_before=1, pf_faced={2: "raise"})
+    assert "never_squeezes" not in ids(tags_for(flats))
+    # Facing an open with no caller in front is not a squeeze chance at all.
+    assert ids(tags_for(many(40, callers_before=0, pf_faced={2: "call"}))) == []
+
+
+def test_never_squeezes_reproduces_from_its_filter(db, monkeypatch):
+    """No fixture player is under the line, so it is lowered until every player
+    with a chance fires, and each tag's n and hits are the filters' counts."""
+    monkeypatch.setitem(THRESHOLDS, "never_squeezes", {"pct": 100, "n": 1})
+    names = display_names(db)
+    opp, hit = parse_filter("squeeze_opp", names), parse_filter("squeeze", names)
+    fired = 0
+    for row in report(db):
+        facts = facts_for(db, row["player"])
+        out = tags_for(facts)
+        # A player whose chances all fall in one session gets it as streaky.
+        tag = next((t for t in out["tags"] + out["streaky"] if t["id"] == "never_squeezes"), None)
+        n = sum(1 for f in facts if opp(f))
+        assert (tag is not None) == (n > 0), row["player"]
+        if tag:
+            fired += 1
+            assert tag["n"] == n and tag["hits"] == sum(1 for f in facts if hit(f))
+    assert fired
+
+
 def test_fun_tags_prefer_the_jam_and_write_a_hand_filter():
     raised = many(3, hole_cards="7h2d", vpip_opp=True, vpip=True, pfr=True, pf_faced={1: "raise"})
     out = tags_for(raised)
@@ -281,7 +319,7 @@ def test_station_is_read_from_the_flop_and_showdown():
 
 #: Tags whose `n` is exactly the hands their filter finds.
 EXACT = {"folds_river", "folds_to_cbet", "sticky_vs_cbet", "auto_cbet", "rarely_cbets", "folds_to_3bet",
-         "slowplays"}
+         "slowplays", "never_squeezes"}
 #: Tags whose `hits` is exactly the hands their filter finds.
 HITS = {"limper", "donks"}
 #: Tags judged on shown hands: `n` is the hands their filter finds with cards known.

@@ -1349,6 +1349,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **4BETS LIGHT** | light (cutoff 50) 4-bets or 5-bets | shown 4-bets and 5-bets | ≥ 3 and ≥ 15% | | `4bet` |
 | **JAMS LIGHT** | light (cutoff 50) preflop jams | shown preflop jams | ≥ 3 and ≥ 15% | | `jam_preflop` |
 | **LIMPER** | `limp` | `unopened` | ≥ 45% | 30 | `limp` |
+| **NEVER SQUEEZES** | Squeeze | its opportunity (`squeeze_opp`) | ≤ 3% | 25 | `squeeze_opp` |
 | **JAM HAPPY** | preflop jams ≥ 5 and ≥ 3% of VPIP opportunities, else postflop jams ≥ 8 and ≥ 8% of flops seen | | | | `jam` |
 | **FOLDS TO CBET** | Fold to C-Bet (flop) | its opportunity | ≥ 50% | 25 | `faced_cbet_flop` |
 | **STICKY VS CBET** | same | same | ≤ 30% | 25 | same |

@@ -140,6 +140,8 @@
     ["pfr", "PFR", "pct", "vpip"],
     ["3bet", "3Bet", "pct", "3bet"],
     ["fold_to_3bet", "F3B", "pct", "fold_to_3bet"],
+    ["squeeze", "SQZ", "pct", "squeeze"],
+    ["cold_call", "CC", "pct", "cold_call"],
     ["wtsd", "WTSD", "pct", "wtsd"],
     ["wsd", "W$SD", "pct", null],
     ["wwsf", "WWSF", "pct", "wwsf"],
@@ -163,6 +165,7 @@
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
     wwsf: "flops seen", wwsf_nsd: "flops seen",
+    squeeze: "opens with a caller in front of them", cold_call: "opens faced cold",
   };
   // Every postflop stat is defined against the previous street's aggressor, so the
   // header text names them. The street comes from the segmented control.
@@ -194,6 +197,10 @@
       + "together is an aggressive player, a wide gap means they call far more than they raise."],
     "3bet": ["Three-Bet", "How often they re-raised someone's open, making it the third level of betting."],
     fold_to_3bet: ["Fold to Three-Bet", "They opened the pot, someone re-raised, and they folded."],
+    squeeze: ["Squeeze", "Someone opened, at least one player called, and they re-raised. "
+      + "Near zero means opening and flatting in front of them is safe."],
+    cold_call: ["Cold Call", "They called an open with nothing in the pot yet: no blind posted and "
+      + "no limp. High means a capped range, since their strong hands would have 3-bet."],
     wtsd: ["Went To Showdown", "Of the flops they saw, how often they were still there at the end."],
     wsd: ["Won $ at Showdown", "Of the showdowns they reached, how often they won money."],
     wwsf: ["Won When Saw Flop",
