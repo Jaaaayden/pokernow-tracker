@@ -977,6 +977,9 @@ def hud(game_id: GameId) -> dict:
                 "tags": with_show_tags(conn, r["alias"], tags_for(facts_cached(conn, r["alias"]) if r["alias"] else [])),
                 # What you have written about them; null when nothing.
                 "note": notes.get(r["alias"], {}).get("note"),
+                # Whether their next hand here falls inside a post-loss window
+                # (SPEC.md, "Session dynamics"), and which loss opened it.
+                **_post_loss(conn, r["alias"], game_id),
             }
             for r in seated
         ],
@@ -1361,3 +1364,33 @@ def player_winnings(
     facts = _spot_facts(alias, filter, game, conn)
     adj = allin_adjusted(conn, facts) if adjusted else None
     return {"player": alias, "filter": filter, **winnings_series(facts, adj)}
+
+
+# ---- tilt and session dynamics ------------------------------------------------
+# Imported inside the endpoint so this block stands alone. See SPEC.md, "Session
+# dynamics".
+
+
+@app.get("/players/{alias:path}/tilt")
+def player_tilt(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'position=BTN'")] = None,
+    game: str | None = None,
+) -> dict:
+    """One player's VPIP, PFR, aggression and bb/100 after a big loss against every
+    other hand, and by hours into the session. Every row carries the filter that
+    finds its hands; `clock` is how many hands have a timestamp to band by."""
+    from pnt.stats.tilt import tilt_report
+
+    return {"player": alias, "filter": filter, **tilt_report(_spot_facts(alias, filter, game))}
+
+
+def _post_loss(conn: sqlite3.Connection, alias: str | None, game_id: str) -> dict:
+    """A HUD seat's `post_loss`: whether their next hand in this game falls inside
+    a post-loss window, with how many hands since the loss that opened it and its
+    size. Read from the lifetime Facts the seat's tags already fetched -- annotated
+    per game, so this game's rows carry this game's context only."""
+    from pnt.stats.tilt import next_hand
+
+    out = next_hand(facts_cached(conn, alias) if alias else [], game_id)
+    return {"post_loss": out["post_loss"], "post_loss_since": out["since"], "post_loss_bb": out["loss_bb"]}
