@@ -124,7 +124,8 @@
       <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
       <li>Click a player for their range chart in the same spot.</li>
       <li><b>Split by</b> puts a sub-row per group under each player: their stats in the spot
-        with that group's term added. Players on the flop splits heads-up from 3+ way flops.</li>
+        with that group's term added. Players on the flop splits heads-up from 3+ way flops;
+        Straddle splits the hands someone straddled from the rest.</li>
     </ul>
   </div>
   <div class="err hidden" id="err"></div>
@@ -280,8 +281,9 @@
   const SPLITS = {
     none: null,
     multiway: [["HU", "players_flop=2"], ["3+ way", "players_flop>=3"]],
+    straddle: [["straddled", "straddled"], ["not straddled", "!straddled"]],
   };
-  const SPLIT_NAMES = { none: "nothing", multiway: "players on the flop" };
+  const SPLIT_NAMES = { none: "nothing", multiway: "players on the flop", straddle: "straddle" };
 
   const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [],
     split: "none", subs: null };
