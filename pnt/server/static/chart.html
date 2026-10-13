@@ -763,6 +763,16 @@
   ];
   // Pot type: one of these at a time, since a pot is only ever one of them.
   const POT_TYPES = [["limped", "limped"], ["single-raised", "srp"], ["3-bet pot", "3bet_pot"], ["4-bet pot+", "4bet_pot"]];
+  // Stack depth (SPEC.md, "Stack-depth splits"): the stats page's depth split as
+  // chips, one bucket at a time. A chip may write two terms; picking one clears
+  // every `eff_bb` comparison in the box first, typed ones too, so two buckets
+  // never AND into nothing. The SPR chip toggles on its own.
+  const DEPTHS = [
+    ["<40bb", "eff_bb<40"], ["40–100bb", "eff_bb>=40,eff_bb<100"],
+    ["100–200bb", "eff_bb>=100,eff_bb<200"], ["200bb+", "eff_bb>=200"],
+  ];
+  const SPR_LOW = ["SPR ≤3", "spr_flop<=3", "stack-to-pot ratio of 3 or less on the flop: one bet or two gets it in"];
+  const EFF_TERM = /^eff_bb(>=|<=|=|>|<)/;
   // What they did after the flop, as toggles that compose with everything
   // above. These are the spots the player tags open, so a tag sent from the
   // HUD lights the chips it is made of.
@@ -847,6 +857,16 @@
     const pressed = cur.includes(term);
     const next = cur.filter(t => !group.includes(t));
     if (!pressed) next.push(term);
+    $("filter").value = next.join(",");
+  }
+  // Replace whatever `eff_bb` comparisons are present with `pair`'s terms, or
+  // clear them when `pair` was the bucket already pressed.
+  function setDepthTerms(pair) {
+    const want = pair.split(",");
+    const cur = terms();
+    const pressed = want.every(t => cur.includes(t)) && cur.filter(t => EFF_TERM.test(t)).length === want.length;
+    const next = cur.filter(t => !EFF_TERM.test(t));
+    if (!pressed) next.push(...want);
     $("filter").value = next.join(",");
   }
   // The same for a jam row, whose terms are `key` and `key_<street>`.
@@ -3691,6 +3711,25 @@
       b.addEventListener("click", () => { setOneOf(group, term); apply(); });
       row.appendChild(b);
     }
+    $("pottype").appendChild(row);
+  }
+  {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "Depth";
+    lbl.title = "effective stack at the deal, in big blinds: their stack against the deepest other one";
+    row.appendChild(lbl);
+    for (const [text, pair] of DEPTHS) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = pair;
+      b.dataset.terms = pair;
+      b.addEventListener("click", () => { setDepthTerms(pair); apply(); });
+      row.appendChild(b);
+    }
+    const sep = document.createElement("span"); sep.className = "sep"; row.appendChild(sep);
+    const [text, term, what] = SPR_LOW;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = `${term}: ${what}`;
+    b.dataset.term = term;
+    b.addEventListener("click", () => { toggleTerm(term); apply(); });
+    row.appendChild(b);
     $("pottype").appendChild(row);
   }
   for (const [name, what, chips] of ACTION_ROWS) {
