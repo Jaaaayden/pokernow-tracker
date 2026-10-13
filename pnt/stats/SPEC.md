@@ -1542,6 +1542,101 @@ the nine players who show at all (53% and 56% air or draw), SHOWS NUTS for none.
     at each table size rather than measured from this pool -- the pool is nine
     friends, and measuring it would make the loosest table read as normal.
 
+### Leak finder
+
+The tags turned on the hero: their own stats furthest out of line, and what each
+costs. `leaks.py` mirrors this section; `GET /leaks`, `pnt leaks` and the **Your
+leaks** panel at the top of the stats page read it. The panel shows only when a
+hero exists.
+
+**The hero** is the player whose identity owns the most logs
+(`games.hero_pn_id`), ties to the alias first in case-folded order; with `game`,
+that game's owner. No log naming an owner is an empty result, not an error.
+Every hand the hero was dealt into counts, in their own logs or anyone's.
+
+**Rate leaks.** Each stat is a count over its opportunity filter, so `n` is that
+filter's size and `hits` is the size of `opportunity,hit`. Bands in percent; a
+tag's cutoff is reused where one draws the line.
+
+| Stat | Opportunity (`filter`, `n`) | Hit | Band | From |
+|---|---|---|---|---|
+| VPIP | `acted_preflop` | `vpip` | baseline −12 to +8 | NIT, LAG |
+| PFR | `acted_preflop` | `pfr` | baseline −8 to +15 | judgement, MANIAC |
+| 3-bet | `3bet_opp` | `3bet` | 6–18 | judgement, MANIAC |
+| ATS | `steal_opp` | `steal` | 30–55 | judgement, STEALS WIDE |
+| Fold to steal | `fold_to_steal_opp` | `fold_to_steal` | 15–35 | judgement, FOLDS TO STEAL |
+| Flop c-bet | `cbet_flop_opp` | `cbet_flop` | 35–60 | RARELY CBETS, AUTO CBET |
+| Fold to flop c-bet | `faced_cbet_flop` | `folded_to_cbet_flop` | 30–50 | STICKY VS CBET, FOLDS TO CBET |
+| WTSD | `saw_flop` | `wtsd` | 25–38 | judgement, STATION |
+| W$SD | `wtsd` | `won_sd` | 46–58 | judgement |
+| WWSF | `saw_flop` | `won_pot` | 40–55 | judgement |
+| Turn probe | `probe_turn_opp` | `probe_turn` | 20–50 | judgement |
+| Flop float | `float_flop_opp` | `float_flop` | 20–55 | judgement |
+
+The VPIP and PFR baseline is the mean of `tags.BASELINES` over the hero's own
+preflop decisions, each at its hand's table size. Each value is the stat row's
+own figure (`rates()`), so the panel and the table never disagree.
+
+**Fold-equity leaks.** One per street and size of bet faced, from the defender's
+table of "Fold equity by bet size": the fold share against the band
+`[break-even − 25, break-even + 5]` points. `filter` is the row's own,
+`faced_bet_<street>=<size>`, and `n` its size.
+
+**For every candidate:**
+
+```
+ci          = Wilson 95% interval on hits / n (queries.wilson)
+side        = high above the band, low below it, none inside
+confidence  = share of ci outside the band, 0 to 1
+excess      = |value − nearest band edge| / 100 · n           hands beyond the edge
+judged      = n ≥ 25 (100 for VPIP and PFR; 10 for a fold-equity row)
+leak_filter = opportunity,hit when high; opportunity,!hit when low; none for a fold-equity row
+leak_n      = the size of leak_filter
+```
+
+**Cost**, in bb per 100 of the hero's hands with a known result (negative is a
+cost):
+
+```
+rate leak:      excess · (bb/100 of leak_filter's hands − the hero's bb/100) / 100
+over-fold:      − max(0, Σ over the row's bets of (fold share − break-even_s − 0.05) · (1 + s) · pot_at[street] / bb)
+under-fold:     excess · (bb/100 of the calls and raises − the hero's bb/100) / 100
+cost_bb_per_100 = 100 · cost / hands with a known result
+score           = max(0, −cost_bb_per_100) · confidence, 0 when not judged
+```
+
+`ranked` is every judged candidate outside its band, by score, highest first.
+`top` is the first three of them with a score above zero, one per **family**: a
+rate leak is its own family, and every size on one street and one side of a
+fold-equity band is one, so over-folding three sizes of river bet is one leak led
+by its costliest size, the others named in `also`.
+
+Judgement calls:
+
+1. **Bands, not the pool's winners.** The other baseline the idea names, what this
+   pool's winning players do, needs more winners than a pool of nine has: two or
+   three win over enough hands to judge, so it would be one or two people's habits.
+   The note on every answer says so.
+2. **A rate leak's cost is an association.** It values each hand beyond the band's
+   edge at what the leak filter's hands made over the hero's average hand. Those
+   hands differ in strength as well as in the decision, so it says where the money
+   went, not what a different decision would have won.
+3. **The fold side runs high, the continuing side low.** A folded hand loses what
+   was already in, and the weakest hands are the ones folded, so a fold-side cost
+   (VPIP low, fold to steal high) is large and a too-loose one is often positive:
+   the hands played win more than the average hand, which includes every fold.
+   A positive cost is shown as no visible cost and never ranks in `top`.
+4. **An over-fold is costed by a pure bluff.** What a bet of that size with no
+   equity wins off the hero, beyond the band's edge: the fold-equity table's own
+   measure, an upper bound on what anyone actually took. `pot_at` is the pot when
+   the street was dealt, which is the pot the bet went into only when it was the
+   street's first; a raise faced is measured against the smaller pot.
+5. **The folds to a size have no filter.** No term reads the first decision facing
+   a bet (see "Fold equity by bet size"), so a fold-equity leak links to its row's
+   filter, which reproduces `n`, and carries `leak_n` as a count only.
+6. **One per family in the top three.** Three river sizes over-folded are one habit;
+   listing them as three leaks would hide the next one.
+
 ---
 
 ## Money

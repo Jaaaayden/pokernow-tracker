@@ -1989,5 +1989,54 @@ def winnings(
         typer.echo(line + "".join(_fmt(s.get(c)).rjust(w) for c, _, w in _WINNINGS_COLUMNS))
 
 
+@app.command()
+def leaks(
+    db: Path = DbOpt,
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    show_all: bool = typer.Option(False, "--all", help="Every stat judged, inside its band or not."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Your leaks: the stats of your own game furthest outside their bands, and what they cost.
+
+    The hero is the owner of the downloaded logs. Each stat is held against a band
+    of ordinary values; the ones outside it rank by cost (bb per 100 of your hands)
+    times confidence (how much of the 95% range is outside the band). Each row's
+    filter opens its hands on your chart.
+    """
+    from .stats.leaks import leaks as hero_leaks
+
+    conn = connect(db)
+    out = hero_leaks(conn, game)
+    if as_json:
+        typer.echo(json.dumps(out, indent=2))
+        return
+    if out["hero"] is None:
+        typer.echo("No hero: no log names its owner. Import a log you downloaded yourself.")
+        return
+    typer.echo(f"{out['hero']}  {out['hands']} hands ({out['bb_hands']} with a known result)"
+               f"   {_fmt(out['bb_per_100'])} bb/100 +/- {_fmt(out['bb_per_100_ci'])}\n")
+    if out["top"]:
+        typer.echo("Top leaks:")
+        for i, r in enumerate(out["top"], 1):
+            typer.echo(f"  {i}. {r['tip']}")
+            also = f"  (also {', '.join(r['also'])})" if r.get("also") else ""
+            typer.echo(f"     cost {_fmt(r['cost_bb_per_100'])} bb/100, confidence {r['confidence']:.0%}"
+                       f"   filter: {r['leak_filter'] or r['filter']}{also}")
+    else:
+        typer.echo("No leak with a visible cost.")
+    rows = out["candidates"] if show_all else out["ranked"]
+    typer.echo("\nEvery stat judged:" if show_all else "\nOut of band:")
+    header = f"{'stat':<26}{'value':>7}{'band':>14}{'95%':>14}{'n':>7}{'conf':>6}{'cost':>8}  filter"
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for r in rows:
+        band = f"{r['band'][0]:g}-{r['band'][1]:g}" if r["band"] else "--"
+        ci = f"{r['ci'][0]:g}-{r['ci'][1]:g}" if r["ci"] else "--"
+        flag = "" if r["judged"] else "  (too few to judge)"
+        typer.echo(f"{r['label'][:25]:<26}{_fmt(r['value']):>7}{band:>14}{ci:>14}{r['n']:>7}"
+                   f"{r['confidence']:>6.0%}{_fmt(r['cost_bb_per_100']):>8}  {r['leak_filter'] or r['filter']}{flag}")
+    typer.echo("\n" + out["note"])
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

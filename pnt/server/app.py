@@ -1414,3 +1414,19 @@ def _post_loss(conn: sqlite3.Connection, alias: str | None, game_id: str) -> dic
 
     out = next_hand(facts_cached(conn, alias) if alias else [], game_id)
     return {"post_loss": out["post_loss"], "post_loss_since": out["since"], "post_loss_bb": out["loss_bb"]}
+
+
+# ---- the hero's leaks ------------------------------------------------------------
+# Imported inside the endpoint so this block stands alone. See SPEC.md, "Leak
+# finder".
+
+
+@app.get("/leaks")
+def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+    """The hero's stats furthest outside their bands, ranked by cost x confidence:
+    `top` is the three costliest habits, `ranked` every judged leak outside its
+    band, `candidates` every stat judged. Each carries the filter that finds its
+    `n` on the hero's chart. No hero (no log names its owner) is an empty result."""
+    from pnt.stats.leaks import leaks
+
+    return leaks(db(), game)
