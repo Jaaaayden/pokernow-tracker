@@ -22,6 +22,17 @@ test("the path line holds the earlier decisions; the spot line has the latest", 
   assert.equal(pathText({ folded: false }).text, "");
 });
 
+test("a flop three or more saw leads the path line with its count", () => {
+  const path = ["unopened → call", "checked to (flop) → check", "checked to (turn)"];
+  const three = pathText({ path, folded: false, node: { street: "turn", players_flop: 3 } });
+  assert.equal(three.text, "3-way · pre call · flop check");
+  assert.match(three.title, /^3 players saw the flop\n/);
+  assert.equal(pathText({ path, folded: false, node: { players_flop: 4 } }).text.split(" · ")[0], "4-way");
+  // Heads-up, and preflop (no count yet), say nothing.
+  assert.equal(pathText({ path, folded: false, node: { players_flop: 2 } }).text, "pre call · flop check");
+  assert.equal(pathText({ path: ["unopened"], folded: false, node: { players_flop: null } }).text, "");
+});
+
 const live = (over = {}) => ({
   to_act: "gp",
   players: [
