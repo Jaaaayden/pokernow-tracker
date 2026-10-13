@@ -1274,6 +1274,9 @@
     ["x/b/", "line=x/b/", "checked the flop, bet the turn, any river"],
     ["xr*//", "line=xr*//", "check-raised the flop"],
     ["xB*/xB*/", "action=xB*/xB*/", "checked to on the flop and the turn, and bet both"],
+    // The bets a missed c-bet leaves open (SPEC.md, "Delayed c-bet, probe and float").
+    ["probe", "probe_turn", "bet the turn into the preflop raiser, who checked the flop back"],
+    ["float", "float_turn", "called on the flop, then bet the turn when the flop's aggressor checked"],
   ];
   const LINE_CHIP_TERMS = LINE_CHIPS.map(([, t]) => t);
   const LINE_WORD = { x: "check", b: "bet", c: "call", r: "raise", f: "fold" };
