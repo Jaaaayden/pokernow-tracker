@@ -1358,6 +1358,7 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **TRAPS** | strong | same | ≥ 60% | 8 | same |
 | **SLOWPLAYS** | checked or called (the slowplay columns of "Strength by street") | a set or better on the flop, shown, that they acted on | ≥ 55% | 15 | `made_flop>=set,line_flop=*` (strength, flop) |
 | **DONKS** | Donk Bet (flop) | its opportunity | ≥ 35% | 15 | `donk_flop` |
+| **TILTS** | VPIP in the post-loss window | `vpip_opp` and `post_loss` (see "Session dynamics") | ≥ 5 points over VPIP on all hands | 100 | `post_loss,acted_preflop` |
 | **BIG = STRONG** / **BIG = BLUFF** | strong share of shown first bets, `large`+`overbet` against `blocker`+`small`+`medium`, any street | | gap ≥ 40 points | 6 each side | `wtsd` (sizing, `bet`, the street with most bets) |
 
 Each tag reports `n` (the denominator it was judged on), `hits`, `pct`, and the
@@ -1784,7 +1785,12 @@ Judgement calls:
    gives the clean comparison.
 6. **The clock is the player's own.** `session_hour` counts from *their* first
    hand of the game, not the table's, so a late arrival starts at zero.
-7. **Hour bands and the window overlap.** Losses pile up as a night goes on, so
+7. **TILTS asks for a gap the pool does not show.** Within each player, VPIP
+   runs about 2 points higher in the window; on 2026-10-12 the largest gap among
+   the nine players with 200+ hands was +3.0 points on 307 decisions, inside the
+   noise of a sample that size. So the tag fires for nobody yet, and fires only
+   on a gap of 5 points over 100 window decisions or more.
+8. **Hour bands and the window overlap.** Losses pile up as a night goes on, so
    a late band holds more post-loss hands than an early one. Read the two tables
    together, and narrow one by the other (`session_hour>=3,!post_loss`) to tell
    them apart.

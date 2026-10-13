@@ -246,3 +246,33 @@ def test_the_chart_has_the_view():
 def test_the_side_panel_shows_the_chip():
     js = _read("pnt", "extension", "sidepanel.js")
     assert "post_loss" in js and "tilt?" in js
+
+
+# ----------------------------------------------------------------- tag -----
+
+
+def _nights(games: int, post_vpip: bool) -> list[Facts]:
+    """`games` sessions, each a big loss on hand 1, then WINDOW hands, then 30 more
+    where they play every other hand. In the window they play all of them, or half."""
+    rows = []
+    for g in range(games):
+        night = session(1 + WINDOW + 30, game=f"g{g}", losses={1: -100})
+        for f in night:
+            f.vpip_opp = True
+            f.vpip = post_vpip if 1 < f.hand_number <= 1 + WINDOW else f.hand_number % 2 == 0
+        rows += night
+    return annotate(rows)
+
+
+def test_tilts_fires_on_a_post_loss_vpip_gap():
+    from pnt.stats.tags import THRESHOLDS, tags_for
+
+    assert THRESHOLDS["tilts"] == {"gap": 5, "n": 100}
+    rows = _nights(7, post_vpip=True)
+    out = tags_for(rows)
+    tag = next(t for t in out["tags"] if t["id"] == "tilts")
+    assert (tag["n"], tag["hits"], tag["filter"]) == (7 * WINDOW, 7 * WINDOW, "post_loss,acted_preflop")
+    assert tag["n"] == sum(1 for f in rows if parse_filter(tag["filter"])(f))
+    assert tag["pct"] - tag["baseline"] >= 5
+    assert not any(t["id"] == "tilts" for t in tags_for(_nights(7, post_vpip=False))["tags"])
+    assert not any(t["id"] == "tilts" for t in tags_for(_nights(4, post_vpip=True))["tags"]), "under n"
