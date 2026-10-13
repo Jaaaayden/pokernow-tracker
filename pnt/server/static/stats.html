@@ -91,6 +91,107 @@
   <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
   <h1>Stats <small id="subtitle">every player, in one spot</small></h1>
 
+  <!-- "Your leaks": the hero's stats furthest outside their bands, from /leaks.
+       A self-contained block: its own styles and script, shown only when a log
+       names its owner. See SPEC.md, "Leak finder". -->
+  <style>
+    #leaks { margin-bottom: 16px; padding: 10px 14px 12px; }
+    #leaks h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+    #leaks h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+    #leaks ol { margin: 0; padding-left: 20px; }
+    #leaks li { margin: 0 0 8px; }
+    #leaks li a { color: var(--ink); font-weight: 600; text-decoration: none; }
+    #leaks li a:hover { color: var(--accent); text-decoration: underline; }
+    #leaks .lk-cost { color: var(--down); font-variant-numeric: tabular-nums; }
+    #leaks .lk-meta { color: var(--ink-2); font-size: 13px; }
+    #leaks details { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+    #leaks details summary { cursor: pointer; color: var(--accent); width: fit-content; }
+    #leaks details ul { margin: 6px 0 0; padding-left: 18px; }
+    #leaks details a { color: var(--accent); text-decoration: none; }
+    #leaks .lk-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; max-width: 90ch; }
+  </style>
+  <section class="card hidden" id="leaks" aria-labelledby="leaks-title">
+    <h2 id="leaks-title">Your leaks <small id="leaks-sub"></small></h2>
+    <div id="leaks-body"></div>
+  </section>
+  <script>
+  (() => {
+    const el = (id) => document.getElementById(id);
+    const theme = new URLSearchParams(location.search).get("theme");
+    const num = (v, d = 1) => (v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(d));
+    const node = (tag, text, cls) => {
+      const n = document.createElement(tag);
+      if (text != null) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    };
+    // The leak's hands on the hero's chart: the side of the band they fell on
+    // where a filter can say it, else the opportunities, which reproduce `n`.
+    const chartHref = (hero, r) => {
+      const q = new URLSearchParams({ player: hero, filter: r.leak_filter || r.filter });
+      if (r.view) q.set("by", r.view);
+      if (r.street) q.set("street", r.street);
+      if (theme) q.set("theme", theme);
+      return "/chart?" + q;
+    };
+    const facts = (r) => {
+      const band = r.band ? `band ${r.band[0]}–${r.band[1]}%` : "no band";
+      const ci = r.ci ? `95% ${r.ci[0]}–${r.ci[1]}%` : "";
+      return [`${r.value}% of ${r.n}`, band, ci, `confidence ${Math.round(100 * r.confidence)}%`]
+        .filter(Boolean).join(" · ");
+    };
+    function render(d) {
+      el("leaks-sub").textContent = `${d.hero} · ${d.hands} hands · ${num(d.bb_per_100, 2)} bb/100`
+        + (d.bb_per_100_ci != null ? ` ± ${d.bb_per_100_ci.toFixed(1)}` : "")
+        + (d.bb_hands !== d.hands ? ` (${d.bb_hands} of ${d.hands} with a known result)` : "");
+      const body = el("leaks-body");
+      body.replaceChildren();
+      if (d.top.length) {
+        const ol = node("ol");
+        for (const r of d.top) {
+          const li = node("li");
+          const a = node("a", r.label);
+          a.href = chartHref(d.hero, r);
+          a.title = `${r.leak_filter || r.filter} on your chart`;
+          li.append(a, " ", node("span", `${num(r.cost_bb_per_100, 2)} bb/100`, "lk-cost"),
+            node("div", r.tip, "lk-meta"), node("div", facts(r), "lk-meta"));
+          if (r.also?.length) li.append(node("div", `Also: ${r.also.join(", ")}.`, "lk-meta"));
+          ol.append(li);
+        }
+        body.append(ol);
+      } else {
+        body.append(node("p", "No stat outside its band shows a cost.", "lk-meta"));
+      }
+      // Out of line, but nothing visible against the average hand: listed, not ranked.
+      const lead = new Set(d.top.flatMap((r) => [r.label, ...(r.also || [])]));
+      const rest = d.ranked.filter((r) => !lead.has(r.label));
+      if (rest.length) {
+        const det = node("details");
+        det.append(node("summary", `${rest.length} more outside their band`));
+        const ul = node("ul");
+        for (const r of rest) {
+          const li = node("li");
+          const a = node("a", r.label);
+          a.href = chartHref(d.hero, r);
+          const cost = r.cost_bb_per_100 < 0 ? `cost ${num(r.cost_bb_per_100, 2)} bb/100`
+            : r.bb_per_100 != null ? `no visible cost: those hands made ${num(r.bb_per_100)} bb/100`
+            : "no visible cost";
+          li.append(a, ` — ${facts(r)} · ${cost}`);
+          ul.append(li);
+        }
+        det.append(ul);
+        body.append(det);
+      }
+      body.append(node("p", d.note, "lk-note"));
+      el("leaks").classList.remove("hidden");
+    }
+    fetch("/leaks", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.hero) render(d); })
+      .catch(() => { /* no panel */ });
+  })();
+  </script>
+
   <div class="controls">
     <label for="filter">Spot</label>
     <input id="filter" type="text" placeholder="srp,position=BTN" spellcheck="false">
