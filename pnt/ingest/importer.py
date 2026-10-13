@@ -387,7 +387,8 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
     cur = conn.execute(
         "INSERT INTO hands (game_id, hand_number, table_hand_id, ts, ord, dealer_seat,"
         " dead_button, blinds_irregular, n_dealt_in, bb, board_json, run_count,"
-        " went_to_showdown, complete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " went_to_showdown, complete, board_ords, clock_ms)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             hand.game_id,
             hand.hand_number,
@@ -403,6 +404,8 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
             hand.run_count,
             int(hand.went_to_showdown),
             int(hand.complete),
+            json.dumps(hand.board_ords) if hand.board_ords else None,
+            hand.clock_ms,
         ),
     )
     hand_id = int(cur.lastrowid)
@@ -429,7 +432,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
     )
     conn.executemany(
         "INSERT INTO actions (hand_id, seq, street, pn_id, action_type, amount,"
-        " amount_to, is_forced, all_in, post_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " amount_to, is_forced, all_in, post_kind, ord) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 hand_id,
@@ -442,6 +445,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
                 int(a.is_forced),
                 int(a.all_in),
                 a.post_kind,
+                a.ord,
             )
             for a in hand.actions
         ],

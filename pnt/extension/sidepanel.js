@@ -31,6 +31,7 @@
     rev: -1,            // the report's rev at the last redraw
     hud: null, live: null,
     acting: null,       // the name on the table's decision-current seat, ahead of /live
+    actingAt: null,     // Date.now() when the action reached them (content.js): the clock
     follow: true,       // the chart follows the live spot
     compact: false,     // the stats table only: no tags, spot lines or chart
     sentSpots: [],      // the last few spots posted into the chart, to tell an echo from an edit
@@ -128,6 +129,7 @@
     // away the tooltip being read. The table's player to act counts as new data --
     // it arrives a poll or more before /live says the same.
     const acting = snap.tableActing ?? null;
+    state.actingAt = acting ? snap.tableActingAt ?? state.actingAt : null;
     if (snap.rev !== state.rev || acting !== state.acting) {
       state.rev = snap.rev;
       state.acting = acting;
@@ -402,6 +404,22 @@
     return n;
   };
 
+  // ------------------------------------------------------------ the clock --
+  // A running clock on the player to act, from the moment the table moved the
+  // action to them. It ticks on its own: only the clock's text changes, so a
+  // tooltip being read survives. See SPEC.md, "Timing tells".
+  const CLOCK_TIP = "Time since the action reached them, by the table. In this pool a long think before"
+    + " a bet has meant value, not a bluff, and a slow call more value than a quick one: see the chart's Timing view.";
+  function clockChip() {
+    const c = el("span", "clock", PNT.clockText(state.actingAt == null ? null : Date.now() - state.actingAt));
+    c.title = CLOCK_TIP;
+    return c;
+  }
+  setInterval(() => {
+    const text = PNT.clockText(state.actingAt == null ? null : Date.now() - state.actingAt);
+    for (const c of document.querySelectorAll(".clock")) c.textContent = text;
+  }, 1000);
+
   function render() {
     // A redraw would throw away a note being typed; it runs when the box closes.
     if (state.noteEdit) return;
@@ -518,6 +536,7 @@
       }
       const name = el("td", "name", s.alias || s.name || s.pn_id);
       name.appendChild(el("small", null, `#${s.seat}`));
+      if (row.classList.contains("act") && state.acting) name.appendChild(clockChip());
       name.title = `${s.alias || s.name || s.pn_id} · seat ${s.seat} · ${s.pn_id}`;
       // No room for the note itself: the name is underlined, and the note is its hover.
       const note = noteOf(s);
@@ -574,6 +593,7 @@
     const name = el("span", "name", s.alias || s.name || s.pn_id);
     name.appendChild(el("small", null, `#${s.seat}`));
     who.appendChild(name);
+    if (c.classList.contains("act") && state.acting) who.appendChild(clockChip());
     // A player without an identity yet has nowhere to keep a note.
     const pen = s.alias ? el("button", "pen", "✎") : null;
     if (pen) who.appendChild(pen);

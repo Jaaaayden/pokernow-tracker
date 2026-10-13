@@ -527,6 +527,7 @@ def update_cmd(
     typer.echo(
         "The extension reloads itself within a minute; reopen the side panel if it closes."
         " If the HUD still runs the old version, reload it once at chrome://extensions."
+        " If the restart above asked for `pnt rebuild`, run it once."
     )
 
 
@@ -1244,6 +1245,7 @@ def serve(
             typer.echo(busy + svc.port_holder_hint(port).capitalize() + ".", err=True)
         raise typer.Exit(1)
     typer.echo(f"range chart: http://{host}:{port}/chart   api docs: http://{host}:{port}/docs")
+    _rebuild_hint(str(db))
     try:
         svc.run_server(db, host, port)
     except OSError as exc:  # taken between the check and the bind
@@ -1314,6 +1316,35 @@ def service_restart(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) 
     """Restart it. Needed after pulling code changes: a running server keeps the old code."""
     body = _svc(svc.restart, host=host, port=port)
     typer.echo(f"restarted: pid {body['pid']}, {body['hands']} hands, db {body['db']}")
+    _rebuild_hint(body.get("db"))
+
+
+def _rebuild_hint(path: str | None) -> None:
+    """Say so when the database holds hands this code would store differently.
+
+    `pnt update` restarts the service through here, in the new code, so this is
+    where an update that needs a rebuild gets to say it. Today: hands stored
+    before think times were (SPEC.md, "Timing tells").
+    """
+    import sqlite3
+
+    from .stats.timing import needs_rebuild
+
+    if not path or not Path(path).exists():
+        return
+    try:
+        conn = connect(path, init=False)
+        try:
+            stale = needs_rebuild(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return
+    if stale:
+        typer.echo(
+            "This version times every decision (the chart's Timing view). Run `pnt rebuild` once"
+            " to time the hands already stored; it re-reads them from the stored logs."
+        )
 
 
 @service_app.command("status")
@@ -2036,6 +2067,88 @@ def leaks(
         typer.echo(f"{r['label'][:25]:<26}{_fmt(r['value']):>7}{band:>14}{ci:>14}{r['n']:>7}"
                    f"{r['confidence']:>6.0%}{_fmt(r['cost_bb_per_100']):>8}  {r['leak_filter'] or r['filter']}{flag}")
     typer.echo("\n" + out["note"])
+
+
+# ---- timing tells ---------------------------------------------------------------
+# Imported inside the command so this block stands alone. See SPEC.md, "Timing tells".
+
+
+def _timing_secs(ms: float | None) -> str:
+    return "--" if ms is None else f"{ms / 1000:.1f}s"
+
+
+def _timing_value(c: dict) -> str:
+    return f"{_fmt(c['value'])}% ({c['known']}/{c['n']})" if c["known"] else f"-- (0/{c['n']})"
+
+
+@app.command()
+def timing(
+    alias: str = typer.Argument(None, help="A player from `pnt alias list`; omit for the whole pool."),
+    db: Path = DbOpt,
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp'"),
+    game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
+    relative: bool = typer.Option(False, "--relative", help="A player's buckets cut from their own median."),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    """Timing tells: what flop and turn calls, river bets and river calls held, by how long they took.
+
+    Each first decision on a street is pre-selected, snap, normal or tank (a fold
+    or check the clock made is left out). Without a player, the pool, with the
+    logs' owners' own cards apart from everyone else's shown hands. Hands stored
+    before this version have no times until `pnt rebuild`.
+    """
+    from .stats.fold_equity import pool_facts
+    from .stats.timing import owners, timing_report
+
+    conn = connect(db)
+    names = display_names(conn)
+    try:
+        pred = parse_filter(filter_, names) if filter_ else None
+        if alias:
+            everything = facts_for(conn, alias, game)
+            out = timing_report([f for f in everything if pred is None or pred(f)], baseline=everything)
+        else:
+            out = timing_report(pool_facts(conn, game, pred), owners=owners(conn), who=names)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if as_json:
+        typer.echo(json.dumps({"player": alias, "filter": filter_, **out}, indent=2))
+        return
+
+    t = out["timed"]
+    typer.echo(f"{alias or 'the pool'}  filter: {filter_ or '(none)'}   "
+               f"{t['timed']} of {t['decisions']} first decisions timed")
+    if t["rebuild"]:
+        typer.echo("some hands have no times: they were stored before this version. Run `pnt rebuild` once.")
+    spots = out["relative"]["spots"] if relative and alias else out["spots"]
+    pool = alias is None
+    head = f"{'spot':<12}{'tempo':<8}{'n':>6}  {'value (known/n)':<20}{'draw':>7}{'air':>7}"
+    if pool:
+        head += f"  {'others, shown':<20}{'owners, own cards':<20}"
+    typer.echo("\n" + head + "\n" + "-" * len(head))
+    for sp in spots:
+        for r in sp["rows"]:
+            line = (f"{sp['label']:<12}{r['bucket']:<8}{r['n']:>6}  {_timing_value(r):<20}"
+                    f"{_fmt(r['draw']):>7}{_fmt(r['air']):>7}")
+            if pool:
+                line += f"  {_timing_value(r['others']):<20}{_timing_value(r['own']):<20}"
+            typer.echo(line + f"  {r['filter']}")
+    if relative and alias:
+        cuts = out["relative"]["cuts_ms"]
+        typer.echo("\nown median cuts: " + ", ".join(f"{s} snap <{_timing_secs(lo)} tank >{_timing_secs(hi)}"
+                                                    for s, (lo, hi) in cuts.items()))
+    typer.echo(f"\n{'street':<9}{'timed':>7}{'median':>8}{'middle half':>14}  "
+               + "".join(f"{b:>9}" for b in out["buckets"]))
+    for st in out["streets"]:
+        mid = f"{_timing_secs(st['p25_ms'])}-{_timing_secs(st['p75_ms'])}"
+        typer.echo(f"{st['street']:<9}{st['timed']:>7}{_timing_secs(st['median_ms']):>8}{mid:>14}  "
+                   + "".join(f"{_fmt(b['pct']) + ('%' if b['pct'] is not None else ''):>9}" for b in st["buckets"]))
+    if pool:
+        rb = out["thin"]["river_bet"]
+        who = " and ".join(rb["full"]) or "nobody"
+        typer.echo(f"\nthin per player: of {rb['players']} players with river bets known, {who} "
+                   f"{'have' if len(rb['full']) > 1 else 'has'} {out['min_cell']}+ known in every bucket.")
+    typer.echo("\nBluffs that got a fold are never shown, so the shown rows lean to value.")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -301,6 +301,34 @@ anywhere: `post_loss`, `hands_since_loss<=5`, `session_hand>=100` and
 falls inside that 20-hand window. Clicking it opens their Tilt view, so you can
 check whether a loss has ever changed how they play.
 
+### Timing tells
+
+**Needs a rebuild once.** Think times come from when each action was logged,
+which older versions did not store. After updating, run `pnt rebuild` once:
+it re-reads every stored log and times every hand. Until then, hands stored
+before the update show as untimed (never as instant), and the Timing view says
+so. `pnt service restart` (which `pnt update` runs) and `pnt serve` also print a
+reminder while any hand is untimed.
+
+The chart's **Timing** view (also `GET /players/{alias}/timing`, `GET /timing`
+for the pool, and `pnt timing [alias]`) answers "does a snap call mean a draw,
+and does a long tank mean a bluff?" Each player's first decision on a street is
+timed from the action or board line before it and put in a bucket: **pre**
+(a check, call or fold within 1 s of the last action, which PokerNow's buttons
+pre-selected), **snap**, **normal** or **tank** (bets: under 2 s, 2–5 s, over 5 s;
+checks, calls and folds: up to 1 s, 1–3.5 s, over 3.5 s). A fold or check the
+clock made for them is left out. The view leads with the pool, because one
+player's cells are thin: flop and turn calls, river bets and river calls, each
+bucket with what the hands were and its `known / n`. On this pool a slow call
+has been stronger than a quick one, a long think before a river bet has meant
+value rather than a bluff, and river calls carry no timing signal. Below that is
+the player's own table, against the pool's cuts or against their own median
+(snap under half of it, tank over twice it), and their pace street by street.
+Click any of their rows to add it to the spot and list the hands. The filter
+terms work anywhere: `think_river>=5` (seconds) and `tempo_flop=pre`,
+`tempo_river=tank` or `tempo_turn!=snap`. In the HUD, the player to act shows a
+running clock beside their name.
+
 ## Filters
 
 The Holdem Manager approach: pick a spot, then look at behaviour inside it. Every

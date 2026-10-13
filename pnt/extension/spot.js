@@ -213,7 +213,15 @@
     return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
   }
 
-  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText };
+  // The HUD's clock on the player to act: how long since the action reached them,
+  // as "7s" or "1:05". Empty when unknown. See SPEC.md, "Timing tells".
+  function clockText(ms) {
+    if (ms == null || !(ms >= 0)) return "";
+    const s = Math.floor(ms / 1000);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);

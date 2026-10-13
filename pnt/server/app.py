@@ -1430,3 +1430,47 @@ def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one ga
     from pnt.stats.leaks import leaks
 
     return leaks(db(), game)
+
+
+# ---- timing tells --------------------------------------------------------------
+# Imported inside the endpoints so this block stands alone. See SPEC.md, "Timing
+# tells".
+
+
+@app.get("/players/{alias:path}/timing")
+def player_timing(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    game: str | None = None,
+) -> dict:
+    """How long one player's first decision on each street took, and what their
+    hands were by tempo bucket: flop and turn calls, river bets and river calls,
+    against the pool's cuts and against their own median (`relative`). Every row
+    carries its filter and its hand ids. `timed.rebuild` is true while some hands
+    predate the stored clock: `pnt rebuild` times them."""
+    from pnt.stats.timing import timing_report
+
+    conn = db()
+    facts = _spot_facts(alias, filter, game, conn)
+    # Their whole record sets their own pace, so a spot never moves their median.
+    baseline = facts_cached(conn, alias, game)
+    return {"player": alias, "filter": filter, **timing_report(facts, baseline=baseline, with_ids=True)}
+
+
+@app.get("/timing")
+def pool_timing(
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The same over the pool, every player and every hand, with each row's
+    strength split into the logs' owners' own cards and everyone else's shown
+    hands, and `thin`: who has enough known hands to read alone. No hand ids --
+    one hand is several players' rows here."""
+    from pnt.stats.fold_equity import pool_facts
+    from pnt.stats.timing import owners, timing_report
+
+    conn = db()
+    facts = pool_facts(conn, game, _predicate(conn, filter))
+    names = display_names(conn)
+    return {"player": None, "filter": filter, "players": len({names.get(f.pn_id, f.pn_id) for f in facts}),
+            **timing_report(facts, owners=owners(conn), who=names)}

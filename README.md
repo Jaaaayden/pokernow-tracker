@@ -210,6 +210,10 @@ server again on the new code. The extension notices the new files and reloads
 itself within a minute. If you use the side panel, Chrome closes it when the
 extension reloads, so click the icon to open it again.
 
+Some updates change what is stored for each hand. When the restart says so, run
+`pnt rebuild` once: it re-reads every stored log, so nothing needs importing
+again. The update that added think times (the chart's **Timing** view) is one.
+
 Installed before `pnt update` existed? Update by hand this one time, then reload
 the extension at `chrome://extensions`:
 
@@ -235,6 +239,7 @@ pnt review jayden                            # hands to review
 pnt note <game_id> 161 "turn barrel was bad" # write down what went wrong in one hand
 pnt player-note henry "jams light"           # and what you know about a player
 pnt allin                                    # all-in EV: actual vs adjusted
+pnt timing henry                             # what their snap, normal and tank decisions held
 pnt pots                                     # biggest pots in the last 7 days
 pnt alias list                               # the player names you can query
 pnt alias merge onlybluffs genericpoker      # one person, two devices
