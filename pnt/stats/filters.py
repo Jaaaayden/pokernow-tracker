@@ -43,6 +43,7 @@ from .cards import (
     street_of_board,
 )
 from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, TEMPO_BUCKETS, Facts
+from .strength import TIERS, hs_of, tier_of
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
 Predicate = Callable[[Facts], bool]
@@ -237,6 +238,10 @@ ACTION_TERMS = ("action", *(f"action_{s}" for s in STREETS))
 #: The made-hand terms: `made_flop>=set` on the board as it stood on that street,
 #: `made=flush` on the final board.
 MADE_TERMS = ("made", *(f"made_{s}" for s in STREETS))
+
+#: The strength-tier terms: `tier_river=strong`, `tier_flop>=strong` -- what the
+#: hand was worth on the board as it stood (`strength.tier_at`), strongest first.
+TIER_TERMS = tuple(f"tier_{s}" for s in STREETS)
 
 #: What a player can do at a preflop decision point.
 DECISIONS = ("fold", "check", "call", "raise")
@@ -464,6 +469,46 @@ def _made_term(term: str) -> Predicate | None:
     return None
 
 
+def _tier_term(term: str) -> Predicate | None:
+    """`tier_river=strong`, `tier_flop>=strong`, `tier_turn=draw|air`.
+
+    The tiers read `strength.TIERS`, strongest first, so `>=strong` is strong or
+    nutted. Like a `made_<street>` term, it needs the cards known, the board on
+    that street, and no fold before it; `!=` included.
+    """
+    for name in TIER_TERMS:
+        if not term.startswith(name):
+            continue
+        rest = term[len(name):]
+        op = next((o for o in ("!=", ">=", "<=", "=", ">", "<") if rest.startswith(o)), None)
+        if op is None:
+            continue
+        names = [n.strip().lower() for n in rest[len(op):].split("|")]
+        if len(names) > 1 and op not in ("=", "!="):
+            raise ValueError(f"{term!r}: only = and != take several tiers (tier_river=strong|nutted)")
+        bad = [n for n in names if n not in TIERS]
+        if bad:
+            raise ValueError(f"unknown tier {bad[0]!r}. Known: {', '.join(TIERS)}")
+        ranks = {TIERS.index(n) for n in names}
+        r0 = TIERS.index(names[0])
+        test = {
+            "=": lambda r, ranks=ranks: r in ranks,
+            "!=": lambda r, ranks=ranks: r not in ranks,
+            ">=": lambda r, r0=r0: r <= r0,
+            ">": lambda r, r0=r0: r < r0,
+            "<=": lambda r, r0=r0: r >= r0,
+            "<": lambda r, r0=r0: r > r0,
+        }[op]
+        street = name.removeprefix("tier_")
+
+        def pred(f: Facts, street=street, test=test) -> bool:
+            tier = tier_of(f, street)
+            return tier is not None and test(TIERS.index(tier))
+
+        return pred
+    return None
+
+
 def _size_term(term: str) -> Predicate | None:
     name, sep, bucket = term.partition("=")
     if not sep or name not in SIZED:
@@ -578,7 +623,7 @@ def _numeric_term(term: str) -> Predicate | None:
 #: Every term a filter understands, grouped for the pages' `?` panel. Each entry is
 #: (term as written, an example to drop into the box, what it keeps). `<street>`
 #: stands for flop, turn or river. `test_filter_vocabulary_covers_every_term` holds
-#: this to FLAGS, NUMERIC, SIZED, ANSWERED, LINE_TERMS, ACTION_TERMS and MADE_TERMS,
+#: this to FLAGS, NUMERIC, SIZED, ANSWERED, LINE_TERMS, ACTION_TERMS, MADE_TERMS and TIER_TERMS,
 #: so a new term cannot ship undocumented.
 VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Preflop", (
@@ -693,6 +738,8 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("made_<street>=MADE", "made_flop=set|flush", "what the shown hand had made on that street; | for any of several"),
         ("made_<street>>=MADE", "made_turn>=two_pair", "that or better; also !=, >, <=, <"),
         ("made=MADE", "made=flush", "made on the final board"),
+        ("tier_<street>=TIER", "tier_river=strong|nutted", "what it was worth on that board: nutted, strong, marginal, draw, air"),
+        ("hs_<street>>=N", "hs_flop>=0.9", "share of holdings it beat on that street's board, 0 to 1"),
     )),
     ("Bet size", (
         ("cbet_<street>=SIZE", "cbet_flop=medium", "c-bet that size"),
@@ -796,12 +843,22 @@ _MADE_WORDS = {
     "trips": "one hole card + a board pair",
     "overpair": "pocket pair over the board",
     "pocket_pair": "underpair",
-    "board_pair": "pair on the board only",
+    "two_pair": "both hole cards pair the board",
+    "board_pair": "the hole cards add nothing to a paired board",
     "combo_draw": "flush draw + straight draw",
     "open_ender": "two ranks make a straight",
     "gutshot": "one rank makes a straight",
     "pair": "any pair",
     "draw": "any draw",
+}
+
+
+_TIER_WORDS = {
+    "nutted": "beats nearly every holding on that board",
+    "strong": "a value hand on that board",
+    "marginal": "a pair of their own that beats some",
+    "draw": "no pair of their own; a flush or straight draw",
+    "air": "nothing of their own",
 }
 
 
@@ -825,6 +882,7 @@ def vocabulary() -> dict:
         "answers": list(ANSWERS),
         "flags": list(FLAGS),
         "made": {m: _MADE_WORDS.get(m, "") for m in MADE_NAMES},
+        "tiers": dict(_TIER_WORDS),
         "sizes": {b: _SIZE_WORDS[b] for b in SIZE_BUCKETS},
         "textures": list(TEXTURE_TAGS),
         "exclusive": [list(g) for g in EXCLUSIVE],
@@ -952,6 +1010,11 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             preds.append(tempo)
             continue
 
+        tier = _tier_term(term)
+        if tier is not None:
+            preds.append(tier)
+            continue
+
         made = _made_term(term)
         if made is not None:
             preds.append(made)
@@ -981,7 +1044,7 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
             f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
             f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "
             f"line_<street>=PATTERN or line=flop/turn/river; action_<street>= or action= likewise; "
-            f"made_<street>=HAND or made=HAND; "
+            f"made_<street>=HAND or made=HAND; tier_<street>=TIER ({', '.join(TIERS)}); "
             f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
             f"!flag; or flop=/turn=/river=/board= with a texture tag"
         )
@@ -996,6 +1059,11 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
 # timed -- a hand imported before the clock was stored -- has neither, and no
 # term here matches it, `!=` included.
 TEMPO_STREETS = ("preflop", *STREETS)
+
+# --- hand strength (SPEC.md, "Hand strength"): the share of holdings theirs beat
+# on the board as it stood, 0 to 1. Known cards only, gated like `tier_<street>`.
+for _s in STREETS:
+    NUMERIC[f"hs_{_s}"] = lambda f, s=_s: hs_of(f, s)
 for _s in TEMPO_STREETS:
     NUMERIC[f"think_{_s}"] = lambda f, s=_s: f.think_ms[s] / 1000 if s in f.think_ms else None
 

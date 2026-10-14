@@ -27,24 +27,13 @@ import sqlite3
 from collections import defaultdict
 from fractions import Fraction
 
-from .cards import MADE_LEAVES, leaf_of, made_at
 from .derive import POSTFLOP_STREETS, Facts, derive
 from .queries import load_hands
-from .tags import strength_at
+from .strength import TIERS, tier_at
 from .tilt import annotate
 
 #: How hands are grouped: by their own line, or by the whole street's sequence.
 MODES = ("own", "action")
-
-#: The strength tiers, strongest first. Every shown hand with a street to judge it
-#: on lands in exactly one.
-TIERS = ("nutted", "strong", "marginal", "draw", "air")
-
-#: The weakest made hand that counts as nutted: this leaf of `cards.MADE_LEAVES`
-#: and everything above it -- a set, a straight, a flush, a full house, quads, a
-#: straight flush. Trips made with one hole card on a paired board sit just below
-#: it and are only strong. A judgement value; see SPEC.md, judgement call 35.
-NUTTED_FROM = "set"
 
 #: Groups with fewer hands than this are left out of the rows, and counted in
 #: `hidden`. Every two-street permutation of a three-letter alphabet is a group
@@ -59,54 +48,17 @@ NOT_PLAYED = "-"
 #: Only `action` mode has one, since a line is never empty.
 NO_ACTION = "."
 
-_RANK = {leaf: i for i, leaf in enumerate(MADE_LEAVES)}
-
-#: `tags.strength_at`'s words, folded into the tiers. `nutted` is cut out of
-#: `strong` first, in `tier_at`.
-_TIER_OF_STRENGTH = {"strong": "strong", "medium": "marginal", "weak": "marginal", "draw": "draw", "air": "air"}
-
-
-def tier_at(hole: str | None, board: tuple[str, ...], street: str) -> str | None:
-    """The strength tier of a holding on `street`'s board, or None when unknown.
-
-    ``nutted``    `NUTTED_FROM` or better, by `cards.made_at`
-    ``strong``    the rest of `tags.strength_at`'s strong: trips, two pair, an
-                  overpair, top pair
-    ``marginal``  its medium and weak: an underpair, middle, bottom or board pair
-    ``draw``      a flush or straight draw with no pair, on the flop or turn
-    ``air``       high card, and on the river a draw that missed
-
-    Unknown when the cards are, or the board never reached the street.
-    """
-    if not hole:
-        return None
-    mh = made_at(hole, board, street)
-    if mh is None:
-        return None
-    if _RANK[leaf_of(mh)] <= _RANK[NUTTED_FROM]:
-        return "nutted"
-    return _TIER_OF_STRENGTH[strength_at(hole, board, street)]
-
 
 def tier_terms(tier: str, street: str) -> str | None:
-    """The `made_<street>` terms that find exactly the hands of `tier` on `street`,
-    or None for a tier that cannot occur there (a draw on the river is air).
+    """The filter term that finds exactly the hands of `tier` on `street`, or None
+    for a tier that cannot occur there (a draw on the river is air).
 
-    Each tier is one unbroken run of `cards.MADE_LEAVES`, so two comparisons
-    bound it. `test_every_tier_filter_reproduces_its_count` holds these to
-    `tier_at`, which is the definition.
+    `tier_<street>` reads `strength.tier_at` itself, so the term is the definition
+    and `test_every_tier_filter_reproduces_its_count` holds every row to it.
     """
-    term = f"made_{street}"
-    if tier == "nutted":
-        return f"{term}>={NUTTED_FROM}"
-    if tier == "strong":
-        return f"{term}<{NUTTED_FROM},{term}>=top_pair"
-    if tier == "marginal":
-        return f"{term}<top_pair,{term}>=board_pair"
-    if street == "river":
-        # On the river a missed draw is air, so air is everything below a pair.
-        return None if tier == "draw" else f"{term}<pair"
-    return f"{term}=draw" if tier == "draw" else f"{term}=high_card"
+    if tier == "draw" and street == "river":
+        return None
+    return f"tier_{street}={tier}"
 
 
 def _segment(f: Facts, street: str, mode: str) -> str:

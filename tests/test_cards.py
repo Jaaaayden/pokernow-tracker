@@ -103,6 +103,21 @@ def test_made_class(cards, expected):
         ("AhKh", ["Qh", "Jh", "Th", "2c", "3d"], "straight_flush", None),
         ("AhKd", [], "no_board", None),  # shown after a preflop win
         ("AhKd", ["Ac", "Kc", "2d"], "two_pair", None),  # classifies on a flop-only board
+        # Graded by what the hole cards add: the board's own pairs never count.
+        ("7h2d", ["Kc", "Ks", "7d"], "pair", "bottom_pair"),  # not two pair
+        ("Kh2d", ["7c", "7s", "Kd"], "pair", "top_pair"),
+        ("AhAd", ["Kc", "Ks", "7d"], "pair", "overpair"),
+        ("QhQd", ["Kc", "Ks", "7d"], "pair", "pocket_pair"),
+        ("AhQd", ["Kc", "Ks", "7d"], "pair", "board_pair"),
+        ("AhKd", ["9c", "9s", "5d", "5c", "2h"], "pair", "board_pair"),  # double-paired board
+        ("KhQd", ["9c", "9s", "5d", "5c", "Ks"], "pair", "top_pair"),
+        ("AhKd", ["7c", "7s", "7d"], "pair", "board_pair"),  # trips on the board
+        ("7h3d", ["Kc", "Ks", "Kd", "7c", "2h"], "full_house", None),  # the 7 makes the boat
+        ("2h3d", ["Kc", "Ks", "Kd", "7c", "7h"], "pair", "board_pair"),  # the board's boat
+        ("Th3d", ["5c", "6s", "7d", "8c", "9h"], "straight", None),  # the T improves it
+        ("2c3c", ["Qh", "9h", "5h", "3h", "7h"], "high_card", None),  # the board's flush
+        ("Ah4c", ["Qh", "9h", "5h", "3h", "7h"], "flush", None),  # the Ah plays
+        ("KcKd", ["Qh", "9h", "5h", "3h", "7h"], "high_card", None),  # the board's flush plays
     ],
 )
 def test_made_hand_detail(hole, board, cls, detail):
@@ -119,6 +134,8 @@ DRAW_CASES = [
     ("Kc2d", ["5h", "6s", "7d", "8c", "Ah"], "high_card", None),  # board straight draw only
     ("Kc2d", ["5h", "6h", "7h", "8h", "As"], "high_card", None),  # board flush draw only
     ("AhKh", ["Ac", "Jh", "2h", "7d", "3s"], "pair", "top_pair"),  # a pair keeps its class
+    ("Ah9h", ["Kc", "Ks", "7h", "2h"], "draw", "flush_draw"),  # a board pair is not their pair
+    ("Ah9h", ["Kc", "Ks", "7h", "2h", "3c"], "draw", "flush_draw"),  # and missed
     ("9cJd", ["Ac", "Kd", "2s", "3s", "7h"], "high_card", None),  # true air stays high card
 ]
 

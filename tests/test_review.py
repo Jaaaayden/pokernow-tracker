@@ -502,10 +502,11 @@ def test_what_fires_on_the_fixture_logs(reviews):
         return [h for h in reviews[alias]["hands"]
                 if h["game_id"] == game and h["hand_number"] == number and h["kind"] == kind]
 
-    # #212: a 16bb pot checked down with a board pair on each side -- flagged for both.
+    # #212: a 16bb pot checked down with air on each side (a board pair, or a missed
+    # draw that only paired the board) -- flagged for both.
     for alias in ("HSJ", "genericpoker"):
         (h,) = rows(alias, THREE_GAME, 212, "missed_bluff")
-        assert h["pot_bb"] == 16.0 and h["made"]["label"] == "board pair"
+        assert h["pot_bb"] == 16.0 and rv.is_air(rv.MadeHand(h["made"]["cls"], h["made"]["detail"]))
 
     # #53: a 60% pot river bet with a board pair, called by a flush.
     (h,) = rows("genericpoker", HU_GAME, 53, "failed_bluff")

@@ -22,6 +22,7 @@ from pathlib import Path
 from ..db.conn import GENERATION_KEY, bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
 from ..logfmt.parser import ParsedHand, parse
+from ..stats import strength
 from .csv_source import RawEntry, game_id_from_filename, read_csv
 
 
@@ -511,6 +512,9 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
             "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
             (GENERATION_KEY, game_id),
         )
+    # Its own transaction, after the rebuild's: the hand strength of every shown
+    # holding, so grading the game never waits on a board (stats/strength.py).
+    strength.warm(conn, game_id)
 
     return {
         "game_id": game_id,

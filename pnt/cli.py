@@ -1099,33 +1099,52 @@ def tags(
     filter_: str = typer.Option(None, "--filter", help="Judge the tags inside a spot, e.g. 'players>=4'"),
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
     min_hands: int = typer.Option(1, "--min-hands"),
+    basis: str = typer.Option("pool", "--basis", help="'pool': against the other players; 'fixed': the fixed cuts."),
+    show_pool: bool = typer.Option(False, "--pool", help="Print each rule's pool baseline instead."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Archetype and exploit tags per player, with the count behind each one.
 
     Every tag names the spot filter that puts its hands on the chart. Tags built
     from shown hands say so: cards are known at showdown, so the bluffs that got
-    through are the hands missing from that evidence.
+    through are the hands missing from that evidence. Each rule is judged against
+    the other players' rates (SPEC.md, "Pool baseline") unless `--basis fixed`.
     """
+    from .stats.pool import pool_for, pool_from_facts
+
+    if basis not in ("pool", "fixed"):
+        raise typer.BadParameter("--basis is 'pool' or 'fixed'")
     conn = connect(db)
     try:
         pred = parse_filter(filter_, display_names(conn)) if filter_ else None
-        if alias:
-            players = [(alias, facts_for(conn, alias, game))]
-        else:
-            grouped, aliases, _ = facts_by_player(conn, game)
-            players = sorted(
-                ((aliases[pid], facts) for pid, facts in grouped.items()), key=lambda p: -len(p[1])
-            )
+        grouped, aliases, _ = facts_by_player(conn, game)
+        everyone = sorted(((aliases[pid], facts) for pid, facts in grouped.items()), key=lambda p: -len(p[1]))
+        if pred is not None:
+            everyone = [(a, [f for f in fs if pred(f)]) for a, fs in everyone]
+        players = [p for p in everyone if p[0] == alias] if alias else everyone
+        if alias and not players:
+            raise ValueError(f"unknown alias: {alias!r}")
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
+    pool = None
+    if basis == "pool":
+        pool = pool_for(conn, game) if pred is None else pool_from_facts(
+            dict(everyone), pool_for(conn, game).owners, f"spot: {filter_}")
+    if show_pool:
+        base = pool.baseline(alias) if pool is not None else {}
+        if as_json:
+            typer.echo(json.dumps({k: {"pct": b.pct, "players": b.players, "spread": list(b.spread)}
+                                   for k, b in sorted(base.items())}, indent=2))
+            return
+        typer.echo(f"pool baseline ({len(pool.players) if pool else 0} players{f', without {alias}' if alias else ''}):")
+        for k, b in sorted(base.items()):
+            typer.echo(f"  {k:<20} {b.pct:>5}%  middle half {b.spread[0]}-{b.spread[1]}%  ({b.players} players)")
+        return
     rows = []
     for name, facts in players:
-        if pred is not None:
-            facts = [f for f in facts if pred(f)]
         if len(facts) < min_hands:
             continue
-        rows.append({"player": name, "filter": filter_, **tags_for(facts)})
+        rows.append({"player": name, "filter": filter_, **tags_for(facts, pool, name)})
     if as_json:
         typer.echo(json.dumps(rows if not alias else rows[0], indent=2))
         return
@@ -1136,7 +1155,8 @@ def tags(
         for t in row["tags"]:
             if t["kind"] == "archetype":
                 continue
-            typer.echo(f"  {t['label']:<20} {_fmt(t['pct']):>5}% of {t['n']:<5} {t['tip']}")
+            mark = " (fixed cut)" if t["kind"] == "exploit" and t.get("basis") == "fixed" else ""
+            typer.echo(f"  {t['label']:<20} {_fmt(t['pct']):>5}% of {t['n']:<5} {t['tip']}{mark}")
         for t in row["streaky"]:
             c = t["carried_by"]
             typer.echo(
@@ -1845,6 +1865,7 @@ def bounties(
         typer.echo(
             f"\n{h['player']}: dealt 72 {h['dealt_72']} times, played {h['played_72']}"
             f" ({_fmt(h['played_pct'])}%), cards known on {h['known']} of {h['hands']} hands."
+            + (f" Showed 72 {h['shown_72']} times in other logs." if h["shown_72"] else "")
         )
         why = "" if h["dealt_filter"] and h["played_filter"] else (
             "   (none: it would also find a 72 they showed in a log they do not own)"

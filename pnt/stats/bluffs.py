@@ -3,7 +3,7 @@
 Every bet, check-raise, raise and jam is a claim to have it. The shown ones say
 how often the claim was true. Each category here is one kind of aggression on
 one street, and its shown hands are read **on the board as it stood when the
-action was made** (`tags.strength_at`), so a flop flush draw that got there on
+action was made** (`strength.strength_at`), so a flop flush draw that got there on
 the river was a semi-bluff when it bet the flop:
 
 - ``value``       strong: top pair or an overpair, or better
@@ -75,20 +75,19 @@ def classify(strength: str | None, street: str) -> str | None:
 
 
 def class_terms(street: str) -> dict[str, str | None]:
-    """Each class as a `made_<street>` term, so a class within a row reproduces too.
+    """Each class as a `tier_<street>` term, so a class within a row reproduces too.
 
-    These are `strength_at`'s buckets written as MADE_LEAVES spans: strong is top
-    pair and up (two pair and better rank above it), the marginal pairs are the
-    four below it, and a draw is the `draw` group. On the river nothing is a
-    semi-bluff, and a bluff is anything short of a pair -- the busted draws as
-    well as high card. `test_every_class_reproduces` holds this to `strength_at`.
+    The classes are `strength_at`'s buckets, and the tiers are the same buckets
+    (`strength.tier_at`): value is strong or nutted, marginal is marginal, a
+    semi-bluff is a draw, a bluff is air -- a board pair the hole cards add
+    nothing to included. On the river nothing is a semi-bluff: a draw there has
+    missed, and is air. `test_every_class_reproduces` holds this to `strength_at`.
     """
-    river = street == RIVER
     return {
-        "value": f"made_{street}>=top_pair",
-        "marginal": f"made_{street}=pocket_pair|middle_pair|bottom_pair|board_pair",
-        "semi_bluff": None if river else f"made_{street}=draw",
-        "bluff": f"made_{street}<pair" if river else f"made_{street}=high_card",
+        "value": f"tier_{street}>=strong",
+        "marginal": f"tier_{street}=marginal",
+        "semi_bluff": None if street == RIVER else f"tier_{street}=draw",
+        "bluff": f"tier_{street}=air",
     }
 
 

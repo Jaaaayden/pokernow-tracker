@@ -324,7 +324,8 @@ clock made for them is left out. The view leads with the pool, because one
 player's cells are thin: flop and turn calls, river bets and river calls, each
 bucket with what the hands were and its `known / n`. On this pool a slow call
 has been stronger than a quick one, a long think before a river bet has meant
-value rather than a bluff, and river calls carry no timing signal. Below that is
+value rather than a bluff (a snapped one has been the weakest), and river calls
+carry little timing signal. Below that is
 the player's own table, against the pool's cuts or against their own median
 (snap under half of it, tank over twice it), and their pace street by street.
 Click any of their rows to add it to the spot and list the hands. The filter
@@ -456,7 +457,8 @@ middle_pair                 2   28.6    1     20.9
 Every row is one kind of hand, strongest first, with no `pair` row above them adding
 them up again: a pair is the pair it was (`overpair`, `top_pair`, `pocket_pair`
 for one under a board card, `middle_pair`, `bottom_pair`, `board_pair` when the
-hole cards add nothing), three of a kind is a `set` or `trips` off a paired board,
+hole cards add nothing to a paired board), three of a kind is a `set` or `trips` off a paired board,
+a board's own pairs never count (`7x` on `K-K-7` is bottom pair, not two pair),
 and an unpaired hand is the draw it had on the flop or turn (`combo_draw`,
 `flush_draw`, `open_ender`, `gutshot`) or `high_card`, so the high-card row is real
 air. These are the names `made=` takes, and on the chart a row lists its hands as
@@ -603,7 +605,9 @@ The card shows the spot and what that player has *shown up with* there. After th
 decision they just made, their shown hands split into value, marginal, draw and air
 (`facing flop c-bet → call · value 50% · draw 25% · air 25% (4 of 9 shown)`), read
 on the board as it stood when they acted, so a flop call that rivered a flush counts
-as the draw it was. While they are still to act, the line has one such row per
+as the draw it was. Value means strong *on that board*: the hand beats most
+holdings there (queens on K-K-7 count; aces on a four-flush river do not). Air is
+nothing of their own, a pair that is only the board's included. While they are still to act, the line has one such row per
 decision, and the hover gives how often they fold, call or raise, with the counts.
 The player to act is marked.
 
@@ -705,8 +709,8 @@ the big hand they laid down, to look tight. The chart's **Shows** tab lists ever
 hand a player showed after it ended, split by how it ended for them (folded, won
 uncontested, or mucked at showdown), with each two-card show read as strong,
 marginal, a draw or air on the board as it stood when they folded. One-card shows are
-counted only. The tiles give how often they showed air, how often top pair or
-better, and how many of the folds they showed were ahead of the hand that won,
+counted only. The tiles give how often they showed air, how often a strong
+hand, and how many of the folds they showed were ahead of the hand that won,
 counted where the winner's cards are known (yours, or the winner's own show).
 Click a row to replay it. The spot box does not narrow shows. Any chart link can
 do the same with `hand=<id>`, as in `/chart?player=henry&hand=1234`. These are the

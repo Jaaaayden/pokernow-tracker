@@ -7,8 +7,8 @@ Pinned to the heads-up fixture hands `test_lines.py` works by hand:
        gp b / b / -, read on the turn: an open-ender, a draw.
   #92  gp (Jd2h) check-raises the Jc9h7d flop, bets the 9c turn, bets the Qh river
        and calls Chris's raise: xr / b / bc, whole street XbRc / Bc / BrC. Chris
-       (9dAs) made trips on the turn with one card to the paired board -- strong,
-       not nutted, which is the line `NUTTED_FROM` draws.
+       (9dAs) made trips on the turn with one card to the paired board, which beat
+       97% of holdings there: nutted, by the turn's hand-strength cut.
 """
 
 from __future__ import annotations
@@ -25,13 +25,13 @@ from pnt.stats.derive import POSTFLOP_STREETS, derive
 from pnt.stats.filters import parse_filter
 from pnt.stats.lines import (
     MODES,
-    NUTTED_FROM,
     TIERS,
     line_breakdown,
     pool_facts,
     tier_at,
 )
 from pnt.stats.queries import display_names, facts_for, load_hands, report
+from pnt.stats.strength import HS_CUTS
 from tests.conftest import ALL_LOGS, EDGE_LOGS, HU_GAME, local_client
 
 CHRIS = "5NARaPRkSp"
@@ -62,8 +62,9 @@ def test_a_fixture_hands_line_and_strength(hu):
     own = line_breakdown([gp], "own", min_n=1)["groups"]
     assert [g["line"] for g in own] == ["xr/b/bc"]
     assert own[0]["filter"] == "line=xr/b/bc" and own[0]["rated_on"] == "river"
+    # Jd2h on Jc9h7d9cQh: middle pair of jacks, not two pair -- the nines are the board's.
     assert {t: v["n"] for t, v in own[0]["tiers"].items()} == {
-        "nutted": 0, "strong": 1, "marginal": 0, "draw": 0, "air": 0,
+        "nutted": 0, "strong": 0, "marginal": 1, "draw": 0, "air": 0,
     }
 
     whole = line_breakdown([gp], "action", min_n=1)["groups"]
@@ -83,13 +84,14 @@ def test_a_fixture_hands_line_and_strength(hu):
     assert g["line"] == "c/f/-" and g["shown"] == g["known"] == 0 and g["coverage"] == 0.0
 
 
-def test_the_nutted_line_is_a_set(hu):
-    assert NUTTED_FROM == "set"
-    # #92: Chris's 9dAs on Jc9h7d9c is trips with one hole card -- strong only.
-    chris = hu[92][CHRIS]
-    assert tier_at(chris.hole_cards, chris.board, "turn") == "strong"
-    assert tier_at("9d9s", ("Jc", "9h", "7d"), "flop") == "nutted", "a set"
-    assert tier_at("Td8s", ("Jc", "9h", "7d"), "flop") == "nutted", "a straight"
+def test_the_nutted_tier_is_hand_strength(hu):
+    """Nutted is a hand of their own at or over the street's nutted cut, not a made
+    hand's name: a middle set can fall short of it and trips can clear it."""
+    assert HS_CUTS["flop"]["nutted"] >= HS_CUTS["flop"]["strong"]
+    chris = hu[92][CHRIS]  # 9dAs on Jc9h7d9c: trips, 97% of holdings beaten
+    assert tier_at(chris.hole_cards, chris.board, "turn") == "nutted"
+    assert tier_at("Td8s", ("Jc", "9h", "7d"), "flop") == "nutted", "the nut straight"
+    assert tier_at("9d9s", ("Jc", "9h", "7d"), "flop") == "strong", "middle set: JJ and T8 beat it"
     assert tier_at("JdTs", ("Jc", "9h", "7d"), "flop") == "strong", "top pair"
     assert tier_at("8d8s", ("Jc", "9h", "7d"), "flop") == "marginal", "an underpair"
     assert tier_at("AhKh", ("Qh", "9h", "2d"), "flop") == "draw"

@@ -35,7 +35,11 @@ pinned in [`pnt/stats/SPEC.md`](../pnt/stats/SPEC.md). That file is the artifact
 
 ### What is stored rather than derived
 
-- **`equity_cache`** is the one derived table. All-in equities are computed once
+- **`strength_cache`** holds the hand strength of every shown holding (SPEC.md,
+  "Hand strength"), keyed by cards alone. Every game rebuild warms its game, and
+  the server warms the rest in the background on start. Safe to drop; a cut
+  change never touches it.
+- **`equity_cache`** is the other derived table. All-in equities are computed once
   and kept there, and it is safe to drop. The first `pnt allin` or page load after
   an import takes about half a second per preflop all-in; everything after that is
   instant. Flop, turn and river all-ins are enumerated exactly. Preflop all-ins are

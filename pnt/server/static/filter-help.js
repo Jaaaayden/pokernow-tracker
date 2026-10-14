@@ -84,13 +84,13 @@
   // --- Templates. A vocabulary term is literals and parameter slots:
   // `cbet_<street>=SIZE` is "cbet_", street, "=", SIZE. A trailing `>=N` is an
   // operator slot then a number, since every comparison takes any operator.
-  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|ANSWER|FLAG)/;
+  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|TIER|ANSWER|FLAG)/;
   const OP_WORDS = { ">=": "at least", "<=": "at most", "=": "exactly", ">": "more than", "<": "less than" };
   const PICK = {
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
-    MADE: "pick a made hand", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
+    MADE: "pick a made hand", TIER: "pick a tier", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
   };
 
   // The two pattern slots read differently on one street (`line_flop=`) and on
@@ -127,8 +127,9 @@
   };
   const allStreets = (t) => !t.segs.some((s) => s.slot === "street");
   function pickText(t, kind) {
-    if (kind === "MADE" && t.segs.some((s, j) => s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[j - 1]?.lit ?? ""))) {
-      return "pick a made hand; after one, click more to match any of them";
+    if ((kind === "MADE" || kind === "TIER")
+      && t.segs.some((s, j) => s.slot === kind && /(^|[^<>])=$/.test(t.segs[j - 1]?.lit ?? ""))) {
+      return `${PICK[kind]}; after one, click more to match any of them`;
     }
     if (!PATTERN_HINT[kind]) return PICK[kind];
     const where = allStreets(t) ? "each street, flop/turn/river split by / (empty = any)" : "that street";
@@ -161,6 +162,7 @@
       case "op": return vocab.operators.map((o) => [o, OP_WORDS[o]]);
       case "NAME": return plain(names);
       case "MADE": return Object.entries(vocab.made).map(([v, d]) => (d ? [v, d] : [v]));
+      case "TIER": return Object.entries(vocab.tiers ?? {});
       case "ANSWER": return plain(vocab.answers);
       case "FLAG": return plain(vocab.flags);
       default: return null;
@@ -188,7 +190,7 @@
       const vals = opts.map(([v]) => v.toLowerCase());
       // After a plain `=` or `!=` a made hand takes several, `made_flop=set|flush`,
       // so the slot runs on past each one. `from` is where the first one starts.
-      const many = s.slot === "MADE" && /(^|[^<>])=$/.test(t.segs[i - 1]?.lit ?? "");
+      const many = (s.slot === "MADE" || s.slot === "TIER") && /(^|[^<>])=$/.test(t.segs[i - 1]?.lit ?? "");
       const from = pos;
       for (;;) {
         const piece = frag.slice(pos);
@@ -379,6 +381,7 @@
     put("LINE", "x check  b bet  c call  r raise  f fold  * any run  ? one action  - didn't act");
     put("SEQ", "as LINE, theirs in CAPS (X B C R F), others' lower case  - not in the hand");
     put("MADE", Object.keys(vocab.made).join("  "));
+    put("TIER", Object.keys(vocab.tiers ?? {}).join("  "));
     put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");
 
@@ -412,7 +415,7 @@
     const top = el("div", null, "fh-slot-head");
     if (before) top.append(el("code", before.replace(/\|$/, "")), " — ");
     top.append(m.more
-      ? "click another made hand to add it (a hand matches if it made any of them), or type a comma for the next term"
+      ? "click another to add it (a hand matches any of them), or type a comma for the next term"
       : pickText(t, kind));
     const box = el("div", null, "fh-opts");
     const opts = options(kind);

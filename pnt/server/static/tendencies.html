@@ -61,12 +61,14 @@
   <h1>Tendencies</h1>
   <ul class="note">
     <li><b>You:</b> the tags an opponent's HUD shows on you, and how they would play you.</li>
-    <li><b>Your opponents:</b> the exploits that fire on your regulars, most common first.</li>
+    <li><b>Your opponents:</b> the exploits that fire on your regulars, most common first. Each is judged against the others at the table, e.g. folds to c-bets 51% vs a pool at 40%.</li>
+    <li><b>The table:</b> what the regulars do together, on fixed cuts, since a whole table never stands out from itself.</li>
     <li>Click a tag or a name for those hands on the chart.</li>
   </ul>
 
   <section class="card loading" id="you"><h2>You <small id="you-sub"></small></h2><div id="you-body" class="dim">loading…</div></section>
   <section class="card loading" id="pool"><h2>Your opponents <small id="pool-sub"></small></h2><div id="pool-body" class="dim">loading…</div></section>
+  <section class="card loading" id="table"><h2>The table <small id="table-sub"></small></h2><div id="table-body" class="dim">loading…</div></section>
   <div class="err" id="err" hidden></div>
 </main>
 
@@ -132,11 +134,25 @@
     body.replaceChildren(t);
   }
 
+  function renderTable(d) {
+    const body = $("table-body");
+    const rows = d.table || [];
+    $("table-sub").textContent = `${d.regulars} regulars together`;
+    if (!rows.length) { body.textContent = d.regulars ? "Nothing stands out about the table as a whole." : "No opponent has enough hands yet."; return; }
+    const t = node("table");
+    for (const x of rows) {
+      const tr = node("tr");
+      tr.append(node("td", x.label, "tag"), node("td", `${x.pct}% of ${x.n}`, "n"), node("td", x.advice));
+      t.append(tr);
+    }
+    body.replaceChildren(t);
+  }
+
   fetch("/tendencies", { headers: { accept: "application/json" } })
     .then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })
-    .then((d) => { renderYou(d); renderPool(d); })
+    .then((d) => { renderYou(d); renderPool(d); renderTable(d); })
     .catch((e) => { $("err").textContent = `Could not load /tendencies: ${e.message || e}`; $("err").hidden = false; })
-    .finally(() => { $("you").classList.remove("loading"); $("pool").classList.remove("loading"); });
+    .finally(() => { for (const id of ["you", "pool", "table"]) $(id).classList.remove("loading"); });
 })();
 </script>
 </body>

@@ -6,10 +6,10 @@ street carries how long it took (`Facts.think_ms`) and a tempo bucket
 what the hands in each bucket were, in the spots where timing was found to mean
 something on this pool: flop and turn calls, river bets, and river calls.
 
-What the pool's 14,720 hands said (SPEC.md, "Timing tells"), and what the view
-leads with: a slow call is stronger than a quick one -- more value, fewer draws --
-and a long think before a river bet means value, not a bluff: air stays near 8% in
-every bucket. River calls carry no timing signal at all. Per player the cells are
+What the pool's hands said (SPEC.md, "Timing tells"), and what the view leads
+with: a slow call is stronger than a quick one -- more value, fewer draws -- and a
+long think before a river bet means value, not a bluff, while a snapped river bet
+is the weakest. River calls carry little timing signal. Per player the cells are
 thin, so the pool comes first and every figure carries its n.
 
 Every row carries the filter that finds exactly its `n` hands. The strength split

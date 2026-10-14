@@ -74,9 +74,11 @@
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
   .views { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; }
-  .views .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; line-height: 1.35; }
-  .views .seg button + button { border-left: 1px solid var(--axis); }
-  .views .seg button[aria-pressed=true] + button, .views .seg button + button[aria-pressed=true] { border-left-color: transparent; }
+  /* A group wraps inside its box when the panel is narrow. The dividers are shadows
+     up and left of each button: the box clips them on its first row and column, so
+     wrapped rows get a rule between them and no stray edges. */
+  .views .seg { flex-wrap: wrap; min-width: 0; }
+  .views .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; line-height: 1.35; box-shadow: -1px -1px 0 var(--axis); }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .presets button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .presets button:hover { border-color: var(--muted); }
@@ -1485,11 +1487,11 @@
   // Strongest first. The colours are the page's two ramps as a diverging scale:
   // blue for made value, the grey midpoint for marginal, red for draws and air.
   const TIERS = [
-    ["nutted", "a set, a straight or better"],
-    ["strong", "trips, two pair, an overpair or top pair"],
-    ["marginal", "an underpair, or a middle, bottom or board pair"],
-    ["draw", "a flush or straight draw and no pair; flop and turn only"],
-    ["air", "high card, and on the river a draw that missed"],
+    ["nutted", "beats nearly every holding on that board"],
+    ["strong", "a value hand on that board: top pair or better on most"],
+    ["marginal", "a pair of their own that beats only some"],
+    ["draw", "a flush or straight draw and no pair of their own; flop and turn only"],
+    ["air", "high card or a board pair, and on the river a draw that missed"],
   ];
   const tierColor = (t) => ({ nutted: ramp(BLUE)[5], strong: ramp(BLUE)[2], marginal: "var(--axis)",
                               draw: ramp(RED)[2], air: ramp(RED)[5] })[t];
@@ -1768,8 +1770,8 @@
   // /bluffs/hands, since its ids name nobody. See SPEC.md, "Bluff:value".
   const BV_CLASSES = [["value", "value"], ["marginal", "marginal"], ["semi_bluff", "semi-bluff"], ["bluff", "bluff"]];
   const BV_CLASS_TIP = {
-    value: "top pair or an overpair, or better",
-    marginal: "a weaker pair: middle, bottom, a low pocket pair, or the board's",
+    value: "a value hand on that board: top pair or better on most",
+    marginal: "a pair of their own that beats only some",
     semi_bluff: "no pair, a flush or straight draw (flop and turn)",
     bluff: "no pair and no draw; on the river a missed draw too",
   };
@@ -2826,8 +2828,8 @@
       pb.appendChild(spotTable(pool.spots, { pool: true }));
       const found = bulletsInto(document.createElement("ul"), [
         "**Slow calls** have been stronger than quick ones: more value, fewer draws.",
-        "**A long think before a river bet** has meant value: air is about the same in every bucket.",
-        "**River calls:** no timing signal.",
+        "**A long think before a river bet** has meant value; a snapped one has been the weakest.",
+        "**River calls:** little timing signal.",
       ]);
       found.className = "why";
       pb.appendChild(found);
@@ -2971,7 +2973,7 @@
     const wrap = $("shows");
     wrap.replaceChildren();
     const fv = d.folded_vs;
-    setTileKeys("shown unasked ›", "showed air", "top pair or better");
+    setTileKeys("shown unasked ›", "showed air", "showed a strong hand");
     $("t-hands").textContent = d.shows;
     $("t-known").textContent = fmtPct(d.air_pct);
     $("t-cov").textContent = fmtPct(d.strong_pct);
@@ -3103,9 +3105,16 @@
         a.addEventListener("click", (e) => { e.preventDefault(); go(h.player, filter); });
         return a;
       };
-      p.append(`${h.player} was `, link(`dealt 72 ${h.dealt_72}×`, h.dealt_filter), " and ",
-        link(`played it ${h.played_72}×`, h.played_filter),
-        (h.played_pct == null ? "" : ` (${h.played_pct}%)`) + ` · cards known on ${h.known} of ${h.hands} hands in their own logs.`);
+      const own = `${h.hands.toLocaleString()} hands of their own log${h.logs === 1 ? "" : "s"}`;
+      if (h.dealt_72) {
+        p.append(`${h.player} was `, link(`dealt 72 ${h.dealt_72}×`, h.dealt_filter), " and ",
+          link(`played it ${h.played_72}×`, h.played_filter), ` (${h.played_pct}%) in ${own}`);
+      } else {
+        p.append(`${h.player} wasn't dealt 72 in ${own}`);
+      }
+      if (h.shown_72) p.append(" · ", link(`showed it ${h.shown_72}× in other logs`, h.shown_filter));
+      if (h.known < h.hands) p.append(` · cards known on ${h.known} of ${h.hands}`);
+      p.append(".");
       wrap.appendChild(p);
     }
   }

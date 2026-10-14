@@ -73,6 +73,12 @@ def test_strength_at_reads_the_board_as_it_stood_on_that_street():
     assert strength_at(STRONG, BOARD, "river") == "strong"
     assert strength_at(WEAK, BOARD, "flop") == "weak"
     # Unknown when the cards are, or when the board never got that far.
+    paired = ("Kd", "Kc", "7s", "2h", "3d")
+    assert strength_at("QhJc", paired, "river") == "air", "a board pair is not a hand"
+    assert strength_at("7h2d", paired, "flop") == "medium", "bottom pair, not two pair: beats 80%"
+    assert strength_at("QhQd", paired, "flop") == "strong", "beats 91%, as top pair does on K-7-2"
+    assert strength_at("AhAd", ("9h", "8h", "7h", "6c", "2d"), "river") == "medium", "beats 55% here"
+    assert strength_at("AhQh", ("Kd", "Kc", "7h", "2h"), "turn") == "draw"
     assert strength_at(None, BOARD, "flop") is None
     assert strength_at(STRONG, BOARD[:3], "turn") is None
     assert strength_at(STRONG, (), "flop") is None
@@ -84,7 +90,7 @@ def test_strength_at_reads_the_board_as_it_stood_on_that_street():
 
 
 def test_empty_input_is_the_empty_shape():
-    assert tags_for([]) == {"archetype": None, "tags": [], "profile": {"hands": 0}, "streaky": []}
+    assert tags_for([]) == {"archetype": None, "tags": [], "profile": {"hands": 0}, "streaky": [], "pool": None}
 
 
 def test_a_rate_tag_needs_its_sample():
@@ -109,8 +115,8 @@ def test_river_bluff_tags_read_the_shown_hands():
     tag = next(t for t in out["tags"] if t["id"] == "no_bluff")
     assert (tag["n"], tag["hits"], tag["by"]) == (n, 0, "made") and "shown" in tag["tip"]
     assert "no_bluff" not in ids(tags_for(value[:-1])), "one short of the minimum sample"
-    # A third air is a bluffer; hands without a showdown are not evidence either way.
-    bluffs = many(7, hole_cards=STRONG, **river) + many(3, hole_cards=AIR, **river)
+    # Four air in ten is a bluffer; hands without a showdown are not evidence either way.
+    bluffs = many(6, hole_cards=STRONG, **river) + many(4, hole_cards=AIR, **river)
     assert "bluffs_river" in ids(tags_for(bluffs)) and "no_bluff" not in ids(tags_for(bluffs))
     unseen = many(20, hole_cards=None, **river)
     assert ids(tags_for(unseen)) == []
@@ -375,12 +381,16 @@ def test_every_show_tag_reproduces_from_the_view(db):
     assert "shows_nuts" in seen, "HSJ shows five strong hands of eight in the fixtures"
 
 
-def test_every_tag_reproduces_on_the_chart(db):
+@pytest.mark.parametrize("with_pool", [False, True])
+def test_every_tag_reproduces_on_the_chart(db, with_pool):
+    from pnt.stats.pool import pool_for
+
     names = display_names(db)
     seen, archetypes = set(), set()
+    pool = pool_for(db) if with_pool else None
     for row in report(db):
         facts = facts_for(db, row["player"])
-        out = tags_for(facts)
+        out = tags_for(facts, pool, row["player"])
         assert {"archetype", "tags", "profile"} <= set(out)
         for tag in out["tags"]:
             seen.add(tag["id"])

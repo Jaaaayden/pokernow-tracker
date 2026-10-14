@@ -167,7 +167,7 @@ def _board(board: Collection[str] | str) -> tuple[str, ...]:
 
 
 def is_air(mh: MadeHand) -> bool:
-    """High card, a draw, or a pair that is entirely on the board.
+    """High card, a draw, or a board pair the hole cards add nothing to.
 
     An underpair or bottom pair is a hand, not air: checking it down is a thin
     value question, not a missed bluff.
@@ -276,11 +276,7 @@ def describe(hole: str | None, board: Collection[str]) -> str:
             return "top pair top kicker"
         return {"pocket_pair": "underpair"}.get(mh.detail or "", (mh.detail or "pair").replace("_", " "))
     if mh.cls == "two_pair":
-        if top_two_pair(hole, board):
-            return "top two pair"
-        if _overpair(hole, board):
-            return "overpair"
-        return "top pair top kicker" if _tptk(hole, board) else "two pair"
+        return "top two pair" if top_two_pair(hole, board) else "two pair"
     if mh.cls == "trips":
         return "set" if mh.detail == "set" else "trips"
     return mh.cls.replace("_", " ")
@@ -826,15 +822,18 @@ def set_flag(
 
 
 def _villain_info(conn: sqlite3.Connection) -> Callable[[str], dict]:
+    from .pool import pool_for  # pool imports tags, which this module's callers load
+
     ident = identity_map(conn)
     memo: dict[str, dict] = {}
+    pool = pool_for(conn)
 
     def info(pn_id: str) -> dict:
         alias = ident.get(pn_id, (None, None))[1]
         if alias is None:
             return {}
         if alias not in memo:
-            t = tags_for(facts_cached(conn, alias))
+            t = tags_for(facts_cached(conn, alias), pool, alias)
             p = t["profile"]
             memo[alias] = {
                 "archetype": t["archetype"]["label"] if t["archetype"] else None,

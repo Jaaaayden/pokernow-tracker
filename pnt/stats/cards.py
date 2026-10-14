@@ -7,11 +7,12 @@ Two questions a range chart asks of a known holding:
    label regardless of the order PokerNow printed the cards in.
 2. *What did it make on this board?*  Used for the line-composition view:
    "of the hands that took this line and were shown, how many were a pair or
-   worse".  The class is the true best-five category (a pair on the board with
-   no hole-card involvement is still a *pair*) and the ``detail`` says how the
-   hole cards participate, which is what separates top pair from a board pair.
-   An unpaired holding that had a flush or straight draw on the flop or turn is
-   a *draw* rather than *high_card*, so the high-card row reads as real air.
+   worse".  The class is what the hole cards add to the board, not the board's
+   own best five: ``7x`` on ``K-K-7`` is bottom pair, not two pair, and a hand
+   that adds nothing to a paired board is a *board pair*. The ``detail`` says
+   how the hole cards participate, which separates top pair from a board pair.
+   A holding that adds nothing but had a flush or straight draw on the flop or
+   turn is a *draw*, so the high-card and board-pair rows read as real air.
 
 Pure functions over card strings; nothing here touches the database.
 """
@@ -295,20 +296,28 @@ def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[
     - ``top_pair``     a hole card pairs the highest board rank
     - ``middle_pair``  a hole card pairs a board rank that is neither highest nor lowest
     - ``bottom_pair``  a hole card pairs the lowest board rank
-    - ``board_pair``   the pair is entirely on the board; the hole cards add nothing
+    - ``board_pair``   the board is paired (or better) and the hole cards add nothing
 
     For **trips**: ``set`` (pocket pair + one board card) or ``trips`` (one hole
     card + a board pair).
 
-    A holding that is only **high_card** on the final board becomes a **draw**
-    when it had one on the flop or the turn, with ``detail`` naming the draw
-    (see `draw_detail`): ``combo_draw``, ``flush_draw``, ``open_ender`` or
-    ``gutshot``. Draws are read on the turn board (or the flop, when the hand
-    ended there); since the final hand is unmade, the turn's draws include the
-    flop's. A busted draw on the river is still a draw -- that is what the
-    player was betting with. A draw must use a hole card; four to a flush or a
-    four-straight sitting on the board alone does not count. Any pair or better
-    keeps its class even with a draw.
+    **A holding is graded by what the hole cards add to the board**, never by the
+    board's own pairs. On ``K-K-7``, ``7x`` is bottom pair, not two pair; ``AA``
+    is an overpair and ``QQ`` an underpair; ``AQ`` adds nothing and is a board
+    pair. Three of a kind on the board with no help is a board pair too, and so
+    is a straight, flush, full house or quads the board makes alone that the hole
+    cards do not improve. ``two_pair`` is both hole cards pairing the board.
+
+    A holding that adds nothing becomes a **draw** when it had one on the flop or
+    the turn, with ``detail`` naming the draw (see `draw_detail`):
+    ``combo_draw``, ``flush_draw``, ``open_ender`` or ``gutshot``. Draws are read
+    on the turn board (or the flop, when the hand ended there); since the final
+    hand is unmade, the turn's draws include the flop's. A busted draw on the
+    river is still a draw -- that is what the player was betting with. A draw
+    must use a hole card; four to a flush or a four-straight sitting on the board
+    alone does not count. A pair of the player's own keeps its class even with a
+    draw. Without a draw it is a ``board_pair`` on a paired board, else
+    ``high_card``.
 
     Every other class has ``detail = None``.
     """
@@ -318,31 +327,64 @@ def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[
         return MadeHand("no_board", None)
 
     cls = made_class(h + b)
+    if cls in _BOARD_CAN_MAKE:
+        return _adds_nothing(h, b) if _board_plays(h, b) else MadeHand(cls, None)
     if cls == "high_card":
-        d = draw_detail(h, b[:4])
-        return MadeHand("draw", d) if d else MadeHand("high_card", None)
-    if cls not in ("pair", "trips"):
-        return MadeHand(cls, None)
+        return _adds_nothing(h, b)
 
-    board_values = sorted({c.value for c in b}, reverse=True)
+    board_count = Counter(c.value for c in b)
+    board_values = sorted(board_count, reverse=True)
     hv = [c.value for c in h]
-    pocket = hv[0] == hv[1]
 
-    if cls == "trips":
-        return MadeHand(cls, "set" if pocket else "trips")
+    if hv[0] == hv[1]:
+        if hv[0] in board_count:
+            return MadeHand("trips", "set")
+        return MadeHand("pair", "overpair" if hv[0] > board_values[0] else "pocket_pair")
 
-    if pocket:
-        return MadeHand(cls, "overpair" if hv[0] > board_values[0] else "pocket_pair")
-
-    paired = [v for v in hv if v in board_values]
-    if not paired:
-        return MadeHand(cls, "board_pair")
-    v = paired[0]
+    hits = sorted({v for v in hv if v in board_count}, reverse=True)
+    if any(board_count[v] >= 2 for v in hits):
+        return MadeHand("trips", "trips")
+    if len(hits) == 2:
+        return MadeHand("two_pair", None)
+    if not hits:
+        return _adds_nothing(h, b)
+    v = hits[0]
     if v == board_values[0]:
-        return MadeHand(cls, "top_pair")
+        return MadeHand("pair", "top_pair")
     if v == board_values[-1]:
-        return MadeHand(cls, "bottom_pair")
-    return MadeHand(cls, "middle_pair")
+        return MadeHand("pair", "bottom_pair")
+    return MadeHand("pair", "middle_pair")
+
+
+#: The classes a five-card board can make on its own, which the hole cards may or
+#: may not improve. The lower ones are read from what the hole cards pair.
+_BOARD_CAN_MAKE = frozenset({"straight_flush", "quads", "full_house", "flush", "straight"})
+
+#: How much of `equity.rank7`'s tuple is the made hand rather than kickers, by
+#: category: a better kicker to board quads is still the board's quads.
+_MADE_PART = {8: 2, 7: 2, 6: 3, 5: 6, 4: 2}
+
+
+def _board_plays(hole: list[Card], board: list[Card]) -> bool:
+    """The hand is the board's own: the hole cards change nothing but a kicker."""
+    from .equity import rank7  # equity imports this module
+
+    if len(board) < 5:
+        # Only quads fit in four board cards; anything else needs a hole card.
+        return max(Counter(c.value for c in board).values()) == 4
+    mine, theirs = rank7(hole + board), rank7(board)
+    keep = _MADE_PART[mine[0]]
+    return mine[:keep] == theirs[:keep]
+
+
+def _adds_nothing(hole: list[Card], board: list[Card]) -> MadeHand:
+    """A holding that adds nothing to the board: its draw, a board pair, or high card."""
+    d = draw_detail(hole, board[:4])
+    if d:
+        return MadeHand("draw", d)
+    if max(Counter(c.value for c in board).values()) >= 2:
+        return MadeHand("pair", "board_pair")
+    return MadeHand("high_card", None)
 
 
 #: Every made hand as one flat list, strongest first: each class, with `pair`,

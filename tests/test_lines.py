@@ -212,7 +212,7 @@ def test_three_way_filters():
     # the final board still reads it, as the range view does.
     assert parse_filter("made_flop=top_pair")(b)
     assert not parse_filter("made_turn=two_pair")(b) and not parse_filter("made_turn!=two_pair")(b)
-    assert parse_filter("made=two_pair")(b)
+    assert parse_filter("made=middle_pair")(b), "Ac9d on 9-8-2-K-K: the kings are the board's"
     # C folded the turn, so the turn still counts and the river does not.
     assert parse_filter("made_flop=open_ender,made_turn=combo_draw,made_turn=draw")(c)
     assert not parse_filter("made_river<pair")(c)

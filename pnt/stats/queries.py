@@ -24,6 +24,7 @@ from typing import Self
 
 from ..db.conn import generation, path_of, reading
 from ..logfmt.parser import position_name
+from . import strength
 from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 from .tilt import annotate
 
@@ -47,6 +48,7 @@ def load_hands(
     `hand_ids` narrows to exactly those hands, for a caller that has already picked
     its population in SQL (the all-in showdowns, say) and wants them whole.
     """
+    strength.prime(conn)  # once per database: hand strengths stored by `warm`
     clauses, params = [], []
     if game_id:
         clauses.append("h.game_id = ?")
@@ -491,7 +493,10 @@ _FACTS_CACHE_MAX = 32
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
     database behind this module's back."""
+    from . import pool  # pool imports this module
     from .review import _REVIEW_CACHE  # review imports this module
+
+    pool.clear()
 
     _REPORT_CACHE.clear()
     _GAME_TALLIES.clear()

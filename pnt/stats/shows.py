@@ -13,7 +13,7 @@ the hand they laid down to earn credit for a tight image. Neither is a sample of
 their range. It is a sample of what they want you to believe, which is the thing
 worth knowing.
 
-Each two-card show is read **on the board as it stood** (`tags.strength_at`,
+Each two-card show is read **on the board as it stood** (`strength.strength_at`,
 with `cards.made_at` for the made hand behind it):
 
 - a fold on the street they folded, since that is the hand they gave up;
@@ -21,7 +21,7 @@ with `cards.made_at` for the made hand behind it):
 
 The four classes are `strength_at`'s buckets with medium and weak folded into one:
 
-- ``strong``    top pair or an overpair, or better; preflop, `PREFLOP_STRENGTH`'s strong
+- ``strong``    a value hand on that board (`strength.strength_at`); preflop, `PREFLOP_STRENGTH`'s strong
 - ``marginal``  middle, bottom, board or a low pocket pair; preflop, medium
 - ``draw``      no pair, but a flush or straight draw, on the flop or turn
 - ``air``       high card, or a draw on the river; preflop, the weak hands
@@ -29,7 +29,7 @@ The four classes are `strength_at`'s buckets with medium and weak folded into on
 A one-card show is counted, not classified: one card says little about a hand.
 
 Two rates read the two-card shows: how often they showed air (`air_pct`) and how
-often top pair or better (`strong_pct`). A fold they then showed is also held
+often a strong hand on that board (`strong_pct`). A fold they then showed is also held
 against the hand that won, wherever the winner's cards are known (your own hands,
 or the winner's own show): was the folded hand ahead on the board as it stood
 (`vs`, and `folded_vs` for the count)? Preflop folds are not compared.
@@ -278,7 +278,7 @@ def _vs(r, two: bool, ctx: str, seen: tuple[str, ...], winners, owners, names) -
 #: The two fun tags: id, label, the classes that count, and those classes in words.
 SHOW_TAGS = (
     ("shows_bluffs", "SHOWS BLUFFS", ("air", "draw"), "air or a draw"),
-    ("shows_nuts", "SHOWS NUTS", ("strong",), "strong (top pair or better, or a premium preflop)"),
+    ("shows_nuts", "SHOWS NUTS", ("strong",), "strong (a value hand on that board, or a premium preflop)"),
 )
 
 

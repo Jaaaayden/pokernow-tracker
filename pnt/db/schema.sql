@@ -260,6 +260,15 @@ CREATE TABLE IF NOT EXISTS equity_cache (
     computed_at TEXT NOT NULL
 ) WITHOUT ROWID;
 
+-- Hand strength (stats/strength.py: the share of every two-card holding a hand
+-- beats on the board as it stood, ties half), memoized. DERIVED and DISPOSABLE,
+-- keyed by cards alone: a change of cut never touches it.
+CREATE TABLE IF NOT EXISTS strength_cache (
+    key  TEXT PRIMARY KEY,   -- strength.cache_key: sorted hole | sorted board
+    num2 INTEGER NOT NULL,   -- 2*wins + ties against every other two-card holding
+    n    INTEGER NOT NULL    -- holdings counted
+) WITHOUT ROWID;
+
 -- ------------------------------------------------------------------ views ----
 
 -- Resolves the identity layer once so every stat query can join on player_id

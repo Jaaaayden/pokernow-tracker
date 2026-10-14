@@ -195,6 +195,11 @@ def _hero(conn: sqlite3.Connection, game: str | None) -> list[dict]:
             # None where the filter would also find a 72 shown in someone else's log.
             "dealt_filter": None if shown_dealt else DEALT_FILTER,
             "played_filter": None if shown_played else PLAYED_FILTER,
+            # Their 72s seen in logs they do not own: a small own log can read 0
+            # while they turn 72 over all night elsewhere.
+            "shown_72": shown_dealt,
+            # With none in their own logs, `hand=72` finds exactly the shown ones.
+            "shown_filter": DEALT_FILTER if shown_dealt and not a["dealt"] else None,
             "logs": len(a["games"]),
         })
     out.sort(key=lambda r: -r["hands"])

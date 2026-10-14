@@ -87,8 +87,8 @@
     return entries.map(([k, n]) => `${k} ${Math.round((100 * n) / total)}%`).join(" · ");
   }
 
-  // The server's five buckets as the four words on the line: any pair short of
-  // top pair is marginal, whatever else it is.
+  // The server's five buckets as the four words on the line: a pair of their own
+  // short of strong on that board is marginal, whatever else it is.
   const WORDS = [
     ["value", (r) => r.strong],
     ["marginal", (r) => (r.medium || 0) + (r.weak || 0)],

@@ -888,7 +888,17 @@ A range view is a filter, then a bucketing of the hands whose cards are known:
   draw, double gutshots included) or `gutshot`. Draws are read on the turn board,
   or the flop when the hand ended there, so a draw that missed on the river still
   counts. A draw must use a hole card; a four-flush or four-straight sitting on
-  the board alone does not. Any pair or better keeps its class even with a draw.
+  the board alone does not. Any pair of the player's own keeps its class even
+  with a draw.
+
+  **A holding is graded by what the hole cards add, never by the board's own
+  pairs** (`cards.made_hand`). On `K-K-7`, `7x` is `bottom_pair`, not two pair;
+  `AA` is an `overpair` and `QQ` a `pocket_pair`. `two_pair` is both hole cards
+  pairing the board. A holding that adds nothing to a paired board -- one pair,
+  two pairs or trips on the board -- is a `board_pair`, or its draw if it had one;
+  so is a straight, flush, full house or quads the board makes alone that the hole
+  cards do not improve (a kicker to board quads is no improvement). On an unpaired
+  board such a holding is `high_card`.
   `draw` sorts between `pair` and `high_card`.
 
   The view's rows are flat: one per `cards.MADE_LEAVES` leaf, strongest first,
@@ -969,6 +979,73 @@ On the river a draw that missed is still its draw, as on the final board. That i
 `flop=trips` is not a holding. It is the board texture, three of a rank on the
 flop, and stays one.
 
+**`tier_<street>` and `hs_<street>`** read what the holding was *worth* there
+rather than what it was (see "Hand strength"): `tier_river=strong|nutted`,
+`tier_flop>=strong`, `tier_turn=draw|air`, and `hs_river>=0.8` for the hand
+strength itself. They take the same operators, `|` with `=` and `!=` only, and
+match under the same conditions as a `made_<street>` term. Every tier split on
+the chart (lines, bluff:value classes, timing) filters with these.
+
+### Hand strength
+
+`strength.hand_strength` is how good a holding is **on the board as it stood**:
+the share of every two-card holding the rest of the deck can make that it beats
+there, ties counting half (Billings, Papp, Schaeffer and Szafron, "Opponent
+Modeling in Poker", AAAI-98). The flop counts C(47, 2) = 1,081 holdings, the turn
+1,035 and the river 990, every one, with the holdings that share a card with
+theirs left out. It is what a category cannot say: queens on K-K-7 are an
+"underpair" and beat 91% of holdings, as many as top pair on K-7-2; 7x there is
+"bottom pair" and beats 80%; aces on a four-flush, four-straight river are an
+"overpair" and beat 55%.
+
+The grade is a hybrid. **Whether there is a hand of their own** is
+`cards.made_hand`'s: high card, a board pair the hole cards add nothing to, and
+on the river a missed draw are air; a flush or straight draw with no pair of
+their own is a draw on the flop and turn. **How good a hand of their own is** is
+its hand strength against `strength.HS_CUTS`:
+
+| Street | `nutted` (strong, and) at or over | `strong` at or over | `medium` at or over | under that, `weak` |
+|---|---|---|---|---|
+| flop | 0.99 | 0.86 | 0.73 | |
+| turn | 0.96 | 0.83 | 0.61 | |
+| river | 0.91 | 0.77 | 0.48 | |
+
+The cuts are per street because the same pair beats fewer holdings as cards come.
+They were calibrated on 2026-10-14 over the shown hands of the 15,052-hand
+database (`scripts/calibrate_strength.py`; 6,280 flop, 7,100 turn and 7,617 river
+holdings with a pair of their own):
+
+- **strong** is the cut that best separates top pair and overpairs from the lower
+  pairs (underpair, middle, bottom) on unpaired boards, where those names can be
+  trusted -- the largest Youden's J: 0.96 on the flop, 0.89 on the turn, 0.75 on
+  the river.
+- **medium** (the weak cut) does the same for middle pairs and underpairs against
+  bottom pair: J 0.82, 0.87, 0.82.
+- **nutted** keeps the nutted share where "a set or better" had it: 4.9%, 11.0%
+  and 19.9% of hands with a pair of their own. Two pair and sets overlap too much
+  in hand strength (flop medians 0.98 and 0.99) for J to split them.
+
+Median hand strength by made hand on the river: two pair 0.89, overpair 0.83, top
+pair 0.82, middle pair 0.65, underpair 0.62, bottom pair 0.45 -- and for
+reference board pair 0.32, high card 0.21. Against the leaf rules the tiers move
+little in size (river strong 31% -> 25%, marginal 50% -> 55%) and a good deal in
+membership: queens on K-K-7 are strong now, aces on a scary river marginal, and a
+straight on a four-flush river strong rather than nutted.
+
+Values are exact and kept as integers (`2*wins + ties` over `n`), so a hand on a
+cut is never a rounding call, and are memoized in the process and in
+`strength_cache` (derived and disposable, keyed by the sorted cards alone, so a
+change of cut never touches it). `strength.warm` fills it: every game rebuild
+(import, `pnt rebuild`, sync) warms that game's shown holdings, and the server
+warms the whole database in the background on start -- a minute or two the first
+time, a no-op after. A value missing when it is asked for is computed on the spot.
+
+Hand strength is against a *random* holding, not against a range: it ranks hands
+on one board consistently, which is what a tier needs, and says nothing about
+whether a call was good. The made-hand views, the `made_` filters, SLOWPLAYS
+(`made_flop>=set`) and the hand review's missed-bluff test (`review.is_air`) stay
+on the made-hand leaves, which name what a hand is rather than how good it was.
+
 ### Strength by line
 
 The action-line explorer (`lines.line_breakdown`, `GET /players/{alias}/lines`,
@@ -995,16 +1072,15 @@ on**: a segment that is not `-` or `.`, and in `action` mode has a capital in it
 That street is fixed by the key, so a whole group is read on one street, and the
 tiers are:
 
-| Tier | Holding on that street | `made_<street>` terms |
+| Tier | Holding on that street (`strength.tier_at`) | Filter term |
 |---|---|---|
-| **nutted** | `NUTTED_FROM` (a set) or better by `cards.made_at`: set, straight, flush, full house, quads, straight flush | `>=set` |
-| **strong** | the rest of `tags.strength_at`'s strong: trips, two pair, an overpair, top pair | `<set,>=top_pair` |
-| **marginal** | its medium and weak: an underpair, middle, bottom or board pair | `<top_pair,>=board_pair` |
-| **draw** | a flush or straight draw and no pair, flop and turn only | `=draw` |
-| **air** | high card; on the river a draw that missed | `=high_card`, on the river `<pair` |
+| **nutted** | strong, and at or over the street's nutted hand-strength cut | `tier_<street>=nutted` |
+| **strong** | the rest of `strength_at`'s strong: a value hand on that board | `tier_<street>=strong` |
+| **marginal** | its medium and weak: a pair of their own that beats only some | `tier_<street>=marginal` |
+| **draw** | a flush or straight draw and no pair of their own, flop and turn only | `tier_<street>=draw` |
+| **air** | high card or a board pair; on the river a draw that missed | `tier_<street>=air` |
 
-Each tier is an unbroken run of `MADE_LEAVES`, so it is a filter too: a tier's
-filter is the group's plus its terms on that street.
+A tier's filter is the group's plus its `tier_<street>` term on that street.
 
 | Field | Meaning |
 |---|---|
@@ -1038,12 +1114,12 @@ never shown, so a betting line reads stronger than it is. The hero's cards are
 known on every hand, which is why the hero's coverage is far higher than anyone
 else's.
 
-35. **Nutted starts at a set.** `NUTTED_FROM = "set"`, in `lines.py`. A set is
-    hidden and near the top of most boards; trips made with one hole card on a
-    paired board are not, since anyone holding the case card or a full house has
-    it beat, so trips stay strong. Two pair is strong for the same reason a flush
-    is not: one is beaten by every better two pair, the other by very little.
-    `NUTTED_FROM` is the one place to move it.
+35. **Nutted is hand strength, not a made hand's name.** A hand of their own at
+    or over the street's nutted cut (`strength.HS_CUTS`), set where "a set or
+    better" used to put the nutted share. A middle set on J-9-7 (98% of holdings
+    beaten: JJ and T8 have it) is strong; a straight on a four-flush river is
+    strong; trips that beat 97% on the turn are nutted. `HS_CUTS` is the one place
+    to move it.
 36. **Strength is read where they last acted, not on the final board.** A flop
     check-raise that folded the turn is judged on the turn board, where the fold
     happened; a line that ended on the flop says nothing about a river nobody saw
@@ -1053,7 +1129,7 @@ else's.
 
 `bluffs.bluff_value` splits a player's aggression into categories and reads what
 the shown hands in each had, **on the board of the street the action was made
-on** (`tags.strength_at`). Each category is a filter, so it reproduces as a spot:
+on** (`strength.strength_at`). Each category is a filter, so it reproduces as a spot:
 
 | Category | Filter | Per street |
 |---|---|---|
@@ -1077,10 +1153,10 @@ because a bet and a re-raise of one size on one street is one hand.
 
 | Class | `strength_at` | As a filter (flop shown) |
 |---|---|---|
-| `value` | strong | `made_flop>=top_pair` |
-| `marginal` | medium or weak | `made_flop=pocket_pair\|middle_pair\|bottom_pair\|board_pair` |
-| `semi_bluff` | draw, flop or turn | `made_flop=draw` |
-| `bluff` | air; on the river a missed draw too | `made_flop=high_card`; `made_river<pair` on the river |
+| `value` | strong | `tier_flop>=strong` |
+| `marginal` | medium or weak | `tier_flop=marginal` |
+| `semi_bluff` | draw, flop or turn | `tier_flop=draw` |
+| `bluff` | air, a board pair included; on the river a missed draw too | `tier_flop=air` |
 
 Every row reports `n` (every hand in it), `known` (cards shown), coverage, the four
 counts, and **value : bluff** as `value / (bluff + semi_bluff)`, printed "2.1 : 1".
@@ -1200,17 +1276,17 @@ the endpoint, the CLI and the page all say so (`shows.NOTE`).
 | **won uncontested, then showed** | `folded = 0` and `went_to_showdown = 0` |
 | **reached showdown, showed after** | `folded = 0` and `went_to_showdown = 1`: a muck turned over later |
 
-A two-card show is read **on the board as it stood** (`tags.strength_at`, with
+A two-card show is read **on the board as it stood** (`strength.strength_at`, with
 `cards.made_at` for the made hand printed beside it): a fold on the street of the
 player's fold action, anything else on the board the hand ended on, and never past
 the board's first run.
 
 | Class | Postflop (`strength_at`) | Preflop (`strength_at`, by `hand_pct`) |
 |---|---|---|
-| `strong` | strong: top pair or an overpair, or better | strong (at or under 15) |
-| `marginal` | medium or weak: middle, bottom, board or a low pocket pair | medium (at or under 50) |
+| `strong` | strong: a value hand on that board (see "Hand strength") | strong (at or under 15) |
+| `marginal` | medium or weak: a pair of their own that beats only some | medium (at or under 50) |
 | `draw` | draw, on the flop or turn | -- |
-| `air` | air: high card; on the river a missed draw (`missed`) too | weak (past 50) |
+| `air` | air: high card or a board pair; on the river a missed draw (`missed`) too | weak (past 50) |
 
 No exclusions: a show from a dead-button or irregular-blinds hand is still a show,
 since nothing here is positional. Shows are not `Facts`, so no spot filter
@@ -1364,14 +1440,14 @@ a draw when the call was made, and that is what it is counted as.
 
 | Bucket | Postflop, on that street's board | Preflop, by `hand_pct` |
 |---|---|---|
-| `strong` | two pair or better, or top pair / an overpair | ≤ 15 |
-| `medium` | middle pair, or a pocket pair under the top card | ≤ 50 |
-| `weak` | bottom pair, or a pair entirely on the board | the rest |
-| `draw` | no pair, but a flush or straight draw -- flop and turn only | — |
-| `air` | high card; on the river a draw has missed | — |
+| `strong` | a hand of their own at or over the strong hand-strength cut (see "Hand strength") | ≤ 15 |
+| `medium` | between the weak and strong cuts: most middle pairs and underpairs | ≤ 50 |
+| `weak` | under the weak cut: most bottom pairs | the rest |
+| `draw` | no pair of their own, but a flush or straight draw -- flop and turn only | — |
+| `air` | high card or a board pair; on the river a draw has missed | — |
 
 The postflop rule is the exploit tags' `strength`, and the preflop cutoffs are
-judgement values (`tags.PREFLOP_STRENGTH`). The HUD shows `strong` as *value*,
+judgement values (`strength.PREFLOP_STRENGTH`). The HUD shows `strong` as *value*,
 `medium` and `weak` together as *marginal*, and the two others by name.
 
 A hand is *known* for a street only when its cards are known **and** its board
@@ -1470,17 +1546,19 @@ Only tags that are not streaky count toward a style.
 
 ### Exploit tags
 
-"Shown" populations count hands with cards known and a board. **strong** is two
-pair or better, or a pair that is top pair or an overpair; **weak** is bottom
-pair or a pair entirely on the board; **air** is high card or a busted draw.
+"Shown" populations count hands with cards known and a board. **strong**,
+**weak** and **air** are `strength_at`'s on the final board (see "Hand
+strength"): strong a value hand on that board, weak a pair of their own under the
+weak cut, air high card, a board pair the hole cards add nothing to, or a busted
+draw.
 **Light** means `hand_pct` at or past the cutoff and not a troll hand
 (`TROLL_HANDS` = 72, 92 and K2o, which these games play on purpose).
 
 | Tag | Numerator | Denominator | Fires | Min n | Filter |
 |---|---|---|---|---|---|
-| **NO BLUFF** | air | `aggressor[river]` and WTSD, shown | ≤ 7% | 10 | `aggressor_river,wtsd` (made) |
-| **BLUFFS RIVER** | air | same | ≥ 20% | 8 | same |
-| **CALLS DOWN LIGHT** | air or weak | `called_bet[river]` and WTSD, shown | ≥ 20% | 8 | `called_bet_river,wtsd` (made) |
+| **NO BLUFF** | air | `aggressor[river]` and WTSD, shown | ≤ 10% | 10 | `aggressor_river,wtsd` (made) |
+| **BLUFFS RIVER** | air | same | ≥ 32% | 8 | same |
+| **CALLS DOWN LIGHT** | air or weak | `called_bet[river]` and WTSD, shown | ≥ 25% | 8 | `called_bet_river,wtsd` (made) |
 | **FOLDS RIVER** | `folded_to_bet[river]` | `faced_bet[river]` | ≥ 50% | 15 | `faced_bet_river` |
 | **FOLDS TO 3BET** | Fold to 3-Bet | its opportunity | ≥ 25% | 15 | `faced_3bet` |
 | **INELASTIC VS 3BET** | Fold to 3-Bet ≤ 15% (n ≥ 15), *or* light (cutoff 60) calls of a 3-bet or 4-bet ≥ 3 and ≥ 15% of shown ones; never when FOLDS TO 3BET fires, since the fold rate is the direct read | | | | `faced_3bet_any=call` |
@@ -1496,8 +1574,8 @@ pair or a pair entirely on the board; **air** is high card or a busted draw.
 | **STICKY VS CBET** | same | same | ≤ 30% | 25 | same |
 | **AUTO CBET** | C-Bet (flop) | its opportunity | ≥ 60% | 25 | `cbet_flop_opp` |
 | **RARELY CBETS** | same | same | ≤ 35% | 25 | same |
-| **CHECKS BACK WEAK** | strong | `check_back` any street and WTSD, shown | ≤ 35% | 10 | `check_back,wtsd` (made) |
-| **TRAPS** | strong | same | ≥ 60% | 8 | same |
+| **CHECKS BACK WEAK** | strong | `check_back` any street and WTSD, shown | ≤ 20% | 10 | `check_back,wtsd` (made) |
+| **TRAPS** | strong | same | ≥ 50% | 8 | same |
 | **SLOWPLAYS** | checked or called (the slowplay columns of "Strength by street") | a set or better on the flop, shown, that they acted on | ≥ 55% | 15 | `made_flop>=set,line_flop=*` (strength, flop) |
 | **DONKS** | Donk Bet (flop) | its opportunity | ≥ 35% | 15 | `donk_flop` |
 | **TILTS** | VPIP in the post-loss window | `vpip_opp` and `post_loss` (see "Session dynamics") | ≥ 5 points over VPIP on all hands | 100 | `post_loss,acted_preflop` |
@@ -1528,13 +1606,62 @@ together. They come after the other fun tags on the HUD and on
 Calibrated on the 14,720-hand database on 2026-10-12: SHOWS BLUFFS fires for two of
 the nine players who show at all (53% and 56% air or draw), SHOWS NUTS for none.
 
+### Pool baseline
+
+A fixed cut reads a different thing in every game: a loose home game folds to
+c-bets less than an online pool, and its fish look ordinary next to each other.
+So the exploit rules are judged against **the pool the player sits in**
+(`pool.pool_for`, `tags._verdict`):
+
+- **The baseline** of a measure is the **median** of the other players' rates,
+  **each player once** -- the log owner sits in every hand and would otherwise
+  set the line -- over the players with at least the rule's minimum sample
+  (`tags.rule_min_n`). The player being judged is always left out
+  (leave-one-out), so an extreme player never moves their own line.
+- **A tag fires** when the player's 95% Wilson interval (`POOL_Z`) excludes the
+  baseline **and** the gap is at least `POOL_GAP` = 8 points, or the rule's own
+  `pool_gap` (2 for JAM HAPPY, whose rates sit near 1.4% preflop and 6% after the
+  flop). Above or below as the rule reads: FOLDS TO CBET above, STICKY VS CBET
+  below, both on the same measure.
+- **The fixed cut decides** when there is no baseline -- fewer than
+  `POOL_MIN_PLAYERS` = 5 qualified other players, which is every fresh install --
+  and for a shown-hand measure (`SHOWN_RULES`) whose sample is at least half the
+  player's own log, where every card is shown and nothing is mucked. Those rows
+  are counted apart (`.own`) and kept out of the baseline too.
+- **Every exploit tag says which** (`basis`: `pool` or `fixed`), with the pool's
+  rate (`pool_pct`), how many players it stands on (`pool_players`) and the
+  player's interval (`ci`). The tip reads "(203 of 401; pool 40.4%)".
+- **The scope follows the question.** The HUD and the players page judge against
+  the lifetime pool, a `?game=` against that game's players, and a spot filter
+  against every player's hands in the same spot.
+- **Streaky** is judged against the same baseline: taking one session out only
+  changes the player's side.
+
+Unchanged: TILTS (against their own VPIP), the size tell (big against small),
+the fun and show tags, and the archetypes, which are style claims adjusted for
+table size (call 18). The archetype STYLES still move with the exploit tags they
+are built from.
+
+`GET /tendencies` adds `table`: the regulars' summed counts on the fixed cuts,
+because judged against itself the pool is never an outlier, and a whole-table
+habit (everyone folds to c-bets) would otherwise never show. `pnt tags --pool`
+prints every baseline with the middle half of the players' rates, and `--basis
+fixed` judges on the fixed cuts alone.
+
+Calibrated 2026-10-14 on the 15,052-hand database (9 players): the default gap
+splits each rule's clear outliers from the pool's middle half -- FOLDS TO CBET for
+two of nine (51% and 53% against 40%), NO BLUFF for one (10% river air against
+23%), BLUFFS RIVER for two (34% and 40%). SLOWPLAYS and LIMP-RERAISE = STRONG have
+fewer than five qualified players and stay on their fixed cuts.
+
 ### Judgement calls
 
-16. **Thresholds are calibrated, not derived.** Set against the 8,036-hand
-    database on 2026-09-14 so that each rule separates a few players from the
-    rest; the first draft fired on the whole table for some rules and could
-    never fire for others. A different pool wants different numbers, and
-    `THRESHOLDS` is the one place to change them.
+16. **The pool is the threshold; `THRESHOLDS` is the fallback.** A rule fires on
+    a player who stands out from the others at the table (see "Pool baseline"),
+    so a different pool needs no new numbers. The fixed cuts, first set against
+    the 8,036-hand database on 2026-09-14 and the shown-hand ones re-set on
+    2026-10-14 for hand-strength grading, decide only where the pool is too small
+    to judge against or the evidence is mostly the player's own log.
 17. **Troll hands are never evidence.** A 72o that called a 3-bet was a bet on
     the side game, not a misread of the spot, so it is excluded from the light-hand
     counts and celebrated in the fun tags instead.
@@ -2173,7 +2300,7 @@ window. Each row:
 | Figure | Numerator | Denominator |
 |---|---|---|
 | **n** | decisions in the spot and bucket (`<spot>,tempo_<s>=<bucket>`) | – |
-| **value** | known hands nutted or strong on that street (`lines.tier_at`) | known hands in the row |
+| **value** | known hands nutted or strong on that street (`strength.tier_at`) | known hands in the row |
 | **draw**, **air** | known hands of that tier | known hands in the row |
 | **known / n** | hands whose cards are known | n |
 
@@ -2197,12 +2324,12 @@ never times out anyway).
 
 Every row's filter, added to the spot, finds exactly its `n`.
 
-**What the pool showed** (14,974 hands, 2026-10-13). A slow flop or turn call is
-stronger than a quick one: value 15% → 20% → 42% on flop calls (pre, normal,
-tank), draws 23% → 21% → 11%; turn calls 26% → 32% → 58%. A river bet after a
-tank is value, not a bluff: value 54% → 62% → 71% (snap, normal, tank) with air
-flat at 9–11%. River calls carry no timing signal (59%, 61%, 60%). Two players
-have 30 known hands in every river-bet bucket.
+**What the pool showed** (15,052 hands, 2026-10-14, with a board pair graded as
+air -- see "Made hand by street"). A slow flop or turn call is stronger than a
+quick one: value 14% → 19% → 39% on flop calls (pre, normal, tank), draws 25% →
+22% → 13%; turn calls 16% → 26% → 51%. A river bet after a tank is value, not a
+bluff: value 27% → 47% → 64% (snap, normal, tank), air 27% → 29% → 22%. River
+calls carry little timing signal (value 29%, 37%, 34%).
 
 Judgement calls:
 
@@ -2278,7 +2405,7 @@ sample most biased toward the ones that failed. `examined`, `showdowns` and
 
 ### Three definitions the flags share
 
-**Air** is high card, a draw, or a pair that is entirely on the board. An
+**Air** is high card, a draw, or a board pair the hole cards add nothing to. An
 underpair or bottom pair is a hand: checking it down is a thin-value question,
 not a missed bluff.
 

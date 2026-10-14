@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from pnt.db.conn import connect
+from pnt.db.conn import connect, generation, path_of
 from pnt.ingest import log_folder, sync
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
@@ -41,6 +41,7 @@ from pnt.ingest.importer import (
     set_player_note,
     split_identities,
 )
+from pnt.stats import strength
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.bluffs import CATEGORY, bluff_value, members
 from pnt.stats.bluffs import pool_facts as bluff_pool_facts
@@ -51,6 +52,7 @@ from pnt.stats.fold_equity import pool_facts as fold_pool_facts
 from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
 from pnt.stats.lines import pool_facts as line_pool_facts
 from pnt.stats.live import snapshot
+from pnt.stats.pool import pool_for, pool_from_facts
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
     aggregate,
@@ -122,10 +124,28 @@ def _sync_loop(stop: threading.Event) -> None:
         conn.close()
 
 
+def _warm_strength() -> None:
+    """Measure every shown holding's hand strength the database does not have yet
+    (a no-op once it is complete, a minute or two the first time; stats/strength.py),
+    then count the pool the tags are judged against, so the first HUD after a
+    start does not pay for either."""
+    conn = db()
+    try:
+        added = strength.warm(conn)
+        if added:
+            log.info("hand strength: %d stored", added)
+        pool_for(conn)
+    except Exception:
+        log.exception("warm-up failed")
+    finally:
+        conn.close()
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     stop = threading.Event()
     worker = None
+    threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
         worker.start()
@@ -760,10 +780,25 @@ def player_tags(
     """
     from pnt.stats.shows import with_show_tags
 
-    out = tags_for(_spot_facts(alias, filter, game))
+    conn = db()
+    out = tags_for(_spot_facts(alias, filter, game, conn), _tag_pool(conn, filter, game), alias)
     if not filter:
-        out = with_show_tags(db(), alias, out, game)
+        out = with_show_tags(conn, alias, out, game)
     return {"player": alias, "filter": filter, **out}
+
+
+def _tag_pool(conn: sqlite3.Connection, filter: str | None, game: str | None):
+    """The pool a player's tags are judged against: every player's hands in the
+    same scope and spot (SPEC.md, "Pool baseline")."""
+    pool = pool_for(conn, game)
+    if not filter:
+        return pool
+    pred = _predicate(conn, filter)
+    key = (path_of(conn), generation(conn), game, filter)
+    return pool_from_facts(
+        {a: [f for f in facts_cached(conn, a, game) if pred(f)] for a in pool.players},
+        pool.owners, f"spot: {filter}", key,
+    )
 
 
 @app.get("/hands/{hand_id}")
@@ -966,6 +1001,7 @@ def hud(game_id: GameId) -> dict:
 
     by_alias = {r["player"]: r for r in report(conn)}
     by_session = {r["player"]: r for r in report(conn, game_id=game_id)}
+    tag_pool = pool_for(conn)  # lifetime tags, judged against the lifetime pool
     notes = player_notes(conn)
     return {
         "game_id": game_id,
@@ -980,7 +1016,8 @@ def hud(game_id: GameId) -> dict:
                 # The same figures over this game only.
                 "session": by_session.get(r["alias"], {"hands": 0}),
                 # Lifetime tags; a seat with no identity yet has none.
-                "tags": with_show_tags(conn, r["alias"], tags_for(facts_cached(conn, r["alias"]) if r["alias"] else [])),
+                "tags": with_show_tags(conn, r["alias"], tags_for(
+                    facts_cached(conn, r["alias"]) if r["alias"] else [], tag_pool, r["alias"])),
                 # What you have written about them; null when nothing.
                 "note": notes.get(r["alias"], {}).get("note"),
                 # Whether their next hand here falls inside a post-loss window
