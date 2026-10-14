@@ -149,18 +149,13 @@
   </div>
 
   <div class="note">
-    <p>Every all-in showdown where every live hand was shown. <strong>Adjusted</strong> is what
-      the player's equity was worth when the betting stopped; <strong>Actual</strong> is what they
-      took; the <strong>Diff</strong> is the deck's contribution.</p>
     <ul>
-      <li>Positive diff ran <b>above</b> expectation, negative <b>below</b>. Within one hand the
-        diffs cancel: nobody's luck comes from nowhere.</li>
-      <li>Flop, turn and river all-ins are enumerated exactly. Preflop is sampled (50,000 deals,
-        marked <b>~</b> in the hand list). A river all-in has cards to come, so its diff is 0.</li>
-      <li>Hands where a live player mucked are counted as skipped, not guessed at. All-ins
-        nobody called are not showdowns and are not here.</li>
-      <li>A dozen jams say almost nothing; the diff swings by a whole stack per hand.</li>
-      <li>Click a player for their cumulative actual and adjusted lines and the hands behind them.</li>
+      <li><b>Adjusted:</b> what their equity was worth when the betting stopped. <b>Actual:</b> what they took.
+        <b>Diff:</b> the luck, above expectation when positive.</li>
+      <li>Every all-in showdown with every live hand shown. Mucks are skipped; uncalled all-ins are not here.</li>
+      <li>Postflop all-ins are exact; preflop is sampled (50,000 deals, marked <b>~</b>).</li>
+      <li>A dozen jams say little: the diff swings a whole stack a hand.</li>
+      <li>Click a player for their lines and hands.</li>
     </ul>
   </div>
   <div class="err hidden" id="err"></div>

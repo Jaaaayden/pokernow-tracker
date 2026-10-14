@@ -30,22 +30,28 @@
   main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .controls { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .controls > * { flex: none; }
+  .controls #filter { flex: 1 1 140px; min-width: 120px; }
+  @media (max-width: 1000px) { .controls { flex-wrap: wrap; } }
   .controls label { color: var(--ink-2); font-size: 13px; }
   select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
   input[type=text] { min-width: 0; flex: 1 1 300px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-  input[type=number] { width: 5.5em; }
+  input[type=number] { width: 4.5em; }
   button { cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: transparent; }
   button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: transparent; }
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  a.link { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13px; }
+  .crumb { display: flex; justify-content: space-between; gap: 12px; }
+  .crumb .go a { margin-left: 14px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
   .note p { margin: 0 0 4px; }
   .note ul { margin: 0; padding-left: 18px; }
   .note li { margin: 2px 0; }
+  ul.note { padding-left: 18px; }
+  ul.note.foot { margin-top: 16px; }
   .note b, .note strong { color: var(--ink); font-weight: 600; }
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 12px 12px; overflow-x: auto; }
   .card.loading { opacity: .45; transition: opacity .15s; }
@@ -88,109 +94,11 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a href="/players.html">players &rsaquo;</a>
+      <a id="chartlink" href="/chart">range chart &rsaquo;</a>
+      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a></span></div>
   <h1>Stats <small id="subtitle">every player, in one spot</small></h1>
-
-  <!-- "Your leaks": the hero's stats furthest outside their bands, from /leaks.
-       A self-contained block: its own styles and script, shown only when a log
-       names its owner. See SPEC.md, "Leak finder". -->
-  <style>
-    #leaks { margin-bottom: 16px; padding: 10px 14px 12px; }
-    #leaks h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
-    #leaks h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-    #leaks ol { margin: 0; padding-left: 20px; }
-    #leaks li { margin: 0 0 8px; }
-    #leaks li a { color: var(--ink); font-weight: 600; text-decoration: none; }
-    #leaks li a:hover { color: var(--accent); text-decoration: underline; }
-    #leaks .lk-cost { color: var(--down); font-variant-numeric: tabular-nums; }
-    #leaks .lk-meta { color: var(--ink-2); font-size: 13px; }
-    #leaks details { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
-    #leaks details summary { cursor: pointer; color: var(--accent); width: fit-content; }
-    #leaks details ul { margin: 6px 0 0; padding-left: 18px; }
-    #leaks details a { color: var(--accent); text-decoration: none; }
-    #leaks .lk-note { color: var(--muted); font-size: 12px; margin: 8px 0 0; max-width: 90ch; }
-  </style>
-  <section class="card hidden" id="leaks" aria-labelledby="leaks-title">
-    <h2 id="leaks-title">Your leaks <small id="leaks-sub"></small></h2>
-    <div id="leaks-body"></div>
-  </section>
-  <script>
-  (() => {
-    const el = (id) => document.getElementById(id);
-    const theme = new URLSearchParams(location.search).get("theme");
-    const num = (v, d = 1) => (v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(d));
-    const node = (tag, text, cls) => {
-      const n = document.createElement(tag);
-      if (text != null) n.textContent = text;
-      if (cls) n.className = cls;
-      return n;
-    };
-    // The leak's hands on the hero's chart: the side of the band they fell on
-    // where a filter can say it, else the opportunities, which reproduce `n`.
-    const chartHref = (hero, r) => {
-      const q = new URLSearchParams({ player: hero, filter: r.leak_filter || r.filter });
-      if (r.view) q.set("by", r.view);
-      if (r.street) q.set("street", r.street);
-      if (theme) q.set("theme", theme);
-      return "/chart?" + q;
-    };
-    const facts = (r) => {
-      const band = r.band ? `band ${r.band[0]}–${r.band[1]}%` : "no band";
-      const ci = r.ci ? `95% ${r.ci[0]}–${r.ci[1]}%` : "";
-      return [`${r.value}% of ${r.n}`, band, ci, `confidence ${Math.round(100 * r.confidence)}%`]
-        .filter(Boolean).join(" · ");
-    };
-    function render(d) {
-      el("leaks-sub").textContent = `${d.hero} · ${d.hands} hands · ${num(d.bb_per_100, 2)} bb/100`
-        + (d.bb_per_100_ci != null ? ` ± ${d.bb_per_100_ci.toFixed(1)}` : "")
-        + (d.bb_hands !== d.hands ? ` (${d.bb_hands} of ${d.hands} with a known result)` : "");
-      const body = el("leaks-body");
-      body.replaceChildren();
-      if (d.top.length) {
-        const ol = node("ol");
-        for (const r of d.top) {
-          const li = node("li");
-          const a = node("a", r.label);
-          a.href = chartHref(d.hero, r);
-          a.title = `${r.leak_filter || r.filter} on your chart`;
-          li.append(a, " ", node("span", `${num(r.cost_bb_per_100, 2)} bb/100`, "lk-cost"),
-            node("div", r.tip, "lk-meta"), node("div", facts(r), "lk-meta"));
-          if (r.also?.length) li.append(node("div", `Also: ${r.also.join(", ")}.`, "lk-meta"));
-          ol.append(li);
-        }
-        body.append(ol);
-      } else {
-        body.append(node("p", "No stat outside its band shows a cost.", "lk-meta"));
-      }
-      // Out of line, but nothing visible against the average hand: listed, not ranked.
-      const lead = new Set(d.top.flatMap((r) => [r.label, ...(r.also || [])]));
-      const rest = d.ranked.filter((r) => !lead.has(r.label));
-      if (rest.length) {
-        const det = node("details");
-        det.append(node("summary", `${rest.length} more outside their band`));
-        const ul = node("ul");
-        for (const r of rest) {
-          const li = node("li");
-          const a = node("a", r.label);
-          a.href = chartHref(d.hero, r);
-          const cost = r.cost_bb_per_100 < 0 ? `cost ${num(r.cost_bb_per_100, 2)} bb/100`
-            : r.bb_per_100 != null ? `no visible cost: those hands made ${num(r.bb_per_100)} bb/100`
-            : "no visible cost";
-          li.append(a, ` — ${facts(r)} · ${cost}`);
-          ul.append(li);
-        }
-        det.append(ul);
-        body.append(det);
-      }
-      body.append(node("p", d.note, "lk-note"));
-      el("leaks").classList.remove("hidden");
-    }
-    fetch("/leaks", { headers: { accept: "application/json" } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && d.hero) render(d); })
-      .catch(() => { /* no panel */ });
-  })();
-  </script>
 
   <div class="controls">
     <label for="filter">Spot</label>
@@ -203,32 +111,12 @@
       <button data-street="turn" aria-pressed="false">Turn</button>
       <button data-street="river" aria-pressed="false">River</button>
     </span>
+    <button id="alltoggle" aria-pressed="false" title="show every column, not just the core stats">All stats</button>
     <button id="sizetoggle" aria-pressed="false" title="show the c-bet size mix for this street">C-bet sizes</button>
-    <label for="split">Split by</label>
+    <label for="split">Split</label>
     <select id="split" title="show each player's rows split into groups, under their row for the whole spot"></select>
-    <a class="link" href="/players.html">players &rsaquo;</a>
-    <a class="link" id="chartlink" href="/chart" style="margin-left:12px">range chart &rsaquo;</a>
-    <a class="link" id="allinlink" href="/allin.html" style="margin-left:12px">all-in EV &rsaquo;</a>
   </div>
 
-  <div class="note">
-    <p>Postflop columns follow the street you pick. <strong>Hover a column header</strong> or open
-      the key below the table for what each one counts.</p>
-    <ul>
-      <li><b>C-Bet, Fold, Raise and Lead</b> are measured against the previous street's aggressor.
-        Agg % is not: it counts every action on the street.</li>
-      <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of the c-bets faced.</li>
-      <li>A <b>lead</b> takes the street out of the c-bet columns: no c-bet chance for the
-        aggressor, and no fold or raise for anyone else.</li>
-      <li><b>DCB, Probe, F2P and Float</b> are the bets a missed c-bet leaves open. DCB, Probe
-        and F2P need a checked-through street before them, so they show on the turn and river only.</li>
-      <li>A blank rate means they never reached the spot. Hover a rate for its sample size.</li>
-      <li>Click a player for their range chart in the same spot.</li>
-      <li><b>Split by</b> puts a sub-row per group under each player: their stats in the spot
-        with that group's term added. Players on the flop splits heads-up from 3+ way flops;
-        Straddle splits the hands someone straddled from the rest.</li>
-    </ul>
-  </div>
   <div class="err hidden" id="err"></div>
 
   <div class="card" id="card"><div id="table"></div></div>
@@ -237,6 +125,15 @@
     <summary>What the columns mean</summary>
     <dl id="key-list"></dl>
   </details>
+
+  <ul class="note foot">
+    <li><b>Postflop columns</b> follow the street you pick. Hover a column name for what it counts, or open <b>What the columns mean</b> above for all of them.</li>
+    <li><b>C-Bet, Fold, Raise, Lead:</b> against the previous street's aggressor. <b>Agg %</b> counts every action.</li>
+    <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of c-bets faced. A <b>lead</b> leaves the street out of the c-bet columns.</li>
+    <li><b>All stats</b> adds squeeze, cold call, the blind war, LRR, jams, WWSF, DCB, Probe, F2P and Float.</li>
+    <li><b>Split</b> adds a sub-row per group under each player: heads-up vs 3+ way, straddled or not, stack depth.</li>
+    <li><b>Blank</b> = never reached the spot. Hover a rate for its sample; click a player for their chart.</li>
+  </ul>
 </main>
 
 <script>
@@ -288,6 +185,9 @@
     ["float", "Float", "float"],
     ["af", "Agg %", "af"],
   ];
+  // The core columns the table opens with; "All stats" shows the rest.
+  const SIMPLE = new Set(["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "wtsd", "wsd", "bb_per_100",
+    "bb_per_100_ci", "cbet", "fold_to_cbet", "raise_cbet", "donk", "af"]);
   const SIZES = [["blocker", "<⅕"], ["small", "⅕–½"], ["medium", "½–¾"], ["large", "¾–pot"], ["overbet", "over"]];
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
@@ -396,7 +296,7 @@
   const SPLIT_NAMES = { none: "nothing", multiway: "players on the flop", straddle: "straddle" };
   SPLIT_NAMES.depth = "stack depth";
 
-  const state = { filter: "", min: 25, street: "flop", sizes: false, sort: "hands", dir: -1, rows: [],
+  const state = { filter: "", min: 25, street: "flop", sizes: false, all: false, sort: "hands", dir: -1, rows: [],
     split: "none", subs: null };
 
   // alias -> what you have written about them (players page, chart or HUD), shown
@@ -418,6 +318,7 @@
     state.min = Math.max(1, parseInt(q.get("min") || "25", 10) || 25);
     state.street = ["turn", "river"].includes(q.get("street")) ? q.get("street") : "flop";
     state.sizes = q.get("sizes") === "1";
+    state.all = q.get("all") === "1";
     state.sort = q.get("sort") || "hands";
     state.dir = q.get("dir") === "asc" ? 1 : -1;
     state.split = SPLITS[q.get("split")] ? q.get("split") : "none";
@@ -428,6 +329,7 @@
     if (state.min !== 25) q.set("min", state.min);
     if (state.street !== "flop") q.set("street", state.street);
     if (state.sizes) q.set("sizes", "1");
+    if (state.all) q.set("all", "1");
     if (state.sort !== "hands") q.set("sort", state.sort);
     if (state.dir === 1) q.set("dir", "asc");
     if (state.split !== "none") q.set("split", state.split);
@@ -443,9 +345,10 @@
   // [key, header, kind, opportunity key, hover text]
   const columns = () => {
     const s = state.street;
-    const base = BASE.map(([k, h, kind, opp]) =>
+    const shown = (k) => state.all || SIMPLE.has(k);
+    const base = BASE.filter(([k]) => shown(k)).map(([k, h, kind, opp]) =>
       [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
-    const post = POSTFLOP.filter(([, , , streets]) => !streets || streets.includes(s))
+    const post = POSTFLOP.filter(([k, , , streets]) => shown(k) && (!streets || streets.includes(s)))
       .map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
     const sizes = state.sizes
       ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
@@ -727,6 +630,13 @@
     state.split = $("split").value;
     writeUrl(); load();
   });
+  $("alltoggle").addEventListener("click", () => {
+    state.all = !state.all;
+    $("alltoggle").setAttribute("aria-pressed", state.all);
+    // A sort on a column just hidden falls back to hands.
+    if (!columns().some(([k]) => k === state.sort) && state.sort !== "player") state.sort = "hands";
+    writeUrl(); render();
+  });
   $("sizetoggle").addEventListener("click", () => {
     state.sizes = !state.sizes;
     $("sizetoggle").setAttribute("aria-pressed", state.sizes);
@@ -735,9 +645,11 @@
   });
 
   readUrl();
+  if (state.sort !== "player" && !columns().some(([k]) => k === state.sort)) state.sort = "hands";
   $("filter").value = state.filter;
   $("minhands").value = state.min;
   $("sizetoggle").setAttribute("aria-pressed", state.sizes);
+  $("alltoggle").setAttribute("aria-pressed", state.all);
   $("split").value = state.split;
   document.querySelectorAll("[data-street]").forEach(x => x.setAttribute("aria-pressed", x.dataset.street === state.street));
   writeUrl();

@@ -31,6 +31,8 @@
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
   h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 18px; max-width: 80ch; }
+  ul.note { padding-left: 18px; }
+  .note b { color: var(--ink); font-weight: 600; }
   a.link { color: var(--accent); text-decoration: none; }
   a.link:hover { text-decoration: underline; }
   .crumb { margin-bottom: 14px; font-size: 13px; }
@@ -97,40 +99,6 @@
   .hidden { display: none !important; }
   .empty { color: var(--muted); padding: 16px 2px; }
 
-  /* 7-2 bounties leaderboard */
-  .bounty { padding: 12px 14px 10px; margin-bottom: 18px; }
-  .bounty h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
-  .bounty h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: 12.5px; }
-  .bounty .bnote { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
-  .bounty table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-  .bounty th { text-align: right; color: var(--muted); font-weight: 500; font-size: 12px; padding: 3px 6px; }
-  .bounty td { text-align: right; padding: 4px 6px; border-top: 1px solid var(--grid); white-space: nowrap; }
-  .bounty th:first-child, .bounty td:first-child { text-align: left; white-space: normal; }
-  .bounty td.dim { color: var(--muted); }
-  .bounty td.up { color: var(--up); font-weight: 600; }
-  .bounty td.down { color: var(--down); font-weight: 600; }
-  .bounty tbody tr { cursor: pointer; }
-  .bounty tbody tr:hover td { background: var(--mid); }
-  .bounty .hero72 { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
-  .bounty .hero72 + .hero72 { margin-top: 4px; }
-  @media (max-width: 560px) { .bounty .wide { display: none; } }
-  /* shows without being asked */
-  .shows .shows-h { color: var(--ink); font-weight: 600; }
-  .shows .dim { color: var(--muted); font-size: 12.5px; }
-  .shows p.shows-note { color: var(--ink-2); font-size: 12.5px; margin: 6px 0 8px; max-width: 80ch; }
-  .shows table.ids tr.total td { font-weight: 600; }
-  .shows table.ids { margin-bottom: 8px; }
-  .shows .shows-list td { white-space: nowrap; }
-  .shows .cls-strong { color: var(--up); }
-  .shows .cls-air, .shows .cls-draw { color: var(--down); }
-  .shows-wrap { overflow-x: auto; }
-
-  /* Head to head: the pool's matrix above the list, and each player's table. */
-  details.h2h-pool { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
-    margin-bottom: 14px; padding: 0 14px; }
-  details.h2h-pool > summary { cursor: pointer; padding: 11px 0; font-weight: 600; }
-  details.h2h-pool > summary small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  details.h2h-pool[open] > summary { border-bottom: 1px solid var(--grid); }
   .h2h-scroll { overflow-x: auto; margin: 10px 0 12px; }
   table.h2h { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
   table.h2h th { color: var(--muted); font-weight: 500; padding: 4px 6px; text-align: right; white-space: nowrap; }
@@ -148,18 +116,12 @@
 <main>
   <div class="crumb"><a class="link" href="/">‹ tracker</a></div>
   <h1>Players <small id="count"></small></h1>
-  <p class="note">One human, one row. PokerNow IDs are stable per browser, so the same person on
-    a phone and a laptop arrives as two — and nothing but you can tell that they are the same
-    person, because the names rarely agree. Merge them here and every stat re-answers to the
-    combined history immediately; nothing is stored, so nothing needs recomputing.</p>
+  <ul class="note">
+    <li><b>One human, one row.</b> PokerNow IDs are per browser, so one person on a phone and a laptop shows up twice.</li>
+    <li><b>Merge</b> them here and every stat re-answers at once.</li>
+  </ul>
 
   <div class="err hidden" id="err"></div>
-  <div class="card bounty hidden" id="bounties"></div>
-
-  <details class="h2h-pool" id="h2h-pool">
-    <summary>Who pays whom <small>big blinds each row won from each column</small></summary>
-    <div id="h2h-pool-body"></div>
-  </details>
   <div id="list"></div>
 </main>
 
@@ -202,7 +164,6 @@
 
   async function load() {
     players = await api("/players");
-    showsCache.clear();  // a merge or rename changes whose shows these are
     players.sort((a, b) => b.hands - a.hands);
     resetH2h();
     $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
@@ -309,7 +270,6 @@
     body.appendChild(acts);
     body.appendChild(h2hPanel(p));
     body.appendChild(notePanel(p, pnote));
-    if (p.alias === openAlias) body.appendChild(showsPanel(p));
 
     if (players.length > 1) body.appendChild(mergePanel(p));
     return body;
@@ -362,90 +322,6 @@
     box.addEventListener("blur", save);
     wrap.append(box, hint);
     return wrap;
-  }
-
-  // Shows without being asked: what they turned over after a fold, a pot nobody
-  // contested, or a muck at showdown (GET /players/{alias}/shows). Fetched only
-  // for the open card, and kept per alias until the list reloads, since render()
-  // rebuilds every card on each click.
-  const showsCache = new Map();
-  const SUITS = { s: "♠", h: "♥", d: "♦", c: "♣" };
-  const prettyCards = (cards) => (Array.isArray(cards) ? cards.join("") : cards || "")
-    .replace(/([2-9TJQKA])([shdc])/g, (_, r, s) => r + SUITS[s] + " ").trim();
-  const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
-
-  function showsPanel(p) {
-    const wrap = el("div", "sub shows");
-    wrap.appendChild(el("p", "shows-h", "Shows without being asked"));
-    const box = el("div", null, "loading…");
-    wrap.appendChild(box);
-    let pending = showsCache.get(p.alias);
-    if (!pending) {
-      pending = api(`/players/${encodeURIComponent(p.alias)}/shows`);
-      showsCache.set(p.alias, pending);
-      pending.catch(() => showsCache.delete(p.alias));
-    }
-    pending.then((d) => box.replaceChildren(...showsBody(d)))
-      .catch((e) => box.replaceChildren(el("span", "err", "could not load shows: " + e.message)));
-    return wrap;
-  }
-
-  function showsBody(d) {
-    if (!d.shows) return [el("div", "dim", `Never showed a hand unasked, in ${fmt(d.hands)} dealt in.`)];
-    const out = [];
-    out.push(el("div", "dim",
-      `${fmt(d.shows)} shown of ${fmt(d.hands)} hands dealt in · two cards, classified: `
-      + `${d.two_card} of ${d.shows} (${d.coverage ?? "--"}%) · one card, counted only: ${d.one_card}`));
-    out.push(el("p", "shows-note", d.note));
-
-    const t = el("table", "ids");
-    const hr = document.createElement("tr");
-    for (const [h, cls] of [["how the hand ended", ""], ["shows", "r"], ["1 card", "r"], ...SHOW_CLASSES.map((c) => [c, "r"])]) {
-      hr.appendChild(el("th", cls, h));
-    }
-    t.appendChild(hr);
-    const total = { label: "all", shows: d.shows, one_card: d.one_card, classes: d.classes };
-    for (const c of [...d.contexts, total]) {
-      if (!c.shows && c !== total) continue;
-      const tr = el("tr", c === total ? "total" : "");
-      tr.appendChild(el("td", null, c.label));
-      tr.appendChild(el("td", "r", c.shows));
-      tr.appendChild(el("td", "r dim", c.one_card || "·"));
-      for (const k of SHOW_CLASSES) tr.appendChild(el("td", "r", c.classes[k] || "·"));
-      t.appendChild(tr);
-    }
-    const tableScroll = el("div", "shows-wrap");
-    tableScroll.appendChild(t);
-    out.push(tableScroll);
-
-    const words = Object.fromEntries(d.contexts.map((c) => [c.key, c.label]));
-    const list = el("table", "ids shows-list");
-    const lh = document.createElement("tr");
-    for (const [h, cls] of [["hand", ""], ["shown", ""], ["how it ended", ""], ["board as it stood", ""], ["read as", ""]]) {
-      lh.appendChild(el("th", cls, h));
-    }
-    list.appendChild(lh);
-    for (const r of d.rows) {
-      const tr = document.createElement("tr");
-      const td = el("td");
-      const a = el("a", "link", `#${r.hand_number}`);
-      // The chart lists the one hand and replays it (its `hand=` param).
-      a.href = "/chart?" + new URLSearchParams({ player: d.player, hand: r.hand_id });
-      a.target = "_blank"; a.rel = "noopener";
-      a.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}`;
-      td.appendChild(a);
-      tr.appendChild(td);
-      tr.appendChild(el("td", null, prettyCards(r.cards)));
-      tr.appendChild(el("td", "dim", words[r.context] || r.context));
-      tr.appendChild(el("td", null, r.board.length ? `${r.street}: ${prettyCards(r.board)}` : "preflop"));
-      const made = r.made ? (r.missed ? "missed " : "") + r.made.replace(/_/g, " ") : "";
-      tr.appendChild(el("td", r.class ? `cls-${r.class}` : "dim", r.class ? `${r.class} · ${made}` : "one card"));
-      list.appendChild(tr);
-    }
-    const scroll = el("div", "shows-wrap");
-    scroll.appendChild(list);
-    out.push(scroll);
-    return out;
   }
 
   function mergePanel(p) {
@@ -552,107 +428,6 @@
     } catch (e) { toast("Rename failed: " + e.message); }
   }
 
-  // ---- 7-2 bounties: the side bet's leaderboard, and how often hero plays 72 --
-  // Self-contained: one container above the list, one call below. A row opens
-  // that player's card in the list; the 72 counts link to the chart on the
-  // filter that finds their hands.
-  const signed = (n) => (n > 0 ? "+" : "") + fmt(n);
-  async function loadBounties() {
-    const box = $("bounties");
-    let data;
-    try { data = await api("/bounties"); } catch { return; }  // a fun extra: never break the page
-    box.replaceChildren();
-    if (!data.players.length && !data.hero.length) { box.classList.add("hidden"); return; }
-    const h2 = el("h2", null, "7-2 bounties");
-    if (data.players.length) h2.appendChild(el("small", null,
-      `${fmt(data.total.bounties)} collected · ${fmt(data.total.won)} chips changed hands`));
-    box.appendChild(h2);
-    box.appendChild(el("p", "bnote", "Win a pot with 7-2 and everyone at the table pays you. "
-      + "A side bet: chips only move between players, so the net column sums to zero."
-      + (data.balance ? ` (It is ${signed(data.balance)} off: a payment named someone not dealt in.)` : "")));
-
-    if (data.players.length) {
-      const t = el("table");
-      const head = el("tr");
-      for (const [h, cls] of [["player", ""], ["won", ""], ["chips", "wide"], ["paid", ""],
-                              ["chips", "wide"], ["net", ""], ["net bb", ""], ["of hands", "wide"]]) {
-        head.appendChild(el("th", cls, h));
-      }
-      const thead = el("thead"); thead.appendChild(head); t.appendChild(thead);
-      const tbody = el("tbody");
-      // A count links to the chart on the filter that finds its hands; the link
-      // stops the click, so the rest of the row still opens the card.
-      const countCell = (r, side, filter) => {
-        const td = el("td");
-        const n = r[side].count;
-        if (!n || !filter) { td.textContent = fmt(n); return td; }
-        const a = el("a", "link", fmt(n));
-        a.href = "/chart?" + new URLSearchParams({ player: r.player, filter });
-        a.target = "_blank"; a.rel = "noopener";
-        a.title = `Open the ${fmt(n)} hand${n === 1 ? "" : "s"} ${r.player} ${side} a bounty in, in the chart`;
-        a.addEventListener("click", (e) => e.stopPropagation());
-        td.appendChild(a);
-        return td;
-      };
-      for (const r of data.players) {
-        const tr = el("tr");
-        const net = r.net.chips;
-        tr.appendChild(el("td", null, r.player));
-        tr.appendChild(countCell(r, "won", r.won_filter));
-        tr.appendChild(el("td", "dim wide", fmt(r.won.chips)));
-        tr.appendChild(countCell(r, "paid", r.paid_filter));
-        tr.appendChild(el("td", "dim wide", fmt(r.paid.chips)));
-        tr.appendChild(el("td", net > 0 ? "up" : net < 0 ? "down" : "", signed(net)));
-        tr.appendChild(el("td", null, r.net.bb == null ? "—" : signed(r.net.bb)));
-        const of = el("td", "dim wide", fmt(r.hands));
-        of.title = `${r.bounty_hands} bounty hand${r.bounty_hands === 1 ? "" : "s"} of ${fmt(r.hands)} dealt in`
-          + (r.bb_known < r.bounty_hands ? `; ${r.bounty_hands - r.bb_known} with no big blind on record, left out of bb` : "");
-        tr.appendChild(of);
-        tr.title = `Open ${r.player} in the list below`;
-        tr.addEventListener("click", () => {
-          if (!players.some((p) => p.alias === r.player)) return;
-          openAlias = r.player;
-          render();
-          const open = $("list").querySelector(".card.open");
-          if (open) open.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-        tbody.appendChild(tr);
-      }
-      t.appendChild(tbody);
-      box.appendChild(t);
-    } else {
-      box.appendChild(el("div", "bnote", "No bounty has been paid yet."));
-    }
-
-    // Hero only: anyone else's 72 is seen only when shown, and a folded one never is.
-    for (const h of data.hero) {
-      const line = el("div", "hero72");
-      // No filter when they showed a 72 in a log they do not own: the chart
-      // would count it too, and its n would not match.
-      const chartLink = (text, filter) => {
-        if (!filter) {
-          const s = el("span", null, text);
-          s.title = "Not linked: the chart's filter would also count the 72s they showed in logs they do not own.";
-          return s;
-        }
-        const a = el("a", "link", text);
-        a.href = "/chart?" + new URLSearchParams({ player: h.player, filter });
-        a.target = "_blank"; a.rel = "noopener";
-        a.title = `Open ${h.player}'s ${filter} hands in the chart`;
-        return a;
-      };
-      line.append(document.createTextNode(`${h.player} was `),
-        chartLink(`dealt 72 ${fmt(h.dealt_72)}×`, h.dealt_filter),
-        document.createTextNode(" and "),
-        chartLink(`played it ${fmt(h.played_72)}×`, h.played_filter),
-        document.createTextNode(
-          (h.played_pct == null ? "" : ` (${h.played_pct}%)`)
-          + ` · cards known on ${fmt(h.known)} of ${fmt(h.hands)} hands in the logs they downloaded.`));
-      box.appendChild(line);
-    }
-    box.classList.remove("hidden");
-  }
-
   // ---- head to head ------------------------------------------------------
   // The money between two players (/players/{alias}/h2h) and the pool's matrix
   // (/h2h). A hand with one winner settles exactly; with several, each loser's
@@ -660,12 +435,9 @@
   // fetched only when shown, and forgotten whenever the list reloads, since a
   // merge or a rename changes whose money it was.
   const h2hCache = new Map();
-  let h2hPool = null;
 
   function resetH2h() {
     h2hCache.clear();
-    h2hPool = null;
-    if ($("h2h-pool").open) paintPool();
   }
 
   const signedBb = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
@@ -770,67 +542,10 @@
     return frag;
   }
 
-  async function paintPool() {
-    const box = $("h2h-pool-body");
-    if (h2hPool) { box.replaceChildren(poolMatrix(h2hPool)); return; }
-    box.replaceChildren(el("div", "h2h-foot", "loading…"));
-    try {
-      h2hPool = await api("/h2h");
-      box.replaceChildren(poolMatrix(h2hPool));
-    } catch (e) {
-      box.replaceChildren(el("div", "err", "could not load who pays whom: " + e.message));
-    }
-  }
-
-  function poolMatrix(data) {
-    const frag = document.createDocumentFragment();
-    if (data.players.length < 2) {
-      frag.appendChild(el("div", "h2h-foot", "Needs two players who have sat together."));
-      return frag;
-    }
-    const names = data.players.map((x) => x.player);
-    const scroll = el("div", "h2h-scroll");
-    const t = el("table", "h2h");
-    const hr = document.createElement("tr");
-    hr.appendChild(el("th", "l", "won from →"));
-    for (const n of names) hr.appendChild(el("th", null, n));
-    hr.appendChild(el("th", null, "total"));
-    t.appendChild(hr);
-    for (const row of data.players) {
-      const tr = document.createElement("tr");
-      tr.appendChild(el("td", "l", row.player));
-      const cells = data.cells[row.player] || {};
-      for (const n of names) {
-        const c = cells[n];
-        if (n === row.player) { tr.appendChild(el("td", "self")); continue; }
-        if (!c) { tr.appendChild(el("td", "dim", "·")); continue; }
-        const td = el("td", tone(c.net_bb), c.net_bb.toFixed(0));
-        td.title = `${row.player} ${c.net_bb >= 0 ? "won" : "lost"} ${Math.abs(c.net_bb).toFixed(1)}bb `
-          + `${c.net_bb >= 0 ? "from" : "to"} ${n} over ${fmt(c.hands)} hands together`
-          + (c.counted !== c.hands ? ` (${fmt(c.counted)} with all their chips)` : "")
-          + `, ${fmt(c.showdowns)} showdowns, ${fmt(c.split_hands)} split by the multiway rule`;
-        tr.appendChild(td);
-      }
-      tr.appendChild(el("td", tone(row.net_bb), signedBb(row.net_bb)));
-      t.appendChild(tr);
-    }
-    scroll.appendChild(t);
-    frag.appendChild(scroll);
-    frag.appendChild(el("p", "h2h-foot",
-      `Over ${fmt(data.hands)} hands. Each cell is what the row's player won from the column's; `
-      + "the cell across the diagonal is the same number, negated. A hand with one winner settles "
-      + "exactly; with several, each loser's loss is split by what each winner won. Hover a cell "
-      + "for the hands behind it." + shortfall(data.skipped)));
-    return frag;
-  }
-
-  $("h2h-pool").addEventListener("toggle", () => { if ($("h2h-pool").open) paintPool(); });
-
   load().catch((e) => {
     $("err").textContent = "could not load players: " + (e.message || e);
     $("err").classList.remove("hidden");
   });
-  loadBounties();
 })();
 </script>
 </body>

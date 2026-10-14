@@ -1545,9 +1545,14 @@ the nine players who show at all (53% and 56% air or draw), SHOWS NUTS for none.
 ### Leak finder
 
 The tags turned on the hero: their own stats furthest out of line, and what each
-costs. `leaks.py` mirrors this section; `GET /leaks`, `pnt leaks` and the **Your
-leaks** panel at the top of the stats page read it. The panel shows only when a
-hero exists.
+costs. `leaks.py` mirrors this section; `GET /leaks` and `pnt leaks` read it.
+
+**Experimental.** The fold-equity leaks hold the hero's folds against a pure
+bluff's break-even, which assumes the bettors bluff that size often enough. On a
+pool that under-bluffs, folding more than break-even is correct, and the leak
+overstates. Until the band reads the pool's own bluff share at each size, the
+finder has no page: the Tendencies page shows the tags on the hero and the
+tags shared across the regulars instead (`tendencies.py`).
 
 **The hero** is the player whose identity owns the most logs
 (`games.hero_pn_id`), ties to the alias first in case-folded order; with `game`,
@@ -1575,7 +1580,7 @@ tag's cutoff is reused where one draws the line.
 
 The VPIP and PFR baseline is the mean of `tags.BASELINES` over the hero's own
 preflop decisions, each at its hand's table size. Each value is the stat row's
-own figure (`rates()`), so the panel and the table never disagree.
+own figure (`rates()`), so the leaks page and the stats table never disagree.
 
 **Fold-equity leaks.** One per street and size of bet faced, from the defender's
 table of "Fold equity by bet size": the fold share against the band

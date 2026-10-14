@@ -1882,7 +1882,10 @@ def shows(
     typer.echo(f"{alias}  shown without being asked: {out['shows']} of {out['hands']} hands dealt in")
     typer.echo(f"two cards, classified: {out['two_card']} of {out['shows']} ({_fmt(out['coverage'])}%)"
                f"   one card, counted only: {out['one_card']}")
-    typer.echo(out["note"] + "\n")
+    fv = out["folded_vs"]
+    typer.echo(f"air {_fmt(out['air_pct'])}%   top pair or better {_fmt(out['strong_pct'])}%   "
+               f"folded the best hand {fv['ahead']} of {fv['known']} where the winner's cards are known")
+    typer.echo("\n".join("- " + n.replace("**", "") for n in out["note"]) + "\n")
     header = f"{'how the hand ended':<32}{'shows':>6}{'1 card':>7}" + "".join(f"{c:>9}" for c in CLASSES)
     typer.echo(header)
     typer.echo("-" * len(header))

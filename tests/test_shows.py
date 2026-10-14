@@ -18,7 +18,7 @@ from pnt.db.conn import connect
 from pnt.ingest.importer import import_csv
 from pnt.stats.queries import facts_for, identities_of
 from pnt.stats.ranges import range_grid
-from pnt.stats.shows import CLASSES, CONTEXTS, classify, context_of, voluntary_shows
+from pnt.stats.shows import CLASSES, CONTEXTS, classify, context_of, versus, voluntary_shows
 from tests.conftest import ALL_LOGS, MULTIWAY_GAME, local_client
 
 
@@ -111,7 +111,32 @@ def test_the_multiway_fold_is_air_on_the_flop(db):
 
 def test_the_note_says_these_are_chosen(db):
     s = voluntary_shows(db, "genericpoker")
-    assert "chosen" in s["note"].lower() and "never shown" in s["note"]
+    note = " ".join(s["note"])
+    assert "chosen" in note.lower() and "never shown" in note
+
+
+def test_versus_reads_the_board_as_it_stood():
+    assert versus("AhAs", "KdKc", ("2c", "7d", "9h")) == "ahead"
+    assert versus("AhAs", "KdKc", ("Kh", "7d", "9h")) == "behind"
+    assert versus("Ah2s", "Ad3c", ("Kh", "Kd", "Qh", "Qs", "Jc")) == "chop"
+
+
+def test_rates_and_folds_against_the_winner_add_up(db):
+    seen = 0
+    for alias in _aliases(db):
+        s = voluntary_shows(db, alias)
+        n = s["two_card"]
+        assert s["air_pct"] == (round(100 * s["classes"]["air"] / n, 1) if n else None)
+        assert s["strong_pct"] == (round(100 * s["classes"]["strong"] / n, 1) if n else None)
+        fv = s["folded_vs"]
+        judged = [r for r in s["rows"] if r["vs"]]
+        assert fv["known"] == len(judged) == fv["ahead"] + fv["chop"] + fv["behind"]
+        for r in judged:
+            # Only a two-card fold after the flop, held against someone else.
+            assert r["context"] == "folded" and r["n_cards"] == 2 and len(r["board"]) >= 3
+            assert r["vs"]["result"] == versus(r["cards"], r["vs"]["cards"], tuple(r["board"]))
+        seen += fv["known"]
+    assert seen, "the fixtures have shown folds against a known winner"
 
 
 def test_an_unknown_alias_raises(db):
@@ -197,17 +222,17 @@ def test_every_shown_hand_is_in_the_list_its_chart_link_opens(client):
 
 
 def test_the_chart_opens_a_linked_hand():
-    """The players page links each shown hand to the chart's `hand=` param, which
-    readUrl reads and the boot opens as a one-hand list with its replay."""
+    """A link to the chart's `hand=` param opens a one-hand list with its replay,
+    and the Shows view does the same for a row."""
     static = Path(__file__).resolve().parents[1] / "pnt" / "server" / "static"
     chart = static.joinpath("chart.html").read_text("utf-8")
     read_url = chart[chart.index("const readUrl = () => {"):chart.index("const writeUrl = () => {")]
     assert 'state.hand = ' in read_url and 'q.get("hand")' in read_url
     boot = chart[chart.index("  readUrl();\n"):]
     assert "openHands(" in boot and 'pntReplay.show($("replay"), state.hand)' in boot
-    players = static.joinpath("players.html").read_text("utf-8")
-    shows = players[players.index("function showsBody("):players.index("function mergePanel(")]
-    assert '"/chart?" + new URLSearchParams({ player: d.player, hand: r.hand_id })' in shows
+    # The chart's own Shows view lists and replays a row's one hand the same way.
+    shows = chart[chart.index("function renderShows("):chart.index("function renderBounties(")]
+    assert "openHands(" in shows and 'pntReplay.show($("replay"), r.hand_id)' in shows
     assert "/hands/" not in shows, "raw JSON is not a link to read"
 
 

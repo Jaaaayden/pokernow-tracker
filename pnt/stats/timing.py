@@ -58,11 +58,12 @@ BUCKETS_OF: dict[tuple[str, str], tuple[str, ...]] = {
 #: to be worth reading. Under it, the pool's row is the better guide.
 MIN_CELL = 30
 
+#: The view's note, one bullet each. **text** is bold on the page.
 NOTE = (
-    "Strength is read from cards: shown at showdown for most players, which leans to value "
-    "because a bluff that got a fold is never shown, and every card of the hands in a log its "
-    "owner captured. Pre is a check, call or fold within 1 s of the action before it: "
-    "pre-selected with PokerNow's buttons, not thought about. A fold or check the clock made is left out."
+    "**Strength:** shown cards only, so it leans to value: a bluff that got a fold is never shown.",
+    "**Your rows** use every hand (your log has all your cards), so they include your bluffs and read weaker.",
+    ("**Think time:** from the board or the last action to theirs. **Pre:** under 1 s, a pre-selected button. "
+     "Timeouts are left out."),
 )
 
 
@@ -103,12 +104,13 @@ def _spots(
     *,
     owners: Collection[tuple[str, str]] | None = None,
     with_ids: bool = False,
+    spots: Iterable[tuple[str, str, str, str, str]] = SPOTS,
 ) -> list[dict]:
     """A block per spot: its first decisions, how many were timed, and a row per
     bucket with what the hands were. `term_for(bucket, street)` is the filter term
     that finds the bucket, ANDed to the spot's own."""
     out = []
-    for key, street, label, letter, base in SPOTS:
+    for key, street, label, letter, base in spots:
         took = [f for f in facts if _first(f, street) == letter]
         groups: dict[str, list[Facts]] = defaultdict(list)
         timed = 0
@@ -212,7 +214,9 @@ def _relative(facts: list[Facts], cuts: Mapping[str, tuple[int, int]], with_ids:
             return f"think_{s}>{_secs(hi)},{rest}"
         return f"think_{s}>={_secs(lo)},think_{s}<={_secs(hi)},{rest}"
 
-    return [sp for sp in _spots(facts, "own", bucket, term, with_ids=with_ids) if sp["street"] in cuts]
+    # Only the streets they have a median on: a player with no timed hands there
+    # has no cuts to bucket against or to write a filter from.
+    return _spots(facts, "own", bucket, term, with_ids=with_ids, spots=[sp for sp in SPOTS if sp[1] in cuts])
 
 
 def thin(facts: Iterable[Facts], who: Mapping[str, str]) -> dict:
@@ -260,7 +264,7 @@ def timing_report(
         "buckets": list(TEMPO_BUCKETS),
         "cuts": dict(TEMPO_CUTS),
         "min_cell": MIN_CELL,
-        "note": NOTE,
+        "note": list(NOTE),
     }
     if baseline is not None:
         med = medians(baseline)

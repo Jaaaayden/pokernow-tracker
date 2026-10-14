@@ -157,11 +157,12 @@ written about. Notes are not in `aliases.csv`, so they stay in the database.
 
 ### 7-2 bounties
 
-Above the list, the players page keeps the 7-2 side bet's leaderboard: for each
+The chart's **7-2** tab, beside Session, keeps the side bet's leaderboard: for each
 player who has won or paid a bounty, how many and how many chips (and big blinds)
-each way, ranked by net. A side bet only moves chips, so the net column sums to
-zero. The won and paid counts open those hands on the chart (`bounty_won`,
-`bounty_paid`); click anywhere else on a row to open that player's card. Under it
+each way, ranked by net, with the player on show marked. A side bet only moves
+chips, so the net column sums to zero. The won and paid counts open those hands
+(`bounty_won`, `bounty_paid`); click anywhere else on a row to switch the chart to
+that player. Under it
 is how often you were dealt 72 and how often you played it; the two counts open
 those hands on the chart. That
 part is yours only, from the logs you downloaded: anyone else's folded 72 is never
@@ -181,9 +182,9 @@ went between you. Open a player's row on the players page for a **Head to head**
 table: one row per opponent, biggest money either way first, with the hands you
 played together, the big blinds you won from them (negative is lost), showdowns,
 and each side's failed bluffs into the other. The last column opens your chart
-on `vs=<opponent>` and says how many hands it will find. **Who pays whom**, above
-the list, is the same for every pair at once: each cell is what the row's player
-won from the column's, so the cell across the diagonal is the same number negated.
+on `vs=<opponent>` and says how many hands it will find. `pnt h2h` with no name,
+or `GET /h2h`, is the same for every pair at once: each cell is what the row's
+player won from the column's.
 
 A hand with one winner settles exactly: every loser's chips went to them. With
 several winners (a chop, a side pot) each loser's loss is split by what each
@@ -204,9 +205,11 @@ percentage, and showing `0%` would be a claim the data does not support.
 Every player at once is also at
 [http://127.0.0.1:52000/stats](http://127.0.0.1:52000/stats). A browser gets a
 sortable table, while the HUD, curl and your scripts get the same figures as JSON
-from the same URL (the page alone is at `/stats.html`). Pick a street to swap the
-postflop columns, toggle the c-bet size mix, and click a player to open their range
-chart in the spot you are looking at.
+from the same URL (the page alone is at `/stats.html`). The table opens on the core
+stats; **All stats** adds every column below (squeeze, cold call, the blind war,
+LRR, JAM, WWSF, DCB, probe and float). Pick a street to swap the postflop columns,
+toggle the c-bet size mix, and click a player to open their range chart in the spot
+you are looking at.
 
 A VPIP of 45% on 20 hands and one on 2,000 look the same in a table, so hover a rate
 for its sample and its 95% range (a Wilson interval): `20 preflop decisions · ± 20.0
@@ -488,8 +491,10 @@ The 13x13 chart can be coloured three ways:
   the spot. "Habitual" is the mean when a hand's sizes agree and the median when
   they do not, so a single tilt jam cannot repaint a cell.
 
-The made-hand view shows what the shown hands had by the end, and **Sizing** shows
-the sizing view. Under the tiles, the page shows how often the player c-bets, folds
+The filter chips open on a **Common** row; **More filters** opens every chip row,
+label on the left, and counts the chips on that the Common row does not show.
+The page remembers which you left it on. The made-hand view shows what the shown
+hands had by the end, and **Sizing** shows the sizing view. Under the tiles, the page shows how often the player c-bets, folds
 to one, raises one and leads in the selected spot. The **Jammed** and **Called
 jam** chip rows write the all-in terms for you, and the **Pot ≥** box and **vs**
 picker write `pot>=` and `vs=`.
@@ -658,26 +663,36 @@ The rules, the thresholds, and the hands these games play on purpose (7-2, 9-2 a
 K-2o are never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
 "Tags". `GET /players/{alias}/tags` returns the same as JSON.
 
-### Your leaks
+### Tendencies
+
+The **Tendencies** page (linked from the front page, or `GET /tendencies`) puts
+the tags to two uses:
+
+- **You:** the tags an opponent's HUD would show on you, and how they would play
+  you. It needs a log that names its owner, which the logs you download yourself do.
+- **Your opponents:** every tag that fires on your regulars (200+ hands), most
+  common first, with who it fires on. Click a name for those hands on their chart.
+
+### Your leaks (experimental)
 
 ```bash
 pnt leaks                # your top three leaks, then every stat outside its band
 pnt leaks --all          # every stat judged, inside its band or not
 ```
 
-The same rules turned on yourself. The stats page opens with a **Your leaks** panel
-whenever a log names its owner (the logs you download yourself do). Twelve of your
+The same rules turned on yourself, in the terminal and at `GET /leaks` only.
+It needs a log that names its owner. Twelve of your
 stats (VPIP, PFR, 3-bet, ATS, fold to steal, flop c-bet, fold to flop c-bet, WTSD,
 W$SD, WWSF, turn probe and flop float) are held against a band of ordinary values,
 and your fold share against each size of bet is held against that size's
 break-even. Each one outside its band gets a cost in bb per 100 hands and a
 confidence, which is how much of its 95% range sits outside the band, and the top
-three by cost × confidence are listed. Click one to open those hands on your chart.
-The cost is where the money went, not proof of what a different decision would
+three by cost × confidence are listed. The cost is where the money went, not proof of what a different decision would
 have won. The bands are judgement values, not what this pool's winners do: a pool
-of nine has too few winners to measure. The rules are in
-[`SPEC.md`](../pnt/stats/SPEC.md), "Leak finder", and `GET /leaks` returns the same
-as JSON.
+of nine has too few winners to measure. It is experimental because the
+fold leaks assume bettors bluff as often as break-even needs: if your pool
+under-bluffs, folding more is right, so check the pool's Bluff:value first. The
+rules are in [`SPEC.md`](../pnt/stats/SPEC.md), "Leak finder".
 
 ### Shows without being asked
 
@@ -686,12 +701,14 @@ pnt shows henry          # what henry turned over after a fold or an uncontested
 ```
 
 Some players show the bluff that got a fold, to needle the table; others show only
-the big hand they laid down, to look tight. Open a player on the
-[players page](http://127.0.0.1:52000/players.html) and **Shows without being asked**
-lists every hand they showed after it ended, split by how it ended for them (folded,
-won uncontested, or mucked at showdown), with each two-card show read as strong,
+the big hand they laid down, to look tight. The chart's **Shows** tab lists every
+hand a player showed after it ended, split by how it ended for them (folded, won
+uncontested, or mucked at showdown), with each two-card show read as strong,
 marginal, a draw or air on the board as it stood when they folded. One-card shows are
-counted only. Click a hand's number to replay it on the chart. Any chart link can
+counted only. The tiles give how often they showed air, how often top pair or
+better, and how many of the folds they showed were ahead of the hand that won,
+counted where the winner's cards are known (yours, or the winner's own show).
+Click a row to replay it. The spot box does not narrow shows. Any chart link can
 do the same with `hand=<id>`, as in `/chart?player=henry&hand=1234`. These are the
 hands they *chose* to show you, so read them as what they want you to believe, not
 as their range. The range charts leave them out for the same

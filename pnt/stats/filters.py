@@ -676,15 +676,15 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     )),
     ("Action line", (
         ("line_<street>=LINE", "line_flop=xc",
-         ("their actions that street: x check, b bet, c call, r raise, f fold; x* checked then anything,"
-          " x? checked then exactly one more (xc xf xr), - alone did not act")),
-        ("line_<street>!=LINE", "line_turn!=x*", "any line but that one"),
-        ("line=LINE", "line=xc//b*", "flop/turn/river; * any run, ? one action, - did not act, empty any"),
-        ("action_<street>=SEQ", "action_flop=xBr*",
-         ("the whole street, everyone in order: THEIRS IN CAPITALS, others lower case; xB* checked to them,"
-          " they bet, then anything; xB? then exactly one more (xBc or xBf); - alone not in the hand; case matters")),
-        ("action_<street>!=SEQ", "action_turn!=*Br*", "any street but that"),
-        ("action=SEQ", "action=*Bc//", "flop/turn/river, as line=; - not in the hand that street"),
+         ("their own actions that street, e.g. line_flop=xc check-call · x* check, then anything"
+          " · x? check, then one more · - didn't act")),
+        ("line_<street>!=LINE", "line_turn!=x*", "any other line, e.g. line_turn!=x*"),
+        ("line=LINE", "line=xc/b*/", "flop/turn/river, blank is any, e.g. line=xc/b*/ check-called the flop, bet the turn"),
+        ("action_<street>=SEQ", "action_flop=xB*",
+         ("everyone's actions in order, THEIRS IN CAPS, e.g. action_flop=xB* checked to them, they bet"
+          " · bC called a bet · xBr* bet and got raised")),
+        ("action_<street>!=SEQ", "action_turn!=*Br*", "any other sequence, e.g. action_turn!=*Br*"),
+        ("action=SEQ", "action=*Bc//", "flop/turn/river, as line=, e.g. action=*Bc// their flop bet got called"),
     )),
     ("Holding", (
         ("hand=CLASS", "hand=72", "the shown hand: 72 is both suits, 72o one, 77 the pair"),

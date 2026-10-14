@@ -92,6 +92,15 @@
   .lines .presets { margin-bottom: 6px; }
   .lines { margin-bottom: 14px; }
   .lines .lbl { min-width: 6.5em; }
+  /* More filters: label column, chips column; one rule between sections. */
+  .filters { margin-bottom: 14px; }
+  .filters .presets { display: grid; grid-template-columns: 6.5em 1fr; gap: 6px 10px; margin-bottom: 6px; }
+  .filters .presets .lbl { min-width: 0; margin: 0; padding-top: 3px; align-self: start; }
+  .filters .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filters .lines { margin-bottom: 0; }
+  .filters > div + div { border-top: 1px solid var(--grid); padding-top: 6px; margin-top: 6px; }
+  .common button.more { border-style: dashed; color: var(--accent); }
+  .common button.more[aria-expanded=true] { border-style: solid; }
   .tile .k small { color: var(--muted); }
 
   /* --- stat tiles --- */
@@ -103,6 +112,9 @@
   .tile.pick { cursor: pointer; text-align: left; font: inherit; color: inherit; }
   .tile.pick:hover { border-color: var(--muted); }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 72ch; }
+  ul.note { padding-left: 18px; max-width: 90ch; }
+  ul.note li { margin: 1px 0; }
+  .note b { color: var(--ink); font-weight: 600; }
 
   /* --- chart card --- */
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; }
@@ -435,6 +447,8 @@
     .lines { margin-bottom: 8px; }
     .lines .presets { margin-bottom: 3px; }
     .lines .lbl { min-width: 5.5em; }
+    .filters .presets { grid-template-columns: 5.5em 1fr; gap: 3px 6px; margin-bottom: 3px; }
+    .filters .chips { gap: 3px; }
     .block h3 button { font-size: 10px; padding: 0 6px; }
 
     .tiles { gap: 6px; margin-bottom: 8px; }
@@ -508,6 +522,19 @@
      A table per spot, a row per tempo bucket, with the strength tiers as one
      stacked bar in the Lines view's colours. The pool comes first. */
   #timing { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
+  /* --- shows without being asked, and the 7-2 bounty board --- */
+  #shows, #bounty { display: flex; flex-direction: column; gap: 14px; overflow-x: auto; }
+  #shows table, #bounty table { min-width: 520px; }
+  #shows tr.total td { font-weight: 600; }
+  #shows tbody tr, #bounty tbody tr { cursor: pointer; }
+  #shows tbody tr:hover td, #bounty tbody tr:hover td { background: var(--mid); }
+  #shows .cls-strong, #shows .ahead { color: var(--up); }
+  #shows .cls-air, #shows .cls-draw, #shows .behind { color: var(--down); }
+  #shows td.dim, #bounty td.dim { color: var(--muted); }
+  #bounty td.up { color: var(--up); font-weight: 600; }
+  #bounty td.down { color: var(--down); font-weight: 600; }
+  #bounty tr.me td { background: var(--mid); }
+  #bounty .hero72 { font-size: 13px; color: var(--ink-2); margin: 0; }
   #timing h3 { font-size: 13px; font-weight: 600; margin: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   #timing table { margin-top: 6px; min-width: 600px; }
   #timing td small { color: var(--muted); margin-left: 3px; }
@@ -517,6 +544,8 @@
   #timing .tbar span { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: var(--mid); }
   #timing .tbar i { display: block; height: 100%; }
   #timing .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  #timing ul.why { padding-left: 18px; }
+  #timing ul.why b { color: var(--ink-2); font-weight: 600; }
   #timing .warn { color: var(--flag); font-size: 12px; margin: 0; }
   #timing td.cellpick { cursor: pointer; }
   #timing td.cellpick:hover { background: var(--mid); }
@@ -594,12 +623,14 @@
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
       <button data-view="timing" aria-pressed="false" title="how long they took to act, and what the hands were: snap, normal or tank">Timing</button>
+      <button data-view="shows" aria-pressed="false" title="the hands they turned over when nobody asked: how often air, how often strong">Shows</button>
     </span>
     <span class="seg" role="group" aria-label="Review views">
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
       <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Flagged</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
+      <button data-view="bounties" aria-pressed="false" title="the 7-2 side bet: who won and paid bounties, every player">7-2</button>
     </span>
   </div>
   <div class="pnote" id="pnote"></div>
@@ -612,13 +643,18 @@
       <option value="">anyone</option>
     </select>
   </div>
-  <div class="presets" id="presets"></div>
-  <div class="lines" id="pottype"></div>
-  <div class="lines" id="lines"></div>
-  <div class="lines" id="actions"></div>
-  <div class="lines" id="jams"></div>
-  <div class="lines" id="limps"></div>
-  <div class="presets textures" id="textures"><span class="lbl">Flop</span></div>
+  <!-- The filter chips: a short Common row by default, and every chip behind
+       "More filters" as a two-column list, label then chips. -->
+  <div class="presets common" id="common"><span class="lbl">Common</span></div>
+  <div class="filters hidden" id="filters">
+    <div id="presets"></div>
+    <div class="lines" id="pottype"></div>
+    <div class="lines" id="lines"></div>
+    <div class="lines" id="actions"></div>
+    <div class="lines" id="jams"></div>
+    <div class="lines" id="limps"></div>
+    <div class="presets textures" id="textures"><span class="lbl">Board</span></div>
+  </div>
 
   <div class="tiles">
     <button type="button" class="tile pick" id="t-hands-tile" title="list these hands">
@@ -627,8 +663,7 @@
     <div class="tile warn"><div class="v" id="t-cov">–</div><div class="k" id="t-cov-k">coverage</div></div>
     <div class="tile"><div class="v" id="t-raise">–</div><div class="k" id="t-raise-k">usual preflop raise</div></div>
   </div>
-  <p class="note" id="note">Cards are known only when a hand is shown, and hands are shown when they reach showdown.
-    The hands that folded out of this spot are the ones missing. Read coverage first.</p>
+  <ul class="note" id="note"></ul>
   <div class="strip hidden" id="strip"></div>
   <div class="err hidden" id="err"></div>
 
@@ -692,6 +727,8 @@
     <div id="foldeq" class="foldeq hidden"></div>
     <div id="tilt" class="hidden"></div>
     <div id="timing" class="hidden"></div>
+    <div id="shows" class="hidden"></div>
+    <div id="bounty" class="hidden"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
@@ -764,6 +801,32 @@
     ["Big blind", "position=BB"],
   ];
 
+  // The presets as labelled rows under More filters, by their filter. A preset in
+  // no group lands in the last one.
+  const PRESET_GROUPS = [
+    ["Preflop", ["acted_preflop", "opener,srp", "opener,open_bb>=4,srp", "opener,open_bb<=3,srp", "limp",
+      "faced_open", "called_open", "cold_call"]],
+    ["3-bet+", ["3bet", "faced_3bet", "faced_3bet_any=call", "folded_to_3bet", "squeeze",
+      "called_open,faced_3bet_any", "4bet", "faced_4bet", "5bet"]],
+    ["Steals", ["steal", "fold_to_steal", "3bet_vs_steal"]],
+    ["Other", ["wtsd", "position=BTN", "position=BB"]],
+  ];
+  // The Common row: [label, the chip under More filters it stands for]. Each is a
+  // stand-in that clicks the real chip, so the two always agree.
+  const COMMON = [
+    ["Opened SRP", '#presets [data-preset="opener,srp"]'],
+    ["3-bet", '#presets [data-preset="3bet"]'],
+    ["Called an open", '#presets [data-preset="called_open"]'],
+    ["Faced a 3-bet", '#presets [data-preset="faced_3bet"]'],
+    ["Steal", '#presets [data-preset="steal"]'],
+    ["3-bet pot", '#pottype [data-term="3bet_pot"]'],
+    ["C-bet flop", '#lines [data-term="cbet_flop"]'],
+    ["Faced c-bet", '#lines [data-term="faced_cbet_flop"]'],
+    ["Faced river bet", '#actions [data-term="faced_bet_river"]'],
+    ["Showdown", '#actions [data-term="wtsd"]'],
+  ];
+  const FILTERS_KEY = "pnt.allFilters";
+
   // Bet-size buckets; see "Bet size buckets" in SPEC.md. PokerNow's 1/2, 3/4 and
   // pot buttons each start a bucket.
   const SIZES = [["<⅕", "blocker"], ["⅕–½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
@@ -809,12 +872,28 @@
   ];
   const KIND_SPOT = { cbet: "c-bet chances", bet: "bets", faced_cbet: "c-bets faced" };
   const KIND_NOTE = {
-    cbet: "Each size is a share of their c-bet chances on this street; “checked” is the chances they passed up. Made hands are from the hands that were shown.",
-    bet: "Every first bet they made on this street, c-bet or not, split by size. Made hands are from the hands that were shown.",
-    faced_cbet: "Split by the size of the c-bet they faced. Made hands are from the hands that called or raised and were shown.",
+    cbet: ["Each size is a share of their c-bet chances; **checked** is the chances passed up.", "**Made hands:** shown hands only."],
+    bet: ["Every first bet on this street, c-bet or not, by size.", "**Made hands:** shown hands only."],
+    faced_cbet: ["By the size of the c-bet they faced.", "**Made hands:** shown hands that called or raised."],
   };
   const $ = (id) => document.getElementById(id);
-  const RANGE_NOTE = $("note").textContent;
+  // The view's note: a short bullet list. **text** is bold.
+  function bulletsInto(host, items) {
+    host.replaceChildren(...items.filter(Boolean).map((text) => {
+      const li = document.createElement("li");
+      text.split(/\*\*(.+?)\*\*/).forEach((part, i) => {
+        if (!part) return;
+        if (i % 2) { const b = document.createElement("b"); b.textContent = part; li.append(b); } else li.append(part);
+      });
+      return li;
+    }));
+    return host;
+  }
+  const setNote = (...items) => bulletsInto($("note"), items.flat());
+  const RANGE_NOTE = [
+    "**Shown hands only:** cards are known when a hand reaches showdown, so the hands that folded are missing.",
+    "Read **coverage** first.",
+  ];
 
   // Board texture chips. Each toggles one `flop=<tag>` term; groups are
   // separated visually but any combination composes (they AND together).
@@ -830,7 +909,7 @@
   const JAM_STREETS = ["preflop", "flop", "turn", "river"];
   const jamPattern = (key) => new RegExp(`^${key}(_(${JAM_STREETS.join("|")}))?$`);
   const JAM_TERM = /^(faced_|called_)?jam(_\w+)?$/;
-  const JAM_NOTE = "A jam everyone folds to is never shown, so a jam range that looks like all value may only mean the bluffs got through.";
+  const JAM_NOTE = "**Jams:** one everyone folded to is never shown, so an all-value jam range may just mean the bluffs got through.";
   // Limp chips: what a limper did when someone raised behind them (SPEC.md,
   // "Decision points": Limp-reraise). Each chip writes two terms, `limp` and the
   // decision at the open, and the row holds one of the three at a time. The last
@@ -842,7 +921,7 @@
     ["limp-fold", "limp,faced_open=fold", "limped, then folded to the open"],
   ];
   const LIMP_STRONG = ["top 15% shown", "hand_pct<=15", "shown hands in the top 15% of starting hands"];
-  const LIMP_NOTE = "A limp-reraise everyone folds to is never shown, so a shown limp-reraise range that looks like all big hands may only mean the bluffs got through.";
+  const LIMP_NOTE = "**Limp-reraise:** one everyone folded to is never shown, so an all-big-hands range may just mean the bluffs got through.";
   const isLimpReraise = (filter) => {
     const ts = (filter || "").split(",").map(t => t.trim());
     return ts.includes("limp") && ts.includes("faced_open=raise");
@@ -917,6 +996,14 @@
     if (name) next.push(`vs=${name}`);
     $("filter").value = next.join(",");
   }
+  // The More filters button counts the chips that are on but not in the Common row.
+  function syncMore() {
+    const more = $("morefilters");
+    if (!more) return;
+    const on = $("filters").querySelectorAll("button[aria-pressed=true]:not([data-common])").length;
+    const open = more.getAttribute("aria-expanded") === "true";
+    more.textContent = `More filters${on ? ` · ${on} on` : ""} ${open ? "▴" : "▾"}`;
+  }
   function syncChips() {
     document.querySelectorAll("button[data-term]").forEach(b => b.setAttribute("aria-pressed", hasTerm(b.dataset.term)));
     document.querySelectorAll("button[data-terms]").forEach(b => b.setAttribute("aria-pressed", b.dataset.terms.split(",").every(hasTerm)));
@@ -931,6 +1018,7 @@
     // A name typed in a different case than the dropdown's still selects it.
     const opt = [...sel.options].find(o => o.value.toLowerCase() === want.toLowerCase());
     sel.value = opt ? opt.value : "";
+    syncMore();
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet", floor: "set",
                   table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null,
@@ -954,7 +1042,7 @@
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "results"];
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "shows", "bounties", "results"];
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -967,10 +1055,15 @@
   const ORDER_NAMES = ORDERS.session;
   const orderOf = (view) => ORDERS[view].includes(state.order) ? state.order : ORDERS[view][0];
   const REVIEW_NOTE = {
-    review: "A flag is a prompt to open the replay, not a verdict. Missed bluffs and missed value need every live hand shown, so they come from showdowns only; a failed bluff also counts bluffs given up on before showdown.",
-    manual: "The hands you flagged with 🚩: in the HUD, right after a hand ends, or on any row of the other lists. A hand flagged from the HUD shows up once it has been rebuilt, a few seconds after it ends. Clear the 🚩 to take it off the list.",
-    session: "Every hand of the session, in the order it was dealt. Flagged hands carry their flag; tick a hand off or write on it as you go. Sat out adds the hands played while they were away from the table.",
-    beats: "Bookkeeping. Suckouts and preflop coolers are all-in showdowns with every hand shown, their equity taken where the betting stopped; a postflop cooler is a stacks hand already behind on a dry board.",
+    review: ["A flag is a prompt to replay, not a verdict.",
+      "**Missed bluffs, missed value:** showdowns only, where every live hand was shown.",
+      "**Failed bluffs** also count bluffs given up before showdown."],
+    manual: ["Hands you flagged 🚩, in the HUD or on any row here.",
+      "A HUD flag shows up a few seconds after the hand ends.", "Clear the 🚩 to take it off."],
+    session: ["Every hand of the session, in deal order.", "Tick hands off or write on them as you go.",
+      "**Sat out** adds the hands dealt while they were away."],
+    beats: ["**Suckouts, preflop coolers:** all-in showdowns, equity taken where the betting stopped.",
+      "**Postflop cooler:** a stacks hand already behind on a dry board."],
   };
 
   // ---- URL state so the page can be bookmarked or embedded --------------
@@ -1211,6 +1304,12 @@
         data = await getJson(`/players/${player}/tilt?` + q);
       } else if (view === "timing") {
         data = await loadTiming(quiet, live);
+      } else if (view === "shows") {
+        // Shows are not hands in a spot: the spot box does not narrow them.
+        data = await getJson(`/players/${player}/shows`);
+      } else if (view === "bounties") {
+        data = await getJson("/bounties");
+        data.player = state.player;
       } else if (view === "results") {
         // The red and blue lines ride along: same player and spot. A server too
         // old to have them costs the graph, not the view.
@@ -1367,6 +1466,8 @@
     results: "Big blinds won and lost",
     tilt: "After a big loss, and through the night",
     timing: "How long they took, and what they had",
+    shows: "Shown without being asked",
+    bounties: "7-2 bounties",
   };
 
   // ---- lines ---------------------------------------------------------------
@@ -1376,10 +1477,11 @@
   // of its segments carry the filter that finds exactly their hands; clicking one
   // adds that filter to the spot and lists the hands, so the view narrows to it.
   const LINES_VIEW = "lines";
-  const LINES_NOTE = "Strength is read on the board of the last street they acted on, as a share of the hands "
-    + "shown. Bluffs that got a fold are never shown, so a line that often wins uncontested looks stronger here "
-    + "than it is: read coverage first. Whole street writes their own actions in capitals and everyone else's in "
-    + "lower case; - is a street they were not in, and . one they were in where nobody acted (the run-out after an all-in).";
+  const LINES_NOTE = [
+    "**Strength:** read on the board of the last street they acted on, shown hands only.",
+    "A line that often wins uncontested looks stronger than it is: read coverage first.",
+    "**Whole street:** THEIRS IN CAPS, others lower case; **-** not in that street, **.** nobody acted (run-out after an all-in).",
+  ];
   // Strongest first. The colours are the page's two ramps as a diverging scale:
   // blue for made value, the grey midpoint for marginal, red for draws and air.
   const TIERS = [
@@ -1478,9 +1580,12 @@
     // While a click has the spot narrowed to a line, the way back is here, beside
     // the tree, and not only up in the controls: Back undoes the last change, and
     // "all lines" takes out every line and made-hand term while keeping the rest.
-    // Back at every line, the bar goes; the Back up top still undoes.
+    // One click in, the two land on the same spot, so only Back shows; "all lines"
+    // joins it once Back would stop short of every line. Back at every line, the
+    // bar goes; the Back up top still undoes.
     const narrowed = state.filter.split(",").map(t => t.trim()).filter(t => LINE_DRILL.test(t));
     if (narrowed.length) {
+      const unlined = terms().filter(t => !LINE_DRILL.test(t)).join(",");
       const bar = document.createElement("div"); bar.className = "lback";
       if (spotHistory.length) {
         const b = document.createElement("button"); b.type = "button"; b.textContent = "← Back";
@@ -1496,10 +1601,13 @@
       const all = document.createElement("button"); all.type = "button"; all.textContent = "× all lines";
       all.title = "take the line and made-hand terms out of the spot, keep the rest";
       all.addEventListener("click", () => {
-        $("filter").value = terms().filter(t => !LINE_DRILL.test(t)).join(",");
+        $("filter").value = unlined;
         apply();
       });
-      bar.append(what, all);
+      bar.append(what);
+      const prevSpot = spotHistory.length
+        ? spotHistory.at(-1).split(",").map(t => t.trim()).filter(Boolean).join(",") : null;
+      if (prevSpot !== unlined) bar.append(all);
       host.appendChild(bar);
     }
 
@@ -1668,10 +1776,12 @@
   const BV_STREET = { flop: "Flop", turn: "Turn", river: "River", all: "Every street" };
   // Which size rows are open, by street and size: kept while the page is open.
   const bvOpen = new Set();
-  const BV_NOTE = "Shown hands only, each read on the board of the street it bet or raised on. "
-    + "A bet everyone folds to is never shown, and that is the bluff that worked, so every ratio here leans to value: "
-    + "“folded” is how many of a row's bets got there. Your own cards are known on every hand, so your own rows are close to complete. "
-    + "The ratio is value against bluffs and semi-bluffs; marginal hands are on neither side.";
+  const BV_NOTE = [
+    "**Shown hands only**, each read on the street it bet or raised.",
+    "A bluff that got folds is never shown, so every ratio leans to value; **folded** counts the bets that got there.",
+    "**Your own rows** are near complete: all your cards are known.",
+    "**Ratio:** value against bluffs and semi-bluffs; marginal hands are neither.",
+  ];
 
   async function loadBluffs(quiet, live) {
     const pool = state.bluffScope === "pool";
@@ -1757,10 +1867,10 @@
     $("t-raise").textContent = all.ratio_text;
     setRaiseKey("value : bluff", `all aggression · ${all.n} hands bet or raised`);
     $("subtitle").textContent = `${pool ? `the pool, ${d.players} players` : d.player} · ${d.filter || "all hands"}`;
-    $("note").textContent = BV_NOTE;
+    setNote(BV_NOTE);
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty"]) {
       $(id).classList.add("hidden");
     }
     $("card-title").textContent = TITLE.bluffs;
@@ -1975,12 +2085,13 @@
         ["over-fold", (r) => pts(r.overfold), (r) => r.overfold > 0, null, "fold minus (100 − MDF), in points: positive folds more than the bet demands"],
       ], what);
     }
-    const note = document.createElement("p");
+    const note = bulletsInto(document.createElement("ul"), [
+      "**Break-even:** the fold rate a no-equity bluff needs at that size. **MDF:** the share a defender must continue with.",
+      `**Highlighted:** a size that profited as a pure bluff, or a defense that over-folds, on ${fe.min_sample}+ hands.`,
+      "Every bet counts, shown or not: this says how often a size won, not what it was.",
+      "Click a row for its hands; an underlined fold rate lists just the folds.",
+    ]);
     note.className = "note"; note.style.margin = "10px 0 0";
-    note.textContent = `A bet's break-even is the fold rate a bluff with no equity needs at that size; MDF is the share a defender must continue with to deny it. `
-      + `Highlighted: a size that showed a profit as a pure bluff, or a defense that folds too much, on ${fe.min_sample}+ hands. `
-      + `No cards are needed, so every bet counts, shown or not; bluffs that got folds are never shown, so this says how often a size won, not what it was. `
-      + `Click a row for its hands; an underlined fold rate lists the folds alone.`;
     wrap.appendChild(note);
   }
 
@@ -2001,10 +2112,11 @@
   const SP_OPTIONAL = new Set(["check_fold", "fold", "other"]);
   const SP_LEAF = { trips: "trips (paired board)", total: "all of them" };
   const spLeaf = (leaf) => SP_LEAF[leaf] || leaf.replace(/_/g, " ");
-  const SP_NOTE = "Each row is a made hand they had on this street, from the hands where it was shown. "
-    + "Shown hands only, and the bias runs one way: a strong hand that bet and got folds to is never shown, "
-    + "while one that checked or called usually reaches showdown, so anyone's slowplay share but your own reads high. "
-    + "Read coverage first. Click a cell for its hands; its filter is in the list's title.";
+  const SP_NOTE = [
+    "**Rows:** each made hand they had on this street, shown hands only.",
+    "**Skew:** a strong hand that bet and got folds is never shown, so slowplay % reads high, except yours (all cards known).",
+    "Read coverage first. Click a cell for its hands.",
+  ];
 
   function renderStrengthTiles(d) {
     setTileKeys(`in the hand on the ${d.street}`, "cards known", "coverage");
@@ -2118,9 +2230,11 @@
   // any other's. A row is its filter: clicking it adds the terms to the spot and
   // lists the hands. In-position rows have no filter term yet, so they list their
   // hands by id and leave the spot alone. See "Results by pot type" in SPEC.md.
-  const RESULTS_NOTE = "Each complete hand's net in its own big blinds, added up; a hand whose log stops early counts"
-    + " among the hands and in no bb figure. Walk is the big blind folded to; limped is every other pot nobody raised,"
-    + " the folds around to someone's walk included. Click a row to add it to the spot and list its hands.";
+  const RESULTS_NOTE = [
+    "**bb:** each complete hand's net in its own big blinds. A log that stops early counts its hands, not its bb.",
+    "**Walk:** the big blind folded to. **Limped:** every other unraised pot.",
+    "Click a row to add it to the spot and list its hands.",
+  ];
   function renderResults(d) {
     const wrap = $("results");
     wrap.replaceChildren();
@@ -2141,7 +2255,7 @@
     $("t-raise").textContent = worst ? (parent ? `${parent.label} · ${worst.label}` : worst.label) : "–";
     setRaiseKey("worst pot, by bb/100", worst ? `${worst.bb_per_100.toFixed(1)} bb/100 · of rows with ${d.min_hands}+ hands`
       : `no losing row of ${d.min_hands}+ hands`);
-    $("note").textContent = RESULTS_NOTE;
+    setNote(RESULTS_NOTE);
     $("tabletoggle").classList.add("hidden"); // this view is a table already
     $("table").classList.add("hidden");
 
@@ -2476,9 +2590,8 @@
       row(steps.t, w, [w.n, fmtPct(w.pct), ""], w.pct, `${w.label}: ${w.n} of ${f.flops} flops seen`, w.key === "wwsf_nsd" ? "won the pot" : null);
     }
     const cut = f.flops - f.complete;
-    steps.block.appendChild(note(`${f.complete} of ${f.flops} flops come from a log that ran to the end`
-      + (cut ? `; the other ${cut} stop early and reached no further than their log.` : ".")
-      + " Won the pot is WWSF: collecting from it, at showdown or not; a 7-2 bounty is not the pot."));
+    steps.block.appendChild(note(`${f.complete} of ${f.flops} flops are from logs that ran to the end`
+      + (cut ? `; ${cut} stop early.` : ".") + " Won the pot is WWSF (a 7-2 bounty doesn't count)."));
 
     const folds = table("Where they folded after the flop", ["", "", "folds", "of hands", "fold %", "of all folds"], {
       "of hands": "the hands that reached that street the same way: every fold row is a share of these",
@@ -2493,8 +2606,8 @@
           `${r.label}, ${x.label}: ${x.n} folds of ${x.of}`, r.label);
       }
     }
-    folds.block.appendChild(note("Not the aggressor is everyone else who reached the street: a caller of the last bet,"
-      + " or anyone on a street that checked through. Flop folds are split by the preflop aggressor."));
+    folds.block.appendChild(note("Not the aggressor: a caller of the last bet, or anyone on a checked-through street."
+      + " Flop folds split by the preflop aggressor."));
     return box;
   }
 
@@ -2516,11 +2629,9 @@
     $("t-cov").textContent = d.vpip_gap == null ? "–" : `${d.vpip_gap > 0 ? "+" : ""}${d.vpip_gap.toFixed(1)}`;
     $("t-raise").textContent = d.losses;
     setRaiseKey(`losses of ${d.big_loss_bb}+ bb`, `${d.sessions} session${d.sessions === 1 ? "" : "s"}`);
-    $("note").textContent = `A big loss is one hand that lost ${d.big_loss_bb} bb or more; the window is the next ${d.window} `
-      + "hands they played in the same session, and a new loss starts it again. Every figure carries its n: VPIP and PFR "
-      + "over their preflop decisions, aggression over postflop bets, raises, calls and folds, bb/100 over complete hands. "
-      + `The hour bands need a timestamp: ${d.clock.known} of ${d.clock.n} hands have one. `
-      + "Click a row to add it to the spot and list its hands.";
+    setNote(`**Big loss:** one hand that lost ${d.big_loss_bb}+ bb. The window is their next ${d.window} hands that session; a new loss restarts it.`,
+      `**Hour bands** need a timestamp: ${d.clock.known} of ${d.clock.n} hands have one.`,
+      "Every figure shows its n. Click a row to add it to the spot and list its hands.");
     $("tabletoggle").classList.add("hidden"); // this view is a table already
     $("table").classList.add("hidden");
 
@@ -2633,7 +2744,7 @@
     $("t-cov").textContent = cov.decisions ? fmtPct(100 * cov.timed / cov.decisions) : "–";
     $("t-raise").textContent = river.median_ms == null ? "–" : `${(river.median_ms / 1000).toFixed(1)} s`;
     setRaiseKey("median river decision", `${river.timed} timed`);
-    $("note").textContent = d.note + " Click a row of theirs to add it to the spot and list its hands.";
+    setNote([].concat(d.note), "Click one of their rows to list its hands.");
     $("tabletoggle").classList.add("hidden"); // this view is a table already
     $("table").classList.add("hidden");
     const para = (cls, text) => { const p = document.createElement("p"); p.className = cls; p.textContent = text; return p; };
@@ -2713,14 +2824,18 @@
     if (!pool || pool.error) pb.appendChild(para("why", pool?.error ? `The pool could not be read: ${pool.error}` : "loading…"));
     else {
       pb.appendChild(spotTable(pool.spots, { pool: true }));
-      pb.appendChild(para("why", "A slow call has been stronger than a quick one: more value, fewer draws. A long think "
-        + "before a river bet has meant value, not a bluff: air is about the same share in every bucket. River calls "
-        + "carry no timing signal. Bluffs that got a fold are never shown, so the shown rows lean to value."));
+      const found = bulletsInto(document.createElement("ul"), [
+        "**Slow calls** have been stronger than quick ones: more value, fewer draws.",
+        "**A long think before a river bet** has meant value: air is about the same in every bucket.",
+        "**River calls:** no timing signal.",
+      ]);
+      found.className = "why";
+      pb.appendChild(found);
       const rb = pool.thin?.river_bet;
       if (rb) {
         pb.appendChild(para("why", `Per player the cells are thin: of ${rb.players} players with river bets known, `
           + (rb.full.length ? `only ${rb.full.join(" and ")} ${rb.full.length === 1 ? "has" : "have"}` : "none has")
-          + ` ${pool.min_cell} known hands in every bucket. Read the pool first.`));
+          + ` ${pool.min_cell} known hands in every bucket: read the pool first.`));
       }
     }
     wrap.appendChild(pb);
@@ -2774,9 +2889,12 @@
       }
       t.appendChild(tr);
     }
-    sb.append(sh, t, para("why", "Timed from the action or board line before it, never from chat. Pre is a check, call or "
-      + "fold within 1 s of the action before it, which PokerNow's buttons pre-select; after a board line it cannot be told "
-      + "from a quick click and counts as a snap."));
+    const how = bulletsInto(document.createElement("ul"), [
+      "**Timed** from the action or board before it, never from chat.",
+      "**Pre:** a check, call or fold within 1 s of the action before, a pre-selected button. After a board it counts as a snap.",
+    ]);
+    how.className = "why";
+    sb.append(sh, t, how);
     wrap.appendChild(sb);
   }
 
@@ -2799,12 +2917,12 @@
     else if (strength) renderStrengthTiles(d);
     else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
-    $("note").textContent = review ? REVIEW_NOTE[view]
+    setNote(review ? REVIEW_NOTE[view]
       : view === "sizing" ? KIND_NOTE[d.kind]
       : view === LINES_VIEW ? LINES_NOTE
       : strength ? SP_NOTE
-      : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? `${RANGE_NOTE} ${JAM_NOTE}` : RANGE_NOTE;
-    if ((view === "preflop" || view === "made") && isLimpReraise(d.filter)) $("note").textContent += ` ${LIMP_NOTE}`;
+      : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? [...RANGE_NOTE, JAM_NOTE] : RANGE_NOTE,
+      (view === "preflop" || view === "made") && isLimpReraise(d.filter) ? LIMP_NOTE : []);
     $("colorseg").classList.toggle("hidden", view !== "preflop");
     $("sizingctl").classList.toggle("hidden", view !== "sizing");
     $("linesctl").classList.toggle("hidden", view !== LINES_VIEW);
@@ -2823,6 +2941,8 @@
     $("strength").classList.toggle("hidden", !strength);
     $("tilt").classList.toggle("hidden", view !== "tilt");
     $("timing").classList.toggle("hidden", view !== "timing");
+    $("shows").classList.toggle("hidden", view !== "shows");
+    $("bounty").classList.toggle("hidden", view !== "bounties");
     applyLayout();
     if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
@@ -2831,11 +2951,163 @@
     if (view === "results") { renderResults(d); return; }
     if (view === "tilt") { renderTilt(d); return; }
     if (view === "timing") { renderTiming(d); return; }
+    if (view === "shows") { renderShows(d); return; }
+    if (view === "bounties") { renderBounties(d); return; }
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);
     else renderSizing(d);
     renderTable(d, view);
+  }
+
+  // ---- shows without being asked -----------------------------------------------
+  // GET /players/{alias}/shows: the hands they turned over when nobody asked. Not
+  // hands in a spot, so the spot box leaves them alone. A row lists and replays
+  // its one hand. See "Voluntary shows" in SPEC.md.
+  const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
+  const SHOW_WORDS = { ahead: "ahead of", chop: "chopping with", behind: "behind" };
+  const cardText = (c) => pretty(c);
+  function renderShows(d) {
+    const wrap = $("shows");
+    wrap.replaceChildren();
+    const fv = d.folded_vs;
+    setTileKeys("shown unasked ›", "showed air", "top pair or better");
+    $("t-hands").textContent = d.shows;
+    $("t-known").textContent = fmtPct(d.air_pct);
+    $("t-cov").textContent = fmtPct(d.strong_pct);
+    $("t-raise").textContent = fv.known ? `${fv.ahead} of ${fv.known}` : "–";
+    setRaiseKey("folded the best hand", fv.known ? "folds shown against a winner whose cards are known" : "no shown fold with the winner's cards known");
+    tileTip("t-known", `${d.classes.air} of ${d.two_card} two-card shows`);
+    tileTip("t-cov", `${d.classes.strong} of ${d.two_card} two-card shows`);
+    setNote(d.note, `${d.shows} shown of ${d.hands} hands dealt in; ${d.two_card} with both cards, ${d.one_card} with one (counted only).`,
+      "The spot box does not narrow shows. Click a row to replay the hand.");
+    $("tabletoggle").classList.add("hidden");
+    $("table").classList.add("hidden");
+    if (!d.shows) { wrap.appendChild(message("never showed a hand unasked")); return; }
+
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    for (const h of ["how the hand ended", "shows", "1 card", ...SHOW_CLASSES]) head.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
+    t.appendChild(head);
+    const total = { label: "all", shows: d.shows, one_card: d.one_card, classes: d.classes };
+    for (const c of [...d.contexts, total]) {
+      if (!c.shows && c !== total) continue;
+      const tr = document.createElement("tr");
+      if (c === total) tr.className = "total";
+      const cells = [c.label, c.shows, c.one_card || "·", ...SHOW_CLASSES.map(k => c.classes[k] || "·")];
+      cells.forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i === 2) td.className = "dim"; tr.appendChild(td); });
+      t.appendChild(tr);
+    }
+    wrap.appendChild(t);
+
+    const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
+    const list = document.createElement("table");
+    const lh = document.createElement("tr");
+    for (const h of ["hand", "shown", "how it ended", "board as it stood", "read as", "against the winner"]) lh.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
+    const thead = document.createElement("thead"); thead.appendChild(lh); list.appendChild(thead);
+    const body = document.createElement("tbody");
+    for (const r of d.rows) {
+      const tr = document.createElement("tr");
+      tr.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}: click to replay`;
+      const cell = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
+      cell(`#${r.hand_number}`);
+      cell(cardText(r.cards));
+      cell(words[r.context] || r.context, "dim");
+      cell(r.board.length ? `${r.street}: ${cardText(r.board.join(""))}` : "preflop");
+      const made = r.made ? (r.missed ? "missed " : "") + r.made.replace(/_/g, " ") : "";
+      cell(r.class ? `${r.class} · ${made}` : "one card", r.class ? `cls-${r.class}` : "dim");
+      cell(r.vs ? `${SHOW_WORDS[r.vs.result]} ${r.vs.you ? "you" : r.vs.player} (${cardText(r.vs.cards)})` : "", r.vs ? r.vs.result : "");
+      tr.addEventListener("click", () => {
+        openHands(`${d.player}: hand #${r.hand_number}, shown unasked`, [r.hand_id]);
+        pntReplay.show($("replay"), r.hand_id);
+      });
+      body.appendChild(tr);
+    }
+    list.appendChild(body);
+    wrap.appendChild(list);
+  }
+
+  // ---- 7-2 bounties ----------------------------------------------------------
+  // GET /bounties: the side bet's board, every player, the one on show marked. A
+  // count opens that player's bounty hands; a row switches the chart to them.
+  const signed = (n) => (n > 0 ? "+" : "") + n.toLocaleString();
+  function renderBounties(d) {
+    const wrap = $("bounty");
+    wrap.replaceChildren();
+    // To a player; with a filter, to their hands in it on the starting-hands grid.
+    const go = (player, filter) => {
+      $("player").value = player;
+      if (filter != null) {
+        $("filter").value = filter;
+        state.by = "preflop";
+        document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === "preflop"));
+      }
+      apply();
+    };
+    setTileKeys("bounties collected", "chips changed hands", "players");
+    $("t-hands").textContent = d.total.bounties.toLocaleString();
+    $("t-known").textContent = d.total.won.toLocaleString();
+    $("t-cov").textContent = d.players.length;
+    const me = d.players.find(r => r.player === d.player);
+    $("t-raise").textContent = me ? signed(me.net.chips) : "–";
+    setRaiseKey(me ? `${d.player}'s net` : "net", me ? `${me.won.count} won · ${me.paid.count} paid` : "no bounty yet");
+    $("subtitle").textContent = "every player · all hands";
+    setNote("**Win a pot with 7-2** and everyone at the table pays you.",
+      "A side bet: chips only move between players, so **net** sums to zero."
+        + (d.balance ? ` (It is ${signed(d.balance)} off: a payment named someone not dealt in.)` : ""),
+      "Click a count for those hands; a row switches the chart to that player.");
+    $("tabletoggle").classList.add("hidden");
+    $("table").classList.add("hidden");
+    if (!d.players.length) wrap.appendChild(message("no bounty has been paid yet"));
+    else {
+      const t = document.createElement("table");
+      const head = document.createElement("tr");
+      for (const h of ["player", "won", "chips", "paid", "chips", "net", "net bb", "of hands"]) head.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
+      const thead = document.createElement("thead"); thead.appendChild(head); t.appendChild(thead);
+      const body = document.createElement("tbody");
+      for (const r of d.players) {
+        const tr = document.createElement("tr");
+        if (r.player === d.player) tr.className = "me";
+        const cell = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); return td; };
+        const count = (side, filter) => {
+          const td = cell("");
+          const n = r[side].count;
+          if (!n || !filter) { td.textContent = n; return; }
+          const a = document.createElement("a"); a.href = "#"; a.textContent = n; a.className = "link";
+          a.title = `${r.player}'s ${n} hand${n === 1 ? "" : "s"} ${side === "won" ? "won" : "paid"} a bounty in`;
+          a.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); go(r.player, filter); });
+          td.appendChild(a);
+        };
+        cell(r.player);
+        count("won", r.won_filter);
+        cell(r.won.chips.toLocaleString(), "dim");
+        count("paid", r.paid_filter);
+        cell(r.paid.chips.toLocaleString(), "dim");
+        cell(signed(r.net.chips), r.net.chips > 0 ? "up" : r.net.chips < 0 ? "down" : "");
+        cell(r.net.bb == null ? "—" : signed(r.net.bb));
+        const of = cell(r.hands.toLocaleString(), "dim");
+        of.title = `${r.bounty_hands} bounty hand${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
+        tr.title = `Switch the chart to ${r.player}`;
+        tr.addEventListener("click", () => go(r.player, null));
+        body.appendChild(tr);
+      }
+      t.appendChild(body);
+      wrap.appendChild(t);
+    }
+    // The logs' owners only: anyone else's 72 is seen only when shown.
+    for (const h of d.hero) {
+      const p = document.createElement("p"); p.className = "hero72";
+      const link = (text, filter) => {
+        if (!filter) return document.createTextNode(text);
+        const a = document.createElement("a"); a.href = "#"; a.className = "link"; a.textContent = text;
+        a.addEventListener("click", (e) => { e.preventDefault(); go(h.player, filter); });
+        return a;
+      };
+      p.append(`${h.player} was `, link(`dealt 72 ${h.dealt_72}×`, h.dealt_filter), " and ",
+        link(`played it ${h.played_72}×`, h.played_filter),
+        (h.played_pct == null ? "" : ` (${h.played_pct}%)`) + ` · cards known on ${h.known} of ${h.hands} hands in their own logs.`);
+      wrap.appendChild(p);
+    }
   }
 
   function setRaiseKey(text, small) {
@@ -3719,6 +3991,8 @@
   // `live` is the load's: a strip for a spot since left is not drawn.
   async function loadStrip(live) {
     const el = $("strip");
+    // Shows and the 7-2 board are not hands in a spot: the strip would describe nothing on show.
+    if (state.by === "shows" || state.by === "bounties") { el.classList.add("hidden"); return; }
     try {
       const q = new URLSearchParams();
       if (state.filter) q.set("filter", state.filter);
@@ -3837,6 +4111,11 @@
     // The session view is already the list of its hands.
     // The pool's tile counts everyone's hands, which no one player's list holds.
     if (state.by === "bluffs" && state.bluffScope === "pool") return;
+    if (state.by === "bounties") return;
+    if (state.by === "shows" && state.dataView === "shows" && state.data) {
+      openHands("Shown without being asked", state.data.rows.map(r => r.hand_id));
+      return;
+    }
     if (state.player && state.by !== SESSION_VIEW) openHands("All hands in this spot", null);
   });
   // The drill-down list and the review views read separate data; opening a view
@@ -3898,16 +4177,26 @@
   $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
   $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });
   $("vs").addEventListener("change", () => { setVsTerm($("vs").value); apply(); });
-  for (const [name, f] of PRESETS) {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = f;
-    b.dataset.preset = f;
-    // Clicking the preset that is already showing clears it, rather than
-    // re-applying the same spot with no way back to all hands.
-    b.addEventListener("click", () => {
-      $("filter").value = $("filter").value.trim() === f ? "" : f;
-      apply();
-    });
-    $("presets").appendChild(b);
+  {
+    const rows = new Map(PRESET_GROUPS.map(([label]) => {
+      const row = document.createElement("div"); row.className = "presets";
+      const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = label;
+      row.appendChild(lbl);
+      $("presets").appendChild(row);
+      return [label, row];
+    }));
+    const groupOf = new Map(PRESET_GROUPS.flatMap(([label, fs]) => fs.map(f => [f, label])));
+    for (const [name, f] of PRESETS) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.title = f;
+      b.dataset.preset = f;
+      // Clicking the preset that is already showing clears it, rather than
+      // re-applying the same spot with no way back to all hands.
+      b.addEventListener("click", () => {
+        $("filter").value = $("filter").value.trim() === f ? "" : f;
+        apply();
+      });
+      rows.get(groupOf.get(f) || PRESET_GROUPS.at(-1)[0]).appendChild(b);
+    }
   }
   for (const [name, key, what] of LINES) {
     const row = document.createElement("div"); row.className = "presets";
@@ -4009,6 +4298,42 @@
     b.dataset.term = `flop=${tag}`;
     b.addEventListener("click", () => { toggleTerm(b.dataset.term); apply(); });
     $("textures").appendChild(b);
+  }
+  // Every row under More filters becomes label | chips, so the chips wrap in their
+  // own column instead of under the label.
+  for (const row of $("filters").querySelectorAll(".presets")) {
+    const lbl = row.querySelector(":scope > .lbl") || document.createElement("span");
+    lbl.classList.add("lbl");
+    const chips = document.createElement("span"); chips.className = "chips";
+    for (const n of [...row.childNodes]) if (n !== lbl) chips.appendChild(n);
+    row.replaceChildren(lbl, chips);
+  }
+  for (const [text, sel] of COMMON) {
+    const real = $("filters").querySelector(sel);
+    if (!real) continue;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = real.title;
+    for (const k of ["preset", "term", "terms"]) if (real.dataset[k] != null) b.dataset[k] = real.dataset[k];
+    real.dataset.common = "1";
+    b.addEventListener("click", () => real.click());
+    $("common").appendChild(b);
+  }
+  {
+    const more = document.createElement("button"); more.type = "button"; more.id = "morefilters"; more.className = "more";
+    more.title = "more chips, by kind; every filter term is under the ? by the Spot box";
+    let open = false;
+    try { open = localStorage.getItem(FILTERS_KEY) === "open"; } catch { /* closed */ }
+    const show = (o) => {
+      $("filters").classList.toggle("hidden", !o);
+      more.setAttribute("aria-expanded", String(o));
+      syncMore();
+    };
+    more.addEventListener("click", () => {
+      const o = more.getAttribute("aria-expanded") !== "true";
+      try { localStorage.setItem(FILTERS_KEY, o ? "open" : "closed"); } catch { /* this visit only */ }
+      show(o);
+    });
+    $("common").appendChild(more);
+    show(open);
   }
   $("filter").addEventListener("input", syncChips);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.data && render());

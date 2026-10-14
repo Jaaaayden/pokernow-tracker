@@ -376,10 +376,8 @@
     put("POS", vocab.positions.join("  "));
     put("SIZE", Object.entries(vocab.sizes).map(([k, d]) => `${k} (${d})`).join("  "));
     put("TEXTURE", vocab.textures.join("  "));
-    put("LINE", "x check  b bet  c call  r raise  f fold  * any number (x* = x then anything)"
-      + "  ? exactly one (x? = xc xf xr)  - alone: did not act;  line= takes flop/turn/river");
-    put("SEQ", "as LINE, everyone's actions in order: theirs X B C R F, others' x b c r f (case-sensitive);"
-      + "  xB* = checked to them, they bet, then anything  - alone: not in the hand");
+    put("LINE", "x check  b bet  c call  r raise  f fold  * any run  ? one action  - didn't act");
+    put("SEQ", "as LINE, theirs in CAPS (X B C R F), others' lower case  - not in the hand");
     put("MADE", Object.keys(vocab.made).join("  "));
     put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");

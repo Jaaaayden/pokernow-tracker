@@ -28,6 +28,12 @@ The four classes are `strength_at`'s buckets with medium and weak folded into on
 
 A one-card show is counted, not classified: one card says little about a hand.
 
+Two rates read the two-card shows: how often they showed air (`air_pct`) and how
+often top pair or better (`strong_pct`). A fold they then showed is also held
+against the hand that won, wherever the winner's cards are known (your own hands,
+or the winner's own show): was the folded hand ahead on the board as it stood
+(`vs`, and `folded_vs` for the count)? Preflop folds are not compared.
+
 Shows are not `Facts`, so no spot filter reproduces a row. Each row is one hand,
 and carries its `hand_id`, so it opens on its own.
 """
@@ -38,8 +44,18 @@ import json
 import sqlite3
 
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
-from .cards import DEALT, DRAW_DETAILS, board_at, hand_class, leaf_of, made_at, street_of_board
-from .queries import identities_of
+from .cards import (
+    DEALT,
+    DRAW_DETAILS,
+    board_at,
+    hand_class,
+    leaf_of,
+    made_at,
+    parse_cards,
+    street_of_board,
+)
+from .equity import rank7
+from .queries import display_names, identities_of
 from .tags import THRESHOLDS, _tag, strength_at
 
 #: Strongest first: the order the table prints them in.
@@ -55,12 +71,12 @@ CONTEXT_LABELS = {
 
 _STREET_ORDER = (PREFLOP, FLOP, TURN, RIVER)
 
+#: One bullet each. **text** is bold on the page.
 NOTE = (
-    "Chosen reveals, not a sample of their range: these are the hands the player "
-    "decided you should see. Everywhere else, bluffs that got folds are never shown; "
-    "here they are, but only the ones the player wanted seen. Showing air after a fold "
-    "or a pot nobody contested advertises bluffs; showing only strong hands sells a "
-    "tight image. That choice is the tell, so the range views leave these rows out."
+    "**Chosen reveals**, not a sample of their range: the hands they wanted you to see.",
+    "Bluffs that got folds are never shown anywhere else; here, only the ones they chose.",
+    "Showing air advertises bluffs; showing only strong hands sells a tight image.",
+    "That choice is the tell, so the range views leave these out.",
 )
 
 _CLASS_OF = {"strong": "strong", "medium": "marginal", "weak": "marginal", "draw": "draw", "air": "air"}
@@ -108,6 +124,35 @@ def _empty_classes() -> dict[str, int]:
     return {c: 0 for c in CLASSES}
 
 
+def _pct(k: int, n: int) -> float | None:
+    return round(100.0 * k / n, 1) if n else None
+
+
+def _winners(conn: sqlite3.Connection, hand_ids: list[str]) -> dict[str, list[tuple[str, str | None]]]:
+    """hand_id -> [(pn_id, two known cards or None)] of everyone who collected,
+    most first. Cards are the hole cards on record, else the winner's own show."""
+    out: dict[str, list[tuple[str, str | None]]] = {}
+    if not hand_ids:
+        return out
+    q = ",".join("?" * len(hand_ids))
+    shown = {(r["hand_id"], r["pn_id"]): r["cards"] for r in conn.execute(
+        f"SELECT hand_id, pn_id, cards FROM voluntary_shows WHERE hand_id IN ({q}) AND length(cards) = 4", hand_ids)}
+    for r in conn.execute(
+        f"SELECT hand_id, pn_id, hole_cards FROM hand_players WHERE hand_id IN ({q}) AND collected > 0"
+        f" ORDER BY collected DESC", hand_ids,
+    ):
+        cards = r["hole_cards"] if r["hole_cards"] and len(r["hole_cards"]) == 4 else shown.get((r["hand_id"], r["pn_id"]))
+        out.setdefault(r["hand_id"], []).append((r["pn_id"], cards))
+    return out
+
+
+def versus(hole: str, winner: str, board: tuple[str, ...]) -> str:
+    """``ahead``, ``chop`` or ``behind``: `hole` against `winner` on `board`."""
+    b = parse_cards(list(board))
+    mine, theirs = rank7(parse_cards(hole) + b), rank7(parse_cards(winner) + b)
+    return "ahead" if mine > theirs else "chop" if mine == theirs else "behind"
+
+
 def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = None) -> dict:
     """Every hand one player showed without being asked, classified and split by
     how the hand ended for them. Raises ValueError on an unknown alias.
@@ -134,8 +179,11 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
              "classes": _empty_classes()}
             for k in CONTEXTS
         ],
+        "air_pct": None,
+        "strong_pct": None,
+        "folded_vs": {"known": 0, "ahead": 0, "chop": 0, "behind": 0, "ahead_pct": None},
         "rows": [],
-        "note": NOTE,
+        "note": list(NOTE),
     }
     if not ids:
         return out
@@ -156,6 +204,10 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
         [*ids, *game_args],
     ).fetchall()
     by_ctx = {c["key"]: c for c in out["contexts"]}
+    winners = _winners(conn, [r["hand_id"] for r in rows if r["folded"] and r["n_cards"] == 2])
+    owners = {g: h for g, h in conn.execute("SELECT game_id, hero_pn_id FROM games WHERE hero_pn_id IS NOT NULL")}
+    names = display_names(conn)
+    fv = out["folded_vs"]
     for r in rows:
         board = _first_run(r["board_json"])
         ctx = context_of(bool(r["folded"]), bool(r["went_to_showdown"]))
@@ -191,12 +243,34 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
             "made": made,
             # A draw still drawing when the river was dealt: it missed.
             "missed": street == RIVER and made in DRAW_DETAILS,
+            "vs": _vs(r, two, ctx, seen, winners, owners, names),
             "n_dealt_in": r["n_dealt_in"],
             "contributed": r["contributed"],
             "collected": r["collected"],
         })
     out["coverage"] = round(100.0 * out["two_card"] / out["shows"], 1) if out["shows"] else None
+    out["air_pct"] = _pct(out["classes"]["air"], out["two_card"])
+    out["strong_pct"] = _pct(out["classes"]["strong"], out["two_card"])
+    for row in out["rows"]:
+        if row["vs"]:
+            fv["known"] += 1
+            fv[row["vs"]["result"]] += 1
+    fv["ahead_pct"] = _pct(fv["ahead"], fv["known"])
     return out
+
+
+def _vs(r, two: bool, ctx: str, seen: tuple[str, ...], winners, owners, names) -> dict | None:
+    """A shown fold against the hand that won, on the board as it stood, when the
+    winner's two cards are known; else None. The biggest winner whose cards are
+    known stands for the pot."""
+    if not two or ctx != "folded" or len(seen) < 3:
+        return None
+    known = [(pn, c) for pn, c in winners.get(r["hand_id"], []) if c and pn != r["pn_id"]]
+    if not known:
+        return None
+    pn, cards = known[0]
+    return {"player": names.get(pn, pn), "cards": cards, "you": owners.get(r["game_id"]) == pn,
+            "result": versus(r["cards"], cards, seen)}
 
 
 # --------------------------------------------------------------- the tags ---

@@ -307,6 +307,19 @@ def test_a_database_from_before_the_clock_asks_for_a_rebuild(db):
     assert all(sp["timed"] == 0 for sp in out["spots"])
 
 
+def test_a_player_with_no_timed_hands_gets_no_relative_rows_not_a_crash():
+    # Before a rebuild there is no median to cut from, so no relative spot at all:
+    # this was a KeyError, and a 500 from /players/{alias}/timing.
+    from pnt.stats.timing import timing_report
+
+    conn = connect(":memory:")
+    import_csv(conn, ALL_LOGS[0])
+    conn.execute("UPDATE actions SET ord = NULL")
+    facts = [f for h in load_hands(conn) for f in derive(h)]
+    out = timing_report(facts, baseline=facts, with_ids=True)
+    assert out["relative"] == {"medians_ms": {}, "cuts_ms": {}, "spots": []}
+
+
 # ----------------------------------------------------------------- server -----
 
 
