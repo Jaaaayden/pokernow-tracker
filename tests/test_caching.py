@@ -358,3 +358,16 @@ def test_a_rename_is_visible_in_the_next_review_list(db):
     with pytest.raises(ValueError, match="unknown alias"):
         rv.review_hand_list(db, "genericpoker")
     assert rv.review_hand_list(db, "gp")["player"] == "gp"
+
+
+def test_evict_oldest_tolerates_a_racing_eviction():
+    """Two requests that miss a full cache at once can both evict: the second finds
+    the oldest key gone, or the cache empty, and must not raise."""
+    from pnt.stats.queries import evict_oldest
+
+    cache = {"a": 1, "b": 2}
+    evict_oldest(cache)
+    assert list(cache) == ["b"]
+    cache.clear()
+    evict_oldest(cache)  # already emptied by the other thread
+    assert cache == {}

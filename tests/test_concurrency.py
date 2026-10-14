@@ -74,3 +74,30 @@ def test_writing_owns_its_transaction(tmp_path):
         with pytest.raises(RuntimeError, match="must own its transaction"), writing(conn):
             pass
     conn.close()
+
+
+def test_migration_tolerates_a_column_added_meanwhile(tmp_path):
+    """The server's sync and warm-up threads both migrate at start. One that read
+    the table before the other added a column must not crash on its own ALTER."""
+    from pnt.db import conn as dbconn
+
+    path = tmp_path / "t.sqlite"
+    connect(path).close()
+    old = sqlite3.connect(path)
+    old.execute("ALTER TABLE players DROP COLUMN notes_at")
+    old.commit()
+    old.close()
+
+    loser = connect(path, init=False)
+    stale = {t: loser.execute(f"PRAGMA table_info({t})").fetchall() for t, _, _ in dbconn._ADDED_COLUMNS}
+    connect(path).close()  # the winner adds notes_at
+
+    class StaleRead:  # what the loser saw just before the winner's ALTER
+        def execute(self, sql, *args):
+            if sql.startswith("PRAGMA table_info("):
+                return stale[sql[len("PRAGMA table_info("):-1]]
+            return loser.execute(sql, *args)
+
+    dbconn._migrate(StaleRead())
+    assert "notes_at" in {r[1] for r in loser.execute("PRAGMA table_info(players)")}
+    loser.close()

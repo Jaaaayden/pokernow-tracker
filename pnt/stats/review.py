@@ -51,7 +51,15 @@ from .cards import (
 )
 from .derive import AGGRESSIVE, POSTFLOP_STREETS, Facts, HandPlayerRow, HandRow, derive, size_bucket
 from .equity import best_of
-from .queries import display_names, facts_cached, hand_list, identities_of, identity_map, load_hands
+from .queries import (
+    display_names,
+    evict_oldest,
+    facts_cached,
+    hand_list,
+    identities_of,
+    identity_map,
+    load_hands,
+)
 from .tags import tags_for
 
 #: Every cutoff the flags use. Mirrored as the table in SPEC.md, "Hand review".
@@ -924,7 +932,7 @@ def _review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _
         hit = (gen, _build_review_base(conn, alias, game_id))
     if cacheable:
         if len(_REVIEW_CACHE) >= _REVIEW_CACHE_MAX:
-            _REVIEW_CACHE.pop(next(iter(_REVIEW_CACHE)))
+            evict_oldest(_REVIEW_CACHE)
         _REVIEW_CACHE[key] = hit
     return hit[1]
 

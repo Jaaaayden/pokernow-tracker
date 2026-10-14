@@ -63,11 +63,20 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Add any missing columns. Idempotent, and safe on a fresh database."""
+    """Add any missing columns. Idempotent, and safe on a fresh database.
+
+    Also safe when two connections migrate at once -- the server's sync and warm-up
+    threads both open one at start, as can `pnt import` beside the server -- since
+    the check and the ALTER are not atomic: the loser finds the column already added.
+    """
     for table, column, decl in _ADDED_COLUMNS:
         existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
         if existing and column not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e):
+                    raise
 
 
 @contextmanager

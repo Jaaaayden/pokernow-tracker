@@ -490,6 +490,16 @@ _FACTS_CACHE: dict[tuple[str, str, str | None], _PlayerFacts] = {}
 _FACTS_CACHE_MAX = 32
 
 
+def evict_oldest(cache: dict) -> None:
+    """Drop a full cache's least recently used entry. Requests run on several
+    threads, and two that miss at once can both pick the same oldest key, or find
+    the dict resized under them: the loser has nothing left to do, not a 500."""
+    try:
+        cache.pop(next(iter(cache)), None)
+    except (StopIteration, RuntimeError):
+        pass
+
+
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
     database behind this module's back."""
@@ -618,7 +628,7 @@ def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> 
     annotate(facts)
 
     if len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
-        _FACTS_CACHE.pop(next(iter(_FACTS_CACHE)))
+        evict_oldest(_FACTS_CACHE)
     _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
     return facts
 
