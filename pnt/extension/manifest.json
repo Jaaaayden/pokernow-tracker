@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Tracker for PokerNow",
+  "version": "0.1.0",
+  "description": "Hand history, a live HUD and range charts for PokerNow games. Your hands stay on your computer. Not affiliated with PokerNow.",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "permissions": ["storage", "sidePanel", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://www.pokernow.com/games/*",
+    "https://pokernow.com/games/*",
+    "https://www.pokernow.club/games/*",
+    "https://pokernow.club/games/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.pokernow.com/games/*",
+        "https://pokernow.com/games/*",
+        "https://www.pokernow.club/games/*",
+        "https://pokernow.club/games/*"
+      ],
+      "js": ["normalize.js", "pager.js", "spot.js", "watch.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidepanel.html", "popup.html"],
+      "matches": [
+        "https://www.pokernow.com/*",
+        "https://pokernow.com/*",
+        "https://www.pokernow.club/*",
+        "https://pokernow.club/*"
+      ]
+    }
+  ],
+  "side_panel": { "default_path": "sidepanel.html" },
+  "options_page": "popup.html",
+  "action": {
+    "default_title": "Tracker for PokerNow",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  }
+}

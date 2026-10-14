@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Players</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --up: #4cc38a; --down: #e66e6d;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 940px; margin: 0 auto; padding: 22px 20px 56px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0 0 18px; max-width: 80ch; }
+  ul.note { padding-left: 18px; }
+  .note b { color: var(--ink); font-weight: 600; }
+  a.link { color: var(--accent); text-decoration: none; }
+  a.link:hover { text-decoration: underline; }
+  .crumb { margin-bottom: 14px; font-size: 13px; }
+
+  select, input, button { font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  button.danger { background: var(--down); color: #fff; border-color: transparent; }
+  button.small { padding: 3px 8px; font-size: 12.5px; }
+
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+          margin-bottom: 10px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; }
+  .row:hover { background: var(--mid); }
+  .row .tw { flex: 1 1 auto; min-width: 0; }
+  .row .alias { font-weight: 600; font-size: 15px; }
+  .row .names { color: var(--muted); font-size: 12.5px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .row .pnote { color: var(--ink-2); font-size: 12.5px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .row .pnote:empty { display: none; }
+  .row .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row .num b { display: block; font-weight: 600; }
+  .row .num span { color: var(--muted); font-size: 12px; }
+  .chev { color: var(--muted); width: 14px; text-align: center; transition: transform .12s; }
+  .card.open .chev { transform: rotate(90deg); }
+
+  .body { display: none; border-top: 1px solid var(--grid); padding: 12px 14px 14px; }
+  .card.open .body { display: block; }
+
+  table.ids { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+  table.ids th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; }
+  table.ids td { padding: 5px 8px; border-top: 1px solid var(--grid); }
+  table.ids td.id { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  table.ids td.r, table.ids th.r { text-align: right; }
+  table.ids td.dim { color: var(--muted); font-size: 12.5px; }
+  table.ids tr.only td { color: var(--muted); }
+
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .acts .sep { flex: 1 1 auto; }
+  .sub { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--grid); }
+  .sub p { margin: 0 0 8px; color: var(--ink-2); font-size: 13px; }
+  .sub .line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pnote-edit textarea { display: block; width: 100%; min-height: 3.6em; resize: vertical;
+    font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 6px 8px; }
+  .pnote-edit textarea:focus { outline: none; border-color: var(--accent); }
+  .pnote-edit .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .warnbox { background: var(--mid); border-radius: 8px; padding: 10px 12px; margin: 10px 0 0;
+             font-size: 13px; color: var(--ink-2); }
+  .warnbox b { color: var(--ink); }
+  .warnbox ul { margin: 6px 0 0; padding-left: 18px; }
+  .warnbox code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 50;
+    background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.28); padding: 10px 14px; display: flex; gap: 12px;
+    align-items: center; max-width: calc(100vw - 32px); }
+  .toast.bad { border-color: var(--down); }
+  .err { color: var(--down); margin: 10px 0; }
+  .hidden { display: none !important; }
+  .empty { color: var(--muted); padding: 16px 2px; }
+
+  .h2h-scroll { overflow-x: auto; margin: 10px 0 12px; }
+  table.h2h { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  table.h2h th { color: var(--muted); font-weight: 500; padding: 4px 6px; text-align: right; white-space: nowrap; }
+  table.h2h th.l, table.h2h td.l { text-align: left; }
+  table.h2h td { padding: 4px 6px; border-top: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  table.h2h td.dim { color: var(--muted); }
+  table.h2h .up { color: var(--up); }
+  table.h2h .down { color: var(--down); }
+  table.h2h td.self { background: var(--mid); }
+  table.h2h.list { width: 100%; }
+  .h2h-foot { color: var(--muted); font-size: 12px; margin: 0 0 10px; max-width: 80ch; }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a class="link" href="/">‹ tracker</a></div>
+  <h1>Players <small id="count"></small></h1>
+  <ul class="note">
+    <li><b>One human, one row.</b> PokerNow IDs are per browser, so one person on a phone and a laptop shows up twice.</li>
+    <li><b>Merge</b> them here and every stat re-answers at once.</li>
+  </ul>
+
+  <div class="err hidden" id="err"></div>
+  <div id="list"></div>
+</main>
+
+<div class="toast hidden" id="toast"><span id="toast-msg"></span><span id="toast-act"></span></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let players = [];
+  let openAlias = null;
+
+  const api = async (path, body) => {
+    const r = await fetch(path, body ? {
+      // x-pnt: the server refuses writes without it (see app.py).
+      method: "POST", headers: { "content-type": "application/json", "x-pnt": "1" }, body: JSON.stringify(body),
+    } : undefined);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `${r.status} ${r.statusText}`);
+    return data;
+  };
+
+  let toastTimer = null;
+  function toast(msg, action) {
+    clearTimeout(toastTimer);
+    $("toast-msg").textContent = msg;
+    $("toast-act").replaceChildren();
+    $("toast").classList.toggle("bad", !action && /could not|failed/i.test(msg));
+    if (action) {
+      const b = document.createElement("button");
+      b.className = "small"; b.textContent = action.label;
+      b.addEventListener("click", () => { hideToast(); action.run(); });
+      $("toast-act").appendChild(b);
+    }
+    $("toast").classList.remove("hidden");
+    // An undo needs long enough to notice and reach; a plain confirmation does not.
+    toastTimer = setTimeout(hideToast, action ? 15000 : 4000);
+  }
+  const hideToast = () => { clearTimeout(toastTimer); $("toast").classList.add("hidden"); };
+
+  async function load() {
+    players = await api("/players");
+    players.sort((a, b) => b.hands - a.hands);
+    resetH2h();
+    $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
+      + ` · ${players.reduce((n, p) => n + p.n_ids, 0)} PokerNow ids`;
+    render();
+  }
+
+  const fmt = (n) => Number(n).toLocaleString();
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+
+  function render() {
+    const list = $("list");
+    list.replaceChildren();
+    if (!players.length) {
+      list.appendChild(el("div", "empty", "No players yet — import a log or let the extension capture a hand."));
+      return;
+    }
+    for (const p of players) list.appendChild(card(p));
+  }
+
+  function card(p) {
+    const card = el("div", "card" + (p.alias === openAlias ? " open" : ""));
+
+    const row = el("div", "row");
+    row.appendChild(el("span", "chev", "›"));
+    const tw = el("div", "tw");
+    tw.appendChild(el("div", "alias", p.alias));
+    const names = p.identities.map((i) => i.name).filter(Boolean);
+    // The names are the evidence for a merge, so they lead rather than hide in the fold.
+    tw.appendChild(el("div", "names", names.length ? names.join(" · ") : "no name recorded"));
+    // The note's first line, so a glance down the list finds who you have read.
+    const pnote = el("div", "pnote");
+    paintNote(pnote, p);
+    tw.appendChild(pnote);
+    row.appendChild(tw);
+    const num = el("div", "num");
+    num.appendChild(el("b", null, fmt(p.hands)));
+    num.appendChild(el("span", null, `hands · ${p.n_ids} id${p.n_ids === 1 ? "" : "s"}`));
+    row.appendChild(num);
+    row.addEventListener("click", () => {
+      openAlias = p.alias === openAlias ? null : p.alias;
+      render();
+    });
+    card.appendChild(row);
+
+    card.appendChild(body(p, pnote));
+    return card;
+  }
+
+  function paintNote(line, p) {
+    const first = (p.notes || "").split("\n")[0];
+    line.textContent = first ? "📝 " + first : "";
+    line.title = p.notes || "";
+  }
+
+  function body(p, pnote) {
+    const body = el("div", "body");
+
+    const t = el("table", "ids");
+    const hr = document.createElement("tr");
+    for (const [h, cls] of [["PokerNow id", ""], ["shown as", ""], ["hands", "r"], ["last seen", "r"]]) {
+      const th = el("th", cls, h); hr.appendChild(th);
+    }
+    t.appendChild(hr);
+    const single = p.identities.length === 1;
+    for (const i of p.identities) {
+      const tr = el("tr", single ? "only" : "");
+      tr.appendChild(el("td", "id", i.pn_id));
+      tr.appendChild(el("td", null, i.name || "—"));
+      tr.appendChild(el("td", "r", fmt(i.hands)));
+      tr.appendChild(el("td", "r dim", (i.last_seen_at || "").slice(0, 10) || "—"));
+      if (!single) {
+        const td = el("td", "r");
+        const b = el("button", "small", "split off");
+        b.title = `Move ${i.pn_id} onto a player of its own`;
+        b.addEventListener("click", (e) => { e.stopPropagation(); splitOne(p, i); });
+        td.appendChild(b); tr.appendChild(td);
+      }
+      t.appendChild(tr);
+    }
+    body.appendChild(t);
+
+    const acts = el("div", "acts");
+    const chart = el("a", "link");
+    chart.href = "/chart?player=" + encodeURIComponent(p.alias);
+    chart.textContent = "range chart ↗";
+    chart.target = "_blank"; chart.rel = "noopener";
+    acts.appendChild(chart);
+    const stats = el("a", "link");
+    stats.href = "/stats.html";
+    stats.textContent = "stats ↗";
+    stats.target = "_blank"; stats.rel = "noopener";
+    acts.appendChild(stats);
+    acts.appendChild(el("span", "sep"));
+
+    const rn = el("button", "small", "rename");
+    rn.addEventListener("click", (e) => { e.stopPropagation(); doRename(p); });
+    acts.appendChild(rn);
+    body.appendChild(acts);
+    body.appendChild(h2hPanel(p));
+    body.appendChild(notePanel(p, pnote));
+
+    if (players.length > 1) body.appendChild(mergePanel(p));
+    return body;
+  }
+
+  // What you know about them that no log records. Kept on the player, not on an
+  // id, so it follows them across devices and a merge carries it along. The HUD
+  // shows it on their card. Saved as the hand notes in the chart are: Ctrl+Enter
+  // or leaving the box, and an emptied box deletes it.
+  function notePanel(p, pnote) {
+    const wrap = el("div", "sub pnote-edit");
+    const box = document.createElement("textarea");
+    box.value = p.notes || "";
+    box.placeholder = `What you know about ${p.alias} that no log records: tells, tilt, history…`;
+    box.setAttribute("aria-label", `note on ${p.alias}`);
+    const hint = el("div", "hint");
+    const paintHint = () => {
+      hint.textContent = (p.notes_at ? `noted ${p.notes_at.slice(0, 10)} · ` : "")
+        + "Ctrl+Enter or click away to save · empty to delete";
+    };
+    paintHint();
+    let saving = false;
+    async function save() {
+      if (saving || box.value.trim() === (p.notes || "").trim()) return;
+      saving = true;
+      box.disabled = true;
+      try {
+        const out = await api(`/players/${encodeURIComponent(p.alias)}/note`, { note: box.value });
+        p.notes = out.note; p.notes_at = out.noted_at;
+        // Painted in place rather than through render(): that would rebuild the
+        // box, and a Ctrl+Enter save leaves you typing in it.
+        box.value = p.notes || "";
+        paintNote(pnote, p);
+        paintHint();
+        // Saved by the blur of a click that closed the card: the list was redrawn
+        // from the old note while this was in flight.
+        if (!pnote.isConnected) render();
+        toast(out.note ? `Saved the note on ${p.alias}.` : `Cleared the note on ${p.alias}.`);
+      } catch (e) {
+        // What was typed stays in the box, to save again.
+        toast("Could not save the note: " + e.message);
+      } finally {
+        saving = false;
+        box.disabled = false;
+      }
+    }
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save().then(() => box.focus()); }
+    });
+    box.addEventListener("blur", save);
+    wrap.append(box, hint);
+    return wrap;
+  }
+
+  function mergePanel(p) {
+    const wrap = el("div", "sub");
+    wrap.appendChild(el("p", null, `If one of the other rows is the same person as ${p.alias}, fold it in here.`));
+    const line = el("div", "line");
+    line.appendChild(el("span", null, "Merge"));
+
+    const sel = document.createElement("select");
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = "choose a player…";
+    sel.appendChild(none);
+    for (const o of players) {
+      if (o.alias === p.alias) continue;
+      const opt = document.createElement("option");
+      opt.value = o.alias;
+      opt.textContent = `${o.alias} (${fmt(o.hands)} hands, ${o.n_ids} id${o.n_ids === 1 ? "" : "s"})`;
+      sel.appendChild(opt);
+    }
+    line.appendChild(sel);
+    line.appendChild(el("span", null, `into ${p.alias}`));
+
+    const go = el("button", "primary small", "Merge");
+    go.disabled = true;
+    sel.addEventListener("change", () => {
+      go.disabled = !sel.value;
+      preview.replaceChildren();
+      if (sel.value) preview.appendChild(previewOf(players.find((x) => x.alias === sel.value), p));
+    });
+    go.addEventListener("click", (e) => {
+      e.stopPropagation();
+      doMerge(players.find((x) => x.alias === sel.value), p);
+    });
+    line.appendChild(go);
+    wrap.appendChild(line);
+
+    const preview = el("div");
+    wrap.appendChild(preview);
+    return wrap;
+  }
+
+  function previewOf(source, target) {
+    // Shown before the click, not after: a merge deletes the source player row, and
+    // the only thing that can put it back is the list of ids being moved.
+    const box = el("div", "warnbox");
+    box.appendChild(el("b", null, `${source.alias} disappears.`));
+    box.append(document.createTextNode(
+      ` Its ${source.n_ids} PokerNow id${source.n_ids === 1 ? "" : "s"} and ${fmt(source.hands)} hands`
+      + ` move to ${target.alias}, which then has ${fmt(source.hands + target.hands)}.`
+      + (source.notes ? ` Its note is added to the end of ${target.alias}'s, and stays there if you undo.` : "")));
+    const ul = document.createElement("ul");
+    for (const i of source.identities) {
+      const li = document.createElement("li");
+      const code = el("code", null, i.pn_id);
+      li.appendChild(code);
+      li.append(document.createTextNode(` — ${i.name || "no name"}, ${fmt(i.hands)} hands`));
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    return box;
+  }
+
+  async function doMerge(source, target) {
+    try {
+      const res = await api("/aliases/merge", { source: source.alias, target: target.alias });
+      openAlias = target.alias;
+      await load();
+      toast(`Merged ${source.alias} into ${target.alias}.`, {
+        label: "Undo",
+        run: async () => {
+          try {
+            await api("/aliases/split", { pn_ids: res.undo.pn_ids, alias: res.undo.alias });
+            openAlias = res.undo.alias;
+            await load();
+            toast(`Put ${res.undo.alias} back.`);
+          } catch (e) { toast("Could not undo: " + e.message); }
+        },
+      });
+    } catch (e) { toast("Merge failed: " + e.message); }
+  }
+
+  async function splitOne(p, identity) {
+    const name = prompt(
+      `Move ${identity.pn_id} (${identity.name || "no name"}, ${fmt(identity.hands)} hands) off ${p.alias}.\n\n`
+      + "Name for the player it moves to:",
+      identity.name || identity.pn_id);
+    if (name === null) return;
+    try {
+      await api("/aliases/split", { pn_ids: [identity.pn_id], alias: name.trim() });
+      openAlias = name.trim();
+      await load();
+      toast(`Split ${identity.pn_id} off as ${name.trim()}.`);
+    } catch (e) { toast("Split failed: " + e.message); }
+  }
+
+  async function doRename(p) {
+    const next = prompt(`Rename ${p.alias} to:`, p.alias);
+    if (next === null || next.trim() === p.alias) return;
+    try {
+      await api("/aliases/rename", { old: p.alias, new: next });
+      openAlias = next.trim();
+      await load();
+      toast(`Renamed to ${next.trim()}.`);
+    } catch (e) { toast("Rename failed: " + e.message); }
+  }
+
+  // ---- head to head ------------------------------------------------------
+  // The money between two players (/players/{alias}/h2h) and the pool's matrix
+  // (/h2h). A hand with one winner settles exactly; with several, each loser's
+  // loss is split by what each winner won (SPEC.md, "Head to head"). Both are
+  // fetched only when shown, and forgotten whenever the list reloads, since a
+  // merge or a rename changes whose money it was.
+  const h2hCache = new Map();
+
+  function resetH2h() {
+    h2hCache.clear();
+  }
+
+  const signedBb = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
+  const tone = (x) => (x > 0.05 ? "up" : x < -0.05 ? "down" : "");
+
+  function chartHref(player, filter) {
+    const q = new URLSearchParams({ player });
+    if (filter) q.set("filter", filter);
+    return "/chart?" + q;
+  }
+
+  function shortfall(skipped) {
+    const n = skipped.incomplete + skipped.unbalanced + skipped.no_bb;
+    return n ? ` ${fmt(n)} hand${n === 1 ? "" : "s"} moved no money (the log stopped early, or the chips do not balance).` : "";
+  }
+
+  function h2hPanel(p) {
+    const wrap = el("div", "sub");
+    wrap.appendChild(el("p", null, `Head to head: the big blinds ${p.alias} won from each opponent, biggest either way first.`));
+    // Built for every card on each render; only the open one asks the server.
+    if (p.alias !== openAlias) return wrap;
+    const hit = h2hCache.get(p.alias);
+    if (hit) {
+      wrap.appendChild(h2hTable(p, hit));
+      return wrap;
+    }
+    const wait = el("div", "h2h-foot", "loading…");
+    wrap.appendChild(wait);
+    api(`/players/${encodeURIComponent(p.alias)}/h2h`).then((data) => {
+      h2hCache.set(p.alias, data);
+      wait.replaceWith(h2hTable(p, data));
+    }).catch((e) => { wait.textContent = "could not load head to head: " + e.message; });
+    return wrap;
+  }
+
+  function h2hTable(p, data) {
+    const frag = document.createDocumentFragment();
+    if (!data.rows.length) {
+      frag.appendChild(el("div", "h2h-foot", "No hands with anyone else yet."));
+      return frag;
+    }
+    const scroll = el("div", "h2h-scroll");
+    const t = el("table", "h2h list");
+    const hr = document.createElement("tr");
+    for (const [h, cls, tip] of [
+      ["opponent", "l", ""],
+      ["hands", "", "Dealt in together"],
+      ["net bb", "", `What ${p.alias} won from them; negative is lost to them`],
+      ["SD", "", "Both still in at a showdown"],
+      ["split", "", "Hands where money moved between them by the multiway rule rather than exactly"],
+      ["FB by", "", `${p.alias}'s failed bluffs that they called or raised. ${data.failed_bluff_note}`],
+      ["FB vs", "", `Their failed bluffs that ${p.alias} called or raised`],
+      ["chart", "", `The hands vs=<opponent> finds: they were still in when ${p.alias} last acted`],
+    ]) {
+      const th = el("th", cls, h);
+      if (tip) th.title = tip;
+      hr.appendChild(th);
+    }
+    t.appendChild(hr);
+    for (const r of data.rows) {
+      const tr = document.createElement("tr");
+      tr.appendChild(el("td", "l", r.opponent));
+      const hands = el("td", null, fmt(r.hands));
+      if (r.counted !== r.hands) {
+        hands.textContent += "*";
+        hands.title = `money counted on ${fmt(r.counted)} of ${fmt(r.hands)}: the rest are short a ledger`;
+      }
+      tr.appendChild(hands);
+      const net = el("td", tone(r.net_bb), signedBb(r.net_bb));
+      net.title = `${fmt(r.flow_hands)} hands moved chips between them, ${fmt(r.split_hands)} by the multiway rule`
+        + (r.bounty_bb ? `; ${signedBb(r.bounty_bb)}bb of it 7-2 bounties` : "");
+      tr.appendChild(net);
+      tr.appendChild(el("td", "dim", fmt(r.showdowns)));
+      tr.appendChild(el("td", "dim", fmt(r.split_hands)));
+      const by = el("td", null, fmt(r.failed_bluffs));
+      by.title = `judged on ${fmt(r.bluff_known)} of ${fmt(r.bluff_spots)} lost pots where they answered a bet: the rest showed no cards`;
+      tr.appendChild(by);
+      const vs = el("td", null, fmt(r.failed_bluffs_against));
+      vs.title = `judged on ${fmt(r.bluff_known_against)} of ${fmt(r.bluff_spots_against)} lost pots where ${p.alias} answered a bet`;
+      tr.appendChild(vs);
+      const td = el("td");
+      if (r.filter) {
+        const a = el("a", "link", `${fmt(r.n)} ↗`);
+        a.href = chartHref(p.alias, r.filter);
+        a.target = "_blank"; a.rel = "noopener";
+        a.title = `Open ${p.alias}'s chart on ${r.filter}`;
+        a.addEventListener("click", (e) => e.stopPropagation());
+        td.appendChild(a);
+      } else {
+        td.textContent = "—";
+        td.title = "No one vs= term names only this player: another answers to the same name, ignoring case";
+      }
+      tr.appendChild(td);
+      t.appendChild(tr);
+    }
+    scroll.appendChild(t);
+    frag.appendChild(scroll);
+    frag.appendChild(el("p", "h2h-foot",
+      `Net ${signedBb(data.net_bb)}bb against the table over ${fmt(data.hands)} hands. A hand with one winner `
+      + "settles exactly; with several, each loser's loss is split by what each winner won."
+      + shortfall(data.skipped)));
+    return frag;
+  }
+
+  load().catch((e) => {
+    $("err").textContent = "could not load players: " + (e.message || e);
+    $("err").classList.remove("hidden");
+  });
+})();
+</script>
+</body>
+</html>

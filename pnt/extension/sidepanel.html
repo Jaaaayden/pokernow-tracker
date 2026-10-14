@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tracker for PokerNow</title>
+<style>
+  html, body { margin: 0; background: #141413; color: #fff; }
+  /* Thin scrollbars in the panel's own greys, with no track and no arrow buttons. */
+  html { color-scheme: dark; scrollbar-width: thin; scrollbar-color: #383835 transparent; }
+  body { font: 11px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  [hidden] { display: none !important; }
+  button { all: unset; cursor: pointer; padding: 1px 5px; border-radius: 5px; color: #c3c2b7; }
+  button:hover { background: rgba(255,255,255,.1); color: #fff; }
+  button[aria-pressed="true"] { background: rgba(57,135,229,.35); color: #fff; }
+
+  .head { position: sticky; top: 0; z-index: 2; background: #141413; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 2px 6px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  .head b { font-weight: 600; }
+  .head .st { color: #c3c2b7; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
+  /* The 🚩 greys out until the hand is flagged, so a glance says which it is. */
+  .head .flag { white-space: nowrap; font-variant-numeric: tabular-nums; filter: grayscale(1); opacity: .7; }
+  .head .flag:hover { opacity: 1; }
+  .head .flag[aria-pressed="true"] { filter: none; opacity: 1; background: rgba(227,73,72,.3); }
+  .head .flag span { margin-left: 2px; font-size: 10px; }
+  .head .live { flex-basis: 100%; order: 9; color: #c3c2b7; font-variant-numeric: tabular-nums; }
+  .head .live:empty { display: none; }
+  /* On the game page (float mode) the header is what the box is dragged by. */
+  body.embed .head { cursor: move; user-select: none; }
+  body.embed .head button { cursor: pointer; }
+
+  .settings { border-bottom: 1px solid rgba(255,255,255,.1); }
+  .settings iframe { display: block; width: 100%; height: 360px; border: 0; background: #1a1a19; }
+
+  .legend { padding: 4px 8px 0; color: #c3c2b7; font-size: 10px; }
+  .legend .drift { color: #86b6ef; }
+  .empty { padding: 10px 8px; color: #c3c2b7; }
+
+  /* One card per player. Everything the wide table put on one line is here in
+     four: who and where, tags, the numbers, and the spot. Sized small so the
+     panel can be dragged narrow and still fit a stats row of four. */
+  .card { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.07); cursor: pointer; }
+  .card:hover { background: rgba(255,255,255,.03); }
+  .card.sel { background: rgba(57,135,229,.18); }
+  .card.out > * { opacity: .45; }
+  .who { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+  .who .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who .name small { color: #898781; font-weight: 400; margin-left: 3px; font-size: 10px; }
+  .who .pos { color: #c3c2b7; margin-left: auto; }
+  .who .stack { color: #fff; }
+  /* Your note on the player: the one line on the card no log could have written.
+     The ✎ stays faint until the card is hovered or there is a note to edit. */
+  .who .pen { padding: 0 3px; font-size: 10px; color: #898781; opacity: .35; }
+  .card:hover .who .pen, .who .pen[aria-pressed="true"] { opacity: 1; }
+  .pnote { margin-top: 3px; padding-left: 6px; border-left: 2px solid #3987e5; color: #e8e6dc;
+    white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; overflow: hidden; }
+  .pnote:empty { display: none; }
+  .pnote-edit { margin-top: 3px; display: flex; flex-direction: column; gap: 2px; cursor: auto; }
+  .pnote-edit textarea { box-sizing: border-box; width: 100%; min-height: 3.4em; resize: vertical; font: inherit;
+    color: #fff; background: #1a1a19; border: 1px solid #383835; border-radius: 5px; padding: 3px 5px; }
+  .pnote-edit textarea:focus { outline: none; border-color: #3987e5; }
+  .pnote-edit .hint { color: #898781; font-size: 9px; }
+  .card.act .name { color: #ffd166; }
+  .card.act .name::before { content: "▶ "; font-size: 8px; }
+  /* The clock on the player to act: seconds since the action reached them. */
+  .clock { margin-left: 4px; font-size: 9px; color: #ffd166; font-variant-numeric: tabular-nums; }
+  .clock:empty { display: none; }
+
+  /* Tag chips: the archetype filled, exploits outlined, the fun ones dashed. All
+     of them, wrapping: the card has the height the table row did not. */
+  .tags { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px; }
+  .tags:empty { display: none; }
+  .tag { font-size: 9px; line-height: 1.35; padding: 0 4px; border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.35); color: #c3c2b7; cursor: pointer; font-weight: 500; letter-spacing: .01em; }
+  .tag:hover { color: #fff; border-color: #fff; }
+  .tag.kind-archetype { background: rgba(57,135,229,.35); border-color: transparent; color: #fff; }
+  .tag.kind-fun { border-style: dashed; color: #ffd166; }
+  .tag.streaky { opacity: .45; border-style: dotted; }
+  .tag.streaky:hover { opacity: 1; }
+  /* "tilt?": inside a post-loss window right now. Warm, so it reads apart from the tags. */
+  .tag.tilt { border-color: #ff8a65; color: #ff8a65; }
+  td.name .tag.tilt { margin-left: 4px; }
+
+  .stats { margin-top: 3px; display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+    gap: 1px 4px; font-variant-numeric: tabular-nums; }
+  .stat { white-space: nowrap; }
+  .stat .k { color: #898781; font-size: 9px; margin-right: 3px; }
+  .stat .drift { color: #86b6ef; }
+  .stat small.life { color: #898781; margin-left: 2px; font-size: 9px; }
+
+  .spot { margin-top: 3px; color: #c3c2b7; }
+  .spot .path { color: #898781; }
+  .spot:empty { display: none; }
+  .spot.pending { color: #fff; }
+
+  /* Compact: the whole table in one grid, a row per player, the way the HUD
+     first looked on the page. No tags, no spot line, no chart. */
+  .grid { overflow-x: auto; padding: 2px 0 4px; }
+  .grid table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  .grid th, .grid td { padding: 2px 5px; text-align: right; white-space: nowrap; }
+  .grid th { color: #898781; font-weight: 500; font-size: 10px; }
+  .grid th.group { color: #c3c2b7; text-align: center; font-weight: 400; padding-bottom: 0; }
+  .grid th:first-child, .grid td:first-child { text-align: left; }
+  .grid td.name { font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .grid td.name.noted { text-decoration: underline dotted #898781; text-underline-offset: 2px; }
+  .grid td.name small { color: #898781; font-weight: 400; margin-left: 3px; font-size: 9px; }
+  .grid td small.life { color: #898781; margin-left: 3px; font-size: 9px; }
+  .grid td .drift { color: #86b6ef; }
+  .grid tr.act td.name { color: #ffd166; }
+  .grid tr.out td { opacity: .45; }
+
+  /* The chart takes the panel's width; its height is dragged at the corner and remembered. */
+  .chart { display: flex; flex-direction: column; border-top: 1px solid rgba(255,255,255,.1);
+    resize: vertical; overflow: hidden; height: 640px; min-height: 240px; }
+  .chart .bar { display: flex; gap: 4px; padding: 4px 8px; align-items: center; flex: none; }
+  .chart .bar #who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chart a { color: #86b6ef; margin-left: auto; white-space: nowrap; }
+  .chart iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: #0d0d0d; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <b>PNT</b>
+    <span class="st" id="st"></span>
+    <button id="flag" class="flag" aria-pressed="false" hidden>🚩<span id="flag-n"></span></button>
+    <button id="pause" title="pause capture" hidden>⏸</button>
+    <button id="compact" title="compact: one line of stats per player, no tags or chart">–</button>
+    <button id="gear" title="settings" aria-pressed="false">⚙</button>
+    <button id="hide" title="hide the HUD — the toolbar icon brings it back" hidden>✕</button>
+    <span class="live" id="live"></span>
+  </div>
+  <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
+  <div class="empty" id="nogame">Nothing from this tab yet. If this is a PokerNow game, reload the page — a game opened before the extension was (re)loaded is not being tracked.</div>
+  <main id="main" hidden>
+    <div class="legend" id="legend" hidden
+      title="Each figure: this game first, then every game on record in grey. A blue session figure is 10+ points from lifetime on at least 10 chances, with lifetime outside the session's 95% range.">
+      this session · <span style="color:#898781">lifetime</span> · <span class="drift">blue</span> = drifting</div>
+    <div id="body"><div class="empty">waiting for the first hand…</div></div>
+    <div class="chart" id="chart" hidden>
+      <div class="bar">
+        <span id="who"></span>
+        <button id="pin" title="Pin the chart to this player: it stays on them, in the spot they are in, while the action moves round. Click again to go back to whoever is to act." aria-pressed="false">📌</button>
+        <button id="follow" title="Follow the live action: show the player to act, in the spot they are in. Clicking a card shows that player until the action moves; editing the spot in the chart switches this off.">follow</button>
+        <a id="ext" target="_blank" rel="noopener">open ↗</a>
+        <button id="close" title="close the chart">✕</button>
+      </div>
+      <iframe id="frame" title="range chart"></iframe>
+    </div>
+  </main>
+  <script src="spot.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
