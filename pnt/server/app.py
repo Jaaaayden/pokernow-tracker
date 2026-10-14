@@ -101,13 +101,17 @@ def _sync_loop(stop: threading.Event) -> None:
     """Keep the database in step with the log folder until `stop` is set.
 
     Its own connection: sqlite3 connections belong to the thread that opened them.
-    Never raises -- a sync that fails is logged and tried again next interval.
+    Never raises -- a sync that fails is logged and tried again next interval, and
+    so is opening the connection, which a migration or a rebuild can hold up past
+    `busy_timeout` at start.
     """
-    conn = db()
+    conn = None
     skip: dict[str, tuple[int, int]] = {}
     try:
         while True:
             try:
+                if conn is None:
+                    conn = db()
                 out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
                 for s in out.imported:
                     if s["entries_new"]:
@@ -116,12 +120,13 @@ def _sync_loop(stop: threading.Event) -> None:
                     log.warning("could not import %s: %s", path, why)
             except Exception:
                 log.exception("log folder sync failed")
-                if conn.in_transaction:
+                if conn is not None and conn.in_transaction:
                     conn.rollback()
             if stop.wait(SYNC_SECONDS):
                 return
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def _warm_strength() -> None:
@@ -129,8 +134,9 @@ def _warm_strength() -> None:
     (a no-op once it is complete, a minute or two the first time; stats/strength.py),
     then count the pool the tags are judged against, so the first HUD after a
     start does not pay for either."""
-    conn = db()
+    conn = None
     try:
+        conn = db()
         added = strength.warm(conn)
         if added:
             log.info("hand strength: %d stored", added)
@@ -138,7 +144,8 @@ def _warm_strength() -> None:
     except Exception:
         log.exception("warm-up failed")
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 @asynccontextmanager

@@ -278,3 +278,28 @@ def test_sync_cli_removes_empty_logs_only_when_asked(tmp_path, folder):
     assert r.exit_code == 0, r.output
     assert f"{empty.name}: no hands, deleted" in r.output
     assert not empty.exists()
+
+
+def test_the_server_sync_survives_a_failed_open(tmp_path, monkeypatch):
+    """At start a migration or a rebuild can hold the database past busy_timeout.
+    The sync thread must try again next interval, not die for good."""
+    import sqlite3
+    import threading
+
+    from pnt.server import app as server
+
+    stop = threading.Event()
+    opens: list[str] = []
+
+    def flaky_db():
+        opens.append("try")
+        if len(opens) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        stop.set()  # the second open got through: one pass, then stop
+        return connect(tmp_path / "t.sqlite")
+
+    monkeypatch.setattr(server, "db", flaky_db)
+    monkeypatch.setattr(server, "SYNC_SECONDS", 0.01)
+    monkeypatch.setattr(server.log_folder, "LOG_DIR", tmp_path / "logs")
+    server._sync_loop(stop)
+    assert len(opens) == 2

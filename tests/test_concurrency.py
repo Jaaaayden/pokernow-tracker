@@ -76,9 +76,13 @@ def test_writing_owns_its_transaction(tmp_path):
     conn.close()
 
 
-def test_migration_tolerates_a_column_added_meanwhile(tmp_path):
-    """The server's sync and warm-up threads both migrate at start. One that read
-    the table before the other added a column must not crash on its own ALTER."""
+
+def test_migration_waits_for_one_already_under_way(tmp_path, monkeypatch):
+    """The server's sync and warm-up threads both migrate at start. One that saw a
+    column missing must wait for the other's ALTER and then find it there, not
+    add it a second time ("duplicate column name") and kill its thread."""
+    import threading
+
     from pnt.db import conn as dbconn
 
     path = tmp_path / "t.sqlite"
@@ -88,16 +92,26 @@ def test_migration_tolerates_a_column_added_meanwhile(tmp_path):
     old.commit()
     old.close()
 
-    loser = connect(path, init=False)
-    stale = {t: loser.execute(f"PRAGMA table_info({t})").fetchall() for t, _, _ in dbconn._ADDED_COLUMNS}
-    connect(path).close()  # the winner adds notes_at
+    # The winner holds the write lock with its ALTER made but not committed.
+    winner = sqlite3.connect(path, isolation_level=None)
+    winner.execute("BEGIN IMMEDIATE")
+    winner.execute("ALTER TABLE players ADD COLUMN notes_at TEXT")
 
-    class StaleRead:  # what the loser saw just before the winner's ALTER
-        def execute(self, sql, *args):
-            if sql.startswith("PRAGMA table_info("):
-                return stale[sql[len("PRAGMA table_info("):-1]]
-            return loser.execute(sql, *args)
+    queued = threading.Event()
+    real_writing = dbconn.writing
 
-    dbconn._migrate(StaleRead())
-    assert "notes_at" in {r[1] for r in loser.execute("PRAGMA table_info(players)")}
-    loser.close()
+    def writing_after_signal(c):
+        queued.set()  # the loser has seen the column missing and asks for the lock
+        return real_writing(c)
+
+    monkeypatch.setattr(dbconn, "writing", writing_after_signal)
+    with ThreadPoolExecutor(1) as pool:
+        loser = pool.submit(lambda: connect(path).close())
+        assert queued.wait(10)
+        winner.execute("COMMIT")
+        loser.result(timeout=30)
+    winner.close()
+
+    conn = connect(path, init=False)
+    assert "notes_at" in {r[1] for r in conn.execute("PRAGMA table_info(players)")}
+    conn.close()

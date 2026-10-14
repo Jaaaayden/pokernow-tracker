@@ -26,6 +26,7 @@ from ..db.conn import generation, path_of, reading
 from ..logfmt.parser import position_name
 from . import strength
 from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
+from .lru import LRU
 from .tilt import annotate
 
 
@@ -456,7 +457,7 @@ def facts_by_player(
 #: seconds and after every hand. It cannot go stale: `bump_generation` runs inside
 #: the same transaction as every change that would invalidate it, so a hit means the
 #: derivation behind it is still exactly current.
-_REPORT_CACHE: dict[tuple[str, str | None], tuple[int, list[dict]]] = {}
+_REPORT_CACHE: LRU[tuple[str, str | None], tuple[int, list[dict]]] = LRU()
 
 #: Per (database, game): each PokerNow ID's `Tally` in that game, with the game's
 #: `derived_gen` stamp. What a report is assembled from on a miss. Counts, not
@@ -465,7 +466,7 @@ _REPORT_CACHE: dict[tuple[str, str | None], tuple[int, list[dict]]] = {}
 #: and only that game is derived again: after a hand ends, the lifetime report
 #: costs one game rather than the whole history. Keyed by PokerNow ID, not player,
 #: so a merge or a rename regroups the same tallies instead of discarding them.
-_GAME_TALLIES: dict[tuple[str, str], tuple[int, dict[str, Tally]]] = {}
+_GAME_TALLIES: LRU[tuple[str, str], tuple[int, dict[str, Tally]]] = LRU()
 
 
 @dataclass
@@ -486,18 +487,8 @@ class _PlayerFacts:
 #: on the chart does not push out the whole-history entries the HUD keeps asking
 #: for. Kept per game underneath, like the tallies, so a rebuild costs the one
 #: game it touched.
-_FACTS_CACHE: dict[tuple[str, str, str | None], _PlayerFacts] = {}
 _FACTS_CACHE_MAX = 32
-
-
-def evict_oldest(cache: dict) -> None:
-    """Drop a full cache's least recently used entry. Requests run on several
-    threads, and two that miss at once can both pick the same oldest key, or find
-    the dict resized under them: the loser has nothing left to do, not a 500."""
-    try:
-        cache.pop(next(iter(cache)), None)
-    except (StopIteration, RuntimeError):
-        pass
+_FACTS_CACHE: LRU[tuple[str, str, str | None], _PlayerFacts] = LRU(_FACTS_CACHE_MAX)
 
 
 def clear_caches() -> None:
@@ -559,8 +550,7 @@ def _tallies(conn: sqlite3.Connection, game_id: str | None) -> list[dict[str, Ta
             hit = _GAME_TALLIES[path, gid] = (stamp, _tally_by_id(load_hands(conn, gid)))
         out.append(hit[1])
     if game_id is None:  # a game deleted since is forgotten with it
-        for key in [k for k in _GAME_TALLIES if k[0] == path and k[1] not in stamps]:
-            del _GAME_TALLIES[key]
+        _GAME_TALLIES.prune(lambda k: k[0] == path and k[1] not in stamps)
     return out
 
 
@@ -592,9 +582,8 @@ def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> 
     if stamps is None:
         return facts_for(conn, alias, game_id)
     key = (path, alias, game_id)
-    hit = _FACTS_CACHE.pop(key, None)  # re-inserted below: last in is last out
+    hit = _FACTS_CACHE.get(key)
     if hit is not None and hit.gen == gen:
-        _FACTS_CACHE[key] = hit
         return hit.facts
 
     ids = identities_of(conn, alias)
@@ -627,8 +616,6 @@ def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> 
     # The session facts, per game: a reused piece is filled again, to the same values.
     annotate(facts)
 
-    if len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
-        evict_oldest(_FACTS_CACHE)
     _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
     return facts
 

@@ -51,9 +51,9 @@ from .cards import (
 )
 from .derive import AGGRESSIVE, POSTFLOP_STREETS, Facts, HandPlayerRow, HandRow, derive, size_bucket
 from .equity import best_of
+from .lru import LRU
 from .queries import (
     display_names,
-    evict_oldest,
     facts_cached,
     hand_list,
     identities_of,
@@ -918,8 +918,8 @@ class _ReviewBase:
 #: switch between its list tabs and every change of filter, which re-derived the
 #: player's whole history each time: seconds on a 10,000-hand player. Least
 #: recently used goes first.
-_REVIEW_CACHE: dict[tuple[str, str, str | None], tuple[int, _ReviewBase]] = {}
 _REVIEW_CACHE_MAX = 8
+_REVIEW_CACHE: LRU[tuple[str, str, str | None], tuple[int, _ReviewBase]] = LRU(_REVIEW_CACHE_MAX)
 
 
 def _review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _ReviewBase:
@@ -927,12 +927,10 @@ def _review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _
     path = path_of(conn)
     cacheable = gen is not None and bool(path)
     key = (path, alias, game_id)
-    hit = _REVIEW_CACHE.pop(key, None) if cacheable else None  # re-inserted: last in is last out
+    hit = _REVIEW_CACHE.get(key) if cacheable else None
     if hit is None or hit[0] != gen:
         hit = (gen, _build_review_base(conn, alias, game_id))
     if cacheable:
-        if len(_REVIEW_CACHE) >= _REVIEW_CACHE_MAX:
-            evict_oldest(_REVIEW_CACHE)
         _REVIEW_CACHE[key] = hit
     return hit[1]
 

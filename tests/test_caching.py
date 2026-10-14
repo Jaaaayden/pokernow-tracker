@@ -360,14 +360,37 @@ def test_a_rename_is_visible_in_the_next_review_list(db):
     assert rv.review_hand_list(db, "gp")["player"] == "gp"
 
 
-def test_evict_oldest_tolerates_a_racing_eviction():
-    """Two requests that miss a full cache at once can both evict: the second finds
-    the oldest key gone, or the cache empty, and must not raise."""
-    from pnt.stats.queries import evict_oldest
 
-    cache = {"a": 1, "b": 2}
-    evict_oldest(cache)
-    assert list(cache) == ["b"]
-    cache.clear()
-    evict_oldest(cache)  # already emptied by the other thread
-    assert cache == {}
+def test_lru_holds_its_cap_and_survives_racing_threads():
+    """Request threads share the caches: inserting, reading, evicting and pruning
+    at once must neither raise nor let the cache grow past its cap."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from pnt.stats.lru import LRU
+
+    cache: LRU[tuple[int, int], int] = LRU(8)
+
+    def churn(t: int) -> None:
+        for i in range(2000):
+            cache[t, i % 50] = i
+            cache.get((t, (i * 7) % 50))
+            if i % 97 == 0:
+                cache.prune(lambda k: k[1] % 3 == 0)
+            assert len(cache) <= 8
+            list(cache)
+
+    with ThreadPoolExecutor(8) as pool:
+        for f in [pool.submit(churn, t) for t in range(8)]:
+            f.result()
+    assert len(cache) <= 8
+
+
+def test_lru_forgets_least_recently_used():
+    from pnt.stats.lru import LRU
+
+    cache: LRU[str, int] = LRU(2)
+    cache["a"], cache["b"] = 1, 2
+    assert cache.get("a") == 1  # a is now the newest
+    cache["c"] = 3
+    assert list(cache) == ["a", "c"]
+    assert cache.get("b") is None

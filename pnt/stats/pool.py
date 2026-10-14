@@ -15,23 +15,25 @@ costs a lookup and a new hand costs its own game.
 from __future__ import annotations
 
 import sqlite3
-from collections import Counter, OrderedDict, defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from ..db.conn import generation, path_of, reading
 from .derive import Facts, derive
+from .lru import LRU
 from .queries import _game_stamps, identity_map, load_hands
 from .tags import RuleBase, baseline, counts
 from .tilt import annotate
 
 #: Per (database, game): (that game's stamp, each PokerNow ID's `tags.counts`).
-_GAME_COUNTS: dict[tuple[str, str], tuple[int, dict[str, Counter]]] = {}
-#: Per (database, game scope): (generation, the Pool).
-_POOL: dict[tuple[str, str | None], tuple[int | None, Pool]] = {}
+_GAME_COUNTS: LRU[tuple[str, str], tuple[int, dict[str, Counter]]] = LRU()
+#: Per (database, game scope): (generation, the Pool). Capped: the HUD asks for
+#: every table it sits at, and an evening's games would otherwise stay forever.
+_POOL: LRU[tuple[str, str | None], tuple[int | None, Pool]] = LRU(32)
 #: Pools built over a filtered spot, newest last: (database, generation, game, filter).
-_SPOT_POOLS: OrderedDict[tuple, Pool] = OrderedDict()
 _SPOT_MAX = 8
+_SPOT_POOLS: LRU[tuple, Pool] = LRU(_SPOT_MAX)
 
 
 @dataclass
@@ -79,8 +81,7 @@ def _game_counts(conn: sqlite3.Connection, game: str | None, own: frozenset) -> 
             hit = _GAME_COUNTS[path, gid] = (stamp, _counts_by_id(facts, own))
         out.append(hit[1])
     if game is None:
-        for key in [k for k in _GAME_COUNTS if k[0] == path and k[1] not in stamps]:
-            del _GAME_COUNTS[key]
+        _GAME_COUNTS.prune(lambda k: k[0] == path and k[1] not in stamps)
     return out
 
 
@@ -109,14 +110,12 @@ def pool_from_facts(
 ) -> Pool:
     """A pool over facts already in hand, by alias: a filtered spot's. `key`, when
     given, remembers the last few so a spot's tags do not re-count every player."""
-    if key is not None and key in _SPOT_POOLS:
-        _SPOT_POOLS.move_to_end(key)
-        return _SPOT_POOLS[key]
+    hit = _SPOT_POOLS.get(key) if key is not None else None
+    if hit is not None:
+        return hit
     pool = Pool(scope, {a: counts(fs, own) for a, fs in grouped.items() if fs}, frozenset(own))
     if key is not None:
         _SPOT_POOLS[key] = pool
-        while len(_SPOT_POOLS) > _SPOT_MAX:
-            _SPOT_POOLS.popitem(last=False)
     return pool
 
 
