@@ -508,7 +508,7 @@ def test_the_replay_renderer_is_one_script_shared_by_both_pages(client):
 
 def test_the_front_door_links_every_page(client):
     text = client.get("/").text
-    for href in ("/stats.html", "/chart", "/players.html", "/allin.html", "/chart?by=review"):
+    for href in ("/stats.html", "/chart", "/players.html", "/allin.html", "/chart?by=review", "/tendencies.html"):
         assert href in text
 
 
@@ -728,7 +728,7 @@ def test_only_this_machine_may_be_named_as_host(client):
 
 
 
-@pytest.mark.parametrize("path", ["/", "/players.html", "/chart", "/stats.html", "/allin.html", "/pots.html"])
+@pytest.mark.parametrize("path", ["/", "/players.html", "/chart", "/stats.html", "/allin.html", "/pots.html", "/tendencies.html"])
 def test_pages_may_be_framed_only_by_the_extension_and_pokernow(client, path):
     """Framed by any other site, /players could be clickjacked into a merge."""
     csp = client.get(path).headers["content-security-policy"]

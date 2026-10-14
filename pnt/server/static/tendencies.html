@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tendencies</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+      --up: #4cc38a; --down: #e66e6d;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  h2 small, h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .crumb a:hover { text-decoration: underline; }
+  ul.note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; padding-left: 18px; max-width: 82ch; }
+  ul.note li { margin: 2px 0; }
+  ul.note b { color: var(--ink); font-weight: 600; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 10px 14px 12px; margin-bottom: 16px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.tag { white-space: nowrap; width: 1%; }
+  td.tag a { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--ink);
+    text-decoration: none; border: 1px solid var(--axis); border-radius: 999px; padding: 1px 9px; }
+  td.tag a:hover { border-color: var(--accent); color: var(--accent); }
+  td.tag a.arch { background: var(--mid); }
+  td.n { white-space: nowrap; width: 1%; color: var(--ink-2); text-align: right; }
+  td.who a { color: var(--accent); text-decoration: none; margin-right: 8px; white-space: nowrap; }
+  td.who a:hover { text-decoration: underline; }
+  td.who small { color: var(--muted); }
+  .dim { color: var(--muted); }
+  .err { color: var(--down); margin: 12px 0; }
+  .loading { opacity: .45; }
+</style>
+</head>
+<body>
+<main>
+  <div class="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <h1>Tendencies</h1>
+  <ul class="note">
+    <li><b>You:</b> the tags an opponent's HUD shows on you, and how they would play you.</li>
+    <li><b>Your opponents:</b> the exploits that fire on your regulars, most common first.</li>
+    <li>Click a tag or a name for those hands on the chart.</li>
+  </ul>
+
+  <section class="card loading" id="you"><h2>You <small id="you-sub"></small></h2><div id="you-body" class="dim">loading…</div></section>
+  <section class="card loading" id="pool"><h2>Your opponents <small id="pool-sub"></small></h2><div id="pool-body" class="dim">loading…</div></section>
+  <div class="err" id="err" hidden></div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  const node = (tag, text, cls) => {
+    const n = document.createElement(tag);
+    if (text != null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  };
+  const chart = (player, t) => {
+    const q = new URLSearchParams({ player, filter: t.filter });
+    if (t.by && t.by !== "preflop") q.set("by", t.by);
+    if (theme) q.set("theme", theme);
+    return "/chart?" + q;
+  };
+  const tagCell = (t, href, title) => {
+    const td = node("td", null, "tag");
+    const a = node("a", t.label, t.kind === "archetype" ? "arch" : null);
+    a.href = href;
+    if (title) a.title = title;
+    td.append(a);
+    return td;
+  };
+  const figure = (t) => t.kind === "archetype" ? `${t.n} hands` : `${t.pct}% of ${t.n}`;
+
+  function renderYou(d) {
+    const body = $("you-body");
+    $("you-sub").textContent = d.hero || "";
+    if (!d.hero) { body.textContent = "No log names its owner yet: download one from your own seat."; return; }
+    if (!d.you.length) { body.textContent = "No tag fires on you."; return; }
+    const t = node("table");
+    for (const x of d.you) {
+      const tr = node("tr");
+      tr.append(tagCell(x, chart(d.hero, x), x.tip), node("td", figure(x), "n"), node("td", x.advice));
+      t.append(tr);
+    }
+    body.replaceChildren(t);
+  }
+
+  function renderPool(d) {
+    const body = $("pool-body");
+    $("pool-sub").textContent = `${d.regulars} regulars with ${d.min_hands}+ hands`;
+    if (!d.pool.length) { body.textContent = d.regulars ? "No tag fires on any of them." : "No opponent has enough hands yet."; return; }
+    const t = node("table");
+    for (const x of d.pool) {
+      const tr = node("tr");
+      const who = node("td", null, "who");
+      for (const p of x.players) {
+        const a = node("a", p.player);
+        a.href = chart(p.player, { ...p, kind: x.kind });
+        a.title = x.kind === "archetype" ? `${p.n} hands` : `${p.pct}% of ${p.n}`;
+        who.append(a);
+      }
+      tr.append(tagCell(x, chart(x.players[0].player, { ...x.players[0], kind: x.kind }), `opens ${x.players[0].player}'s hands`),
+        node("td", `${x.count} of ${d.regulars}`, "n"), node("td", x.advice), who);
+      t.append(tr);
+    }
+    body.replaceChildren(t);
+  }
+
+  fetch("/tendencies", { headers: { accept: "application/json" } })
+    .then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })
+    .then((d) => { renderYou(d); renderPool(d); })
+    .catch((e) => { $("err").textContent = `Could not load /tendencies: ${e.message || e}`; $("err").hidden = false; })
+    .finally(() => { $("you").classList.remove("loading"); $("pool").classList.remove("loading"); });
+})();
+</script>
+</body>
+</html>

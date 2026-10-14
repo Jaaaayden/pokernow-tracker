@@ -104,7 +104,9 @@ NOTE = (
     "hands beyond the band's edge: an association, not a proof that playing those hands "
     "differently would have won that much. Folded hands always lose what was already in, and "
     "the weakest hands are the ones folded, so a fold-side cost runs high. An over-fold's cost is "
-    "what a pure bluff of that size wins off you, from the fold-equity tables."
+    "what a pure bluff of that size wins off you, from the fold-equity tables. Break-even assumes the "
+    "bettors bluff that size often enough: against a pool that under-bluffs, folding more is right, "
+    "so a fold leak there overstates."
 )
 
 

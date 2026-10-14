@@ -283,6 +283,12 @@ def stats_page() -> HTMLResponse:
     return _page("stats.html")
 
 
+@app.get("/tendencies.html", include_in_schema=False)
+def tendencies_page() -> HTMLResponse:
+    """Your tags, and the tags most of your opponents share, from /tendencies."""
+    return _page("tendencies.html")
+
+
 @app.get("/allin.html", include_in_schema=False)
 def allin_page() -> HTMLResponse:
     """All-in EV: what every player's jams were worth against what they took.
@@ -1430,6 +1436,20 @@ def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one ga
     from pnt.stats.leaks import leaks
 
     return leaks(db(), game)
+
+
+# ---- tendencies ------------------------------------------------------------------
+# Imported inside the endpoint so this block stands alone.
+
+
+@app.get("/tendencies")
+def tendencies_report(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+    """The tags on the hero (`you`), and per tag the regular opponents it fires on
+    (`pool`), most first. A regular has `min_hands` hands or more. Fun tags are left
+    out. Each player's entry carries the filter that opens the tag's hands."""
+    from pnt.stats.tendencies import tendencies
+
+    return tendencies(db(), game)
 
 
 # ---- timing tells --------------------------------------------------------------
