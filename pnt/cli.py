@@ -42,7 +42,7 @@ from .stats.lines import DEFAULT_MIN as LINES_MIN
 from .stats.lines import MODES as LINES_MODES
 from .stats.lines import TIERS, line_breakdown
 from .stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
-from .stats.queries import display_names, facts_by_player, facts_for, positional_report, report
+from .stats.queries import display_names, facts_by_player, facts_for, identities_of, positional_report, report
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
 from .stats.review import KIND_LABELS as REVIEW_LABELS
 from .stats.review import KINDS as REVIEW_KINDS
@@ -1110,33 +1110,48 @@ def tags(
     through are the hands missing from that evidence. Each rule is judged against
     the other players' rates (SPEC.md, "Pool baseline") unless `--basis fixed`.
     """
-    from .stats.pool import pool_for, pool_from_facts
+    from .stats.pool import owners, pool_for, pool_from_facts
 
     if basis not in ("pool", "fixed"):
         raise typer.BadParameter("--basis is 'pool' or 'fixed'")
+    if show_pool and basis == "fixed":
+        raise typer.BadParameter("--pool prints the pool's baseline, which --basis fixed does not use")
     conn = connect(db)
+    spot_pool = bool(filter_) and basis == "pool"
     try:
         pred = parse_filter(filter_, display_names(conn)) if filter_ else None
-        grouped, aliases, _ = facts_by_player(conn, game)
-        everyone = sorted(((aliases[pid], facts) for pid, facts in grouped.items()), key=lambda p: -len(p[1]))
-        if pred is not None:
-            everyone = [(a, [f for f in fs if pred(f)]) for a, fs in everyone]
-        players = [p for p in everyone if p[0] == alias] if alias else everyone
-        if alias and not players:
-            raise ValueError(f"unknown alias: {alias!r}")
+        if alias:
+            identities_of(conn, alias)  # raises on an alias that does not exist
+        # Everyone's hands are derived only to list everyone or to pool a filtered
+        # spot; one player's tags otherwise read their own hands and the stored pool.
+        everyone = None
+        if spot_pool or (alias is None and not show_pool):
+            grouped, aliases, _ = facts_by_player(conn, game)
+            everyone = sorted(((aliases[pid], facts) for pid, facts in grouped.items()), key=lambda p: -len(p[1]))
+            if pred is not None:
+                everyone = [(a, [f for f in fs if pred(f)]) for a, fs in everyone]
+        players: list[tuple[str, list]] = []
+        if show_pool:
+            pass  # the baseline only: no player's own tags
+        elif alias is None:
+            players = everyone
+        elif everyone is not None:
+            players = [(alias, dict(everyone).get(alias, []))]  # a known player with no hands here
+        else:
+            facts = facts_for(conn, alias, game)
+            players = [(alias, [f for f in facts if pred(f)] if pred is not None else facts)]
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     pool = None
     if basis == "pool":
-        pool = pool_for(conn, game) if pred is None else pool_from_facts(
-            dict(everyone), pool_for(conn, game).owners, f"spot: {filter_}")
+        pool = pool_from_facts(dict(everyone), owners(conn), f"spot: {filter_}") if spot_pool else pool_for(conn, game)
     if show_pool:
-        base = pool.baseline(alias) if pool is not None else {}
+        base = pool.baseline(alias)
         if as_json:
             typer.echo(json.dumps({k: {"pct": b.pct, "players": b.players, "spread": list(b.spread)}
                                    for k, b in sorted(base.items())}, indent=2))
             return
-        typer.echo(f"pool baseline ({len(pool.players) if pool else 0} players{f', without {alias}' if alias else ''}):")
+        typer.echo(f"pool baseline ({len(pool.players)} players{f', without {alias}' if alias else ''}):")
         for k, b in sorted(base.items()):
             typer.echo(f"  {k:<20} {b.pct:>5}%  middle half {b.spread[0]}-{b.spread[1]}%  ({b.players} players)")
         return
@@ -1145,6 +1160,15 @@ def tags(
         if len(facts) < min_hands:
             continue
         rows.append({"player": name, "filter": filter_, **tags_for(facts, pool, name)})
+    if alias and not rows:
+        n = len(players[0][1])
+        where = "".join([" in this spot" if filter_ else "", " in this game" if game else ""])
+        skipped = f"{n} hand{'' if n == 1 else 's'}{where}, fewer than --min-hands {min_hands}"
+        if as_json:
+            typer.echo(json.dumps({"player": alias, "filter": filter_, "hands": n, "skipped": skipped}, indent=2))
+        else:
+            typer.echo(f"{alias}: {skipped}")
+        return
     if as_json:
         typer.echo(json.dumps(rows if not alias else rows[0], indent=2))
         return
@@ -1645,8 +1669,9 @@ def bluffs(
     """Bluff:value by kind of aggression: bets by size, check-raises, raises and jams.
 
     The shown hands of each are read on the board of the street the action was
-    made on: value (top pair or better), marginal (a weaker pair), semi-bluff (a
-    draw on the flop or turn) and bluff (no pair, or a missed draw on the river).
+    made on, by hand strength on that board: value (a value hand there, top pair
+    or better on most), marginal (a weaker made hand), semi-bluff (a draw on the
+    flop or turn) and bluff (no pair, or a missed draw on the river).
     Bets everyone folded to are never shown, so the shown ratio leans to value;
     `folded` is how many of a bet row's bets got there, as context.
     """
@@ -1904,7 +1929,7 @@ def shows(
     typer.echo(f"two cards, classified: {out['two_card']} of {out['shows']} ({_fmt(out['coverage'])}%)"
                f"   one card, counted only: {out['one_card']}")
     fv = out["folded_vs"]
-    typer.echo(f"air {_fmt(out['air_pct'])}%   top pair or better {_fmt(out['strong_pct'])}%   "
+    typer.echo(f"air {_fmt(out['air_pct'])}%   strong {_fmt(out['strong_pct'])}%   "
                f"folded the best hand {fv['ahead']} of {fv['known']} where the winner's cards are known")
     typer.echo("\n".join("- " + n.replace("**", "") for n in out["note"]) + "\n")
     header = f"{'how the hand ended':<32}{'shows':>6}{'1 card':>7}" + "".join(f"{c:>9}" for c in CLASSES)

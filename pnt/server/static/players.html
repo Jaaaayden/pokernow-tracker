@@ -107,7 +107,6 @@
   table.h2h td.dim { color: var(--muted); }
   table.h2h .up { color: var(--up); }
   table.h2h .down { color: var(--down); }
-  table.h2h td.self { background: var(--mid); }
   table.h2h.list { width: 100%; }
   .h2h-foot { color: var(--muted); font-size: 12px; margin: 0 0 10px; max-width: 80ch; }
 </style>
@@ -429,15 +428,29 @@
   }
 
   // ---- head to head ------------------------------------------------------
-  // The money between two players (/players/{alias}/h2h) and the pool's matrix
-  // (/h2h). A hand with one winner settles exactly; with several, each loser's
-  // loss is split by what each winner won (SPEC.md, "Head to head"). Both are
-  // fetched only when shown, and forgotten whenever the list reloads, since a
-  // merge or a rename changes whose money it was.
+  // The money between one player and each opponent (/players/{alias}/h2h). A hand
+  // with one winner settles exactly; with several, each loser's loss is split by
+  // what each winner won (SPEC.md, "Head to head"). Fetched only when shown, and
+  // forgotten whenever the list reloads, since a merge or a rename changes whose
+  // money it was. The request itself is kept, so a render while it is still on
+  // its way waits for it instead of asking again; a failed one is dropped, so the
+  // next render tries again. An answer arriving after a reload lands on an entry
+  // the cache no longer holds.
   const h2hCache = new Map();
 
   function resetH2h() {
     h2hCache.clear();
+  }
+
+  function h2hFor(alias) {
+    let entry = h2hCache.get(alias);
+    if (!entry) {
+      entry = { data: null };
+      entry.req = api(`/players/${encodeURIComponent(alias)}/h2h`).then((data) => (entry.data = data));
+      entry.req.catch(() => { if (h2hCache.get(alias) === entry) h2hCache.delete(alias); });
+      h2hCache.set(alias, entry);
+    }
+    return entry;
   }
 
   const signedBb = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
@@ -459,17 +472,15 @@
     wrap.appendChild(el("p", null, `Head to head: the big blinds ${p.alias} won from each opponent, biggest either way first.`));
     // Built for every card on each render; only the open one asks the server.
     if (p.alias !== openAlias) return wrap;
-    const hit = h2hCache.get(p.alias);
-    if (hit) {
-      wrap.appendChild(h2hTable(p, hit));
+    const entry = h2hFor(p.alias);
+    if (entry.data) {
+      wrap.appendChild(h2hTable(p, entry.data));
       return wrap;
     }
     const wait = el("div", "h2h-foot", "loading…");
     wrap.appendChild(wait);
-    api(`/players/${encodeURIComponent(p.alias)}/h2h`).then((data) => {
-      h2hCache.set(p.alias, data);
-      wait.replaceWith(h2hTable(p, data));
-    }).catch((e) => { wait.textContent = "could not load head to head: " + e.message; });
+    entry.req.then((data) => wait.replaceWith(h2hTable(p, data)))
+      .catch((e) => { wait.textContent = "could not load head to head: " + e.message; });
     return wrap;
   }
 

@@ -45,7 +45,6 @@
   a.link { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13px; }
   a.link ~ a.link { margin-left: 12px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
-  .note p { margin: 0 0 4px; }
   .note ul { margin: 0; padding-left: 18px; }
   .note li { margin: 2px 0; }
   .note b, .note strong { color: var(--ink); font-weight: 600; }
@@ -215,7 +214,9 @@
     state.filter = q.get("filter") || "";
     state.min = Math.max(1, parseInt(q.get("min") || "5", 10) || 5);
     state.unit = q.get("unit") === "chips" ? "chips" : "bb";
-    state.sort = q.get("sort") || "hands";
+    // A hand-edited or old link may name a column that is not there: sort by hands.
+    const sort = q.get("sort");
+    state.sort = sort === "player" || columns().some(c => c[0] === sort) ? sort : "hands";
     state.dir = q.get("dir") === "asc" ? 1 : -1;
     state.player = q.get("player") || null;
     state.handSort = HAND_ORDERS.includes(q.get("order")) ? q.get("order") : "newest";

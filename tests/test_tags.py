@@ -428,3 +428,47 @@ def test_cli_prints_every_player_and_json_for_one(tmp_path):
     assert body["player"] == "genericpoker" and {"archetype", "tags", "profile"} <= set(body)
     result = CliRunner().invoke(cli.app, ["tags", "nobody", "--db", str(path)])
     assert result.exit_code != 0 and "unknown alias" in result.output
+
+
+def test_cli_one_player_with_no_hands_here_is_skipped_not_unknown(tmp_path):
+    """A real player with no hands in the game or spot asked about is reported as
+    such: not "unknown alias", and not an IndexError under --json."""
+    path = tmp_path / "tags.sqlite"
+    conn = connect(path)
+    for log in ALL_LOGS:
+        import_csv(conn, log)
+    # A player and a game they were not dealt into.
+    alias, game = conn.execute(
+        "SELECT p.alias, g.game_id FROM players p, games g WHERE NOT EXISTS ("
+        " SELECT 1 FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
+        " JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+        " WHERE pi.player_id = p.player_id AND h.game_id = g.game_id) LIMIT 1"
+    ).fetchone()
+    conn.close()
+    run = lambda *args: CliRunner().invoke(cli.app, ["tags", alias, *args, "--db", str(path)])  # noqa: E731
+
+    result = run("--game", game)
+    assert result.exit_code == 0, result.output
+    assert "unknown alias" not in result.output and "0 hands in this game" in result.output
+
+    result = run("--filter", "players>=10", "--json")
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.output)
+    assert body["player"] == alias and body["hands"] == 0 and "skipped" in body
+
+    result = run("--pool", "--basis", "fixed")
+    assert result.exit_code != 0 and "--basis fixed" in result.output
+
+
+def test_cli_one_player_matches_their_row_among_everyone(tmp_path):
+    """One player's tags read only their own hands; they must agree with the same
+    player's row when every player is derived."""
+    path = tmp_path / "tags.sqlite"
+    conn = connect(path)
+    for log in ALL_LOGS:
+        import_csv(conn, log)
+    conn.close()
+    one = json.loads(CliRunner().invoke(cli.app, ["tags", "genericpoker", "--json", "--db", str(path)]).output)
+    out = CliRunner().invoke(cli.app, ["tags", "--json", "--db", str(path)]).output
+    row = next(r for r in json.loads(out) if r["player"] == "genericpoker")
+    assert one == row
