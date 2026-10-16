@@ -355,6 +355,42 @@ def filters() -> dict:
     return vocabulary()
 
 
+# ---- term counts ---------------------------------------------------------------
+# How many hands each candidate term would leave, for the filter panel. Imported
+# inside the endpoint so this block stands alone. See SPEC.md, "Counting terms".
+
+
+class CountsRequest(BaseModel):
+    #: An alias, or None for every player's hands, as `/stats` counts them.
+    player: str | None = None
+    filter: str = ""
+    game: str | None = None
+    terms: list[str] = Field(default_factory=list, max_length=200)
+
+
+@app.post("/counts")
+def counts(req: Annotated[CountsRequest, Body()]) -> dict:
+    """`{"base": n, "counts": {term: n}}`: the hands `filter` keeps, and per term
+    those `filter,term` keeps; null for a term the parser refuses. A POST only
+    because 200 terms do not fit a URL; it writes nothing."""
+    from pnt.stats.filters import count_terms
+    from pnt.stats.queries import facts_by_player
+
+    conn = db()
+    if req.player is None:
+        grouped, _, _ = facts_by_player(conn, req.game)
+        facts = [f for rows in grouped.values() for f in rows]
+    else:
+        try:
+            facts = facts_cached(conn, req.player, req.game)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        return count_terms(facts, req.filter, req.terms, display_names(conn))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/health")
 def health() -> dict:
     conn = db()

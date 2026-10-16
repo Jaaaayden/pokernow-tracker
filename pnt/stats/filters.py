@@ -21,12 +21,16 @@ pot reached 500 chips, and `vs=henry` the hands played against henry.
 `made_flop>=set,line_flop=x*` the sets that checked the flop -- a slowplay.
 `action_flop=*Br*` is the whole street, everyone's actions: they bet and someone
 raised them, their own letters in capitals.
+
+A comma is and, `|` or, and `|` binds tighter: `3bet_pot|4bet_pot` is either pot,
+`position=BTN|CO` either seat, and `(srp,position=BTN)|3bet_pot` groups with
+brackets (SPEC.md, "Filter language").
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 
 from ..logfmt.parser import position_name
 from .cards import (
@@ -802,6 +806,12 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Not", (
         ("!FLAG", "!cbet_flop", "any flag above, negated"),
     )),
+    ("Combine", (
+        ("A|B", "3bet_pot|4bet_pot", "either; | binds before , so srp,a|b is srp and (a or b)"),
+        ("KEY=A|B", "position=BTN|CO", "any of these values; != is none of them"),
+        ("(A,B)|C", "(srp,position=BTN)|(3bet_pot)", "brackets group terms"),
+        ("!(A)", "!(limped)", "everything the bracket does not match"),
+    )),
 )
 
 
@@ -862,13 +872,16 @@ _TIER_WORDS = {
 }
 
 
+#: Every seat name `position_name` gives two to ten handed: what `position=` takes.
+POSITIONS: tuple[str, ...] = tuple(
+    dict.fromkeys(position_name(seat, n) for n in range(2, 11) for seat in range(n))
+)
+_POSITION_KEYS = frozenset(p.upper() for p in POSITIONS)
+
+
 def vocabulary() -> dict:
     """VOCABULARY plus the value lists it refers to, as the `/filters` payload."""
-    positions: list[str] = []
-    for n in range(2, 11):
-        for seat in range(n):
-            if (p := position_name(seat, n)) not in positions:
-                positions.append(p)
+    positions = list(POSITIONS)
     return {
         "groups": [
             {"name": name, "terms": [{"term": t, "example": e, "desc": d} for t, e, d in terms]}
@@ -892,7 +905,12 @@ def vocabulary() -> dict:
 
 
 def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate:
-    """Compile a comma-separated filter expression into one predicate (AND).
+    """Compile a filter expression into one predicate (SPEC.md, "Filter language").
+
+    Terms are joined by ``,`` (and) and ``|`` (or), ``|`` binding tighter;
+    brackets group, and ``!( )`` negates a bracket. ``position=BTN|CO`` is a value
+    list, ``3bet_pot|4bet_pot`` an OR of whole terms. The tree is compiled here,
+    once, and a row only walks it.
 
     `names` maps pn_id -> display name and is only needed for `vs=`; pass
     `display_names(conn)` from queries.py.
@@ -941,117 +959,272 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
                              its bucket (pre, snap, normal, tank, timeout), preflop included
       ``!cbet_flop``         any flag, negated
     """
-    terms = [t.strip() for t in expr.split(",") if t.strip()]
-    preds: list[Predicate] = []
-
-    for term in terms:
-        if term in FLAGS:
-            preds.append(FLAGS[term])
-            continue
-
-        # `!flag`: plain flags only. A negated comparison or size has its own `!=`
-        # where it means anything, and `!pot>=500` would read two ways.
-        if term.startswith("!"):
-            if term[1:] not in FLAGS:
-                raise ValueError(f"only a flag can be negated with !: {term!r}")
-            preds.append(lambda f, p=FLAGS[term[1:]]: not p(f))
-            continue
-
-        player = _player_term(term, names)
-        if player is not None:
-            preds.append(player)
-            continue
-
-        holding = _hand_term(term)
-        if holding is not None:
-            preds.append(holding)
-            continue
-
-        if term.startswith("fold_street="):
-            street = term.split("=", 1)[1].strip().lower()
-            if street not in _STREET_ORDER:
-                raise ValueError(
-                    f"unknown street {street!r} for fold_street=. Known: {', '.join(_STREET_ORDER)}"
-                )
-            preds.append(lambda f, s=street: f.fold_street == s)
-            continue
-
-        if term.startswith("position="):
-            want = term.split("=", 1)[1].upper()
-            preds.append(
-                lambda f, w=want: f.seats_from_button is not None
-                and not f.dead_button
-                and position_name(f.seats_from_button, f.n_dealt_in).upper() == w
-            )
-            continue
-
-        decided = _decision_term(term)
-        if decided is not None:
-            preds.append(decided)
-            continue
-
-        answered = _answer_term(term)
-        if answered is not None:
-            preds.append(answered)
-            continue
-
-        line = _street_term(term, "line")
-        if line is not None:
-            preds.append(line)
-            continue
-
-        action = _street_term(term, "action")
-        if action is not None:
-            preds.append(action)
-            continue
-
-        tempo = _tempo_term(term)
-        if tempo is not None:
-            preds.append(tempo)
-            continue
-
-        tier = _tier_term(term)
-        if tier is not None:
-            preds.append(tier)
-            continue
-
-        made = _made_term(term)
-        if made is not None:
-            preds.append(made)
-            continue
-
-        sized = _size_term(term)
-        if sized is not None:
-            preds.append(sized)
-            continue
-
-        numeric = _numeric_term(term)
-        if numeric is not None:
-            preds.append(numeric)
-            continue
-
-        texture = _texture_term(term)
-        if texture is not None:
-            preds.append(texture)
-            continue
-
-        raise ValueError(
-            f"unknown filter term: {term!r}. "
-            f"Known flags: {', '.join(sorted(FLAGS))}; "
-            f"position=<POS>; fold_street=<street>; vs=<player>; hand=<class>; "
-            f"a comparison on {', '.join(NUMERIC)}; "
-            f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
-            f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
-            f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "
-            f"line_<street>=PATTERN or line=flop/turn/river; action_<street>= or action= likewise; "
-            f"made_<street>=HAND or made=HAND; tier_<street>=TIER ({', '.join(TIERS)}); "
-            f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
-            f"!flag; or flop=/turn=/river=/board= with a texture tag"
-        )
-
+    preds = _Parser(expr, names).parse()
     if not preds:
         return lambda f: True
     return lambda f: all(p(f) for p in preds)
+
+
+def count_terms(
+    facts: Iterable[Facts], base: str, terms: Iterable[str], names: Mapping[str, str] | None = None
+) -> dict:
+    """How many rows match `base`, and how many match `(base),(term)` per term
+    (SPEC.md, "Counting terms"). A bad base raises; a bad term counts None."""
+    pred = parse_filter(base, names)
+    rows = [f for f in facts if pred(f)]
+    counts: dict[str, int | None] = {}
+    for term in terms:
+        try:
+            p = parse_filter(term, names)
+        except ValueError:
+            counts[term] = None
+            continue
+        counts[term] = sum(1 for f in rows if p(f))
+    return {"base": len(rows), "counts": counts}
+
+
+def _compile_term(term: str, names: Mapping[str, str] | None) -> tuple[Predicate, str]:
+    """One term as a predicate, with the family that read it: `numeric` for a
+    comparison, `flag` and `not` for the bare forms, else the family a value list
+    has to stay inside (`position=BTN|CO` is two `position` terms)."""
+    if term in FLAGS:
+        return FLAGS[term], "flag"
+
+    # `!flag`: plain flags only. A negated comparison or size has its own `!=`
+    # where it means anything, and `!pot>=500` would read two ways.
+    if term.startswith("!"):
+        if term[1:] not in FLAGS:
+            raise ValueError(f"only a flag can be negated with !: {term!r}")
+        return (lambda f, p=FLAGS[term[1:]]: not p(f)), "not"
+
+    if term.startswith("fold_street="):
+        street = term.split("=", 1)[1].strip().lower()
+        if street not in _STREET_ORDER:
+            raise ValueError(
+                f"unknown street {street!r} for fold_street=. Known: {', '.join(_STREET_ORDER)}"
+            )
+        return (lambda f, s=street: f.fold_street == s), "fold_street"
+
+    if term.startswith("position="):
+        want = term.split("=", 1)[1].strip().upper()
+        if want not in _POSITION_KEYS:
+            raise ValueError(f"unknown position {want!r}. Known: {', '.join(POSITIONS)}")
+        return (
+            lambda f, w=want: f.seats_from_button is not None
+            and not f.dead_button
+            and position_name(f.seats_from_button, f.n_dealt_in).upper() == w
+        ), "position"
+
+    # In the order the terms were always tried: the first family to claim a term
+    # reads it, so `bet_river=small` is a size and `bet_river=1` a comparison.
+    for family, read in (
+        ("vs", lambda t: _player_term(t, names)),
+        ("hand", _hand_term),
+        ("decision", _decision_term),
+        ("answer", _answer_term),
+        ("line", lambda t: _street_term(t, "line")),
+        ("action", lambda t: _street_term(t, "action")),
+        ("tempo", _tempo_term),
+        ("tier", _tier_term),
+        ("made", _made_term),
+        ("size", _size_term),
+        ("numeric", _numeric_term),
+        ("texture", _texture_term),
+    ):
+        pred = read(term)
+        if pred is not None:
+            return pred, family
+
+    raise ValueError(
+        f"unknown filter term: {term!r}. "
+        f"Known flags: {', '.join(sorted(FLAGS))}; "
+        f"position=<POS>; fold_street=<street>; vs=<player>; hand=<class>; "
+        f"a comparison on {', '.join(NUMERIC)}; "
+        f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
+        f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
+        f"an answer ({', '.join(ANSWERS)}) on {', '.join(ANSWERED)}; "
+        f"line_<street>=PATTERN or line=flop/turn/river; action_<street>= or action= likewise; "
+        f"made_<street>=HAND or made=HAND; tier_<street>=TIER ({', '.join(TIERS)}); "
+        f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
+        f"!flag, !(...); or flop=/turn=/river=/board= with a texture tag"
+    )
+
+
+#: What makes a `|` segment a term of its own rather than a value of the one
+#: before it: `position=BTN|CO` is a list, `3bet_pot|position=CO` two terms.
+_OPERATOR_CHARS = frozenset("=!<>")
+_OPERATOR = re.compile(r"!=|>=|<=|=|>|<")
+
+
+class _Values:
+    """A `key=value` term and the values `|` adds to it (`position=BTN|CO`).
+
+    `=` is any of them and `!=` none of them, each value compiled as the term it
+    spells. `made_` and `tier_` join their names back into one term instead, so
+    their own `|` reads exactly as it always has.
+    """
+
+    def __init__(self, term: str, pred: Predicate, family: str, names: Mapping[str, str] | None):
+        m = _OPERATOR.search(term)
+        assert m is not None, term
+        self.key, self.op = term[: m.start()], m.group()
+        self.family, self.names = family, names
+        self.values = [term[m.end():]]
+        self.preds = [pred]
+
+    def take(self, segment: str) -> bool:
+        """Add `segment` as one more value if it is one; False leaves it a term."""
+        if self.family == "numeric":
+            return False
+        if self.family in ("made", "tier"):
+            if segment.strip().lower() not in (MADE_NAMES if self.family == "made" else TIERS):
+                return False
+            self.values.append(segment)
+            return True
+        try:
+            pred, family = _compile_term(f"{self.key}{self.op}{segment}", self.names)
+        except ValueError:
+            return False
+        if family != self.family:
+            return False
+        self.values.append(segment)
+        self.preds.append(pred)
+        return True
+
+    def refuse(self, segment: str, err: ValueError) -> ValueError:
+        """Why `segment` is neither a value here nor a term (`err`, as a term)."""
+        if self.family == "numeric":
+            return ValueError(
+                f"{self.key}{self.op}{self.values[0]}|{segment}: a comparison takes one number, "
+                f"so write each as its own term (eff_bb<40|eff_bb>=200)"
+            )
+        try:
+            _compile_term(f"{self.key}{self.op}{segment}", self.names)
+        except ValueError as own:
+            return own
+        return err
+
+    def predicate(self) -> Predicate:
+        if self.family in ("made", "tier"):
+            return _compile_term(f"{self.key}{self.op}{'|'.join(self.values)}", self.names)[0]
+        preds = tuple(self.preds)
+        if len(preds) == 1:
+            return preds[0]
+        if self.op == "!=":
+            return lambda f: all(p(f) for p in preds)
+        return lambda f: any(p(f) for p in preds)
+
+
+class _Parser:
+    """The filter grammar (SPEC.md, "Filter language"), by recursive descent::
+
+        conj := disj ("," disj)*
+        disj := unit ("|" unit)*
+        unit := "(" conj ")" | "!(" conj ")" | term
+    """
+
+    def __init__(self, expr: str, names: Mapping[str, str] | None):
+        self.expr, self.names = expr, names
+        self.tokens = list(self._tokens(expr))
+        self.at = 0
+
+    @staticmethod
+    def _tokens(expr: str):
+        """(kind, text) pairs: `,` `|` `(` `!(` `)`, or `term` and its stripped text."""
+        i, n = 0, len(expr)
+        while i < n:
+            ch = expr[i]
+            if ch.isspace():
+                i += 1
+            elif ch in ",|()":
+                yield ch, ch
+                i += 1
+            elif ch == "!" and expr[i + 1:].lstrip().startswith("("):
+                yield "!(", "!("
+                i = expr.index("(", i) + 1
+            else:
+                j = i
+                while j < n and expr[j] not in ",|()":
+                    j += 1
+                yield "term", expr[i:j].strip()
+                i = j
+
+    def _peek(self) -> str | None:
+        return self.tokens[self.at][0] if self.at < len(self.tokens) else None
+
+    def parse(self) -> list[Predicate]:
+        preds = self._conj()
+        if self._peek() is not None:  # only a `)` stops a conj early
+            raise ValueError(f"{self.expr!r}: a ) with no ( before it")
+        return preds
+
+    def _conj(self) -> list[Predicate]:
+        preds: list[Predicate] = []
+        while (kind := self._peek()) not in (None, ")"):
+            if kind == ",":  # an empty term: `3bet,` is `3bet`
+                self.at += 1
+                continue
+            preds.append(self._disj())
+            if self._peek() not in (None, ",", ")"):
+                raise ValueError(f"{self.expr!r}: put a , or a | before a (")
+        return preds
+
+    def _bracket(self) -> Predicate:
+        negate = self.tokens[self.at][0] == "!("
+        self.at += 1
+        inner = tuple(self._conj())
+        if self._peek() != ")":
+            raise ValueError(f"{self.expr!r}: a ( that is never closed")
+        self.at += 1
+        if not inner:
+            raise ValueError(f"{self.expr!r}: empty brackets")
+        if negate:
+            return lambda f: not all(p(f) for p in inner)
+        return inner[0] if len(inner) == 1 else (lambda f: all(p(f) for p in inner))
+
+    def _disj(self) -> Predicate:
+        alts: list[Predicate] = []
+        values: _Values | None = None  # the key=value term a bare segment may extend
+        while True:
+            kind = self._peek()
+            if kind in ("(", "!("):
+                if values is not None:
+                    alts.append(values.predicate())
+                    values = None
+                alts.append(self._bracket())
+            elif kind == "term":
+                segment = self.tokens[self.at][1]
+                self.at += 1
+                bare = not _OPERATOR_CHARS & set(segment)
+                if not (values is not None and bare and values.take(segment)):
+                    try:
+                        pred, family = _compile_term(segment, self.names)
+                    except ValueError as err:
+                        if values is not None and bare:
+                            raise values.refuse(segment, err) from None
+                        raise
+                    if values is not None:
+                        alts.append(values.predicate())
+                    values = None
+                    if family in ("flag", "not"):
+                        alts.append(pred)
+                    else:
+                        values = _Values(segment, pred, family, self.names)
+            else:
+                if values is not None and values.family in ("made", "tier"):
+                    # `made_flop=set|`: the made term says what is missing, as it always has.
+                    values.values.append("")
+                    values.predicate()
+                raise ValueError(f"{self.expr!r}: a | needs a term on each side")
+            if self._peek() != "|":
+                break
+            self.at += 1
+        if values is not None:
+            alts.append(values.predicate())
+        if len(alts) == 1:
+            return alts[0]
+        preds = tuple(alts)
+        return lambda f: any(p(f) for p in preds)
 
 
 # --- timing tells (SPEC.md, "Timing tells"): how long their first decision on a

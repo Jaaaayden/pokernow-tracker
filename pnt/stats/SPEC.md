@@ -608,6 +608,82 @@ Judgement calls:
 
 ---
 
+## Filter language
+
+A filter is terms joined by `,` (and) and `|` (or), and `|` binds tighter:
+
+```
+expr := conj
+conj := disj ("," disj)*
+disj := unit ("|" unit)*
+unit := "(" conj ")" | "!(" conj ")" | term
+```
+
+| Written | Reads as |
+|---|---|
+| `position=BTN,3bet_pot\|4bet_pot` | `position=BTN` and (`3bet_pot` or `4bet_pot`) |
+| `(srp,position=BTN)\|(3bet_pot,position=SB)` | either bracket |
+| `!(srp,position=BTN)` | every hand the bracket does not match |
+| `position=BTN\|CO` | `position=BTN` or `position=CO` |
+| `vs!=henry\|luis` | `vs!=henry` and `vs!=luis`: against neither |
+| `3bet_pot\|position=BTN` | either term |
+| `eff_bb<40\|eff_bb>=200` | either comparison |
+
+1. **Empty terms between commas are skipped**, as before: `3bet,` is `3bet`, and
+   an empty filter keeps every hand. An empty side of a `|` and empty brackets are
+   errors.
+2. **A value list continues the term right before it.** In a `|` group, a segment
+   with no operator character (`= ! < >`) that follows a `key=value` or
+   `key!=value` term, or another value of it, is one more value of that key when
+   `key<op>segment` is a valid term of the same family. Anything else is a term of
+   its own. A list never crosses a `,` or a bracket: `position=BTN,CO` is two
+   terms, and `CO` alone is unknown.
+3. **`key=a|b` is any of them, `key!=a|b` none of them**: the OR of `key=a` and
+   `key=b`, and the AND of `key!=a` and `key!=b`. Each `!=` keeps its family's
+   gate, so `flop!=paired|monotone` still needs a flop, `hand!=AA|KK` known cards
+   and `tempo_river!=snap|tank` a timed decision; `line_river!=b*|x*` matches a
+   hand with no river line, as `line_river!=b*` does.
+4. **Every `=` family takes a list**: `position`, `fold_street`, `vs`, `hand`, the
+   preflop decisions (`faced_open=call|raise`), the answers
+   (`bet_answer_river=call|raise`), the size buckets (`cbet_flop=small|medium`),
+   `line_`/`line`, `action_`/`action`, `tempo_`, and the textures
+   (`flop=paired|monotone`). `made_` and `tier_` keep their own `|` exactly as
+   before: a union of names under `=`, none of them under `!=`, and a comparison
+   with a list refused.
+5. **Comparisons take no list.** `pot_bb>=10|20` is an error;
+   `eff_bb<40|eff_bb>=200` is two terms.
+6. **Collisions.** No flag is a value of any family but `vs=`, whose values are
+   player names (`test_no_flag_is_a_value`). A `vs=` segment that is somebody's
+   display name or PokerNow ID is that player, even when a flag has the same name.
+   Without a name map, which only internal callers omit, every operator-free
+   segment after `vs=` is a name. Brackets make a term of it either way:
+   `vs=henry|(won)`.
+7. **An unknown value raises**, which the server answers with a 400: `position=XYZ`,
+   `position=`, `faced_open=jam`, `fold_street=showdown`. A segment after a key that
+   is neither its value nor a term raises the key's own error, so
+   `position=BTN|XYZ` is "unknown position". `position=` takes the names
+   `position_name` gives at two to ten handed, case-insensitively.
+8. **`!` negates a flag or a bracket**, and nothing else: `!cbet_flop`,
+   `!(limped)`. `!pot>=500` is still refused.
+9. **Compiled once.** `parse_filter` builds the tree of predicates when it parses,
+   and a row is only walked through it.
+
+### Counting terms
+
+`count_terms(facts, base, terms)` is `{"base": n, "counts": {term: n}}`: `base` is
+the rows matching `base`, and each count the rows matching `(base),(term)`. That is
+what `base,term` matches, since `,` binds loosest and a list never crosses it. A
+bad base raises; a bad term counts `null`, and an empty one counts the base.
+
+`POST /counts {player, filter, game, terms}` takes at most 200 terms. With a
+player it counts `facts_cached(alias, game)`, the hands `/players/{alias}/stats`
+reads, so a count is the chart's `hands` for `filter,term`. With `player: null` it
+counts every player's rows from `facts_by_player(game)`, which `/stats?filter=`
+groups, so a count is the sum of that table's `hands` column. It reads only, but
+carries the write header like every POST.
+
+---
+
 ## Lines and sizing
 
 These facts exist so a *line* -- "opened 4bb+, single-raised pot, c-bet flop and
@@ -642,11 +718,11 @@ therefore `bet_river` (the flag) or `bet_river>=1` (the size).
 match a limped pot; the hand has no open size, so it cannot satisfy any claim
 about one.
 
-**`!` negates a flag, and only a flag.** `!cbet_flop` is every hand `cbet_flop`
-does not match, the hands that never saw a flop included; add `cbet_flop_opp` for
-"could have c-bet and did not". A comparison, a size or a texture has its own `!=`
-where negating it means something, and `!pot>=500` could be read two ways, so it
-is refused.
+**`!` negates a flag or a bracket, and nothing else.** `!cbet_flop` is every hand
+`cbet_flop` does not match, the hands that never saw a flop included; add
+`cbet_flop_opp` for "could have c-bet and did not". A comparison, a size or a
+texture has its own `!=` where negating it means something, and `!pot>=500` could
+be read two ways, so it is refused; `!(pot>=500)` says which.
 
 ### Action lines
 

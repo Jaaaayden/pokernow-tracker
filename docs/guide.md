@@ -345,6 +345,20 @@ pnt stats --filter "cbet_flop,position=BTN"
 pnt stats --filter "faced_cbet_flop,players>=3"
 ```
 
+**And, or, brackets.** A comma is *and*, `|` is *or*, and `|` binds first:
+
+- `3bet_pot|4bet_pot`: either pot.
+- `position=BTN,3bet_pot|4bet_pot`: the button, in either pot.
+- `position=BTN|CO`, `faced_open=call|raise`, `vs=henry|luis`: any of the values.
+- `vs!=henry|luis`: against neither.
+- `(srp,position=BTN)|(3bet_pot,position=SB)`: either bracket.
+- `!(limped)`: everything the bracket doesn't match.
+
+A bare word after `key=` is one more value when the key takes it; otherwise it's
+a term of its own, so `position=BTN|3bet_pot` is either. Comparisons take one
+number each: `eff_bb<40|eff_bb>=200`. An unknown value is an error rather than
+an empty result: `position=XYZ` says so.
+
 **The hand.** `pot>=500` keeps hands whose final pot reached 500 chips (`pot_bb>=50`
 says it in big blinds). `vs=henry` keeps hands played against henry, meaning he was
 still in when the player last acted (the same "vs" that a hand row prints).
