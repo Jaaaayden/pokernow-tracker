@@ -1538,3 +1538,50 @@ def pool_timing(
     names = display_names(conn)
     return {"player": None, "filter": filter, "players": len({names.get(f.pn_id, f.pn_id) for f in facts}),
             **timing_report(facts, owners=owners(conn), who=names)}
+
+
+# ---- the spot tree and made hands by street ------------------------------------
+# Imported inside the endpoints so this block stands alone. See SPEC.md, "Spot
+# tree" and "Holdings by street".
+
+
+@app.get("/players/{alias:path}/tree")
+def player_tree(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+    depth: Annotated[int, Query(ge=1, le=12, description="Decisions deep below the seat.")] = 6,
+    texture: Annotated[bool, Query(description="Split the first postflop node by flop texture.")] = False,
+    min_hands: Annotated[int, Query(ge=1, description="Hide nodes with fewer hands.")] = 1,
+) -> dict:
+    """One player's decision points as a tree: seat, then each spot they reached,
+    what they chose there, and the spot those hands reached next. Every node and
+    every decision carries the filter that finds exactly its hands, to add to
+    `filter`."""
+    from pnt.stats.tree import tree_for
+
+    conn = db()
+    pred = _predicate(conn, filter)
+    try:
+        out = tree_for(conn, alias, game, pred, spot=filter, max_depth=depth, min_hands=min_hands,
+                       texture=texture)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {**out, "filter": filter}
+
+
+@app.get("/players/{alias:path}/streets")
+def player_streets(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
+    game: str | None = None,
+) -> dict:
+    """Flop holding against river holding over the shown hands that reached the
+    river, and for a log's owner, where each flop holding went: folded, won with
+    no showdown, or shown down. Every cell and path carries its filter."""
+    from pnt.stats.pool import owners
+    from pnt.stats.streets import made_by_street
+
+    conn = db()
+    facts = _spot_facts(alias, filter, game, conn)
+    return {"player": alias, "filter": filter, **made_by_street(facts, owners(conn))}

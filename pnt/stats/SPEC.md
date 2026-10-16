@@ -1305,6 +1305,76 @@ Judgement calls:
    uncontested), but a loser who mucks and then shows is a third choice, and
    folding it into either would mislabel it.
 
+### Holdings by street
+
+What one player's holding was on the flop against what it was by the river, inside
+whatever spot is on the chart. `streets.py` mirrors this section; `GET
+/players/{alias}/streets?filter=&game=` returns `{shown_matrix, hero_funnel, groups,
+notes}`.
+
+**Groups.** Each `cards.MADE_LEAVES` leaf falls in exactly one of seven groups,
+built from `cards.MADE_GROUPS` with `pair` split three ways. A group's term is the
+`made_<street>` term that says it:
+
+| Group | Leaves | Term |
+|---|---|---|
+| `strong` | straight flush, quads, full house, flush, straight | `made_S>=straight` |
+| `trips` | set, trips | `made_S=set\|trips` |
+| `two_pair` | two pair | `made_S=two_pair` |
+| `top_pair` | overpair, top pair | `made_S=overpair\|top_pair` |
+| `weak_pair` | underpair (`pocket_pair`), middle pair, bottom pair | `made_S=pocket_pair\|middle_pair\|bottom_pair` |
+| `draw` | combo draw, flush draw, open-ender, gutshot | `made_S=draw` |
+| `air` | board pair, high card | `made_S=board_pair\|high_card` |
+
+A holding has a group on a street under the `made_<street>` rule: cards known, the
+board reached that street, and no fold on an earlier one.
+
+**Shown matrix.** Over the hands with a river group -- cards known, reached the
+river (`made_river>=high_card`); a river fold counts, it reached the river:
+
+| Field | Counts | Filter |
+|---|---|---|
+| cell | flop group F and river group R | `made_flop=F…,made_river=R…` |
+| row `hands` | flop group F, any river group | `made_flop=F…,made_river>=high_card` |
+| `totals` | river group R, any flop group | `made_river=R…` |
+| row `saw_flop` | the shown hands with flop group F, river or not | `saw_flop_filter`: `made_flop=F…` |
+| row `reach_river_pct` | `hands / saw_flop` | -- |
+
+Every count carries `net_bb`: the complete hands' net, each in its own big blinds,
+as bb/100 is made of. **The matrix leans to showdown**: a hand's cards are known
+mostly because it was shown down, so most of it went to the river, and
+`reach_river_pct` runs far above the player's real rate. The notes say so.
+
+**Owner's funnel** (`hero_funnel`). Over the player's hands in the logs they own
+(`games.hero_pn_id`), where every card is known; null when they own no log in the
+spot. Per flop group, over those hands with a flop group (they saw the flop), each
+hand ends one way, the first that fits:
+
+| Path | Terms (after `made_flop=F…`) |
+|---|---|
+| folded the flop | `fold_street=flop` |
+| won on the flop, no showdown | `won_pot,!wtsd,action_turn=-` |
+| folded the turn | `fold_street=turn` |
+| won on the turn, no showdown | `won_pot,!wtsd,action_turn=*,action_river=-` |
+| folded the river | `fold_street=river` |
+| won on the river, no showdown | `won_pot,!wtsd,action_river=*` |
+| reached showdown | `wtsd` |
+| log cut short | the rest: no filter |
+
+The paths sum to the row's flops. "Reached" a street is the whole-street sequence's
+key, as in the give-up funnel. `turn_river` is the matrix again over the funnel's
+hands, turn group against river group, for the ones that reached the river.
+
+Judgement calls:
+
+1. **Board pair is air.** The hole cards add nothing to it, the same reason
+   `made_hand` calls it a board pair rather than the player's pair.
+2. **The funnel's filters are exact over the owner's own logs.** No term says
+   "a log they own", so on the chart a path's filter also finds any hand of theirs
+   shown in somebody else's log. The matrix needs no such caveat.
+3. **A busted draw on the river stays a draw**, as `made_river` reads it: the row
+   says what they were drawing to, the cell that it missed.
+
 ---
 
 ## Decision points (nodes)
@@ -1465,6 +1535,84 @@ this hand, and the line reads "arrived with": those hands are the range they
 brought to this street, read on this street's board. That replaces the ancestor's
 fold/call/raise mix, which under the live node's label read as a claim about a
 spot it was never counted at.
+
+### Spot tree
+
+One player's decision points as a tree, from their own hands. `tree.py` mirrors
+this section; `GET /players/{alias}/tree?filter=&game=&depth=&texture=&min_hands=`
+returns it.
+
+**Shape.** The roots are seats. Under a seat, each decision point (a node `key`:
+preflop level, or postflop kind and street) the player reached first; under a
+node, for each choice made there, the next decision point the hands that made it
+reached. A node's identity is its parent, the choice made at the parent (`via`),
+its key, and -- on the first postflop node only -- the pot type, heads-up or
+multiway (`players_flop=2` / `players_flop>=3`), and with `texture=true` the
+flop's high card and pairing (`nodes.texture_terms`). `depth` (6) caps how many
+decisions deep a path goes; `min_hands` (1) hides a node with fewer hands and
+everything under it.
+
+| Field | Content |
+|---|---|
+| `id` | the path: `BTN/pf1/raise.pf3/call.faced_cbet_flop~3bet_pot~players_flop=2` |
+| `label` | the node's label (preflop: the walk's own, as `squeezed`) |
+| `edge` | what happened since their last tracked decision: `villain 3-bets`, `called · SRP flop · HU`, `turn · villain c-bets` |
+| `hands` | hands that reached the node by this path |
+| `ended` | of those, the ones with no tracked decision after it: folded, or the hand ended |
+| `decisions` | per choice, in `nodes.decisions` order: `hands`, `pct` of the node, and a `filter` |
+| `filter` | finds exactly `hands`, added to the request's `filter` |
+
+A seat's `hands` is every hand there, walks included; its `ended` is the ones with
+no decision at all.
+
+**Counting.** The walk is `nodes.nodes_for`; what was decided at a node is
+`nodes.decision_of` on the hand's `Facts`, the reading a filter makes (a fold with
+no bet in front is a check there). A key appears once per hand, so each hand
+reaches each node at most once, and the children of a node partition the hands
+that went on: children's `hands` + `ended` ≤ `hands`, equal unless `depth` or
+`min_hands` cut a child.
+
+**Filters.** A node's filter is, in order: `position=<seat>`; each earlier
+decision's terms, with the first postflop node's pot, players and texture terms
+before the first postflop decision; the negations below; the node's own spot term.
+A decision's filter swaps the spot term for that decision's terms.
+
+| Key | Spot term | Decision terms |
+|---|---|---|
+| preflop L (1–5) | `unopened`, `faced_open`, `faced_3bet_any`, `faced_4bet`, `faced_5bet` | `<spot>=<decision>` |
+| `cbet` S | `cbet_S_opp` | bet `cbet_S`; check `cbet_S_opp,!cbet_S` |
+| `donk`, `delayed_cbet`, `probe`, `float` S | `<kind>_S_opp` | bet `<kind>_S`; check `<kind>_S_opp,!<kind>_S` |
+| `faced_cbet` S | `faced_cbet_S` | `folded_to_cbet_S` / `called_cbet_S` / `raised_cbet_S` |
+| `faced_probe` S | `faced_probe_S` | fold `folded_to_probe_S`; call or raise `faced_probe_S,line_S=c*` / `r*` |
+
+Terms only add up, so they alone would also find a hand that reached the node's
+spot by a longer path: the button who limped and then faced a raise satisfies
+`position=BTN,faced_open`. Such a hand matches the node by a subsequence of its own
+path, so every subsequence of every hand that lands on a node is walked, and the
+spots it skipped are added as negated spot terms (`!unopened`). A member never has
+them: a key's place in a path is fixed (preflop by level, postflop by street, and
+within a street a lead before the c-bet faced after it), so a skipped key comes
+before the node in every hand that has it. The result: `position=BTN,!unopened,faced_open`.
+
+Judgement calls:
+
+1. **Untracked spots are folded into their parent.** A node nothing tracks (facing
+   a bet in a limped pot, a raise of their own c-bet) has no filter and no decision
+   mix, so it is skipped: the next tracked node hangs off the last tracked one, and
+   a limped pot's tree ends preflop.
+2. **Level 3 is `faced_3bet_any`**, for the opener too: under `unopened=raise` it
+   is the opener's `faced_3bet` exactly, and it is the level `decision_of` reads.
+3. **The negations come from the hands.** Only the spots some hand in the request
+   actually skipped are negated, so a filter is exact over the hands the tree was
+   built from -- the player, game and spot asked for -- and stays short.
+4. **The seat is the filter's.** `position=` hides a seat on a dead button only, so
+   the tree does too, and a dead-blind hand keeps its seat (the HUD's nodes drop it).
+   A hand with no seat is counted in `unplaced` and left out.
+5. **The pot type and player count split the first postflop node only.** Both are
+   the hand's, so later nodes inherit them; the size of a faced c-bet does not
+   split, so a facing node keeps its hands together.
+6. **Cached per generation**, like the facts it reads: a tree costs a load of the
+   player's hands and a walk of each, about 2 s for 14,000 hands.
 
 ---
 
