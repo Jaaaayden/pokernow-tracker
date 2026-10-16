@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from fractions import Fraction
 
 from ..logfmt.events import FLOP, POST_ANTE, POST_MISSING_SB, POST_STRADDLE, PREFLOP, RIVER, TURN
 from ..logfmt.parser import position_name
@@ -318,6 +319,10 @@ class Facts:
     #: player's missed big blind -- chips in front of them before they acted.
     #: Antes and dead small blinds are not live.
     posted_blind: bool = False
+    #: Every chip of their own forced posts, in chips like `net`: blinds, straddle,
+    #: missed blinds and antes, dead posts included -- what folding every hand
+    #: would have cost them. See SPEC.md, "bb/100 against folding".
+    posted: int = 0
     #: Their starting stack against the deepest other stack dealt in, in big
     #: blinds: min(own, max(others)) / bb. None when any of those is unknown.
     eff_bb: float | None = None
@@ -379,6 +384,11 @@ class Facts:
         if self.seats_from_button is None or self.dead_button or self.blinds_irregular:
             return None
         return position_name(self.seats_from_button, self.n_dealt_in)
+
+    @property
+    def posted_bb(self) -> Fraction | None:
+        """`posted` in this hand's big blinds, exact; None when the blind is unknown."""
+        return Fraction(self.posted, self.bb_size) if self.bb_size else None
 
     @property
     def steal_opp(self) -> bool:
@@ -989,9 +999,13 @@ def _foundation(hand: HandRow, facts: dict[str, Facts]) -> None:
     }
     stacks = {pid: p.starting_stack for pid, p in hand.players.items()}
     preflop_put: dict[str, int] = {}
+    # Every forced post, live or dead: folding loses a dead one just the same.
+    posted: dict[str, int] = {}
     for a in hand.actions:
         if a.street == PREFLOP:
             preflop_put[a.pn_id] = preflop_put.get(a.pn_id, 0) + a.amount
+        if a.is_forced:
+            posted[a.pn_id] = posted.get(a.pn_id, 0) + a.amount
     behind = {
         pid: max(stacks[pid] - preflop_put.get(pid, 0), 0)
         for pid in flop_players if stacks[pid] is not None
@@ -1002,6 +1016,7 @@ def _foundation(hand: HandRow, facts: dict[str, Facts]) -> None:
         f.straddled = straddled
         f.players_flop = players_flop
         f.posted_blind = pid in blinds
+        f.posted = posted.get(pid, 0)
         own = stacks[pid]
         others = [s for q, s in stacks.items() if q != pid]
         # Judgement call 26: an unknown stack is unknown, not zero.

@@ -1574,3 +1574,46 @@ def pool_timing(
     names = display_names(conn)
     return {"player": None, "filter": filter, "players": len({names.get(f.pn_id, f.pn_id) for f in facts}),
             **timing_report(facts, owners=owners(conn), who=names)}
+
+
+# --- group by (SPEC.md, "Group by") ------------------------------------------
+# One spot split by one or two dimensions, each cell with its own filter term.
+# Imported inside the endpoint so this block stands alone.
+
+
+@app.get("/groupby")
+def groupby(
+    by: Annotated[str, Query(description="one or two dimensions, e.g. 'position,pot_type'")],
+    player: str | None = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+    min: Annotated[int, Query(ge=0)] = 0,
+    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
+) -> dict:
+    """The spot's hands by `by`: one player's (as the chart has them), or the
+    pool's (as /stats has them), which also allows `player`. Each cell carries
+    `term`; `dims` is the catalog of dimensions to offer. 400 on an unknown
+    dimension or filter term, 404 on an unknown player."""
+    from pnt.stats.groupby import catalog, check_dims, group
+    from pnt.stats.queries import facts_by_player
+
+    dims = [d.strip() for d in by.split(",") if d.strip()]
+    try:
+        check_dims(dims, pool=player is None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    conn = db()
+    player_of = None
+    if player is not None:
+        facts = _spot_facts(player, filter, game, conn)
+    else:
+        pred = _predicate(conn, filter)
+        grouped, aliases, _ = facts_by_player(conn, game)
+        whose = {f.pn_id: aliases.get(pid, "?") for pid, rows in grouped.items() for f in rows}
+        facts = [f for rows in grouped.values() for f in rows if pred is None or pred(f)]
+
+        def player_of(f: Facts) -> str:
+            return whose[f.pn_id]
+
+    out = group(facts, dims, street=street, min_hands=min, names=display_names(conn), player_of=player_of)
+    return {"player": player, "filter": filter, "game": game, "dims": catalog(pool=player is None), **out}

@@ -142,6 +142,40 @@ CREATE TABLE IF NOT EXISTS hand_flags (
     PRIMARY KEY (game_id, hand_number)
 ) WITHOUT ROWID;
 
+-- Your words for a hand: `river-bluff`, `cooler`, `study`. Several per hand, kept
+-- and keyed like a flag, for the same reasons, and like a flag it may name a hand
+-- the rebuild has not reached yet. Stored normalised (db/userdata.py): lower
+-- case, trimmed, a run of spaces one `-`.
+CREATE TABLE IF NOT EXISTS hand_tags (
+    game_id     TEXT NOT NULL,
+    hand_number INTEGER NOT NULL,
+    tag         TEXT NOT NULL,
+    tagged_at   TEXT NOT NULL,
+    PRIMARY KEY (game_id, hand_number, tag)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_hand_tags_tag ON hand_tags(tag);
+
+-- A spot filter you named, to apply again from the ★ menu. `ord` is your order
+-- (NULL sorts last), pinned ones first. Nothing derived refers to it, so like
+-- the rest of this section it is never touched by a rebuild.
+CREATE TABLE IF NOT EXISTS saved_spots (
+    spot_id    INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE,
+    filter     TEXT NOT NULL,
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    ord        INTEGER,
+    created_at TEXT NOT NULL
+);
+
+-- Choices made on the pages that should outlive a browser: the HUD's columns,
+-- and the like. `value` is JSON.
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+) WITHOUT ROWID;
+
 -- ---------------------------------------------------------------- layer 2 ----
 
 CREATE TABLE IF NOT EXISTS games (
