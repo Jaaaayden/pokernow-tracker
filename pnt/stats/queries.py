@@ -197,10 +197,14 @@ def wilson(num: int, den: int, z: float = 1.96) -> tuple[float, float] | None:
 def _bb_ci(t: Tally) -> float | None:
     """Half-width of bb/100's 95% interval: 1.96 · sd / √n · 100, from the sample
     standard deviation of each hand's net in big blinds. None under two hands."""
-    n = t.bb_n
+    return _ci(t.bb_n, t.bb_sum, t.bb_sq)
+
+
+def _ci(n: int, total: Fraction, sq: Fraction) -> float | None:
+    """`_bb_ci` from its three sums: n, Σx and Σx², x in big blinds."""
     if n < 2:
         return None
-    var = (t.bb_sq - t.bb_sum * t.bb_sum / n) / (n - 1)
+    var = (sq - total * total / n) / (n - 1)
     return round(1.96 * math.sqrt(max(float(var), 0.0)) / math.sqrt(n) * 100, 2)
 
 
@@ -242,7 +246,7 @@ class Tally:
     added in cannot move a figure by so much as a rounding step.
     """
 
-    __slots__ = ("bb_n", "bb_sq", "bb_sum", "counts", "hands", "net")
+    __slots__ = ("bb_n", "bb_sq", "bb_sum", "counts", "hands", "idle", "net", "posted", "vf_sq")
 
     def __init__(self) -> None:
         self.hands = 0
@@ -253,6 +257,13 @@ class Tally:
         #: bb/100's confidence interval. See SPEC.md, "Confidence intervals".
         self.bb_sq = Fraction(0)
         self.bb_n = 0
+        # bb/100 against folding (SPEC.md, "bb/100 against folding"), over the
+        # same hands as `bb_sum`: Σ posted_bb where they had a preflop decision,
+        # Σ net_bb where they had none (a walk, which folding could not change),
+        # and Σx² of each hand's net_bb + posted_bb, 0 on a hand with no decision.
+        self.posted = Fraction(0)
+        self.idle = Fraction(0)
+        self.vf_sq = Fraction(0)
 
     def add(self, x: Facts) -> None:
         c = self.counts
@@ -268,6 +279,12 @@ class Tally:
             self.bb_sum += in_bb
             self.bb_sq += in_bb * in_bb
             self.bb_n += 1
+            if x.vpip_opp:
+                posted = Fraction(x.posted, x.bb_size)
+                self.posted += posted
+                self.vf_sq += (in_bb + posted) ** 2
+            else:
+                self.idle += in_bb
         for street in _STREETS:
             for attr in _STREET_FLAGS:
                 if getattr(x, attr).get(street):
@@ -302,7 +319,15 @@ class Tally:
         self.bb_sum += other.bb_sum
         self.bb_sq += other.bb_sq
         self.bb_n += other.bb_n
+        self.posted += other.posted
+        self.idle += other.idle
+        self.vf_sq += other.vf_sq
         return self
+
+
+def _vs_fold(t: Tally) -> Fraction:
+    """Σ (net_bb + posted_bb) over the hands with a decision: bb won against folding."""
+    return t.bb_sum - t.idle + t.posted
 
 
 def tally(facts: Iterable[Facts]) -> Tally:
@@ -337,6 +362,10 @@ def rates(t: Tally) -> dict:
         # The total behind bb/100: each complete hand's net in its own big blinds.
         "net_bb": round(float(t.bb_sum), 2) if t.bb_n else None,
         "bb_per_100_ci": _bb_ci(t),
+        # Against folding every hand: 0 is no better than folding. SPEC.md,
+        # "bb/100 against folding".
+        "bb_per_100_vs_fold": round(float(100 * _vs_fold(t) / t.bb_n), 2) if t.bb_n else None,
+        "bb_per_100_vs_fold_ci": _ci(t.bb_n, _vs_fold(t), t.vf_sq),
         # Won when saw flop, and the part of it won without a showdown.
         "wwsf": _rate(c["wwsf"], c["wtsd_opp"]),
         "wwsf_nsd": _rate(c["wwsf_nsd"], c["wtsd_opp"]),

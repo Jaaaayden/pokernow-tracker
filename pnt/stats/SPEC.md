@@ -1807,6 +1807,48 @@ On the 6,255-hand database this was developed against, excluding the two truncat
 hands moves the whole-table ledger from −3.29 bb to −0.43 bb of 10,731 bb gross,
 and every one of the 6,253 complete hands conserves chips exactly.
 
+### bb/100 against folding
+
+What a player won beside what folding every hand would have cost them. Raw
+bb/100 cannot say whether a blind is defended well: a big blind who folds every
+hand is −100 bb/100 by construction, so −80 from the big blind is +20 here.
+
+| Fact / rate | Definition |
+|---|---|
+| **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` is `Fraction(posted, bb)`, exact, and None when the big blind is unknown |
+| **bb_per_100_vs_fold** | `(Σ net_bb + Σ posted_bb) / hands × 100`, over the complete hands with a known big blind that bb/100 uses (`n` = `Tally.bb_n`), where a hand with no preflop decision adds 0 (call 2) |
+| **bb_per_100_vs_fold_ci** | The half-width `bb_per_100_ci` is, with `x` = each hand's `net_bb + posted_bb` (0 on a hand with no decision). None under two hands |
+
+**0 is no better than folding every hand; a negative value is the leak.** It
+says the player lost more by playing than folding would have cost them. A big
+blind at −80 bb/100 raw is +20 vs fold, which is fine; a small blind at −60 raw
+is −10 vs fold, and that is a small blind defending too much.
+
+`Tally.posted` is Σ `posted_bb` over the counted hands that had a decision,
+`Tally.idle` Σ `net_bb` over those that had none, and `Tally.vf_sq` Σx²; all
+three are exact fractions and add across games like `bb_sum`. So
+`bb_per_100_vs_fold = (bb_sum − idle + posted) / bb_n × 100`.
+
+Judgement calls:
+
+1. **Every forced post counts, dead ones included.** `DEAD_POST_KINDS` (an ante,
+   a missing small blind) says a post is not a *live* blind -- it buys no part of
+   the street's bet, so its maker still comes in cold. That is a different
+   question. Here the question is what folding loses, and folding loses a dead
+   post as surely as a live one: the chips are gone either way. With every post
+   counted, a player who folds at every decision scores exactly 0.
+2. **A hand with no preflop decision adds 0.** A walk, or all in from a post
+   (`!acted_preflop`, the walk row of "Results by pot type"). Folding every hand
+   could not have changed it: the big blind everyone folds to wins the small
+   blind whatever they would have done. Counting its post would read every walk
+   as +1.5 bb for the big blind (net +0.5, plus the 1 posted), about +10 bb/100
+   on a big blind who sees a walk one hand in fifteen -- exactly the seat this
+   number is for.
+3. **The counterfactual is this player's alone.** Folding changes nothing
+   anyone else did; that is what "against folding" means in every tracker, and
+   the only reading the log can support.
+4. **Incomplete hands are out**, on both sides of the fraction, like bb/100.
+
 ### Confidence intervals
 
 ```
@@ -2359,6 +2401,64 @@ Judgement calls:
 7. **The pool leads.** Per-player medians run from about 1.0 s to 2.7 s, and
    most players have under 50 known hands per bucket. The relative buckets answer
    "slow for them"; the pool answers "what slow has meant here".
+
+### Group by
+
+One spot's hands split by one dimension, or by two crossed: HM3's report
+grouping. `groupby.py` mirrors this section; `GET /groupby` reads it. A **cell**
+is the hands with that bucket (or pair of buckets), and carries the filter term
+that finds exactly them: `<spot>,<term>` reproduces the cell on any page.
+
+| Dimension | Buckets, in order | Term | Not applicable (skipped) |
+|---|---|---|---|
+| **position** | each seat `position=` names, in Results' seat order | `position=BTN` | dead button |
+| **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` | never |
+| **players_flop** | 2, 3+ | `players_flop=2` · `players_flop>=3` | no flop dealt |
+| **depth** | <40, 40–100, 100–200, 200+ bb | the "Stack-depth splits" terms | `eff_bb` unknown |
+| **vs** | each opponent, by name | `vs=henry` | no opponent left |
+| **player** | each player (pool only) | none: the cell names its `player` | never |
+| **line_\<street\>** | each line, most hands first | `line_flop=xc` | did not act on the street |
+| **made_\<street\>** | the `MADE_GROUPS`, strongest first, with `pair` opened into its leaves | `made_flop=top_pair`; the `trips` group is `made_flop=set\|trips` | cards unknown, no such board, or folded before it |
+| **tier_\<street\>** | `TIERS`, strongest first | `tier_river=strong` | as made |
+| **flop_texture** | paired, monotone, twotone, rainbow | `flop=paired` · `flop=monotone` · `flop=twotone,flop=unpaired` · `flop=rainbow,flop=unpaired` | under three board cards |
+| **cbet_size_\<street\>** | `SIZE_BUCKETS` | `cbet_flop=medium` | no c-bet, or its size unknown |
+| **bet_size_\<street\>** | `SIZE_BUCKETS` | `bet_turn=large` | no bet |
+| **tempo_\<street\>** | `TEMPO_BUCKETS`, preflop included | `tempo_river=tank` | untimed |
+| **hand_class** | each of the 169 classes, by `HAND_RANKING` | `hand=AKs` | cards unknown |
+| **hand_rank** | top 5%, 5–15, 15–30, 30–50, 50–100 by `hand_pct` | `hand_pct<=5` · `hand_pct>5,hand_pct<=15` … | cards unknown |
+
+Each cell carries `hands`, `shown` (hole cards known), `net_bb`, `bb_per_100`,
+`bb_per_100_ci`, `bb_per_100_vs_fold`, a few `rates` with their `_opp` (vpip,
+pfr, 3bet, and cbet, fold to c-bet and Agg on the request's street, wtsd, wsd),
+and `mix`: the shown hands' made hand on that street, coarsened to five groups
+for a bar -- **two_pair+** (two pair or better), **top_pair+** (overpair, top
+pair), **weak_pair** (underpair, middle, bottom, board pair), **draw**, **air**
+-- as counts and shares of the hands known there. Every money figure is a
+`queries.Tally`'s, so the money rules of "Money" hold unchanged.
+
+Judgement calls:
+
+1. **A cell must reproduce from its term.** So seats follow the `position=`
+   filter, as in Results: a hand with a dead small blind keeps its label, and
+   only a dead button is skipped. The texture buckets are built to partition
+   flops (a paired flop is never monotone; twotone and rainbow are narrowed to
+   unpaired), so they sum to every hand with a flop.
+2. **`vs` is multi-valued.** A hand counts once in each opponent's bucket, so
+   its cells add to more than the total; only a hand with no opponent left is
+   skipped. Names compare as the `vs=` term compares them, casefolded.
+3. **`player` has no term.** No filter term names a player, so the cell gives
+   its `player` instead and the page switches to them.
+4. **`hand_class` is the 169 classes, not six groups.** "Pairs", "suited
+   broadway" and the like each need several classes in one term, which `hand=`
+   cannot say yet; `hand_rank` is the coarse split it can.
+5. **`pair` is opened in `made_<street>`.** Top pair against bottom pair is the
+   question a made-hand split is asked; every other group stays whole.
+6. **Skipped is counted, not dropped.** A hand is skipped when any chosen
+   dimension does not apply to it; for single-valued dimensions the cells add to
+   `total − skipped` exactly. Cells under `min` hands are left out and counted
+   in `hidden`.
+7. **Order.** Rows follow the dimension's order where it has one; otherwise
+   most hands first. Crossed, the first dimension leads.
 
 ---
 
