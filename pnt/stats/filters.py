@@ -54,7 +54,7 @@ from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 Predicate = Callable[[Facts], bool]
 #: What `tag=` reads its hands from: one tag as written -> the (game_id,
 #: hand_number) of every hand carrying it. A tag is your data, not the log's, so
-#: the caller with a connection passes one (the server's `_tag_keys`).
+#: the caller with a connection passes one (`db.userdata.tag_resolver`).
 TagResolver = Callable[[str], Collection[tuple[str, int]]]
 
 STREETS = ("flop", "turn", "river")
