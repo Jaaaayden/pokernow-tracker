@@ -705,6 +705,40 @@ def report(
     return [dict(r) for r in cached[1] if r["hands"] >= min_hands]
 
 
+def split_report(
+    conn: sqlite3.Connection,
+    game_id: str | None,
+    min_hands: int,
+    predicate,
+    groups: list,
+) -> tuple[list[dict], list[list[dict]]]:
+    """`report` over the spot, and the same report within each of `groups` (each
+    a predicate ANDed onto the spot), from one derivation of every hand.
+
+    The stats page's Split asks for up to eleven sub-spots at once; asked one
+    filtered `report` at a time, each would derive the whole database again. A
+    group row is kept only for a player who makes the spot's `min_hands` and has a
+    hand in that group.
+    """
+    grouped, aliases, _ = facts_by_player(conn, game_id)
+    rows: list[dict] = []
+    parts: list[list[dict]] = [[] for _ in groups]
+    for pid, facts in grouped.items():
+        if predicate is not None:
+            facts = [f for f in facts if predicate(f)]
+        if len(facts) < min_hands:
+            continue
+        alias = aliases.get(pid, "?")
+        rows.append({"player": alias, **aggregate(facts)})
+        for part, group in zip(parts, groups):
+            sub = [f for f in facts if group(f)]
+            if sub:
+                part.append({"player": alias, **aggregate(sub)})
+    for out in (rows, *parts):
+        out.sort(key=lambda r: -r["hands"])
+    return rows, parts
+
+
 def identities_of(conn: sqlite3.Connection, alias: str) -> list[str]:
     """Every PokerNow ID merged under one alias. Raises on an alias that does not exist."""
     rows = conn.execute(

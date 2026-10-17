@@ -472,8 +472,14 @@ def stats(
     game: str | None = None,
     filter: Annotated[str | None, Query(description="e.g. '3bet,position=BTN'")] = None,
     min_hands: int = 1,
-) -> list[dict] | HTMLResponse:
+    split: Annotated[list[str] | None, Query(description="sub-spots, e.g. 'position=SB'; repeat for each")] = None,
+) -> list[dict] | dict | HTMLResponse:
     """Per-player stats, optionally restricted to a spot.
+
+    With `split` (repeated), the answer is `{rows, splits: [{term, rows}]}`: the
+    spot's rows, and the rows within `<filter>,<term>` for each term, all from one
+    derivation (`queries.split_report`). A group row is left out for a player
+    with no hand in it.
 
     The filter compiles to a predicate over derived per-hand facts, which is only
     possible because actions are stored raw with street and sequence.
@@ -485,6 +491,12 @@ def stats(
     if "text/html" in request.headers.get("accept", ""):
         return _page("stats.html")
     conn = db()
+    if split:
+        from pnt.stats.queries import split_report
+
+        groups = [_predicate(conn, term) for term in split]
+        rows, parts = split_report(conn, game, min_hands, _predicate(conn, filter), groups)
+        return {"rows": rows, "splits": [{"term": t, "rows": p} for t, p in zip(split, parts)]}
     return report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter))
 
 

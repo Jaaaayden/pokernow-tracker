@@ -435,9 +435,12 @@
   // Bumped by every load: an answer for controls since changed is dropped, so a
   // slow load cannot land after a quicker, newer one and be what is left on show.
   let loadSeq = 0;
-  async function fetchStats(filter, min) {
+  // With split terms the server answers {rows, splits: [{term, rows}]} from one
+  // derivation, instead of one whole-database pass per sub-spot.
+  async function fetchStats(filter, min, split = []) {
     const q = new URLSearchParams({ min_hands: min });
     if (filter) q.set("filter", filter);
+    for (const term of split) q.append("split", term);
     const r = await fetch("/stats?" + q, { headers: { accept: "application/json" } });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
@@ -452,10 +455,9 @@
     $("err").classList.add("hidden");
     const groups = SPLITS[state.split] || [];
     try {
-      const [rows, ...parts] = await Promise.all([
-        fetchStats(state.filter, state.min),
-        ...groups.map(([, term]) => fetchStats(withTerm(term), 1)),
-      ]);
+      const got = await fetchStats(state.filter, state.min, groups.map(([, term]) => term));
+      const rows = groups.length ? got.rows : got;
+      const parts = groups.length ? got.splits.map((s) => s.rows) : [];
       if (seq !== loadSeq) return;
       state.rows = rows;
       // player -> one entry per group: [label, term, their row, or null with no hands there]

@@ -57,6 +57,17 @@ def test_stats_by_position_returns_vs_fold(tmp_path, monkeypatch):
     big = [r for r in rows if r["hands"] >= 30 and r["bb_per_100"] is not None]
     assert big and all(r["bb_per_100_vs_fold"] > r["bb_per_100"] for r in big)
 
+    # One request with split terms answers what one /stats per sub-spot would.
+    terms = [term for _, term in _splits()["position"]]
+    got = client.get("/stats", params={"filter": "srp", "min_hands": 5, "split": terms}).json()
+    assert got["rows"] == client.get("/stats", params={"filter": "srp", "min_hands": 5}).json()
+    kept = {r["player"] for r in got["rows"]}
+    assert [s["term"] for s in got["splits"]] == terms
+    for s in got["splits"]:
+        alone = client.get("/stats", params={"filter": f"srp,{s['term']}", "min_hands": 1}).json()
+        assert s["rows"] == [r for r in alone if r["player"] in kept]
+    assert client.get("/stats", params={"split": ["position=XYZ"]}).status_code == 400
+
 
 def test_the_page_script_parses(tmp_path):
     node = shutil.which("node")
