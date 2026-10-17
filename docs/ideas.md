@@ -40,6 +40,23 @@ pins what they count.
 | 15 | Timing tells | The chart's **Timing** view, `tempo_<street>=` and `think_<street>`, the HUD clock, `pnt timing` (needs one `pnt rebuild`) |
 | 16 | 7-2 bounty ledger | The leaderboard on `/players`, `/bounties`, `pnt bounties` |
 
+## October 2026 batch 2
+
+The HUD and group-by batch. [`guide.md`](guide.md) says how to use each one.
+
+| Item | Where it lives |
+|---|---|
+| HUD stats picker | **HUD stats** on the front page, `GET`/`PUT /settings/hud`, `/hud`'s columns |
+| Filter OR, brackets and value lists | Every Spot box and `--filter`: `3bet_pot\|4bet_pot`, `(…)\|(…)`, `!( )`, `position=BTN\|CO` |
+| Chip counts | The number on each chart chip, `POST /counts` |
+| Group by | The panel beside the chart's Preflop and Made grids, `GET /groupby` |
+| Position split and vs fold | *Position* in **Split by** on `/stats`, the **vs fold** column, `bb_per_100_vs_fold` |
+| Saved spots | The ★ beside a Spot box, pinned ones in the chart's Common row, `/spots` |
+| Hand tags | The **+ tag** box on rows and replays, `tag=` (also on the CLI), the chart's **Tagged** view, `/tags`, `/tagged` |
+| Spot tree | The chart's **Tree** view, `GET /players/{alias}/tree` |
+| Holdings by street | **Made hands › Streets** on the chart, `GET /players/{alias}/streets` |
+| Estimated ranges (R1 frequency range, R2 board breakdown) | The chart preflop view's **Estimate** toggle |
+
 ## Already planned
 
 These features are already in the current feature batch, so they are left out of the

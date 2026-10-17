@@ -258,6 +258,16 @@ so the four rows can add up to fewer hands than the whole row. The range chart's
 **Depth** chips write the same buckets into the spot, and **SPR ≤3** narrows it to
 flops where one or two bets get the stacks in.
 
+*Position* gives one sub-row per seat (`position=BTN`, `position=BB`, ...) and adds
+**vs fold**: bb/100 against folding every hand.
+
+- **0 is no better than folding; below 0 is the leak.** A big blind at −80 bb/100
+  raw is +20 vs fold, which is fine; a small blind at −60 raw is −10, defending too
+  much.
+- **Walks add 0.** Folding could not have changed a walk, and counting its post
+  would hand every big blind about +10 bb/100 it never earned.
+- **Red on a blind's sub-row** only when it is below 0 by more than its ± range.
+
 The postflop columns also cover the bets a missed c-bet leaves open. **DCB** is the
 preflop raiser's delayed c-bet, **Probe** is betting into a preflop raiser who checked
 the last street back, **F2P** is that raiser folding to the probe, and **Float** is
@@ -447,6 +457,19 @@ sets that checked the flop.
 `flop=connected`, `river!=flush_possible`, `board=twotone` and so on. The full tag
 list is in [`SPEC.md`](../pnt/stats/SPEC.md).
 
+**Your tags:** `tag=cooler` keeps the hands you tagged (every player's row of them),
+`tag=flagged` the 🚩 ones, `tag!=study` the rest. See
+[Tagging hands](#tagging-hands).
+
+### Saved spots
+
+The ★ beside a Spot box keeps a filter under a name.
+
+- **Save current spot…**, type a name, Enter: `BTN opens` for `opener,position=BTN`.
+- Click a saved spot to apply it.
+- 📌 pins it to the front of the chart's Common row, as a ★ chip.
+- ✎ renames it; × and then **delete?** deletes it.
+
 ## Range charts and sizing
 
 What a player *had* in a spot, from the hands where their cards were shown:
@@ -509,8 +532,46 @@ The 13x13 chart can be coloured three ways:
 
 The filter chips open on a **Common** row; **More filters** opens every chip row,
 label on the left, and counts the chips on that the Common row does not show.
-The page remembers which you left it on. The made-hand view shows what the shown
-hands had by the end, and **Sizing** shows the sizing view. Under the tiles, the page shows how often the player c-bets, folds
+The page remembers which you left it on.
+
+**Chip counts.** The small number on a chip is the hands left if you click it: with
+`srp` in the Spot, a **BTN** chip reading 84 means `srp,position=BTN` has 84 hands.
+A chip that would leave none is dimmed.
+
+**Group by.** Beside the grid on Preflop and Made hands (below it on a window under
+1500px), the spot split into rows, each with hands, bb/100, vs fold and the core
+rates.
+
+- **Rows** picks the split (position on Preflop, flop holding on Made); **then by**
+  crosses a second: position, then pot type.
+- **Pool** swaps the player's hands for everyone's in the spot; **Min** hides thin
+  rows; **Mix on** picks the street of the made-hand bar.
+- **Click a row** to narrow the Spot to it: the BTN row adds `position=BTN`. In
+  Pool, a player row switches to that player.
+
+**Tree.** The **Tree** view is every spot the player reached, seat first, with what
+they chose there as a bar. ▸ opens the spots after one.
+
+- **Click a spot** for its range and Group by: its exact filter goes in the Spot
+  box. BTN → open → facing a 3-bet is `position=BTN,unopened=raise,faced_3bet_any`.
+- **Click one colour of the bar** for that choice alone: the call is
+  `...,faced_3bet_any=call`.
+- **Depth** caps how deep it goes, **Split flops by texture** splits the first flop
+  by high card and pairing, and **Dim under** greys spots with few hands.
+
+**Made hands › Streets.** The **Streets** tab beside **Mix** is the flop holding
+(rows) against the river holding (columns), over the shown hands that reached the
+river.
+
+- **Click a cell** to list its hands: top pair → two pair adds
+  `made_flop=overpair|top_pair,made_river=two_pair`.
+- **reach river** runs high: shown hands are mostly the ones that went to showdown.
+- **For a log's owner** (you, on your own logs) two more tables count every hand,
+  shown or not: where each flop holding went (folded, won without showdown or
+  showdown, by street) and turn → river.
+
+The made-hand view's **Mix** shows what the shown hands had by the end, and
+**Sizing** shows the sizing view. Under the tiles, the page shows how often the player c-bets, folds
 to one, raises one and leads in the selected spot. The **Jammed** and **Called
 jam** chip rows write the all-in terms for you, and the **Pot ≥** box and **vs**
 picker write `pot>=` and `vs=`.
@@ -567,6 +628,10 @@ Player, spot, view, colour mode and theme all live in the URL
 HUD embeds it. `GET /players/{alias}/range` returns the same data as JSON, with all
 169 cells present in chart order.
 
+### Estimated ranges
+
+Coming soon: the preflop view's **Estimate** toggle.
+
 ## The live HUD
 
 Open a PokerNow game and click the extension's toolbar icon (pin it first) to open
@@ -591,13 +656,20 @@ with the same figures (this session, then lifetime in grey) and no tags, spot li
 or chart. When floating, the box shrinks to fit the table. The + brings everything
 back. Either mode stays as you left it.
 
-**Player cards.** Everyone dealt into the latest hand gets a card with VPIP, PFR,
-3-bet, fold to 3-bet, c-bet and WTSD, each shown twice: this session first, with
+**Player cards.** Everyone dealt into the latest hand gets a card with its hand
+count and the HUD's stats (VPIP, PFR, 3-bet, fold to 3-bet, c-bet, WTSD and flop
+aggression unless you choose others), each shown twice: this session first, with
 lifetime in grey beside it. A session figure turns blue when it sits 10 or more
 points from lifetime on at least 10 chances, and lifetime falls outside the
 session's 95% range, so a gap a small sample could give by chance stays white.
 Hover a figure for both samples and each one's range: `45% of 20, ± 20.0 pts (95%:
 25.8–65.8%)` says tonight's 45% could be anything from a quarter to two thirds.
+
+**Choosing the stats.** Tick them under **HUD stats** on the front page, 12 at
+most; the HUD picks them up on its next refresh (≤30 s).
+
+- Add **ATS** and **bb100**, drop **WTSD**: the cards and the compact table follow.
+- ↑ ↓ set the order, ✕ drops one, **Reset to default** brings back the seven above.
 
 **Tags** sit under each name: the archetype filled in, the exploits outlined and the
 fun ones dashed. Hover a chip for the evidence and the count. Click it to open the
@@ -816,6 +888,21 @@ independent of both. Marking a flagged hand reviewed keeps it on Manual review, 
 survive `pnt rebuild`. `GET /players/{alias}/flagged` returns the list,
 `GET /flagged` returns every flag, and
 `POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one.
+
+### Tagging hands
+
+A tag is a word on a hand, so you can find it again.
+
+- **Add one** in the **+ tag** box on any hand row or replay, Enter: `River Bluff`
+  is kept as `river-bluff`. × takes it off.
+- **The chart's Tagged view** lists the hands one tag at a time; **flagged** is the
+  🚩 ones.
+- **`tag=` works in any Spot box or `--filter`**: `pnt stats --filter tag=cooler`,
+  `tag=cooler|study`, `tag!=study`.
+- **`flagged` is taken**: `tag=flagged` is always the 🚩, and no hand can be tagged
+  `flagged`.
+
+Tags survive `pnt rebuild`, like flags.
 
 ### Going through a whole session
 

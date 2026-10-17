@@ -717,7 +717,8 @@ as a flag is, so the hand that just ended can be tagged.
 - A tag no hand carries matches nothing; that is an empty spot, not an error. A
   value that cannot be a tag (`tag=a.b`) is a 400.
 - **Tags are read when the filter is parsed**, through the `tags` resolver
-  `parse_filter` takes beside `names`. Without one (the CLI) `tag=` raises. A
+  `parse_filter` takes beside `names`; the server and every CLI `--filter` pass
+  `userdata.tag_resolver`, and without one `tag=` raises. A
   cache keyed by filter text (the spot pool, the spot tree) adds every tag and
   flag to its key when the filter may hold a `tag=`, since tagging a hand moves no
   generation.
