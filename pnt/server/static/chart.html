@@ -3914,7 +3914,7 @@
     }
     cap.append(b, " " + parts.join("; "));
     const sub = document.createElement("div"); sub.className = "sub";
-    sub.textContent = "bright = in the estimate · faded = out · half-faded = some of its combos" +
+    sub.textContent = "bright = in the estimate · faded = out" +
       (nd.ignored.length ? ` · not in the frequency: ${nd.ignored.join(", ")}` : "");
     wrap.append(cap, sub);
     return wrap;
@@ -4124,7 +4124,8 @@
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === TREE_VIEW) { renderTree(d); return; }
     if (madeStreets) { renderStreets(d); return; }
-    if (view === "preflop") { renderGrid(d); if (state.est && !table && !EMBED) loadEstimate(); }
+    // Off, paintEstimate takes the fade back off the grid as well as drawing nothing.
+    if (view === "preflop") { renderGrid(d); if (estOn()) loadEstimate(); else paintEstimate(); }
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);
     else renderSizing(d);
     renderTable(d, view);
@@ -5353,8 +5354,9 @@
   // `live` is the load's: a strip for a spot since left is not drawn.
   async function loadStrip(live) {
     const el = $("strip");
-    // Shows and the 7-2 board are not hands in a spot: the strip would describe nothing on show.
-    if (state.by === "shows" || state.by === "bounties") { el.classList.add("hidden"); return; }
+    // Only on the starting-hands view: elsewhere the view on show answers its own
+    // question, and the strip pushed it down the page.
+    if (state.by !== "preflop") { el.classList.add("hidden"); return; }
     try {
       const q = new URLSearchParams();
       if (state.filter) q.set("filter", state.filter);
