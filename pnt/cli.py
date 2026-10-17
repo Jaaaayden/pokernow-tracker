@@ -1669,7 +1669,7 @@ def lines_cmd(
         typer.echo(f"{row}  {g['filter']}")
 
 def _print_bluffs(title: str, out: dict) -> None:
-    """One bluff:value table: a row per category, grouped by street."""
+    """One value:bluff table: a row per category, grouped by street."""
     typer.echo(title)
     typer.echo(
         f"{'':<7}{'category':<27}{'n':>6}{'shown':>7}{'cov%':>7}"
@@ -1703,7 +1703,7 @@ def bluffs(
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Bluff:value by kind of aggression: bets by size, check-raises, raises and jams.
+    """Value:bluff by kind of aggression: bets by size, check-raises, raises and jams.
 
     The shown hands of each are read on the board of the street the action was
     made on, by hand strength on that board: value (a value hand there, top pair

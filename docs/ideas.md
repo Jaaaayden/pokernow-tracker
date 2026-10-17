@@ -68,7 +68,7 @@ ranking below:
 | **Slowplay report** | Strength by street against what they did on that street |
 | **Flattened categories** | Made-hand composition as one flat list of leaves |
 | **Action-line explorer** | Strength and net bb per `f/t/r` line. This is our version of Hand2Note's range research |
-| **Bluff:value** | Value, bluff and semi-bluff shares by bet bucket, check-raise, raise and jam |
+| **Value:bluff** | Value, bluff and semi-bluff shares by bet bucket, check-raise, raise and jam |
 | **Fold equity by size** | The bettor side, with the break-even fold % (alpha), and the defender side against **MDF** |
 | **Player notes** | `players.notes`, kept through merges, shown on `/players`, `/stats`, `/chart` and the HUD |
 | **Results by pot type** | bb/100 by walk, limped, SRP, 3-bet and 4-bet+, split by PFA vs caller, position and IP/OOP |
@@ -484,7 +484,7 @@ nothing.
 | Idea | Why not |
 |---|---|
 | **MDF vs fold rate**, **break-even fold %** | Already in the Fold equity by size plan |
-| **Range research by line and size** | Already in the action-line explorer and bluff:value plans |
+| **Range research by line and size** | Already in the action-line explorer and value:bluff plans |
 | **Equity realization, EV graphs for non-all-in hands** | Needs the villain's cards on hands that did not reach showdown |
 | **Auto-notes** (HM3/H2N rules that write notes) | Tags already do this with counts and filters. Revisit once player notes exist, as "pin a tag into the note" |
 | **Rabbit-hunt analysis** (`Undealt cards:`) | Nothing to act on. The cards reached nobody |

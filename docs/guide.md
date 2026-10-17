@@ -799,7 +799,7 @@ three by cost × confidence are listed. The cost is where the money went, not pr
 have won. The bands are judgement values, not what this pool's winners do: a pool
 of nine has too few winners to measure. It is experimental because the
 fold leaks assume bettors bluff as often as break-even needs: if your pool
-under-bluffs, folding more is right, so check the pool's Bluff:value first. The
+under-bluffs, folding more is right, so check the pool's Value:bluff first. The
 rules are in [`SPEC.md`](../pnt/stats/SPEC.md), "Leak finder".
 
 ### Shows without being asked

@@ -1,4 +1,4 @@
-"""Bluff:value: what a player bet and raised with, by the kind of aggression.
+"""Value:bluff: what a player bet and raised with, by the kind of aggression.
 
 Every bet, check-raise, raise and jam is a claim to have it. The shown ones say
 how often the claim was true. Each category here is one kind of aggression on

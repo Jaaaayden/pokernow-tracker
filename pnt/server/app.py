@@ -1562,7 +1562,7 @@ def pool_lines(
     for g in out["groups"]:
         del g["hand_ids"]
     return {"player": None, "filter": filter, **out}
-# --- bluff:value -----------------------------------------------------------------
+# --- value:bluff -----------------------------------------------------------------
 
 
 @app.get("/players/{alias:path}/bluffs")
@@ -1571,10 +1571,10 @@ def player_bluffs(
     filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
     game: str | None = None,
 ) -> dict:
-    """One player's bluff:value by kind of aggression: bets by size, check-raises,
+    """One player's value:bluff by kind of aggression: bets by size, check-raises,
     raises and jams per street, with the shown hands read on the street of the
     action. Each row carries its hand ids, so the chart lists them on a click.
-    See SPEC.md, "Bluff:value"."""
+    See SPEC.md, "Value:bluff"."""
     facts = _spot_facts(alias, filter, game)
     return {"scope": "player", "player": alias, "filter": filter, **bluff_value(facts)}
 

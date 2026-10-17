@@ -1109,7 +1109,7 @@ rather than what it was (see "Hand strength"): `tier_river=strong|nutted`,
 `tier_flop>=strong`, `tier_turn=draw|air`, and `hs_river>=0.8` for the hand
 strength itself. They take the same operators, `|` with `=` and `!=` only, and
 match under the same conditions as a `made_<street>` term. Every tier split on
-the chart (lines, bluff:value classes, timing) filters with these.
+the chart (lines, value:bluff classes, timing) filters with these.
 
 ### Hand strength
 
@@ -1250,7 +1250,7 @@ else's.
     happened; a line that ended on the flop says nothing about a river nobody saw
     them play. The cost is that a group read on the river can never be
     draw-heavy: a draw there has missed, and is air.
-### Bluff:value
+### Value:bluff
 
 `bluffs.bluff_value` splits a player's aggression into categories and reads what
 the shown hands in each had, **on the board of the street the action was made

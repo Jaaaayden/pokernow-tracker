@@ -226,7 +226,7 @@
   .lrows .stack.none { color: var(--muted); font-size: 12px; align-items: center; }
   .lrows .val { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; color: var(--ink-2); }
   .lrows .val small { color: var(--muted); margin-left: 6px; }
-  /* Tree rows, in Lines and Bluff:value: a caret opens a row into the ways on
+  /* Tree rows, in Lines and Value:bluff: a caret opens a row into the ways on
      under it, and each level sits one step further in. */
   .lrows .lab { font-family: inherit; cursor: default; }
   .lrows .lab:hover { text-decoration: none; }
@@ -429,7 +429,7 @@
   .crumb a:hover { text-decoration: underline; }
   .hidden { display: none !important; }
 
-  /* --- bluff:value: a stacked bar per kind of aggression, grouped by street.
+  /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
      The four classes are one diverging scale, strongest claim to weakest: value
      blue, marginal the neutral midpoint, semi-bluff and bluff red, the bluff
      deepest. Dark mode takes its own steps, deepest the lightest, as the ramps
@@ -2142,14 +2142,14 @@
   }));
   $("lstreet").addEventListener("change", () => { state.lstreet = $("lstreet").value; writeUrl(); closeHands(); load(); });
 
-  // ---- bluff:value -----------------------------------------------------------
+  // ---- value:bluff -----------------------------------------------------------
   // What they bet, raised and jammed with, one row per kind of aggression and
   // grouped by street: a stacked bar of the shown hands, read on the board of the
   // street the action was made on, then value : bluff, how many were shown, and
   // for bets how many everyone folded to. The pool is the same table over every
   // player and every hand. A row lists its hands on a click, a segment the hands
   // of its class: one player's from the ids the row carries, the pool's from
-  // /bluffs/hands, since its ids name nobody. See SPEC.md, "Bluff:value".
+  // /bluffs/hands, since its ids name nobody. See SPEC.md, "Value:bluff".
   const BV_CLASSES = [["value", "value"], ["marginal", "marginal"], ["semi_bluff", "semi-bluff"], ["bluff", "bluff"]];
   const BV_CLASS_TIP = {
     value: "a value hand on that board: top pair or better on most",
@@ -5521,7 +5521,7 @@
   $("hands-sort").addEventListener("change", () => {
     state.handSort = $("hands-sort").value;
     if ($("hands").classList.contains("hidden")) return;
-    // In the pool's bluff:value table every list is the pool's; see openPoolHands.
+    // In the pool's value:bluff table every list is the pool's; see openPoolHands.
     if (state.by === "bluffs" && state.bluffScope === "pool" && state.poolHands) openPoolHands(...state.poolHands);
     else openHands($("hands-title").textContent, state.handIds, state.handTerm);
   });

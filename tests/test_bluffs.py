@@ -1,4 +1,4 @@
-"""Bluff:value by kind of aggression (`pnt/stats/bluffs.py`).
+"""Value:bluff by kind of aggression (`pnt/stats/bluffs.py`).
 
 Every row must be the hands its filter finds, and every class within it the hands
 its class filter finds, so a click on the chart reproduces the number it was on.
@@ -183,7 +183,7 @@ def test_cli_prints_a_player_and_the_pool(db, tmp_path):
 
 
 def test_the_chart_hides_every_other_view_on_bluff_value():
-    """Bluff:value renders apart from `render()`'s toggles, so it hides the other
+    """Value:bluff renders apart from `render()`'s toggles, so it hides the other
     views itself: every part `render()` toggles must be on its list, or the view
     switched from stays on screen under it."""
     import re

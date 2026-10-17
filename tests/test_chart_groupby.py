@@ -8,7 +8,7 @@ CHART = Path(__file__).resolve().parents[1] / "pnt" / "server" / "static" / "cha
 
 
 def test_the_chart_has_a_group_by_panel_that_bluff_value_hides():
-    """The panel sits beside the chart card, asks /groupby, and is on bluff:value's
+    """The panel sits beside the chart card, asks /groupby, and is on value:bluff's
     hide list, so switching there from the grid leaves it behind."""
     html = CHART.read_text("utf-8")
     assert '<section class="card gb hidden" id="groupby"' in html

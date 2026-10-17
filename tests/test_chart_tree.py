@@ -14,7 +14,7 @@ def _bluff_hide_list(html: str) -> set[str]:
 
 def test_the_chart_has_a_tree_view_that_bluff_value_hides():
     """`by=tree` is a view the URL knows, with a button after Lines, a box of its
-    own and its controls, all on bluff:value's hide list."""
+    own and its controls, all on value:bluff's hide list."""
     html = CHART.read_text("utf-8")
     assert '<div id="tree" class="hidden"></div>' in html
     assert '<span class="ctl hidden" id="treectl">' in html
@@ -41,7 +41,7 @@ def test_a_tree_click_goes_to_the_grid_with_the_node_filter():
 
 def test_the_made_view_has_a_streets_tab():
     """Mix and Streets tabs on the made view; Streets reads /streets, keeps
-    `made=streets` in the URL, and its box is on bluff:value's hide list."""
+    `made=streets` in the URL, and its box is on value:bluff's hide list."""
     html = CHART.read_text("utf-8")
     assert '<div id="streets" class="hidden"></div>' in html
     assert 'data-made="mix"' in html and 'data-made="streets"' in html
