@@ -3965,9 +3965,13 @@
   }
 
   // value / draw / air shares of a group mix, in percent.
+  // Value, draw and air as % of the mix, from its combos: summing the groups'
+  // already-rounded shares can come to 100.1.
   function vda(mix) {
-    const sum = (keys) => mix.filter(m => keys.includes(m.group)).reduce((s, m) => s + (m.pct || 0), 0);
-    return [sum(VALUE_GROUPS), sum(["draw"]), sum(["air"])];
+    const sum = (keys) => mix.filter(m => keys.includes(m.group)).reduce((s, m) => s + (m.combos || 0), 0);
+    const parts = [sum(VALUE_GROUPS), sum(["draw"]), sum(["air"])];
+    const total = parts[0] + parts[1] + parts[2];
+    return parts.map((c) => (total ? 100 * c / total : 0));
   }
 
   function paintBoard(body) {
@@ -3977,8 +3981,8 @@
     if (!d) { body.appendChild(message("breaking down…")); return; }
     const head = document.createElement("div"); head.className = "cap";
     head.textContent = d.sampled
-      ? `${d.boards.length} random flops with ${d.flop_terms.join(", ")} · ${d.combos} combos each, averaged`
-      : `${d.board.map(pretty).join(" ")} · ${d.combos} combos`;
+      ? `${d.boards.length} random flops with ${d.flop_terms.join(", ")} · ≈${Math.round(d.combos)} combos each, averaged`
+      : `${d.board.map(pretty).join(" ")} · ≈${Math.round(d.combos)} combos`;
     body.appendChild(head);
 
     const bar = document.createElement("div"); bar.className = "catbar";
@@ -4015,7 +4019,7 @@
       };
       tr(["", "value", "draw", "air", ""], "th");
       const pct = (v) => fmtPct(Math.round(10 * v) / 10);
-      if (cut) tr([`If they bet only their best ${fmtPct(cut.pct)}`, ...vda(cut.mix).map(pct), `${cut.combos} combos`]);
+      if (cut) tr([`If they bet only their best ${fmtPct(cut.pct)}`, ...vda(cut.mix).map(pct), `≈${Math.round(cut.combos)} combos`]);
       const sm = nx.shown_mix;
       tr(sm.n ? [`What they showed after a ${nx.label}`, ...vda(sm.mix).map(pct), `${sm.n} shown`]
         : [`What they showed after a ${nx.label}`, "–", "–", "–", "none shown"]);
