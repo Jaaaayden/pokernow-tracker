@@ -648,7 +648,10 @@
   #results table, #tilt table, #timing table, #shows table, #bounty table { max-width: 1100px; }
   #review:not(.split) .hand-rows, #hands:not(.split) .hand-rows { max-width: 1280px; }
   .duo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
-  @media (min-width: 1500px) { .duo.two { grid-template-columns: minmax(0, 920px) minmax(440px, 1fr); } }
+  /* Stacked, the two cards keep the grid's width rather than the page's, so the
+     card's buttons sit over the grid instead of a screen of empty card. */
+  .duo.two { grid-template-columns: minmax(0, 920px); }
+  @media (min-width: 1200px) { .duo.two { grid-template-columns: minmax(0, 920px) minmax(360px, 1fr); } }
   .gb .card-head small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .gb-ctl { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
   .gb-ctl label { display: inline-flex; gap: 6px; align-items: center; }

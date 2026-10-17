@@ -120,51 +120,51 @@ def test_no_hands_at_the_spot():
     assert out["n"] == 0 and out["cells"] == {} and out["pct"] is None
 
 
-def test_calibration_moves_only_past_the_threshold():
+def test_calibration_waits_for_enough_shown_hands():
     # A 20% open range; 72o is far outside it.
     decisions = ["raise"] * 20 + ["fold"] * 80
     four = {0: "7h2c", 1: "AsAd", 2: "KsKd", 3: "QsQd"}
-    node = est.resolve_node("unopened=raise")
-    out = est.estimate_range(_facts(1, decisions, four), node)
+    out = est.estimate_range(_facts(1, decisions, four), est.resolve_node("unopened=raise"))
     assert out["shown"] == 4 and not out["calibrated"]
     assert "72o" not in out["cells"]
     assert next(r for r in out["calibration"] if r["class"] == "72o") == {
         "class": "72o", "shown": 1, "outside": True, "family": None, "moved": []}
     assert out["outside"] == 1
 
-    five = {**four, 4: "JsJd"}
-    out = est.estimate_range(_facts(1, decisions, five), node)
-    assert out["shown"] == 5 and out["calibrated"]
-    assert out["cells"]["72o"] == 1
-    assert out["combos"] == pytest.approx(0.2 * est.COMBOS, abs=0.1)  # the range keeps its size
-    assert sum(d["combos"] for d in out["demoted"]) == pytest.approx(12, abs=0.01)
-    # Taken back from the bottom, never from a shown hand.
-    shown = {"AA", "KK", "QQ", "JJ", "72o"}
-    assert not shown & {d["class"] for d in out["demoted"]}
+
+def test_one_stray_show_does_not_pull_a_class_in():
+    """A class shown once, far below how often it would show if it were always
+    played, stays out however many hands were shown."""
+    cells = est.top_fill(20)
+    in_range = [k for k, w in cells.items() if w == 1]
+    for spread in (1, 20):
+        shown = est.Counter({k: spread for k in in_range}) + est.Counter({"72o": 1})
+        out, _, _, _ = est.calibrate(dict(cells), shown)
+        assert out.get("72o", 0) < 0.5
+        assert est.combo_count(out) == pytest.approx(est.combo_count(cells))
 
 
-def test_the_range_keeps_its_size_when_every_class_in_it_was_shown():
-    """With nothing unshown left to give back, the weakest shown classes go."""
-    cells = est.top_fill(5)
-    shown = {k: 1 for k in cells} | {"72o": 1}
-    out, _, demoted, moved = est.calibrate(dict(cells), est.Counter(shown))
-    assert moved and out["72o"] == 1
+def test_a_class_shown_as_often_as_the_range_moves_in():
+    cells = est.top_fill(20)
+    in_range = [k for k, w in cells.items() if w == 1]
+    shown = est.Counter({k: 4 for k in in_range}) + est.Counter({"54s": 4, "72o": 12})
+    out, rows, demoted, moved = est.calibrate(dict(cells), shown)
+    assert moved and out["54s"] == 1 and out["72o"] == 1
+    assert next(r for r in rows if r["class"] == "54s")["moved"] == ["54s"]
+    assert est.combo_count(out) == pytest.approx(est.combo_count(cells))  # the range keeps its size
+    assert demoted and not {"54s", "72o"} & {d["class"] for d in demoted}
+
+
+def test_a_calling_range_takes_the_hands_actually_flatted():
+    """The capped guess leaves the top out for the 3-bets; a player who flats AQo
+    gets it back."""
+    cells = est.capped_fill(30, 10)
+    assert "AQo" not in cells
+    in_range = [k for k, w in cells.items() if w == 1]
+    shown = est.Counter({k: 3 for k in in_range}) + est.Counter({"AQo": 9})
+    out, _, _, moved = est.calibrate(dict(cells), shown)
+    assert moved and out["AQo"] == 1
     assert est.combo_count(out) == pytest.approx(est.combo_count(cells))
-    assert demoted and all(d["class"] in shown for d in demoted)
-
-
-def test_a_shown_class_pulls_its_family_up():
-    decisions = ["raise"] * 20 + ["fold"] * 80
-    shown = {0: "5h4h", 1: "AsAd", 2: "KsKd", 3: "QsQd", 4: "JsJd"}
-    out = est.estimate_range(_facts(1, decisions, shown), est.resolve_node("unopened=raise"))
-    row = next(r for r in out["calibration"] if r["class"] == "54s")
-    assert row["outside"] and row["family"] == "suited connectors"
-    base = est.top_fill(20)
-    connectors = est.FAMILIES["suited connectors"]
-    above = [k for k in connectors if HAND_RANKING.index(k) < HAND_RANKING.index("54s") and k not in base]
-    assert above and set(row["moved"]) == {"54s", *above}
-    assert all(out["cells"][k] == 1 for k in row["moved"])
-    assert out["combos"] == pytest.approx(0.2 * est.COMBOS, abs=0.1)
 
 
 def test_estimate_reads_the_spot_from_the_filter():

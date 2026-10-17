@@ -539,7 +539,7 @@ The page remembers which you left it on.
 A chip that would leave none is dimmed.
 
 **Group by.** Beside the grid on Preflop and Made hands (below it on a window under
-1500px), the spot split into rows, each with hands, bb/100, vs fold and the core
+1200px), the spot split into rows, each with hands, bb/100, vs fold and the core
 rates.
 
 - **Rows** picks the split (position on Preflop, flop holding on Made); **then by**
@@ -632,8 +632,9 @@ HUD embeds it. `GET /players/{alias}/range` returns the same data as JSON, with 
 
 - **Estimate** (preflop view): outlines the range their frequency at one preflop
   decision implies, top X% by hand ranking, calls capped below their raises.
-  `position=BTN,unopened=raise` at 25% opens outlines the top 25%; shown hands
-  outside it pull their family up once 5 are shown.
+  `position=BTN,unopened=raise` at 25% opens outlines the top 25%; from 5 shown
+  hands on, it is refilled by how often each class was shown (72o shown once in
+  1,300 opens stays out; shown 14 times where 18 were expected, it is in).
 - **Board** (under it): that range on a board, cut at their next action's rate.
   `Ah7c2d` with a 42% c-bet: the mix, the cut (middle pair), and their bets'
   value/draw/air against what they showed. Blank with `flop=king_high` in the spot

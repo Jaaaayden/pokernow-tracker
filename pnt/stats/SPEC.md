@@ -1560,21 +1560,28 @@ Each cell's weight is that fraction of its combos.
 **Calibration** reads the hands shown at the node (cards known, this decision),
 and only when there are at least `MIN_SHOWN` = 5 of them:
 
-1. A shown class with weight 0 is **outside** the estimate.
-2. Each outside class moves in at weight 1, and so does every member of its
-   family that is ranked above it, is outside, and sits below the top of the
-   range (for a capped range, below the raise slice). Families: small pairs
-   (22–66), suited aces (A2s–A9s), suited connectors (32s–JTs), suited gappers
-   (one or two gaps, not both broadway, no ace), offsuit broadways (both T+),
-   offsuit aces (A2o–A9o). A class in none moves alone.
-3. The combos moved in are taken back from the bottom of the range, weakest
-   class first, never from a moved class, and from a shown class only once no
-   other is left, so the range keeps its size. It grows only when the moved
-   classes alone outgrow it.
+1. A shown class with weight 0 in the linear guess is **outside** it.
+2. Each of the 169 classes gets a score: (shown + 3 × guess weight) ÷ (expected
+   + 3), where expected = shown hands × the class's combos ÷ the range's combos,
+   which is how often it would be shown if it were always in the range. The 3 is
+   `PRIOR_HANDS`: the guess counts as three hands of evidence.
+3. The range's combos are filled again, highest score first (the ranking breaks
+   ties), the last class taking the fraction that fits. The range keeps its size.
 
-`calibration` lists every shown class: `{class, shown, outside, family, moved}`;
-`demoted` lists the combos taken back. Under five shown hands nothing moves and
-the rows still say which were outside.
+So a few shown hands leave the guess almost as it is, and many make the range
+follow what was played: a class shown once where 80 shows were expected (a 72o
+for the bounty) stays out, and one shown as often as the range's other classes
+comes in. Showdowns still lean toward hands that kept going, so a villain's weak
+opens that are folded later are under-counted; a log owner's own hands are not.
+
+Until 2026-10-17 an outside class moved in on one show, with its family, and the
+combos came back off the bottom. On a log owner's thousands of shown hands every
+junk class has been shown once, so the bottom moved in and the middle went out.
+
+`calibration` lists every shown class: `{class, shown, outside, family, moved}`,
+`moved` being `[class]` when it ended up in from outside; `family` is a label
+only. `demoted` lists the combos each class of the guess lost. Under five shown
+hands nothing moves and the rows still say which were outside.
 
 **Board breakdown.** `GET /players/{alias}/board?filter=&board=&game=` takes the
 estimate and a board of 3 to 5 cards (`Ah7c2d`; 400 on anything else, a card

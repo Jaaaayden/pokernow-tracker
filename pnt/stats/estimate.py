@@ -263,48 +263,45 @@ for _label in HAND_RANKING:
         FAMILIES.setdefault(_f, []).append(_label)
 
 
-def calibrate(cells: dict[str, float], shown: Counter, *, floor: int = 0) -> tuple[dict, list[dict], list[dict], bool]:
-    """Pull shown classes outside `cells` into it, with their family, and give back
-    as many combos from the bottom. -> (cells, rows, demoted, calibrated).
+#: Pseudo-hands of the linear guess behind each class's score in `calibrate`: the
+#: shown hands outweigh it only once a class has been expected a few times.
+PRIOR_HANDS = 3.0
 
-    `floor` is the ranking index the range starts at: a capped range's family
-    members above it are in the raise slice and stay there.
+
+def calibrate(cells: dict[str, float], shown: Counter) -> tuple[dict, list[dict], list[dict], bool]:
+    """Refill the range by how often each class was shown, shrunk toward the
+    linear guess `cells`. -> (cells, rows, demoted, calibrated).
+
+    A class's score is (shown + PRIOR_HANDS × guess) / (expected + PRIOR_HANDS),
+    where expected is how often it would be shown if it were always in the range
+    (the shown hands spread over the range's combos). The range's combos are then
+    filled again, highest score first, the ranking breaking ties. Few shown hands
+    leave the guess as it is; many make the range follow what was played, and a
+    class shown once in a thousand hands (a 72o for the bounty) stays out.
     """
     base = dict(cells)
-    out = dict(cells)
-    go = sum(shown.values()) >= MIN_SHOWN
-    moved_by: dict[str, list[str]] = {}
-    moved: set[str] = set()
-    for label in sorted((k for k in shown if base.get(k, 0) <= 1e-9), key=_INDEX.__getitem__):
-        if not go or label in moved:
-            continue
-        fam = _family(label)
-        pull = [label]
-        if fam:
-            pull += [m for m in FAMILIES[fam] if floor <= _INDEX[m] < _INDEX[label] and out.get(m, 0) <= 1e-9]
-        pull = [m for m in pull if m not in moved]
-        moved.update(pull)
-        moved_by[label] = sorted(pull, key=_INDEX.__getitem__)
-    added = sum(combos_of(m) * (1 - out.get(m, 0.0)) for m in moved)
-    for m in moved:
-        out[m] = 1.0
-    taken: Counter = Counter()
-    left = added
-    # Weakest first, sparing the shown classes while anything else is left.
-    for spare in (shown, ()):
-        for label in reversed(HAND_RANKING):
+    total = combo_count(base)
+    n = sum(shown.values())
+    out = dict(base)
+    if n >= MIN_SHOWN and total > 0:
+        def score(label: str) -> float:
+            expected = n * combos_of(label) / total
+            return (shown.get(label, 0) + PRIOR_HANDS * base.get(label, 0.0)) / (expected + PRIOR_HANDS)
+
+        out = {}
+        left = total
+        for label in sorted(HAND_RANKING, key=lambda k: (-score(k), _INDEX[k])):
             if left <= 1e-9:
                 break
-            if label in moved or label in spare or out.get(label, 0) <= 1e-9:
-                continue
             c = combos_of(label)
-            have = out[label] * c
-            take = min(have, left)
-            out[label] = (have - take) / c
+            take = min(c, left)
+            out[label] = take / c
             left -= take
-            taken[label] += take
-    demoted = [{"class": k, "combos": round(v, 2)} for k, v in sorted(taken.items(), key=lambda kv: -_INDEX[kv[0]])]
     out = {k: w for k, w in out.items() if w > 1e-9}
+    lost = {k: (w - out.get(k, 0.0)) * combos_of(k) for k, w in base.items()}
+    demoted = [{"class": k, "combos": round(v, 2)}
+               for k, v in sorted(lost.items(), key=lambda kv: -_INDEX[kv[0]]) if v > 1e-6]
+    moved_by = {k: [k] for k in out if base.get(k, 0) <= 1e-9}
     rows = [
         {
             "class": k,
@@ -315,7 +312,7 @@ def calibrate(cells: dict[str, float], shown: Counter, *, floor: int = 0) -> tup
         }
         for k, n in sorted(shown.items(), key=lambda kv: (-kv[1], _INDEX[kv[0]]))
     ]
-    return out, rows, demoted, bool(moved)
+    return out, rows, demoted, bool(moved_by or demoted)
 
 
 def estimate_range(facts: Iterable[Facts], node: Node) -> dict:
@@ -345,8 +342,7 @@ def estimate_range(facts: Iterable[Facts], node: Node) -> dict:
         slice_pct, top_pct = 0.0, pct
         cells = top_fill(pct)
     shown = Counter(hand_class(f.hole_cards) for f, d in at if d == node.decision and f.hole_cards)
-    floor = min((_INDEX[k] for k in cells), default=0)
-    cells, rows, demoted, moved = calibrate(cells, shown, floor=floor)
+    cells, rows, demoted, moved = calibrate(cells, shown)
     out.update({
         "pct": round(pct, 1),
         "ci": [round(100 * lo, 1), round(100 * hi, 1)],
