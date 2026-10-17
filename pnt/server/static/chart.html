@@ -3514,7 +3514,7 @@
       s.title = g;
       foot.appendChild(s);
     }
-    const bits = [];
+    const bits = ["vs fold = bb/100 with the blinds you posted given back: 0 is no better than folding every hand"];
     if (d.skipped) bits.push(`${d.skipped} hands in no row`);
     if (d.hidden.cells) bits.push(`${d.hidden.cells} rows under ${d.min} hands hidden (${d.hidden.hands} hands)`);
     if (bits.length) foot.append(bits.join(" · "));
@@ -4061,7 +4061,8 @@
     $("card-title").textContent = TITLE[view];
     $("grid").classList.toggle("hidden", view !== "preflop" || table);
     $("scale").classList.toggle("hidden", view !== "preflop" || table);
-    $("esttoggle").classList.toggle("hidden", view !== "preflop" || EMBED);
+    // The estimate is an outline over the grid, so the table has nothing to put it on.
+    $("esttoggle").classList.toggle("hidden", view !== "preflop" || EMBED || state.table);
     $("esttoggle").setAttribute("aria-pressed", state.est);
     $("est").classList.toggle("hidden", view !== "preflop" || table || !state.est || EMBED);
     $("bars").classList.toggle("hidden", view !== "made" || table);
