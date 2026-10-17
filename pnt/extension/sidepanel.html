@@ -81,7 +81,9 @@
   .tag.tilt { border-color: #ff8a65; color: #ff8a65; }
   td.name .tag.tilt { margin-left: 4px; }
 
-  .stats { margin-top: 3px; display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  /* As many stats as were chosen on the front page, wrapping onto more lines.
+     A cell fits a 5-letter label beside "38.8 39.8" or "+363 +333". */
+  .stats { margin-top: 3px; display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
     gap: 1px 4px; font-variant-numeric: tabular-nums; }
   .stat { white-space: nowrap; }
   .stat .k { color: #898781; font-size: 9px; margin-right: 3px; }

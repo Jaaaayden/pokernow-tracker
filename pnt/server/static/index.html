@@ -57,6 +57,40 @@
           word-break: break-all; margin-top: 22px; }
   .err { color: var(--down); margin: 12px 0; }
   .hidden { display: none !important; }
+
+  /* HUD stats: chips to pick from, by street, beside the order they print in. */
+  .hud { padding: 12px 16px 14px; }
+  .hud .line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 10px;
+               color: var(--ink-2); font-size: 13px; }
+  .hud .count { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+  .hud .saved { color: var(--up); font-size: 12px; transition: opacity .3s; }
+  .hud .saved.off { opacity: 0; }
+  .hud .err { margin: 8px 0 0; }
+  .hud-cols { display: grid; grid-template-columns: 1fr minmax(180px, 220px); gap: 16px; }
+  @media (max-width: 640px) { .hud-cols { grid-template-columns: 1fr; } }
+  .hud fieldset { border: 0; padding: 0; margin: 0 0 10px; }
+  .hud legend { padding: 0; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  label.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ring); border-radius: 999px;
+               padding: 1px 9px 1px 6px; font-size: 12.5px; cursor: pointer; background: var(--page); user-select: none; }
+  label.chip:hover { border-color: var(--accent); }
+  label.chip:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  label.chip:has(input:disabled) { opacity: .45; cursor: default; }
+  label.chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label.chip input { margin: 0; accent-color: var(--accent); }
+  .order .k { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .order ol { list-style: none; margin: 0 0 8px; padding: 0; counter-reset: n; }
+  .order li { display: flex; align-items: center; gap: 4px; padding: 2px 0; border-bottom: 1px solid var(--grid);
+              font-size: 13px; }
+  .order li .name { flex: 1; min-width: 0; }
+  .order li .name small { color: var(--muted); margin-left: 4px; }
+  .order li.fixed { color: var(--muted); }
+  .order button, .hud .reset { font: inherit; font-size: 12px; color: var(--ink-2); background: none;
+               border: 1px solid transparent; border-radius: 5px; padding: 0 5px; cursor: pointer; }
+  .order button:hover:not(:disabled), .hud .reset:hover { color: var(--ink); border-color: var(--ring); }
+  .order button:disabled { opacity: .3; cursor: default; }
+  .order button:focus-visible, .hud .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hud .reset { border-color: var(--ring); padding: 2px 8px; }
   @media (max-width: 480px) { dl { grid-template-columns: 1fr; gap: 2px 0; } dd { margin-bottom: 8px; } }
 </style>
 </head>
@@ -104,6 +138,24 @@
       <p>Every endpoint these pages use, with a try-it form. The database is also just a file.</p>
     </a>
   </div>
+
+  <h3 id="hud-h">HUD stats</h3>
+  <section class="panel hud hidden" id="hud" aria-labelledby="hud-h">
+    <p class="line">
+      <span><span class="count" id="hud-count"></span> chosen</span>
+      <span>Changes reach the HUD on its next refresh (≤30 s).</span>
+      <span class="saved off" id="hud-saved" role="status">saved ✓</span>
+    </p>
+    <div class="hud-cols">
+      <div id="hud-groups"></div>
+      <div class="order">
+        <div class="k" id="hud-order-k">Shown on the HUD</div>
+        <ol id="hud-list" aria-labelledby="hud-order-k"></ol>
+        <button type="button" class="reset" id="hud-reset">Reset to default</button>
+      </div>
+    </div>
+    <div class="err hidden" id="hud-err" role="alert"></div>
+  </section>
 
   <h3>Keeping it running</h3>
   <div class="panel">
@@ -174,6 +226,151 @@
     } catch (e) {
       $("err").textContent = "could not reach the server: " + (e.message || e);
       $("err").classList.remove("hidden");
+    }
+  })();
+
+  // ------------------------------------------------------------ HUD stats --
+  // Which stats the HUD prints after `hands`, in order. Every change is saved at
+  // once; the HUD reads it with its next /hud report.
+  const hud = { catalog: [], byKey: new Map(), columns: [], def: [], max: 12 };
+  const node = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+
+  function hudChips() {
+    const groups = new Map();
+    for (const c of hud.catalog) {
+      if (!groups.has(c.group)) groups.set(c.group, []);
+      groups.get(c.group).push(c);
+    }
+    const out = [];
+    for (const [name, entries] of groups) {
+      const fs = node("fieldset");
+      fs.append(node("legend", null, name));
+      const chips = node("div", "chips");
+      for (const c of entries) {
+        const lab = node("label", "chip");
+        lab.title = c.tip;
+        const box = node("input");
+        box.type = "checkbox";
+        box.dataset.key = c.key;
+        box.addEventListener("change", () => {
+          hudSet(box.checked ? [...hud.columns, c.key] : hud.columns.filter((k) => k !== c.key));
+        });
+        lab.append(box, node("span", null, c.label));
+        chips.append(lab);
+      }
+      fs.append(chips);
+      out.push(fs);
+    }
+    $("hud-groups").replaceChildren(...out);
+  }
+
+  // The list and the chips' ticks from `hud.columns`. `focus` names the button
+  // to put the keyboard back on after a move or a removal redraws the list.
+  function hudPaint(focus) {
+    const full = hud.columns.length >= hud.max;
+    for (const box of $("hud-groups").querySelectorAll("input")) {
+      box.checked = hud.columns.includes(box.dataset.key);
+      box.disabled = full && !box.checked;
+    }
+    $("hud-count").textContent = `${hud.columns.length} / ${hud.max}`;
+    const fixed = node("li", "fixed");
+    fixed.append(node("span", "name", "hands"));
+    fixed.title = "Always first";
+    const items = hud.columns.map((k, i) => {
+      const c = hud.byKey.get(k);
+      const li = node("li");
+      const name = node("span", "name", c.label);
+      name.append(node("small", null, c.group));
+      name.title = c.tip;
+      const btn = (text, what, act, off) => {
+        const b = node("button", null, text);
+        b.type = "button";
+        b.dataset.act = what;
+        b.setAttribute("aria-label", `${what} ${c.label} (${c.group})`);
+        b.title = what;
+        b.disabled = off;
+        b.addEventListener("click", act);
+        return b;
+      };
+      const move = (d) => () => {
+        const next = [...hud.columns];
+        [next[i], next[i + d]] = [next[i + d], next[i]];
+        // At the end of the list the button it moved by is gone; use the other.
+        const edge = i + d === 0 || i + d === next.length - 1;
+        hudSet(next, { i: i + d, act: edge ? (d < 0 ? "move down" : "move up") : (d < 0 ? "move up" : "move down") });
+      };
+      li.append(name,
+        btn("↑", "move up", move(-1), i === 0),
+        btn("↓", "move down", move(1), i === hud.columns.length - 1),
+        btn("✕", "remove", () => hudSet(hud.columns.filter((x) => x !== k),
+          { i: Math.min(i, hud.columns.length - 2), act: "remove" }), false));
+      return li;
+    });
+    $("hud-list").replaceChildren(fixed, ...items);
+    if (focus) {
+      const target = items[focus.i]?.querySelector(`button[data-act="${focus.act}"]`);
+      (target || $("hud-reset")).focus();
+    }
+  }
+
+  function hudSet(columns, focus) {
+    hud.columns = columns;
+    hudPaint(focus);
+    hudSave();
+  }
+
+  // One save in flight at a time, so two quick clicks cannot land on the server
+  // out of order; changes made meanwhile go in one more save when it returns.
+  let saving = false, again = false, savedTimer = null;
+  async function hudSave() {
+    if (saving) { again = true; return; }
+    saving = true;
+    let error = null;
+    do {
+      again = false;
+      try {
+        const r = await fetch("/settings/hud", {
+          method: "PUT",
+          headers: { "content-type": "application/json", "x-pnt": "1" },
+          body: JSON.stringify({ columns: hud.columns }),
+        });
+        const body = await r.json().catch(() => ({}));
+        error = r.ok ? null : body.detail || `HTTP ${r.status}`;
+      } catch (e) {
+        error = e.message || String(e);
+      }
+    } while (again);
+    saving = false;
+    $("hud-err").textContent = error ? "not saved: " + error : "";
+    $("hud-err").classList.toggle("hidden", !error);
+    $("hud-saved").classList.toggle("off", !!error);
+    clearTimeout(savedTimer);
+    if (!error) savedTimer = setTimeout(() => $("hud-saved").classList.add("off"), 1500);
+  }
+
+  $("hud-reset").addEventListener("click", () => hudSet([...hud.def]));
+
+  (async () => {
+    try {
+      const r = await fetch("/settings/hud");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const s = await r.json();
+      Object.assign(hud, { catalog: s.catalog, columns: s.columns, def: s.default, max: s.max });
+      hud.byKey = new Map(s.catalog.map((c) => [c.key, c]));
+      hudChips();
+      hudPaint();
+      $("hud").classList.remove("hidden");
+    } catch (e) {
+      $("hud-err").textContent = "could not load the HUD stats: " + (e.message || e);
+      $("hud-err").classList.remove("hidden");
+      $("hud").classList.remove("hidden");
+      $("hud").querySelector(".hud-cols").classList.add("hidden");
+      $("hud").querySelector(".line").classList.add("hidden");
     }
   })();
 })();

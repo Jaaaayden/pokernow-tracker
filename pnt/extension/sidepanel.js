@@ -350,25 +350,29 @@
   }
 
   // ----------------------------------------------------------------- cards --
-  const fmt = (v) => (v == null ? "–" : String(v));
-  // Which `_opp` count sits under each figure; VPIP and PFR share one.
-  const OPP_KEY = { vpip: "vpip", pfr: "vpip", "3bet": "3bet", fold_to_3bet: "fold_to_3bet",
-    cbet_flop: "cbet_flop", wtsd: "wtsd", af_flop: "af_flop" };
+  // Rates arrive as percentages; bb/100 is a signed number of big blinds, whole
+  // on the card (it runs to three figures) and to one place on hover.
+  const signed = (v, dp) => (v > 0 ? "+" : "") + v.toFixed(dp);
+  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 0) : String(v));
   // The panel has no room to spell these out, so the hover text does it -- it is
-  // the first place a new player meets the acronyms.
-  const COLS = [
-    ["hands", "hands", "Hands they were dealt into. Every rate here is over some subset of these."],
-    ["vpip", "VPIP", "Voluntarily Put $ In Pot: how often they call, bet or raise preflop. "
-      + "Blinds are forced and never count. High means loose."],
-    ["pfr", "PFR", "Pre-Flop Raise: how often they raise preflop. Close to VPIP means aggressive; "
-      + "far below it means they call far more than they raise."],
-    ["3bet", "3Bet", "How often they re-raise someone's open."],
-    ["fold_to_3bet", "F3B", "Fold to Three-Bet: they opened, someone re-raised, and they folded."],
-    ["cbet_flop", "CBet", "Continuation bet: they raised preflop and then bet the flop first-in."],
-    ["wtsd", "WTSD", "Went To Showdown: of the flops they saw, how often they were still there at the end."],
-    ["af_flop", "Agg", "Aggression Frequency on the flop: of everything they did bar checking, how often "
-      + "it was a bet or a raise rather than a call or a fold."],
+  // the first place a new player meets the acronyms. Which columns, in what
+  // order, is chosen on the server's front page and comes with each /hud report;
+  // `opp` is the `_opp` count under each figure (VPIP and PFR share one).
+  const HANDS_COL = { key: "hands", label: "hands", tip: "Hands they were dealt into. Every rate here is over some subset of these.", opp: null };
+  // An older server sends no `columns`: these are the ones it always showed.
+  const FALLBACK_COLS = [
+    { key: "vpip", label: "VPIP", opp: "vpip", tip: "Voluntarily Put $ In Pot: how often they call, bet or raise preflop. "
+      + "Blinds are forced and never count. High means loose." },
+    { key: "pfr", label: "PFR", opp: "vpip", tip: "Pre-Flop Raise: how often they raise preflop. Close to VPIP means aggressive; "
+      + "far below it means they call far more than they raise." },
+    { key: "3bet", label: "3Bet", opp: "3bet", tip: "How often they re-raise someone's open." },
+    { key: "fold_to_3bet", label: "F3B", opp: "fold_to_3bet", tip: "Fold to Three-Bet: they opened, someone re-raised, and they folded." },
+    { key: "cbet_flop", label: "CBet", opp: "cbet_flop", tip: "Continuation bet: they raised preflop and then bet the flop first-in." },
+    { key: "wtsd", label: "WTSD", opp: "wtsd", tip: "Went To Showdown: of the flops they saw, how often they were still there at the end." },
+    { key: "af_flop", label: "Agg", opp: "af_flop", tip: "Aggression Frequency on the flop: of everything they did bar checking, how often "
+      + "it was a bet or a raise rather than a call or a fold." },
   ];
+  const cols = () => [HANDS_COL, ...(Array.isArray(state.hud?.columns) ? state.hud.columns : FALLBACK_COLS)];
   // A session figure is flagged as drifting when it has some sample behind it
   // and sits well away from the lifetime one. Neither direction is "good" for
   // a VPIP, so it is one colour, not red and green.
@@ -381,7 +385,7 @@
     const ci = PNT.wilson(pct / 100, n);
     return !!ci && (life < 100 * ci[0] || life > 100 * ci[1]);
   };
-  const sample = (st, k) => (k === "hands" ? null : st._opp?.[OPP_KEY[k]]);
+  const sample = (st, col) => (col.opp ? st._opp?.[col.opp] : null);
 
   // One card per seat. The live hand's roster when there is one -- it is the
   // table as it is now -- else the last completed hand's. Stats come from the
@@ -481,33 +485,42 @@
   // One figure into `into`: this session, then lifetime in grey, the session one
   // blue when it drifts. Returns the hover text. The cards and the compact table
   // both use it, so the two can never read a figure differently.
-  function figure(s, k, tip, into) {
+  function figure(s, col, into) {
+    const { key: k, tip } = col;
     const st = s.stats || {}, ss = s.session;
     if (!ss) {
-      into.appendChild(el("span", null, fmt(st[k])));
+      into.appendChild(el("span", null, fmt(st[k], k)));
       return tip;
     }
-    const now = el("span", null, fmt(ss[k]));
-    const nOpp = sample(ss, k), lOpp = sample(st, k);
-    if (typeof ss[k] === "number" && typeof st[k] === "number" && k !== "hands"
+    const now = el("span", null, fmt(ss[k], k));
+    // Drift is a gap in percentage points over a counted sample, so only a rate
+    // with an `_opp` count gets it: not hands, W$SD or bb/100.
+    const nOpp = sample(ss, col), lOpp = sample(st, col);
+    if (typeof ss[k] === "number" && typeof st[k] === "number"
         && (nOpp ?? 0) >= DRIFT_MIN_OPP && Math.abs(ss[k] - st[k]) >= DRIFT_POINTS
         && (!DRIFT_NEEDS_CI || outsideCi(ss[k], nOpp, st[k]))) {
       now.className = "drift";
     }
-    into.append(now, el("small", "life", fmt(st[k])));
+    into.append(now, el("small", "life", fmt(st[k], k)));
     const of = (v, n) => {
-      if (n == null) return fmt(v);
+      if (n == null) return v == null ? fmt(v) : `${fmt(v)}%`; // W$SD: a rate with no count sent
       const ci = PNT.ciText(v, n);
       return `${fmt(v)}% of ${n}` + (ci ? `, ${ci}` : "");
     };
+    // bb/100 carries its own ± (SPEC.md, "Confidence intervals").
+    const bb = (r) => (r[k] == null ? "–" : signed(r[k], 1))
+      + (r.bb_per_100_ci != null ? ` ± ${r.bb_per_100_ci.toFixed(1)}` : "");
     return `${tip}\n\n` + (k === "hands"
       ? `this session: ${fmt(ss[k])} hands · lifetime: ${fmt(st[k])}`
-      : `this session: ${of(ss[k], nOpp)}\nlifetime: ${of(st[k], lOpp)}`);
+      : k === "bb_per_100"
+        ? `this session: ${bb(ss)}\nlifetime: ${bb(st)}`
+        : `this session: ${of(ss[k], nOpp)}\nlifetime: ${of(st[k], lOpp)}`);
   }
 
   // Compact: every player in one table, a row each, and nothing else -- the
   // player to act in yellow, the folded dimmed, the rest is the numbers.
   function grid(seats, lv, hasSession) {
+    const COLS = cols();
     const table = el("table");
     const head = el("thead");
     if (hasSession) {
@@ -521,7 +534,7 @@
     }
     const tr = el("tr");
     tr.append(el("th", null, "player"));
-    for (const [, label, tip] of COLS) {
+    for (const { label, tip } of COLS) {
       const th = el("th", null, label);
       th.title = tip;
       tr.append(th);
@@ -547,9 +560,9 @@
       const tilt = tiltChip(s);
       if (tilt) name.appendChild(tilt);
       row.append(name);
-      for (const [k, , tip] of COLS) {
+      for (const col of COLS) {
         const td = el("td");
-        td.title = figure(s, k, tip, td);
+        td.title = figure(s, col, td);
         row.append(td);
       }
       body.append(row);
@@ -629,12 +642,13 @@
     if (tilt) tags.appendChild(tilt);
     c.appendChild(tags);
 
-    // The numbers: this session, then lifetime in grey.
+    // The numbers: this session, then lifetime in grey. As many as were chosen;
+    // the row wraps onto more lines when they do not fit.
     const stats = el("div", "stats");
-    for (const [k, label, tip] of COLS) {
+    for (const col of cols()) {
       const cell = el("span", "stat");
-      cell.appendChild(el("span", "k", label));
-      cell.title = figure(s, k, tip, cell);
+      cell.appendChild(el("span", "k", col.label));
+      cell.title = figure(s, col, cell);
       stats.appendChild(cell);
     }
     c.appendChild(stats);
