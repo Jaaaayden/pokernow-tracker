@@ -276,6 +276,15 @@
   tr.pick:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
   tr.pick td:first-child::after { content: " ›"; color: var(--muted); }
   #table { overflow-x: auto; }
+  #table .tbl-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px;
+    color: var(--ink-2); font-size: 13px; }
+  #table .tbl-ctl input[type=search] { font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; width: 15em; }
+  #table .tbl-ctl .dim { color: var(--muted); }
+  #table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  #table th.sortable:hover { color: var(--ink); }
+  #table td.up { color: var(--up); }
+  #table td.down { color: var(--down); }
 
   /* --- fold equity, under the sizing blocks --- */
   .foldeq { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
@@ -4575,14 +4584,110 @@
     }
   }
 
+  // The preflop table: the essentials per hand, with search, a minimum and a sort.
+  // The raise sizes' spread (median, mean, min, max) is on the size's hover.
+  const PF_COLS = [
+    ["hand", "hand", "", null],
+    ["n", "shown", "times shown", (c) => c.n],
+    ["net", "net bb", "big blinds won or lost", (c) => c.net_bb],
+    ["per", "bb/hand", "net bb per hand shown", (c) => c.net_bb / c.n],
+    ["won", "won %", "share of these hands they won", (c) => 100 * c.won / c.n],
+    ["raise", "raise %", "raised when they had the choice", (c) => c.raise_pct],
+    ["size", "raise bb", "their usual preflop raise, in bb; hover for the spread", (c) => c.raise_typical],
+  ];
+  const pfTable = { q: "", min: 1, sort: "n", dir: -1 };
+  // A class as two cards: one suit when suited, black and red when not, so
+  // T9s reads 10♠9♠ and T9o 10♠9♥.
+  const classCards = (label) => `${label[0]}s${label[1]}${label[2] === "s" ? "s" : "h"}`;
+  // "a s" is suited aces, "kq" both KQ, "pair" the pairs: every word must match.
+  const pfMatch = (label, q) => q.toLowerCase().split(/[\s,]+/).filter(Boolean).every((w) =>
+    w === "pair" || w === "pairs" ? label.length === 2 : label.toLowerCase().includes(w));
+
+  function renderPreflopTable(wrap, d) {
+    const ctl = document.createElement("div"); ctl.className = "tbl-ctl";
+    const q = document.createElement("input");
+    q.type = "search"; q.placeholder = "search: a s · kq · pair · o"; q.value = pfTable.q;
+    q.setAttribute("aria-label", "Search hands");
+    const min = document.createElement("input");
+    min.type = "number"; min.min = "1"; min.value = pfTable.min; min.setAttribute("aria-label", "Minimum shown");
+    const minLabel = document.createElement("label"); minLabel.append("min shown ", min);
+    const count = document.createElement("span"); count.className = "dim";
+    ctl.append(q, minLabel, count);
+
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    const body = document.createElement("tbody");
+    const order = Object.keys(d.cells); // chart order, for the hand column's sort
+    const fmt = { net: (v) => v.toFixed(1), per: (v) => (v >= 0 ? "+" : "") + v.toFixed(2), won: (v) => v.toFixed(0) };
+    for (const [key, text, tip] of PF_COLS) {
+      const th = document.createElement("th");
+      th.textContent = text + (pfTable.sort === key ? (pfTable.dir < 0 ? " ▾" : " ▴") : "");
+      if (tip) th.title = tip;
+      th.className = "sortable";
+      th.addEventListener("click", () => {
+        pfTable.dir = pfTable.sort === key ? -pfTable.dir : key === "hand" ? 1 : -1;
+        pfTable.sort = key;
+        wrap.replaceChildren();
+        renderPreflopTable(wrap, d);
+      });
+      head.appendChild(th);
+    }
+    t.append(head, body);
+
+    const fill = () => {
+      const col = PF_COLS.find(([k]) => k === pfTable.sort);
+      const val = col[3] ?? ((_, label) => order.indexOf(label));
+      const rows = Object.entries(d.cells)
+        .filter(([label, c]) => c.n >= pfTable.min && pfMatch(label, pfTable.q))
+        .sort(([la, a], [lb, b]) => {
+          const x = val(a, la), y = val(b, lb);
+          if (x == null || y == null) return (x == null) - (y == null); // blanks last
+          return pfTable.dir * (x - y) || b.n - a.n;
+        });
+      body.replaceChildren();
+      for (const [label, c] of rows) {
+        const tr = document.createElement("tr");
+        for (const [key, , , get] of PF_COLS) {
+          const td = document.createElement("td");
+          const v = get ? get(c) : label;
+          if (key === "hand") {
+            td.title = label;
+            td.appendChild(cardsEl(classCards(label)));
+          } else td.textContent = v == null ? "–" : fmt[key] ? fmt[key](v) : v;
+          if (key === "size" && c.raise) {
+            td.title = `${BASIS[c.raise_basis]} · median ${c.raise.median} · mean ${c.raise.mean}`
+              + ` · ${c.raise.min}–${c.raise.max} bb`;
+          }
+          if ((key === "net" || key === "per") && v) td.className = v > 0 ? "up" : "down";
+          tr.appendChild(td);
+        }
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        tr.setAttribute("aria-label", `${label} · shown ${c.n}× — list these hands`);
+        pickable(tr, `${label} · shown ${c.n}×`, c.hand_ids, null);
+        body.appendChild(tr);
+      }
+      count.textContent = `${rows.length} hands`;
+    };
+    q.addEventListener("input", () => { pfTable.q = q.value; fill(); });
+    min.addEventListener("input", () => { pfTable.min = Math.max(1, Number(min.value) || 1); fill(); });
+    fill();
+    wrap.append(ctl, t);
+    const hint = document.createElement("p");
+    hint.className = "note";
+    hint.style.margin = "10px 0 0";
+    hint.textContent = "click a header to sort, a row to list its hands";
+    wrap.appendChild(hint);
+  }
+
   function renderTable(d, view) {
     const wrap = $("table");
     wrap.replaceChildren();
+    if (view === "preflop") { renderPreflopTable(wrap, d); return; }
     const t = document.createElement("table");
     const head = document.createElement("tr");
     const faced = view === "sizing" && d.kind === "faced_cbet";
-    const cols = view === "preflop" ? ["hand", "shown", "net bb", "won", "raise %", "raised / decisions", "typical bb", "from", "median", "mode", "mean", "min", "max"]
-      : view === "made" ? ["class", "% of known", "n", "net bb", "won"]
+    const cols = view === "made" ? ["class", "% of known", "n", "net bb", "won"]
       : ["size", "n", `% of ${KIND_SPOT[d.kind]}`, ...(faced ? ["fold", "call", "raise"] : []), "shown", "coverage"];
     for (const c of cols) { const th = document.createElement("th"); th.textContent = c; head.appendChild(th); }
     t.appendChild(head);
@@ -4600,13 +4705,7 @@
       }
       t.appendChild(tr);
     };
-    if (view === "preflop") {
-      Object.entries(d.cells).filter(([, c]) => c.n > 0).sort((a, b) => b[1].n - a[1].n)
-        .forEach(([label, c]) => row([label, c.n, c.net_bb.toFixed(1), c.won,
-          c.raise_pct, `${c.pfr} / ${c.pf_opp}`, c.raise_typical, c.raise ? BASIS[c.raise_basis] : null,
-          c.raise?.median, c.raise?.mode, c.raise?.mean, c.raise?.min, c.raise?.max],
-          { title: `${label} · shown ${c.n}×`, ids: c.hand_ids }));
-    } else if (view === "made") {
+    if (view === "made") {
       for (const { c, text } of classRows(d.classes)) {
         const term = madeTerm(c);
         row([text, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
