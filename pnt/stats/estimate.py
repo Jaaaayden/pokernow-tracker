@@ -548,15 +548,17 @@ def _average(parts: list[dict]) -> dict:
         out = []
         for i, row in enumerate(mixes[0]):
             rows = [m[i] for m in mixes]
-            pcts = [r["pct"] for r in rows if r["pct"] is not None]
+            # A share over the boards that have one: a board the range has no
+            # combos on has none, and counting it as 0% would pull every share down.
+            known = [r for r in rows if r["pct"] is not None]
             leaves: Counter = Counter()
-            for r in rows:
+            for r in known:
                 for x in r["leaves"]:
-                    leaves[x["leaf"]] += x["pct"] / k
+                    leaves[x["leaf"]] += x["pct"] / len(known)
             out.append({
                 "group": row["group"], "label": row["label"],
                 "combos": round(sum(r["combos"] for r in rows) / k, 2),
-                "pct": round(sum(pcts) / k, 1) if pcts else None,
+                "pct": round(sum(r["pct"] for r in known) / len(known), 1) if known else None,
                 "leaves": [{"leaf": x, "pct": round(leaves[x], 1)} for x in MADE_LEAVES if leaves.get(x, 0) > 0.05],
             })
         return out
@@ -572,11 +574,12 @@ def _average(parts: list[dict]) -> dict:
     if cuts:
         at = Counter(c["at"] for c in cuts if c["at"]).most_common(1)
         bluffs = [c["bluff_pct"] for c in cuts if c["bluff_pct"] is not None]
+        strengths = [c["hs"] for c in cuts if c["hs"] is not None]
         out["linear_cut"] = {
             "pct": cuts[0]["pct"],
             "at": at[0][0] if at else None,
             "group": GROUP_OF[at[0][0]] if at else None,
-            "hs": round(sum(c["hs"] for c in cuts if c["hs"] is not None) / len(cuts), 3),
+            "hs": round(sum(strengths) / len(strengths), 3) if strengths else None,
             "combos": round(sum(c["combos"] for c in cuts) / len(cuts), 1),
             "mix": avg_mix([c["mix"] for c in cuts]),
             "bluff_pct": round(sum(bluffs) / len(bluffs), 1) if bluffs else None,

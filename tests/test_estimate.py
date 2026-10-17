@@ -326,3 +326,20 @@ def test_the_chart_has_an_estimate_toggle_and_a_board_panel():
     body = html[html.index("function renderBluffs("):]
     hidden = set(re.findall(r'"(\w+)"', body[body.index("for (const id of [") : body.index("]) {")]))
     assert {"est", "esttoggle"} <= hidden
+
+
+def test_averaging_boards_skips_the_ones_without_a_value():
+    """A board the range has no combos on, or whose cut has no strength, has no
+    value to average -- counting it as 0 pulled the sampled-flop numbers down."""
+
+    def part(pct, hs):
+        row = {"group": "value", "label": "Value", "combos": 10.0 if pct else 0.0, "pct": pct,
+               "leaves": [{"leaf": "set", "pct": pct}] if pct else []}
+        cut = {"pct": 50.0, "at": None, "hs": hs, "combos": 5.0, "mix": [row], "bluff_pct": None}
+        return {"street": "flop", "combos": row["combos"], "categories": [row],
+                "value_pct": pct, "linear_cut": cut}
+
+    got = est._average([part(40.0, 0.6), part(None, None)])
+    assert got["categories"][0]["pct"] == 40.0
+    assert got["categories"][0]["leaves"] == [{"leaf": "set", "pct": 40.0}]
+    assert got["linear_cut"]["hs"] == 0.6

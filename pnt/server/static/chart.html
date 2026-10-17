@@ -3935,7 +3935,10 @@
       }
       const moved = [...by].sort((a, b) => b[1] - a[1]).map(([k]) => k);
       const more = moved.length > 3 ? ` +${moved.length - 3} more` : "";
-      parts.push(`${d.outside} shown outside → moved ${moved.slice(0, 3).join(", ")}${more} up`);
+      // Nothing moved in: the shown hands only reweighed classes already in it.
+      parts.push(moved.length
+        ? `${d.outside} shown outside → moved ${moved.slice(0, 3).join(", ")}${more} up`
+        : `reweighed inside by ${d.shown} shown`);
     } else if (d.outside) {
       parts.push(`${d.outside} shown outside; nothing moves under ${d.min_shown} shown (${d.shown})`);
     }
