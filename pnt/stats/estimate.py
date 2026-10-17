@@ -666,8 +666,8 @@ def implied_bluffs(value_pct: float | None, bet_pct: float | None, shown_bluff_p
 
 
 NOTES = (
-    "An estimate: the top X% by hand ranking, cut linearly.",
-    "Implied unseen = at least 1 − value/bet share are draws or air, less the shown share.",
+    "The range is an estimate: their frequency, filled by hand ranking and the hands they showed.",
+    "Showdowns miss the bets that took the pot, so what they showed is not all they bet.",
 )
 
 

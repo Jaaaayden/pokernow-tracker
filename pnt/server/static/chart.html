@@ -152,10 +152,10 @@
   .cell .l { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
   .cell .n { font-size: 15px; font-weight: 500; align-self: flex-end; }
   @media (max-width: 720px) { .cell .l { font-size: 10px; } .cell .n { font-size: 12px; } }
-  /* The estimated range over the grid: an outline as thick and as strong as the
-     share of the class's combos in it (--w, 0..1). Shown hands keep their fill. */
-  .cell.est-in::after { content: ""; position: absolute; inset: 0; border-radius: 4px; pointer-events: none;
-    box-shadow: inset 0 0 0 calc(1px + 2.5px * var(--w, 1)) var(--ink); opacity: calc(.3 + .7 * var(--w, 1)); }
+  /* The estimated range over the grid: a class outside it fades, one partly in it
+     (--w, the share of its combos, 0..1) fades partly. The fills stay as they were. */
+  .grid.est-on .cell { opacity: calc(.15 + .85 * var(--w, 0)); transition: opacity .15s; }
+  .grid.est-on .cell:hover { opacity: 1; }
   .est { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
   .est .cap { color: var(--ink-2); }
   .est .cap b { color: var(--ink); font-weight: 600; }
@@ -3871,10 +3871,11 @@
   function paintEstimate() {
     const on = estOn();
     const d = on && est.key === estKey() ? est.data : null;
+    $("grid").classList.toggle("est-on", !!d);
     for (const el of $("grid").children) {
       const w = d ? d.cells[el.dataset.hand] || 0 : 0;
       el.classList.toggle("est-in", w > 0);
-      if (w > 0) el.style.setProperty("--w", w); else el.style.removeProperty("--w");
+      if (d) el.style.setProperty("--w", w); else el.style.removeProperty("--w");
     }
     if (!on) return;
     const box = $("est");
@@ -3913,7 +3914,7 @@
     }
     cap.append(b, " " + parts.join("; "));
     const sub = document.createElement("div"); sub.className = "sub";
-    sub.textContent = "outline = estimated, thicker = more of its combos · filled = shown" +
+    sub.textContent = "bright = in the estimate · faded = out · half-faded = some of its combos" +
       (nd.ignored.length ? ` · not in the frequency: ${nd.ignored.join(", ")}` : "");
     wrap.append(cap, sub);
     return wrap;
@@ -4014,18 +4015,23 @@
       };
       tr(["", "value", "draw", "air", ""], "th");
       const pct = (v) => fmtPct(Math.round(10 * v) / 10);
-      if (cut) tr(["Estimated betting range", ...vda(cut.mix).map(pct), `${cut.combos} combos`]);
+      if (cut) tr([`If they bet only their best ${fmtPct(cut.pct)}`, ...vda(cut.mix).map(pct), `${cut.combos} combos`]);
       const sm = nx.shown_mix;
-      tr(sm.n ? ["Shown at showdown", ...vda(sm.mix).map(pct), `${sm.n} shown`] : ["Shown at showdown", "–", "–", "–", "none shown"]);
-      const imp = d.implied_unshown_bluffs;
-      if (imp) {
-        const r = tr(["Implied unseen", "", "", "", ""]);
-        const cell = r.children[1]; cell.colSpan = 4; cell.style.textAlign = "left";
-        while (r.children.length > 2) r.lastChild.remove();
-        cell.textContent = `≥ ${fmtPct(imp.floor_pct)} draws or air even if all value acts`
-          + (imp.pct == null ? "" : ` · shown ${fmtPct(imp.shown_pct)} → ~${fmtPct(imp.pct)} never shown`);
-      }
+      tr(sm.n ? [`What they showed after a ${nx.label}`, ...vda(sm.mix).map(pct), `${sm.n} shown`]
+        : [`What they showed after a ${nx.label}`, "–", "–", "–", "none shown"]);
       body.appendChild(t);
+      // The one-line reading: how far their real bets stray from betting by strength.
+      if (cut && sm.n >= 10) {
+        const light = (mix) => 100 - vda(mix)[0];
+        const gap = light(sm.mix) - light(cut.mix);
+        const verdict = document.createElement("div"); verdict.className = "cap";
+        verdict.textContent = `${fmtPct(Math.round(light(sm.mix)))} of what they showed was a draw or air, against `
+          + `${fmtPct(Math.round(light(cut.mix)))} if they bet only by strength → `
+          + (gap > 15 ? "they bet this board much lighter than their value"
+            : gap < -15 ? "they bet it only with strong hands"
+            : "about what betting by strength gives");
+        body.appendChild(verdict);
+      }
       notes.push(`${nx.label} ${fmtPct(nx.pct)} of ${nx.n}` + (nx.ci ? ` (${nx.ci[0]}–${nx.ci[1]}%)` : ""));
       if (d.texture.length) notes.push(`rate and shown hands: boards like this (${d.texture.join(",")})`);
     }
