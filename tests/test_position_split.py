@@ -33,7 +33,7 @@ def test_the_vs_fold_column_follows_the_bb_interval():
     base = page[page.index("const BASE = ["):page.index("];", page.index("const BASE = ["))]
     keys = re.findall(r'^\s*\["(\w+)", "([^"]+)"', base, re.MULTILINE)
     at = keys.index(("bb_per_100_ci", "±"))
-    assert keys[at + 1] == ("bb_per_100_vs_fold", "vs fold")
+    assert keys[at + 1] == ("bb_per_100_vs_fold", "vs folding all")
     assert 'SPLIT_NAMES.position = "position"' in page
 
 

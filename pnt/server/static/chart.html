@@ -152,9 +152,13 @@
   .cell .l { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
   .cell .n { font-size: 15px; font-weight: 500; align-self: flex-end; }
   @media (max-width: 720px) { .cell .l { font-size: 10px; } .cell .n { font-size: 12px; } }
-  /* The estimated range over the grid: a class outside it fades, one partly in it
-     (--w, the share of its combos, 0..1) fades partly. The fills stay as they were. */
-  .grid.est-on .cell { opacity: calc(.15 + .85 * var(--w, 0)); transition: opacity .15s; }
+  /* The estimated range over the grid: a class outside it fades almost away, the
+     one at its edge (only some of its combos in) half fades with a dashed mark, and
+     an in-range class never shown keeps a visible edge. The fills stay as they were. */
+  .grid.est-on .cell { transition: opacity .15s; }
+  .grid.est-on .cell:not(.est-in) { opacity: .12; }
+  .grid.est-on .cell.est-part { opacity: .5; outline: 2px dashed var(--ink-2); outline-offset: -5px; }
+  .grid.est-on .cell.est-in.empty { box-shadow: inset 0 0 0 1px var(--ink-2); color: var(--ink-2); }
   .grid.est-on .cell:hover { opacity: 1; }
   .est { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
   .est .cap { color: var(--ink-2); }
@@ -673,6 +677,8 @@
   .gb td.lab { white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
   .gb td.lab .add { color: var(--accent); margin-right: 6px; }
   .gb td small { color: var(--muted); margin-left: 3px; }
+  .gb td.up { color: var(--up); }
+  .gb td.down { color: var(--down); }
   .gb tr.row { cursor: pointer; }
   .gb tr.row:hover td, .gb tr.row:focus-visible td { background: var(--mid); }
   .gb tr.row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -785,7 +791,7 @@
       <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="tree" aria-pressed="false" title="every spot they reached, seat first, and what they chose there">Tree</button>
-      <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
+      <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Value:bluff</button>
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
       <button data-view="timing" aria-pressed="false" title="how long they took to act, and what the hands were: snap, normal or tank">Timing</button>
@@ -3297,12 +3303,15 @@
     ["weak_pair", "weak pair", () => "var(--axis)"], ["draw", "draw", () => ramp(RED)[2]], ["air", "air", () => ramp(RED)[5]]];
   const GB_MIX_OF = Object.fromEntries(GB_MIX.map(([g, text, color]) => [g, { text, color }]));
   // [key, header, tip, sort value]: the label column sorts back to the server's order.
+  // The seats that post a blind, so folding them every hand costs something.
+  const BLIND_SEATS = new Set(["SB", "BB", "BTN/SB"]);
   const GB_COLS = [
     ["hands", "hands", "hands in the spot in this row", (c) => c.hands],
     ["shown", "shown", "hands with their cards known", (c) => c.shown],
     ["net", "net bb", "big blinds won or lost", (c) => c.net_bb],
     ["bb100", "bb/100", "bb won per 100 complete hands; hover a value for its 95% interval", (c) => c.bb_per_100],
-    ["vsfold", "vs fold", "bb/100 against folding every hand; 0 = no better than folding", (c) => c.bb_per_100_vs_fold],
+    ["vsfold", "vs folding all", "blinds only: bb/100 better (+) or worse (−) than folding every hand you had a choice in",
+      (c) => (c.keys?.some(k => BLIND_SEATS.has(k)) ? c.bb_per_100_vs_fold : null)],
     ["mix", "made", "", null],
   ];
   // The request on show: its key, so an unchanged state never asks again, and its
@@ -3428,7 +3437,12 @@
       return th;
     };
     head.appendChild(sortTh(d.by.map(x => x.label).join(" › "), "click a row to add it to the spot", null));
-    for (const [key, text, tip, val] of GB_COLS) {
+    // vs fold only means something where folding costs a blind: the SB and BB rows
+    // of a position split. Without one the column is left out.
+    const seatAt = d.by.findIndex(x => x.name === "position");
+    const blindRow = (c) => seatAt >= 0 && BLIND_SEATS.has(c.keys?.[seatAt]);
+    const cols = GB_COLS.filter(([key]) => key !== "vsfold" || seatAt >= 0);
+    for (const [key, text, tip, val] of cols) {
       if (val) { head.appendChild(sortTh(text, tip, key)); continue; }
       const th = document.createElement("th");
       th.textContent = `${text} (${d.street})`;
@@ -3459,7 +3473,19 @@
       td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1));
       td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
         ci(c.bb_per_100, c.bb_per_100_ci));
-      td(c.bb_per_100_vs_fold == null ? "–" : c.bb_per_100_vs_fold.toFixed(1), "", ci(c.bb_per_100_vs_fold, c.bb_per_100_vs_fold_ci));
+      if (seatAt >= 0) {
+        const vf = c.bb_per_100_vs_fold, raw = c.bb_per_100;
+        if (cls === "total" || !blindRow(c) || vf == null || raw == null) td("");
+        else {
+          // Folding every hand with a choice would have scored raw − vf.
+          const fold = raw - vf;
+          td((vf > 0 ? "+" : "") + vf.toFixed(1), ` fold all ${fold.toFixed(0)}`,
+            `you ${raw.toFixed(1)} bb/100 · folding every hand ${fold.toFixed(1)} → `
+            + `${vf >= 0 ? `${vf.toFixed(1)} better` : `${(-vf).toFixed(1)} worse`} than folding`
+            + (c.bb_per_100_vs_fold_ci == null ? "" : ` (±${c.bb_per_100_vs_fold_ci.toFixed(0)})`));
+          tr.lastChild.classList.add(vf >= 0 ? "up" : "down");
+        }
+      }
       const mixTd = document.createElement("td"); mixTd.className = "mix";
       const bar = document.createElement("div"); bar.className = "gb-mix";
       if (!c.mix.known) bar.classList.add("none");
@@ -3523,7 +3549,7 @@
       s.title = g;
       foot.appendChild(s);
     }
-    const bits = ["vs fold = bb/100 with the blinds you posted given back: 0 is no better than folding every hand"];
+    const bits = seatAt >= 0 ? ["vs folding all: how much better (+) or worse (−) than folding every blind you had a choice in"] : [];
     if (d.skipped) bits.push(`${d.skipped} hands in no row`);
     if (d.hidden.cells) bits.push(`${d.hidden.cells} rows under ${d.min} hands hidden (${d.hidden.hands} hands)`);
     if (bits.length) foot.append(bits.join(" · "));
@@ -3875,6 +3901,7 @@
     for (const el of $("grid").children) {
       const w = d ? d.cells[el.dataset.hand] || 0 : 0;
       el.classList.toggle("est-in", w > 0);
+      el.classList.toggle("est-part", w > 0 && w < 0.999);
       if (d) el.style.setProperty("--w", w); else el.style.removeProperty("--w");
     }
     if (!on) return;
@@ -3914,7 +3941,7 @@
     }
     cap.append(b, " " + parts.join("; "));
     const sub = document.createElement("div"); sub.className = "sub";
-    sub.textContent = "bright = in the estimate · faded = out" +
+    sub.textContent = "bright = in the estimate · faded = out · dashed = only some of its combos" +
       (nd.ignored.length ? ` · not in the frequency: ${nd.ignored.join(", ")}` : "");
     wrap.append(cap, sub);
     return wrap;

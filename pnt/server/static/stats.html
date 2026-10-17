@@ -92,6 +92,7 @@
   tr.split-sub td.name a { color: var(--ink-2); }
   /* A blind's vs fold worse than folding past its noise: red even on a sub-row. */
   tr.split-sub td.leak { color: var(--down); }
+  td small.foldall { color: var(--muted); font-size: 11px; font-weight: 400; }
 </style>
 </head>
 <body>
@@ -133,7 +134,7 @@
     <li><b>C-Bet, Fold, Raise, Lead:</b> against the previous street's aggressor. <b>Agg %</b> counts every action.</li>
     <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of c-bets faced. A <b>lead</b> leaves the street out of the c-bet columns.</li>
     <li><b>All stats</b> adds squeeze, cold call, the blind war, LRR, jams, WWSF, DCB, Probe, F2P and Float.</li>
-    <li><b>Split</b> adds a sub-row per group under each player: heads-up vs 3+ way, straddled or not, stack depth, position. Position adds <b>vs fold</b> (bb/100 against folding): red on a blind = loses more than folding.</li>
+    <li><b>Split</b> adds a sub-row per group under each player: heads-up vs 3+ way, straddled or not, stack depth, position. Position adds <b>vs folding all</b> on the SB and BB rows: + means better than folding every blind (fold-all score beside it), red = losing more than folding.</li>
     <li><b>Blank</b> = never reached the spot. Hover a rate for its sample; click a player for their chart.</li>
   </ul>
 </main>
@@ -173,7 +174,7 @@
     // bb/100 against folding every hand (SPEC.md, "bb/100 against folding"): the
     // number that says whether a blind is defended well, so the position split
     // shows it by default.
-    ["bb_per_100_vs_fold", "vs fold", "num", null],
+    ["bb_per_100_vs_fold", "vs folding all", "num", null],
   ];
   // Postflop columns, per street. Fold and Raise share one denominator: the
   // c-bets the player faced. [key, header, opportunity key, streets it exists
@@ -282,8 +283,8 @@
       "How far their true win rate could sit from bb/100, either way, given how much their results "
       + "swing hand to hand. A +5 ± 30 is not yet a winner: the figure means little until the ± is smaller "
       + "than it. Blank under two complete hands."],
-    bb_per_100_vs_fold: ["", "bb/100 against folding every hand; 0 = no better than folding. "
-      + "SB raw −50 / BB raw −100 is break-even here."],
+    bb_per_100_vs_fold: ["", "Blinds only: bb/100 better (+) or worse (−) than folding every blind you had a "
+      + "choice in. Beside it, what folding them all would have scored."],
   };
 
   // "Split by": each player becomes a group of sub-rows, one per entry, under
@@ -358,7 +359,8 @@
   // [key, header, kind, opportunity key, hover text]
   const columns = () => {
     const s = state.street;
-    const shown = (k) => state.all || SIMPLE.has(k) || (k === "bb_per_100_vs_fold" && state.split === "position");
+    // vs fold only reads on a blind's row, so only the position split has it.
+    const shown = (k) => k === "bb_per_100_vs_fold" ? state.split === "position" : state.all || SIMPLE.has(k);
     const base = BASE.filter(([k]) => shown(k)).map(([k, h, kind, opp]) =>
       [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
     const post = POSTFLOP.filter(([k, , , streets]) => shown(k) && (!streets || streets.includes(s)))
@@ -587,12 +589,22 @@
         const v = value(row, key);
         td.textContent = fmt(v, kind);
         let title = sampleTitle(row, key, opp);
+        if (key === "bb_per_100_vs_fold" && !BLIND_TERMS.has(term)) { td.textContent = ""; tr.appendChild(td); continue; }
         if (v == null) td.className = "dim";
-        else if (key === "bb_per_100_vs_fold" && BLIND_TERMS.has(term)) {
+        else if (key === "bb_per_100_vs_fold") {
           // A blind's vs fold is red only when worse than folding past its noise.
           const ci = row.bb_per_100_vs_fold_ci;
           const leak = ci != null && v + ci < 0;
           td.className = leak ? "down leak" : v > 0 ? "up" : "";
+          if (row.bb_per_100 != null) {
+            // Folding every blind with a choice would have scored bb/100 − vs fold.
+            const fold = row.bb_per_100 - v;
+            const s = document.createElement("small"); s.className = "foldall"; s.textContent = ` fold all ${fmt(fold, "num")}`;
+            td.appendChild(s);
+            title = `you ${fmt(row.bb_per_100, "num")} bb/100 · folding every hand ${fmt(fold, "num")} → `
+              + (v >= 0 ? `${fmt(v, "num")} better` : `${fmt(-v, "num")} worse`) + " than folding"
+              + (title ? ` · ${title}` : "");
+          }
           if (leak) title += " · worse than folding, past the noise";
         } else if (key === "bb_per_100" || key === "bb_per_100_vs_fold") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
         if (title) td.title = title;
