@@ -115,6 +115,22 @@ def test_pool_for_is_remembered_until_the_generation_moves(db):
     assert again is not first and again.players == first.players
 
 
+def test_between_runs_before_each_game_derived_and_not_on_a_hit(db):
+    from pnt.db.conn import bump_generation, writing
+    from pnt.stats import pool
+
+    pool.clear()
+    calls = []
+    pool_for(db, between=lambda: calls.append(1))
+    games = db.execute("SELECT COUNT(DISTINCT game_id) FROM hands").fetchone()[0]
+    assert len(calls) == games > 0
+    with writing(db):
+        bump_generation(db)  # the pool is counted again, from games whose stamps held
+    calls.clear()
+    pool_for(db, between=lambda: calls.append(1))
+    assert calls == []
+
+
 def test_the_api_says_how_each_tag_was_judged(tmp_path, monkeypatch):
     import importlib
 

@@ -85,12 +85,37 @@
   .order li .name { flex: 1; min-width: 0; }
   .order li .name small { color: var(--muted); margin-left: 4px; }
   .order li.fixed { color: var(--muted); }
+  .order li:not(.fixed) { cursor: grab; }
+  .order li.dragging { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .order ol.drag, .order ol.drag * { cursor: grabbing; }
+  .order .grip { color: var(--muted); font-size: 12px; touch-action: none; }
   .order button, .hud .reset { font: inherit; font-size: 12px; color: var(--ink-2); background: none;
                border: 1px solid transparent; border-radius: 5px; padding: 0 5px; cursor: pointer; }
   .order button:hover:not(:disabled), .hud .reset:hover { color: var(--ink); border-color: var(--ring); }
   .order button:disabled { opacity: .3; cursor: default; }
   .order button:focus-visible, .hud .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .hud .reset { border-color: var(--ring); padding: 2px 8px; }
+  /* Files: a path box per setting, with the native picker beside it. */
+  .files { padding: 12px 16px; }
+  .files .row { display: grid; grid-template-columns: 84px 1fr auto auto; gap: 4px 8px; align-items: center;
+                margin-bottom: 10px; }
+  .files label { font-size: 13px; color: var(--ink); }
+  .files input { font: 12.5px ui-monospace, Consolas, monospace; color: var(--ink); background: var(--page);
+                 border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; min-width: 0; }
+  .files input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+  .files input:disabled { color: var(--muted); }
+  .files button { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--page);
+                  border: 1px solid var(--ring); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  .files button:hover:not(:disabled) { border-color: var(--accent); }
+  .files button:disabled { opacity: .4; cursor: default; }
+  .files button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .files .note { grid-column: 2 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+  .files .status { margin: 0; font-size: 12.5px; color: var(--up); min-height: 1.45em; }
+  .files .status.bad { color: var(--down); }
+  @media (max-width: 560px) {
+    .files .row { grid-template-columns: 1fr 1fr; }
+    .files label, .files input, .files .note { grid-column: 1 / -1; }
+  }
   @media (max-width: 480px) { dl { grid-template-columns: 1fr; gap: 2px 0; } dd { margin-bottom: 8px; } }
 </style>
 </head>
@@ -160,15 +185,15 @@
   <h3>Keeping it running</h3>
   <div class="panel">
     <dl>
+      <dt>pnt update</dt><dd>Get the latest version: installs it, restarts the server, and the
+        extension reloads itself</dd>
       <dt>pnt service status</dt><dd>Is the background server up, and which database has it open</dd>
       <dt>pnt service restart</dt><dd>Run after changing code — a running server keeps the old copy</dd>
       <dt>pnt service log</dt><dd>The last lines of the server log</dd>
       <dt>pnt extension</dt><dd>The folder to give Chrome's <em>Load unpacked</em></dd>
       <dt>pnt import</dt><dd>Backfill from PokerNow CSV exports; re-importing is free.
-        Reads <code>~/Downloads/pokernow-logs</code> unless you pass a path,
+        Reads the log folder under <em>Files</em> unless you pass a path,
         <code>--log-dir</code>, or set <code>PNT_LOG_DIR</code></dd>
-      <dt>pnt where</dt><dd>Which database, log folder and extension folder this install
-        is actually using</dd>
     </dl>
   </div>
 
@@ -188,7 +213,26 @@
     </dl>
   </div>
 
-  <p class="path" id="dbpath"></p>
+  <h3 id="files-h">Files</h3>
+  <section class="panel files hidden" id="files" aria-labelledby="files-h">
+    <div class="row">
+      <label for="f-db">Database</label>
+      <input id="f-db" type="text" spellcheck="false" autocomplete="off">
+      <button type="button" class="browse" data-kind="db">Browse…</button>
+      <button type="button" class="use" data-kind="db">Use</button>
+      <p class="note">Switches now, for the HUD too. Must already be a tracker database —
+        e.g. a copy from another PC.</p>
+    </div>
+    <div class="row">
+      <label for="f-logs">Log folder</label>
+      <input id="f-logs" type="text" spellcheck="false" autocomplete="off">
+      <button type="button" class="browse" data-kind="log_dir">Browse…</button>
+      <button type="button" class="use" data-kind="log_dir">Use</button>
+      <p class="note" id="f-logs-note">New CSVs here are imported; live games are saved here.</p>
+    </div>
+    <p class="status" id="f-status" role="status"></p>
+  </section>
+
   <p class="path">port 52000, chosen to stay out of the way of anything else you run
     locally — 8000 and 8080 are the contested ones. Change it with
     <code>pnt service install --port N</code>, and set the same address in the
@@ -222,7 +266,6 @@
         // when it is boring; anything else is worth showing in red.
         fact(n(health.parse_misses), "parse misses", health.parse_misses > 0),
       );
-      $("dbpath").textContent = "database: " + health.db;
     } catch (e) {
       $("err").textContent = "could not reach the server: " + (e.message || e);
       $("err").classList.remove("hidden");
@@ -284,6 +327,9 @@
     const items = hud.columns.map((k, i) => {
       const c = hud.byKey.get(k);
       const li = node("li");
+      li.dataset.key = k;
+      const grip = node("span", "grip", "⠿");
+      grip.title = "drag to move";
       const name = node("span", "name", c.label);
       name.append(node("small", null, c.group));
       name.title = c.tip;
@@ -304,7 +350,7 @@
         const edge = i + d === 0 || i + d === next.length - 1;
         hudSet(next, { i: i + d, act: edge ? (d < 0 ? "move down" : "move up") : (d < 0 ? "move up" : "move down") });
       };
-      li.append(name,
+      li.append(grip, name,
         btn("↑", "move up", move(-1), i === 0),
         btn("↓", "move down", move(1), i === hud.columns.length - 1),
         btn("✕", "remove", () => hudSet(hud.columns.filter((x) => x !== k),
@@ -317,6 +363,42 @@
       (target || $("hud-reset")).focus();
     }
   }
+
+  // Drag a row by anything but its buttons to move it; the arrows stay for the
+  // keyboard. Rows move in place while dragging and the order saves on release.
+  // Listens on window, not pointer capture, since moving the row would drop it.
+  // By touch only the grip drags: anywhere else the browser scrolls instead, and
+  // cancels the drag partway, so a cancel puts the rows back rather than saving.
+  $("hud-list").addEventListener("pointerdown", (e) => {
+    const list = $("hud-list");
+    const li = e.target.closest("li[data-key]");
+    if (!li || e.button !== 0 || e.target.closest("button")) return;
+    if (e.pointerType !== "mouse" && !e.target.closest(".grip")) return;
+    e.preventDefault();
+    li.classList.add("dragging");
+    list.classList.add("drag");
+    const move = (ev) => {
+      const rows = [...list.querySelectorAll("li[data-key]:not(.dragging)")];
+      const after = rows.find((r) => {
+        const b = r.getBoundingClientRect();
+        return ev.clientY < b.top + b.height / 2;
+      }) || null;
+      if (li.nextElementSibling !== after) list.insertBefore(li, after);
+    };
+    const end = (ev) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      li.classList.remove("dragging");
+      list.classList.remove("drag");
+      if (ev.type === "pointercancel") return hudPaint();
+      const next = [...list.querySelectorAll("li[data-key]")].map((r) => r.dataset.key);
+      if (next.join() !== hud.columns.join()) hudSet(next);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  });
 
   function hudSet(columns, focus) {
     hud.columns = columns;
@@ -371,6 +453,105 @@
       $("hud").classList.remove("hidden");
       $("hud").querySelector(".hud-cols").classList.add("hidden");
       $("hud").querySelector(".line").classList.add("hidden");
+    }
+  })();
+
+  // ---------------------------------------------------------------- Files --
+  // Browse opens Windows' picker through the server (a page is never told where a
+  // picked file lives) and applies the choice; Use applies what is typed.
+  const box = { db: $("f-db"), log_dir: $("f-logs") };
+  let paths = null;
+
+  function filesPaint(p) {
+    paths = p;
+    box.db.value = p.db;
+    box.log_dir.value = p.log_dir;
+    const locked = p.log_dir_env;
+    box.log_dir.disabled = locked;
+    for (const b of document.querySelectorAll('#files [data-kind="log_dir"]')) b.disabled = locked;
+    $("f-logs-note").textContent = locked
+      ? "Set by PNT_LOG_DIR, which wins over this page; unset it to choose here."
+      : p.save_logs
+        ? "New CSVs here are imported; live games are saved here."
+        : "New CSVs here are imported. Live games are not saved (PNT_SAVE_LOGS=0).";
+    for (const b of document.querySelectorAll("#files .browse")) b.classList.toggle("hidden", !p.picker);
+  }
+
+  function filesStatus(text, bad = false) {
+    $("f-status").textContent = text;
+    $("f-status").classList.toggle("bad", bad);
+  }
+
+  async function filesCall(url, method, body) {
+    const r = await fetch(url, {
+      method,
+      headers: { "content-type": "application/json", "x-pnt": "1" },
+      body: JSON.stringify(body),
+    });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.detail || `HTTP ${r.status}`);
+    return out;
+  }
+
+  async function filesUse(kind) {
+    const value = box[kind].value.trim();
+    if (!value || value === paths[kind]) { filesStatus("already in use"); return; }
+    filesStatus("switching…");
+    try {
+      const p = await filesCall("/settings/paths", "PUT", { [kind]: value });
+      filesPaint(p);
+      if (kind === "db") {
+        // Every number on this page, and the HUD stats, come from the database.
+        location.reload();
+        return;
+      }
+      filesStatus("log folder switched ✓");
+    } catch (e) {
+      filesStatus("not switched: " + (e.message || e), true);
+    }
+  }
+
+  // One picker for the whole panel: until it closes, every Browse click is a no-op,
+  // so clicking again while it opens cannot queue a second one behind it.
+  let picking = false;
+  async function filesBrowse(kind) {
+    if (picking) return;
+    picking = true;
+    const browse = document.querySelectorAll("#files .browse");
+    for (const b of browse) b.disabled = true;
+    filesStatus("waiting for the picker…");
+    try {
+      const { path } = await filesCall("/settings/paths/browse", "POST", { kind });
+      if (path == null) { filesStatus(""); return; }
+      box[kind].value = path;
+      await filesUse(kind);
+    } catch (e) {
+      filesStatus(e.message || String(e), true);
+    } finally {
+      picking = false;
+      for (const b of browse) b.disabled = b.dataset.kind === "log_dir" && paths.log_dir_env;
+    }
+  }
+
+  for (const b of document.querySelectorAll("#files .use")) {
+    b.addEventListener("click", () => filesUse(b.dataset.kind));
+  }
+  for (const b of document.querySelectorAll("#files .browse")) {
+    b.addEventListener("click", () => filesBrowse(b.dataset.kind));
+  }
+  for (const [kind, input] of Object.entries(box)) {
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") filesUse(kind); });
+  }
+
+  (async () => {
+    try {
+      const r = await fetch("/settings/paths");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      filesPaint(await r.json());
+      $("files").classList.remove("hidden");
+    } catch (e) {
+      $("files").classList.remove("hidden");
+      $("files").replaceChildren(node("p", "err", "could not read the file locations: " + (e.message || e)));
     }
   })();
 })();

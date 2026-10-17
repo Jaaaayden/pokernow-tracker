@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from ..db.conn import generation, path_of, reading
@@ -67,8 +67,11 @@ def _counts_by_id(facts: Iterable[Facts], own: Collection[tuple[str, str]]) -> d
     return {pn: counts(annotate(fs), own) for pn, fs in by.items()}
 
 
-def _game_counts(conn: sqlite3.Connection, game: str | None, own: frozenset) -> list[dict[str, Counter]]:
-    """Per-game counts, derived only where a game's stamp moved."""
+def _game_counts(
+    conn: sqlite3.Connection, game: str | None, own: frozenset, between: Callable[[], None] | None = None
+) -> list[dict[str, Counter]]:
+    """Per-game counts, derived only where a game's stamp moved. `between`, when
+    given, runs before each game that has to be derived."""
     path = path_of(conn)
     stamps = _game_stamps(conn, game) if path else None
     if stamps is None:
@@ -77,6 +80,8 @@ def _game_counts(conn: sqlite3.Connection, game: str | None, own: frozenset) -> 
     for gid, stamp in stamps.items():
         hit = _GAME_COUNTS.get((path, gid))
         if hit is None or hit[0] != stamp:
+            if between is not None:
+                between()
             facts = [f for h in load_hands(conn, gid) for f in derive(h)]
             hit = _GAME_COUNTS[path, gid] = (stamp, _counts_by_id(facts, own))
         out.append(hit[1])
@@ -85,8 +90,14 @@ def _game_counts(conn: sqlite3.Connection, game: str | None, own: frozenset) -> 
     return out
 
 
-def pool_for(conn: sqlite3.Connection, game: str | None = None) -> Pool:
-    """The pool over every hand, or one game's: each player's counts, by alias."""
+def pool_for(
+    conn: sqlite3.Connection, game: str | None = None, *, between: Callable[[], None] | None = None
+) -> Pool:
+    """The pool over every hand, or one game's: each player's counts, by alias.
+
+    `between` runs before each game derived afresh: the server's warm-up passes
+    one that waits while requests are being answered, so a chart opened just
+    after a start does not share the CPU with every hand in the database."""
     path, gen = path_of(conn), generation(conn)
     hit = _POOL.get((path, game))
     if hit is not None and gen is not None and hit[0] == gen:
@@ -95,7 +106,7 @@ def pool_for(conn: sqlite3.Connection, game: str | None = None) -> Pool:
         own = owners(conn)
         ident = identity_map(conn)
         players: dict[str, Counter] = defaultdict(Counter)
-        for per_game in _game_counts(conn, game, own):
+        for per_game in _game_counts(conn, game, own, between):
             for pn, c in per_game.items():
                 players[ident.get(pn, (-1, pn))[1]].update(c)
     pool = Pool(game or "lifetime", dict(players), own)

@@ -16,7 +16,8 @@ in the folder.
 
 Two guards against deleting what is merely out of reach: a file whose *folder* is
 missing counts as unavailable, not deleted (an unplugged drive, a renamed folder),
-and nothing here ever touches a game that has no `log_files` row.
+and nothing here ever touches a game that has no `log_files` row. A database switched
+to while the server runs has its missing files forgotten first (`forget_missing`).
 """
 
 from __future__ import annotations
@@ -95,6 +96,22 @@ def prune(conn: sqlite3.Connection, game_ids: list[str] | None = None) -> dict[s
             with writing(conn):
                 conn.executemany("DELETE FROM log_files WHERE path = ?", [(p,) for p in gone])
     return removed
+
+
+def forget_missing(conn: sqlite3.Connection) -> int:
+    """Drop the record of every file `prune` would count as deleted, keeping the games.
+
+    For a database arriving from elsewhere -- switched to on the front page, perhaps a
+    copy from another PC. Its files were on that machine; if this one has the same
+    folder without them, the next sync would read every game it lacks as deleted. The
+    games stay, as if imported from elsewhere; a file that turns up later is recorded
+    again. Returns how many records were dropped.
+    """
+    gone = [(r[0],) for r in conn.execute("SELECT path FROM log_files").fetchall() if _gone(r[0])]
+    if gone:
+        with writing(conn):
+            conn.executemany("DELETE FROM log_files WHERE path = ?", gone)
+    return len(gone)
 
 
 def import_file(conn: sqlite3.Connection, path: Path, entries: list[RawEntry] | None = None) -> dict:

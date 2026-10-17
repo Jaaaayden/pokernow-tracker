@@ -262,6 +262,10 @@ def task_xml(*, command: str, arguments: str, working_dir: str, user: str) -> st
   <Settings>
     <!-- The default ends any task after 72 hours. -->
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <!-- The default, 7, is below normal, with low disk and memory priority: every
+         HUD answer queued behind the browser, and the front page's file picker
+         took seconds to appear. 5 is an ordinary program's. -->
+    <Priority>5</Priority>
     <!-- The defaults refuse to start on battery and stop the task when unplugged. -->
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>

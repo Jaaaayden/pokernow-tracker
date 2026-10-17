@@ -13,6 +13,7 @@ from pathlib import Path
 
 import typer
 
+from . import local_config
 from . import service as svc
 from . import update as upd
 from .db.conn import DEFAULT_DB, connect
@@ -72,7 +73,11 @@ service_app = typer.Typer(
 )
 app.add_typer(service_app, name="service")
 
-DbOpt = typer.Option(DEFAULT_DB, "--db", help="Path to the tracker database.")
+#: The database chosen on the front page when there is one, so commands run from any
+#: folder reach the same database the server has open.
+DbOpt = typer.Option(
+    local_config.database(DEFAULT_DB), "--db", help="Path to the tracker database."
+)
 
 #: LOG_DIR (from `ingest/log_folder.py`, shared with the server's live record) is
 #: where PokerNow exports are kept when you do not say. One folder, so `pnt import`
@@ -233,8 +238,8 @@ def import_cmd(
     """Import PokerNow log exports. Safe to re-run: duplicate entries are ignored.
 
     With no argument, imports every log in the log folder, which is --log-dir if
-    given, else $PNT_LOG_DIR, else ~/Downloads/pokernow-logs. `pnt where` prints
-    which one is in effect.
+    given, else $PNT_LOG_DIR, else the folder chosen on the front page, else
+    ~/Downloads/pokernow-logs. `pnt where` prints which one is in effect.
 
     If that folder is empty, the bundled sample corpus is imported instead, so a
     fresh install has something to query. `--no-sample` turns that off.
@@ -548,11 +553,21 @@ def where(db: Path = DbOpt) -> None:
     reading the source.
     """
     source = (
-        "$PNT_LOG_DIR" if os.environ.get("PNT_LOG_DIR") else "default (~/Downloads/pokernow-logs)"
+        "$PNT_LOG_DIR"
+        if os.environ.get("PNT_LOG_DIR")
+        else f"chosen on the front page; {local_config.PATH}"
+        if local_config.get("log_dir")
+        else "default (~/Downloads/pokernow-logs)"
     )
+    chosen = local_config.database(DEFAULT_DB)
+    db_source = (
+        "--db" if db != chosen
+        else f"chosen on the front page; {local_config.PATH}" if chosen != DEFAULT_DB
+        else "default: the current folder"
+    )  # fmt: skip
     n = len(_logs_in(BUNDLED_LOG_DIR))
     rows = [
-        ("database", str(db.resolve()), "--db" if db != DEFAULT_DB else "default"),
+        ("database", str(db.resolve()), db_source),
         ("log folder", str(LOG_DIR), source),
         (
             "live record",
@@ -1324,7 +1339,17 @@ def service_install(
     the database you actually use; the task does not start in this folder.
     """
     busy = svc.port_in_use(host, port)
-    interpreter = _svc(svc.install, db, host, port)
+    # Recorded before the task starts, since `service run` prefers the recorded one.
+    # Even before it exists: a missing choice falls back to the task's --db, which is
+    # this same path, whereas leaving an older choice in place would win over it.
+    # Put back if the install fails: the task already installed reads it too.
+    before = local_config.get("db")
+    local_config.put("db", str(db.resolve()))
+    try:
+        interpreter = _svc(svc.install, db, host, port)
+    except BaseException:
+        local_config.put("db", before)
+        raise
     typer.echo(f"registered task {svc.TASK_NAME!r}: starts at login, restarts on crash")
     typer.echo(f"  database:    {db.resolve()}")
     typer.echo(f"  interpreter: {interpreter}")
@@ -1427,8 +1452,12 @@ def service_log(lines: int = typer.Option(40, "--lines", "-n")) -> None:
 def service_run(
     db: Path = DbOpt, host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT
 ) -> None:
-    """What the scheduled task executes: the supervised server, logging to a file."""
-    svc.run_service(db, host, port)
+    """What the scheduled task executes: the supervised server, logging to a file.
+
+    The database chosen on the front page wins over the task's --db, which is only
+    what it was installed with; that one is the fallback if the chosen one is gone.
+    """
+    svc.run_service(local_config.database(db), host, port)
 
 
 @alias_app.command("list")

@@ -24,8 +24,16 @@ is the manual. Exact stat definitions and thresholds are in
 Keep every PokerNow export in one folder, and a bare `pnt import` picks up whatever
 is new. That folder is `~/Downloads/pokernow-logs` unless you say otherwise. To use
 a different one, pass paths, a folder or a glob straight to `pnt import`, pass
-`--log-dir`, or set `PNT_LOG_DIR` to change it for good. `pnt where` prints the one
+`--log-dir`, or change it for good under *Files* on the front page (or with
+`PNT_LOG_DIR`, which wins over the page). `pnt where` prints the one
 in effect.
+
+**Switching the database.** The *Database* row under *Files* switches it the same
+way: at once, for the HUD too, and for every later start and `pnt` command (`--db`
+still overrides one command). It must already be a tracker database, such as a copy
+from another PC. Logs that copy recorded but this machine's folder lacks are
+forgotten, not read as deleted, so its games stay. Both choices are kept in
+`~/.pnt/config.json`.
 
 Re-importing is free because duplicate entries are ignored, so the habit is "drop
 the export in the folder, run `pnt import`".
@@ -35,8 +43,8 @@ re-derives a captured game, it writes the game's `poker_now_log_<id>.csv` there,
 merged with any copy already in the folder. The folder is therefore a running
 record of every game you capture, and enough to rebuild the database from scratch
 with `pnt import`. Set `PNT_SAVE_LOGS=0` to turn this off. The server reads
-`PNT_LOG_DIR` when it starts, so run `pnt service restart` after changing either
-variable.
+`PNT_SAVE_LOGS` and `PNT_LOG_DIR` when it starts, so run `pnt service restart` after
+changing either variable. A folder chosen under *Files* needs no restart.
 
 ### Sync: the database follows the folder
 

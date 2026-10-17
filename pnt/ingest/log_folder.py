@@ -3,9 +3,9 @@
 Manual exports, `pnt backfill` and live capture all write here, in PokerNow's own
 export layout, so the folder alone can rebuild a database with `pnt import`.
 
-Where it is: $PNT_LOG_DIR, else ~/Downloads/pokernow-logs. The environment variable
-is read once, at import -- so the CLI also takes `--log-dir`, and the server has to
-be restarted to move it.
+Where it is: $PNT_LOG_DIR, else the folder chosen on the front page (local_config),
+else ~/Downloads/pokernow-logs. Read once, at import -- so the CLI also takes
+`--log-dir`. The server moves it by assigning LOG_DIR, which every use reads late.
 """
 
 from __future__ import annotations
@@ -16,10 +16,13 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from .. import local_config
 from .csv_source import RawEntry, has_hands, read_csv
 
 DEFAULT_LOG_DIR = Path.home() / "Downloads" / "pokernow-logs"
-LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or DEFAULT_LOG_DIR)
+#: Set for good outside this program, so nothing here may override it.
+FROM_ENV = bool(os.environ.get("PNT_LOG_DIR"))
+LOG_DIR = Path(os.environ.get("PNT_LOG_DIR") or local_config.get("log_dir") or DEFAULT_LOG_DIR)
 
 #: Whether live capture writes each game's CSV here. On unless PNT_SAVE_LOGS=0.
 SAVE_LOGS = os.environ.get("PNT_SAVE_LOGS", "1").strip().lower() not in ("0", "false", "off", "")

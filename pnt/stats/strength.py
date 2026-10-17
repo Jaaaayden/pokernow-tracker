@@ -272,11 +272,14 @@ def prime(conn: sqlite3.Connection) -> None:
             _PRIMED.add(path)
 
 
-def needed(conn: sqlite3.Connection, game_id: str | None = None) -> list[tuple[str, tuple[str, ...]]]:
+def needed(
+    conn: sqlite3.Connection, game_id: str | None = None, *, between: Callable[[], None] | None = None
+) -> list[tuple[str, tuple[str, ...]]]:
     """Every (hole, board as it stood) a grade can ask about: each known holding --
     hole cards stored, and two-card voluntary shows -- with a pair of their own or
     better, on every street its board reached. Sorted by board, so `warm` builds
-    each board's table once."""
+    each board's table once. `between`, when given, runs every 500 rows: a whole
+    database takes a couple of seconds."""
     import json
 
     where, params = ("WHERE h.game_id = ?", (game_id,)) if game_id else ("", ())
@@ -289,7 +292,9 @@ def needed(conn: sqlite3.Connection, game_id: str | None = None) -> list[tuple[s
         params * 2,
     ).fetchall()
     out = set()
-    for r in rows:
+    for i, r in enumerate(rows):
+        if between is not None and i % 500 == 0:
+            between()
         cards, runs = r["cards"], json.loads(r["board"] or "[]")
         if not cards or not runs or len(parse_cards(cards)) != 2:
             continue
@@ -327,17 +332,25 @@ def flush(conn: sqlite3.Connection) -> int:
 
 
 def warm(
-    conn: sqlite3.Connection, game_id: str | None = None, progress: Callable[[int, int], None] | None = None
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    *,
+    between: Callable[[], None] | None = None,
 ) -> int:
     """Measure every holding `needed` names and store them: what `pnt import`,
     `pnt rebuild` and the server's start run, so reads never wait on a board.
-    Returns how many values this database's table gained."""
+    `between`, when given, runs while the holdings are listed and before each one
+    measured afresh (the server passes one that waits out requests). Returns how many values this database's
+    table gained."""
     prime(conn)
-    jobs = needed(conn, game_id)
+    jobs = needed(conn, game_id, between=between)
     for i, (cards, board) in enumerate(jobs):
         key = cache_key(cards, board)
         hit = _HS.get(key)
         if hit is None:
+            if between is not None:
+                between()
             counts(cards, board)
         else:
             with _LOCK:

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+# Before anything imports pnt: the CLI's --db default and the log folder are read
+# from the machine config at import, and the real one names the real database.
+os.environ["PNT_CONFIG"] = str(Path(tempfile.mkdtemp(prefix="pnt-config-")) / "config.json")
 
 FIXTURES = ROOT / "tests" / "fixtures"
 
@@ -56,6 +62,15 @@ def _private_log_folder(tmp_path_factory, monkeypatch):
     from pnt.ingest import log_folder
 
     monkeypatch.setattr(log_folder, "LOG_DIR", tmp_path_factory.mktemp("log-folder"))
+
+
+@pytest.fixture(autouse=True)
+def _private_config(tmp_path_factory, monkeypatch):
+    """A fresh machine config for every test, so one test's choice of database or
+    log folder is not the next one's default."""
+    from pnt import local_config
+
+    monkeypatch.setattr(local_config, "PATH", tmp_path_factory.mktemp("config") / "config.json")
 
 
 @pytest.fixture(scope="session")

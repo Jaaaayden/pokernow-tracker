@@ -105,6 +105,20 @@ def test_warm_stores_every_value_and_prime_restores_them(db, monkeypatch):
     assert db.execute("SELECT COUNT(*) FROM strength_cache").fetchone()[0] == stored
 
 
+def test_between_runs_before_each_holding_measured(db, monkeypatch):
+    listing = []
+    strength.warm(db, between=lambda: listing.append(1))
+    assert listing, "every value already known: only the listing waits"
+
+    # Nothing memoized and nothing read back: every holding is measured afresh.
+    monkeypatch.setattr(strength, "_HS", {})
+    monkeypatch.setattr(strength, "prime", lambda _conn: None)
+    jobs = strength.needed(db)
+    calls = []
+    strength.warm(db, between=lambda: calls.append(1))
+    assert len(listing) < len(calls) <= len(listing) + len(jobs)
+
+
 def test_tier_and_hs_terms(db):
     names = {}
     facts = [f for h in load_hands(db, HU_GAME) for f in derive(h)]

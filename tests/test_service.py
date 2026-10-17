@@ -48,6 +48,11 @@ def test_task_never_times_out_and_keeps_running_on_battery():
     assert _text(root, "t:Settings/t:StopIfGoingOnBatteries") == "false"
 
 
+def test_task_runs_at_normal_priority():
+    # Task Scheduler's default (7) is below normal; 4-6 is NORMAL_PRIORITY_CLASS.
+    assert _text(_task(), "t:Settings/t:Priority") == "5"
+
+
 def test_task_starts_at_this_users_logon_without_elevation():
     root = _task(user=r"PC\me")
     assert _text(root, "t:Triggers/t:LogonTrigger/t:UserId") == r"PC\me"

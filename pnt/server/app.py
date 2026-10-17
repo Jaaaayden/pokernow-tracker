@@ -14,6 +14,8 @@ Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
 from __future__ import annotations
 
 import csv
+import functools
+import gc
 import logging
 import os
 import sqlite3
@@ -21,7 +23,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi import Path as FastApiPath
@@ -107,11 +109,16 @@ def _sync_loop(stop: threading.Event) -> None:
     `busy_timeout` at start.
     """
     conn = None
+    opened = None
     skip: dict[str, tuple[int, int]] = {}
     try:
         while True:
             try:
+                if conn is not None and opened != DB_PATH:  # switched on the front page
+                    conn.close()
+                    conn = None
                 if conn is None:
+                    opened = DB_PATH
                     conn = db()
                 out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
                 for s in out.imported:
@@ -130,18 +137,53 @@ def _sync_loop(stop: threading.Event) -> None:
             conn.close()
 
 
+# Requests being answered right now. The warm-up waits whenever there are any:
+# it is ten seconds of CPU on one GIL, and a chart opened just after a start
+# would otherwise take that long rather than its own second or two.
+_busy = 0
+_busy_lock = threading.Lock()
+_idle = threading.Event()
+_idle.set()
+
+
+def _wait_idle() -> None:
+    _idle.wait()
+
+
+class _Switched(Exception):
+    """The database was switched under a warm-up; the new one has its own."""
+
+
+#: Database switches so far. Counted, not compared by path: switching A -> B -> A
+#: while a warm-up waits would leave it seeing A again, beside the new one for A.
+_switches = 0
+
+
 def _warm_strength() -> None:
     """Measure every shown holding's hand strength the database does not have yet
     (a no-op once it is complete, a minute or two the first time; stats/strength.py),
     then count the pool the tags are judged against, so the first HUD after a
-    start does not pay for either."""
+    start does not pay for either.
+
+    Stops at the next pause once the front page switches the database: left
+    running, it would burn CPU on a database nobody reads, and its flush would take
+    values the new warm-up computed into the old file."""
+    path, started = DB_PATH, _switches
+
+    def between() -> None:
+        _wait_idle()
+        if _switches != started:
+            raise _Switched
+
     conn = None
     try:
-        conn = db()
-        added = strength.warm(conn)
+        conn = connect(path)
+        added = strength.warm(conn, between=between)
         if added:
             log.info("hand strength: %d stored", added)
-        pool_for(conn)
+        pool_for(conn, between=between)
+    except _Switched:
+        log.info("warm-up of %s stopped: database switched", path)
     except Exception:
         log.exception("warm-up failed")
     finally:
@@ -195,6 +237,25 @@ def _trusted_origin(origin: str) -> bool:
     """The extension, or one of this server's own pages."""
     parts = urlsplit(origin)
     return parts.scheme == "chrome-extension" or parts.hostname in ALLOWED_HOSTS
+
+
+@app.middleware("http")
+async def _count_busy(request: Request, call_next):
+    global _busy
+    if request.url.path == "/settings/paths/browse":
+        # Open as long as the dialog is on screen, and the warm-up pauses holding a
+        # read snapshot, so counting it would stall checkpoints for as long.
+        return await call_next(request)
+    with _busy_lock:
+        _busy += 1
+        _idle.clear()
+    try:
+        return await call_next(request)
+    finally:
+        with _busy_lock:
+            _busy -= 1
+            if not _busy:
+                _idle.set()
 
 
 @app.middleware("http")
@@ -1146,6 +1207,208 @@ def write_hud_settings(req: Annotated[HudColumnsRequest, Body()]) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _hud_settings(set_setting(db(), HUD_SETTING, req.columns))
+
+
+# ---- where the files are --------------------------------------------------------
+# The database and the log folder, chosen on the front page. Applied at once, with no
+# restart, and recorded in the machine config (pnt/local_config.py) so the next start
+# -- the task at login, `pnt serve`, the CLI -- opens the same ones.
+
+
+def _paths() -> dict:
+    return {
+        "db": str(DB_PATH.resolve()),
+        "log_dir": str(log_folder.LOG_DIR),
+        # Set outside this program, so the page shows it but cannot change it.
+        "log_dir_env": log_folder.FROM_ENV,
+        "save_logs": SAVE_LOGS,
+        "picker": _picker_available(),
+    }
+
+
+@functools.cache
+def _picker_available() -> bool:
+    """Whether tkinter can start, not just import: a Python can ship the package
+    without a Tcl it can find, and then Tk() fails on every click."""
+    try:
+        import tkinter
+    except ImportError:
+        return False
+    try:
+        tkinter.Tcl()  # reads init.tcl, the part that goes missing; opens no window
+    except tkinter.TclError:
+        return False
+    return True
+
+
+class PathsRequest(BaseModel):
+    db: str | None = None
+    log_dir: str | None = None
+
+
+def _full_path(text: str) -> Path:
+    """`text` as typed or pasted (quotes and ~ allowed), or a 400 unless it is absolute."""
+    path = Path(text.strip().strip('"')).expanduser()
+    if not path.is_absolute():
+        raise HTTPException(status_code=400, detail=f"give the full path, not {text!r}")
+    return path
+
+
+def _read_only_uri(path: Path) -> str:
+    # Not Path.as_uri(): a share's \\server\... becomes file://server/..., and SQLite
+    # refuses any host but localhost. Four slashes put the server in the path.
+    posix = path.as_posix()
+    return f"file:{'//' if posix.startswith('/') else '/'}{quote(posix, safe='/:')}?mode=ro"
+
+
+def _tracker_db(text: str) -> Path:
+    """`text` as a database this server can switch to, or a 400 saying why not.
+
+    Only an existing tracker database: opening any other path would create an empty
+    one there, and the HUD would go blank with nothing to say why.
+    """
+    path = _full_path(text)
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"no file at {path}")
+    try:
+        probe = sqlite3.connect(_read_only_uri(path.resolve()), uri=True)
+        try:
+            tables = {r[0] for r in probe.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        finally:
+            probe.close()
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=400, detail=f"not a SQLite database: {path}") from exc
+    if not {"hands", "raw_entries"} <= tables:
+        raise HTTPException(
+            status_code=400,
+            detail=f"not a tracker database: {path}. `pnt setup --db <path>` makes a new one.",
+        )
+    return path.resolve()
+
+
+def _log_dir(text: str) -> Path:
+    path = _full_path(text)
+    if not path.is_dir():
+        raise HTTPException(status_code=400, detail=f"no folder at {path}")
+    return path.resolve()
+
+
+@app.get("/settings/paths")
+def read_paths() -> dict:
+    """The database and log folder in use, and whether the page can open a picker."""
+    return _paths()
+
+
+@app.put("/settings/paths")
+def write_paths(req: Annotated[PathsRequest, Body()]) -> dict:
+    """Switch the database and/or the log folder, now and for every later start.
+
+    400 on a path that is not an existing tracker database or folder; 409 on the
+    log folder while $PNT_LOG_DIR fixes it. Both are checked before either moves,
+    and both are recorded before either is applied: a failed save switches nothing,
+    rather than leaving this run on the new one and the next start on the old.
+    """
+    global DB_PATH, _switches
+    from pnt import local_config
+    from pnt.stats.queries import clear_caches
+
+    new_db = _tracker_db(req.db) if req.db is not None else None
+    new_logs = _log_dir(req.log_dir) if req.log_dir is not None else None
+    # Resolved: $PNT_LOG_DIR may be relative or start with ~, and new_logs never does.
+    if new_logs is not None and log_folder.FROM_ENV and new_logs != log_folder.LOG_DIR.expanduser().resolve():
+        raise HTTPException(
+            status_code=409, detail="PNT_LOG_DIR is set, and it decides the log folder; unset it first."
+        )
+
+    switching = new_db is not None and new_db != DB_PATH.resolve()
+    if switching:
+        conn = connect(new_db)  # its migrations now, not halfway through someone's request
+        try:
+            # Before the sync loop sees it: files recorded on another PC would read as deleted.
+            if forgotten := sync.forget_missing(conn):
+                log.info("%s: forgot %d log files not on this machine", new_db, forgotten)
+        finally:
+            conn.close()
+    if new_db is not None:
+        local_config.put("db", str(new_db))
+    if new_logs is not None and not log_folder.FROM_ENV:
+        local_config.put("log_dir", str(new_logs))
+
+    if switching:
+        DB_PATH = new_db
+        _switches += 1  # before the new warm-up starts, so only the old ones stop
+        clear_caches()  # keyed by path, so only memory: the old database's entries
+        threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
+        log.info("database switched to %s", new_db)
+    if new_logs is not None and not log_folder.FROM_ENV:
+        log_folder.LOG_DIR = new_logs  # the sync loop reads it on its next pass
+    return _paths()
+
+
+class BrowseRequest(BaseModel):
+    kind: str = Field(pattern="^(db|log_dir)$")
+
+
+#: One picker at a time: a second click would stack a second dialog behind the first.
+_picker = threading.Lock()
+
+
+@app.post("/settings/paths/browse")
+def browse_path(req: Annotated[BrowseRequest, Body()]) -> dict:
+    """Open Windows' own file or folder picker on this machine and return the
+    choice, `{"path": null}` if cancelled. It picks only; PUT /settings/paths applies.
+
+    A page cannot do this itself: browsers never tell a page where a picked file
+    lives. This server runs on the same desktop, so it opens the dialog instead.
+    501 without tkinter; 409 while a picker is already open.
+    """
+    if not _picker_available():
+        raise HTTPException(status_code=501, detail="this Python has no tkinter, so type the path instead")
+    if not _picker.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="the picker is already open")
+    try:
+        return {"path": _ask(req.kind)}
+    except Exception as exc:  # tkinter.TclError, without importing tkinter here
+        log.warning("file picker failed: %s", exc)
+        raise HTTPException(status_code=501, detail="the picker would not open, so type the path instead") from exc
+    finally:
+        _picker.release()
+
+
+def _ask(kind: str) -> str | None:
+    # Tk lives and dies in this one thread, as it must; nothing else here uses it.
+    import tkinter
+    from tkinter import filedialog
+
+    root = tkinter.Tk()
+    root.withdraw()
+    # The server is a background process, so Windows would put the dialog behind
+    # the browser that asked for it.
+    root.attributes("-topmost", True)
+    try:
+        if kind == "db":
+            current = DB_PATH.resolve()
+            chosen = filedialog.askopenfilename(
+                parent=root,
+                title="Choose the tracker database",
+                initialdir=str(current.parent),
+                initialfile=current.name,
+                filetypes=[("Tracker database", "*.sqlite *.sqlite3 *.db"), ("All files", "*.*")],
+            )
+        else:
+            chosen = filedialog.askdirectory(
+                parent=root,
+                title="Choose the log folder",
+                initialdir=str(log_folder.LOG_DIR if log_folder.LOG_DIR.is_dir() else Path.home()),
+                mustexist=True,
+            )
+    finally:
+        root.destroy()
+        # Free every Tk object here and now. Left to the collector, one could be
+        # freed on another thread, and Tcl aborts the whole process when that happens.
+        del root
+        gc.collect()
+    return str(Path(chosen)) if chosen else None
 
 
 @app.get("/live/{game_id}")
