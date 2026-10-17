@@ -1920,19 +1920,16 @@ def shows(
     for them. One-card shows are counted only. These are chosen reveals: what
     the player wants you to see, not a sample of their range.
     """
-    from .stats.shows import CLASSES, show_tags, voluntary_shows
+    from .stats.shows import CLASSES, voluntary_shows
 
     conn = connect(db)
     try:
         out = voluntary_shows(conn, alias, game)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    out["tags"] = show_tags(out)
     if as_json:
         typer.echo(json.dumps(out, indent=2))
         return
-    for t in out["tags"]:
-        typer.echo(f"{t['label']}: {t['tip']}")
     typer.echo(f"{alias}  shown without being asked: {out['shows']} of {out['hands']} hands dealt in")
     typer.echo(f"two cards, classified: {out['two_card']} of {out['shows']} ({_fmt(out['coverage'])}%)"
                f"   one card, counted only: {out['one_card']}")

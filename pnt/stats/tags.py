@@ -34,10 +34,10 @@ from .slowplay import SLOWPLAY, strong_column
 from .strength import HS_CUTS, PREFLOP_STRENGTH, strength_at  # noqa: F401 -- re-exported
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
-#: Hands these games play on purpose (the 7-2 bounty and its cousins). They are
+#: Hands these games play on purpose (the 7-2 bounty). They are
 #: fun-tag material and never evidence of a bad call: a 72o that called a 3-bet
 #: was a bet on the side game, not a misread of the spot.
-TROLL_HANDS: frozenset[str] = frozenset({"72o", "72s", "92o", "92s", "K2o"})
+TROLL_HANDS: frozenset[str] = frozenset({"72o", "72s"})
 
 #: What ordinary VPIP and PFR look like at each table size, in points. Heads-up,
 #: 70% VPIP is normal; six-handed it is loose. A player's looseness is measured
@@ -123,9 +123,6 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     # their own strong, medium or weak, and nutted, per street. The same dict
     # `strength.strength_at` reads.
     "strength": HS_CUTS,
-    # Voluntary shows (`shows.show_tags`): one side of the two-card shows, at
-    # least `hits` of them and more than `pct` percent.
-    "shows": {"hits": 3, "pct": 50},
     # archetypes
     "maniac": {"pfr_excess": 15, "af_flop": 60, "jam_pct": 3, "3bet": 18},
     "station": {"fold_to_cbet": 30, "fold_to_cbet_n": 25, "wtsd": 38, "wtsd_n": 40, "pfr_ratio": 0.5},
@@ -226,8 +223,6 @@ STYLES: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
 #: The fun tags: a display name and the classes it covers.
 FUN_HANDS: tuple[tuple[str, str, frozenset[str]], ...] = (
     ("7-2", "72", frozenset({"72o", "72s"})),
-    ("9-2", "92", frozenset({"92o", "92s"})),
-    ("K-2o", "K2o", frozenset({"K2o"})),
 )
 
 def strength(f: Facts) -> str | None:

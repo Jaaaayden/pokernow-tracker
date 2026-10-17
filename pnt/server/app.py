@@ -845,16 +845,9 @@ def player_tags(
 
     Each tag carries the count it was judged on and the filter that puts those
     hands on the chart. See SPEC.md, "Tags", for every rule and threshold.
-
-    With no filter, the voluntary-show fun tags come last: shows are not `Facts`,
-    so a spot cannot narrow them.
     """
-    from pnt.stats.shows import with_show_tags
-
     conn = db()
     out = tags_for(_spot_facts(alias, filter, game, conn), _tag_pool(conn, filter, game), alias)
-    if not filter:
-        out = with_show_tags(conn, alias, out, game)
     return {"player": alias, "filter": filter, **out}
 
 
@@ -1056,8 +1049,6 @@ def hud(game_id: GameId) -> dict:
     `columns` is the stats chosen on the front page (`/settings/hud`), in order,
     each with its label, hover text and `_opp` key; `hands` comes before them.
     """
-    from pnt.stats.shows import with_show_tags
-
     conn = db()
     columns = _hud_columns(conn)
     latest = conn.execute(
@@ -1092,8 +1083,8 @@ def hud(game_id: GameId) -> dict:
                 # The same figures over this game only.
                 "session": by_session.get(r["alias"], {"hands": 0}),
                 # Lifetime tags; a seat with no identity yet has none.
-                "tags": with_show_tags(conn, r["alias"], tags_for(
-                    facts_cached(conn, r["alias"]) if r["alias"] else [], tag_pool, r["alias"])),
+                "tags": tags_for(
+                    facts_cached(conn, r["alias"]) if r["alias"] else [], tag_pool, r["alias"]),
                 # What you have written about them; null when nothing.
                 "note": notes.get(r["alias"], {}).get("note"),
                 # Whether their next hand here falls inside a post-loss window

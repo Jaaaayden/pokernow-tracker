@@ -236,13 +236,6 @@ def test_the_chart_opens_a_linked_hand():
     assert "/hands/" not in shows, "raw JSON is not a link to read"
 
 
-def test_show_tags_reach_the_tags_endpoint_without_a_filter(client):
-    ids = [t["id"] for t in client.get("/players/HSJ/tags").json()["tags"]]
-    assert ids[-1] == "shows_nuts"
-    narrowed = client.get("/players/HSJ/tags", params={"filter": "players>=2"}).json()["tags"]
-    assert "shows_nuts" not in [t["id"] for t in narrowed], "a spot cannot narrow a show"
-
-
 def test_cli_prints_the_table_and_json(tmp_path):
     path = tmp_path / "shows.sqlite"
     conn = connect(path)

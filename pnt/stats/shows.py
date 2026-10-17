@@ -56,7 +56,7 @@ from .cards import (
 )
 from .equity import rank7
 from .queries import display_names, identities_of
-from .tags import THRESHOLDS, _tag, strength_at
+from .tags import strength_at
 
 #: Strongest first: the order the table prints them in.
 CLASSES = ("strong", "marginal", "draw", "air")
@@ -271,50 +271,3 @@ def _vs(r, two: bool, ctx: str, seen: tuple[str, ...], winners, owners, names) -
     pn, cards = known[0]
     return {"player": names.get(pn, pn), "cards": cards, "you": owners.get(r["game_id"]) == pn,
             "result": versus(r["cards"], cards, seen)}
-
-
-# --------------------------------------------------------------- the tags ---
-
-#: The two fun tags: id, label, the classes that count, and those classes in words.
-SHOW_TAGS = (
-    ("shows_bluffs", "SHOWS BLUFFS", ("air", "draw"), "air or a draw"),
-    ("shows_nuts", "SHOWS NUTS", ("strong",), "strong (a value hand on that board, or a premium preflop)"),
-)
-
-
-def show_tags(summary: dict) -> list[dict]:
-    """SHOWS BLUFFS or SHOWS NUTS from a `voluntary_shows` summary, or neither.
-
-    Fun tags. One fires when its side has at least THRESHOLDS["shows"]["hits"]
-    two-card shows and is more than THRESHOLDS["shows"]["pct"] percent of them,
-    so the two never fire together. A bluff is air or a draw: a hand that could
-    not have won where it stood. ``n`` is the two-card shows and ``hits`` that
-    side. No filter reproduces them, since shows are not `Facts`: the filter is
-    empty, ``by`` is ``shows``, and ``hand_ids`` lists the hands behind the hits.
-    """
-    t = THRESHOLDS["shows"]
-    n = summary["two_card"]
-    out = []
-    for id, label, hit, words in SHOW_TAGS:
-        hits = sum(summary["classes"][c] for c in hit)
-        if n and hits >= t["hits"] and 100.0 * hits / n > t["pct"]:
-            out.append(_tag(
-                id, f"{label} ×{hits}", "fun",
-                f"Of {n} two-card hands shown without being asked, {hits} were {words}. "
-                "Chosen reveals: what they want you to see, not their range.",
-                n, hits, "", by="shows",
-                hand_ids=[r["hand_id"] for r in summary["rows"] if r["class"] in hit],
-            ))
-    return out
-
-
-def with_show_tags(conn: sqlite3.Connection, alias: str | None, tags: dict, game: str | None = None) -> dict:
-    """A `tags_for` result with the show tags appended to its ``tags``, last
-    among the fun ones. No alias, or an unknown one, returns it unchanged."""
-    if not alias:
-        return tags
-    try:
-        extra = show_tags(voluntary_shows(conn, alias, game))
-    except ValueError:
-        return tags
-    return {**tags, "tags": [*tags["tags"], *extra]} if extra else tags

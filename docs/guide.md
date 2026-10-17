@@ -759,8 +759,8 @@ data supports, and then the fun ones.
 - **Tags built from shown hands say so**, because a river bet that reached showdown
   is one that got called; the bluffs that worked are the hands missing.
 
-The rules, the thresholds, and the hands these games play on purpose (7-2, 9-2 and
-K-2o are never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
+The rules, the thresholds, and the hands these games play on purpose (7-2 is
+never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
 "Tags". `GET /players/{alias}/tags` returns the same as JSON.
 
 ### Tendencies
@@ -812,8 +812,7 @@ Click a row to replay it. The spot box does not narrow shows. Any chart link can
 do the same with `hand=<id>`, as in `/chart?player=henry&hand=1234`. These are the
 hands they *chose* to show you, so read them as what they want you to believe, not
 as their range. The range charts leave them out for the same
-reason. A player whose shows are mostly air or draws gets a **SHOWS BLUFFS** fun tag,
-and one whose shows are mostly strong gets **SHOWS NUTS**.
+reason.
 
 ## Hand review
 

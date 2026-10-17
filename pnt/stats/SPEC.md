@@ -1952,7 +1952,7 @@ strength"): strong a value hand on that board, weak a pair of their own under th
 weak cut, air high card, a board pair the hole cards add nothing to, or a busted
 draw.
 **Light** means `hand_pct` at or past the cutoff and not a troll hand
-(`TROLL_HANDS` = 72, 92 and K2o, which these games play on purpose).
+(`TROLL_HANDS` = 72, which these games play on purpose).
 
 | Tag | Numerator | Denominator | Fires | Min n | Filter |
 |---|---|---|---|---|---|
@@ -1988,23 +1988,8 @@ their filter finds; the shown ones' `n` is those hands with cards known;
 
 ### Fun tags
 
-For each of 7-2, 9-2 and K-2o: the shown hands in that class the player raised
-preflop with. **7-2 ALL-IN-PRE ×n** when at least one was a preflop jam
+For 7-2: the shown hands in that class the player raised preflop with. **7-2 ALL-IN-PRE ×n** when at least one was a preflop jam
 (`hand=72,jam_preflop`), else **7-2 RAISES ×n** from two raises (`hand=72,pfr`).
-
-From voluntary shows (`shows.show_tags`, see "Voluntary shows"), over the two-card
-shows:
-
-| Tag | Numerator | Denominator | Fires | Filter |
-|---|---|---|---|---|
-| **SHOWS BLUFFS ×n** | air or draw | two-card shows | ≥ 3 and > 50% | none: `hand_ids` (by `shows`) |
-| **SHOWS NUTS ×n** | strong | two-card shows | ≥ 3 and > 50% | none: `hand_ids` (by `shows`) |
-
-`THRESHOLDS["shows"]` holds both cutoffs. More than half, so the two never fire
-together. They come after the other fun tags on the HUD and on
-`GET /players/{alias}/tags` with no filter, since a spot cannot narrow a show.
-Calibrated on the 14,720-hand database on 2026-10-12: SHOWS BLUFFS fires for two of
-the nine players who show at all (53% and 56% air or draw), SHOWS NUTS for none.
 
 ### Pool baseline
 
