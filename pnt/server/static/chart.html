@@ -320,6 +320,13 @@
   #reviewctl > button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   #reviewctl > button:disabled { opacity: .45; cursor: default; }
   .kinds button small { opacity: .8; margin-left: 4px; }
+  /* The Tagged view's picker: one chip per tag, the 🚩 first; and a saved spot
+     pinned into the Common row, told from the stock chips by its ★. */
+  .tagpick { display: flex; margin: 0 0 8px; }
+  .tagpick button[data-builtin] { border-style: dashed; }
+  .tagpick .muted { font-size: 12px; align-self: center; }
+  .common button[data-spot]::before { content: "★ "; color: var(--accent); }
+  .common button[data-spot][aria-pressed=true]::before { color: inherit; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
   .replay h3 { font-size: 14px; margin: 0 0 4px; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
@@ -677,6 +684,7 @@
     <span class="seg" role="group" aria-label="Review views">
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
       <button data-view="manual" aria-pressed="false" title="hands you flagged with 🚩, in the HUD or on a row here">Flagged</button>
+      <button data-view="tagged" aria-pressed="false" title="hands you tagged on a row or in a replay, by tag">Tagged</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
       <button data-view="bounties" aria-pressed="false" title="the 7-2 side bet: who won and paid bounties, every player">7-2</button>
@@ -779,6 +787,7 @@
     <div id="timing" class="hidden"></div>
     <div id="shows" class="hidden"></div>
     <div id="bounty" class="hidden"></div>
+    <div id="tagged" class="kinds tagpick hidden" role="group" aria-label="Which tag"></div>
     <div id="review" class="hidden" aria-live="polite">
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
@@ -1112,8 +1121,10 @@
   // by hand with 🚩, from the HUD or from a row here. Those four are the "list views".
   const SESSION_VIEW = "session";
   const MANUAL_VIEW = "manual";
-  const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "shows", "bounties", "results"];
+  // The tagged view lists the hands you tagged, one tag at a time (see "Tagged" below).
+  const TAGGED_VIEW = "tagged";
+  const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW || view === TAGGED_VIEW;
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, TAGGED_VIEW, "tilt", "timing", "shows", "bounties", "results"];
   // The views with the Group by panel, and each one's rows when none is picked.
   const GB_VIEWS = ["preflop", "made"];
   const GB_DEFAULT = { preflop: "position", made: "made_flop" };
@@ -1127,7 +1138,7 @@
   const ALL_KINDS = Object.keys(KIND_LABEL);
   // The first order of each view is its default.
   const ORDERS = { review: ["newest", "pot"], beats: ["newest", "pot", "swing"], session: ["hand", "newest", "pot", "swing"],
-                   manual: ["newest", "pot", "swing"] };
+                   manual: ["newest", "pot", "swing"], tagged: ["newest", "pot", "swing"] };
   const ORDER_NAMES = ORDERS.session;
   const orderOf = (view) => ORDERS[view].includes(state.order) ? state.order : ORDERS[view][0];
   const REVIEW_NOTE = {
@@ -1136,6 +1147,8 @@
       "**Failed bluffs** also count bluffs given up before showdown."],
     manual: ["Hands you flagged 🚩, in the HUD or on any row here.",
       "A HUD flag shows up a few seconds after the hand ends.", "Clear the 🚩 to take it off."],
+    tagged: ["Hands you tagged: type in the **+ tag** box on a row or a replay, Enter to add, e.g. river-bluff.",
+      "Pick a tag to list its hands; **flagged** is the 🚩 ones.", "In a spot: tag=cooler|study."],
     session: ["Every hand of the session, in deal order.", "Tick hands off or write on them as you go.",
       "**Sat out** adds the hands dealt while they were away."],
     beats: ["**Suckouts, preflop coolers:** all-in showdowns, equity taken where the betting stopped.",
@@ -1169,6 +1182,7 @@
     state.gbStreet = ["turn", "river"].includes(q.get("gbs")) ? q.get("gbs") : "flop";
     state.gbMin = /^\d+$/.test(q.get("gbmin") || "") ? Number(q.get("gbmin")) : 0;
     state.gbScope = q.get("gbp") === "pool" ? "pool" : "player";
+    state.tag = /^[\w-]{1,40}$/.test(q.get("tag") || "") ? q.get("tag").toLowerCase() : "";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -1197,6 +1211,7 @@
       if (!state.played) q.set("played", "all");
       if (state.satOut) q.set("sat", "show");
     }
+    if (state.by === TAGGED_VIEW && state.tag) q.set("tag", state.tag);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
     // An embedder cannot read this page's URL across origins, so hand it out:
@@ -1360,6 +1375,8 @@
           data = await getJson(`/players/${player}/flagged?` + q);
           if (live()) state.manual = { key, data };
         }
+      } else if (view === TAGGED_VIEW) {
+        data = await loadTagged(quiet, live);
       } else if (isReview(view)) {
         // One request serves both views: switching between them re-renders
         // rather than re-fetching, unless the HUD said there are new hands.
@@ -1549,7 +1566,7 @@
   const TITLE = {
     preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
     lines: "What they had, by line",
-    review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review",
+    review: "Hands to review", beats: "Bad beats", session: "Session", manual: "Manual review", tagged: "Tagged hands",
     bluffs: "Value against bluffs, by kind of aggression",
     strength: "Strength by street",
     results: "Big blinds won and lost",
@@ -1959,7 +1976,8 @@
     setNote(BV_NOTE);
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby",
+      "tagged"]) {
       $(id).classList.add("hidden");
     }
     $("duo").classList.remove("two");
@@ -3243,6 +3261,7 @@
     const table = state.table && !review && !strength;
     if (view === SESSION_VIEW) renderSessionTiles(d);
     else if (view === MANUAL_VIEW) renderManualTiles(d);
+    else if (view === TAGGED_VIEW) renderTaggedTiles(d);
     else if (review) renderReviewTiles(d, view);
     else if (view === "sizing") renderSizingTiles(d);
     else if (view === LINES_VIEW) renderLinesTiles(d);
@@ -3270,6 +3289,7 @@
     $("table").classList.toggle("hidden", !table);
     $("foldeq").classList.toggle("hidden", view !== "sizing");
     $("review").classList.toggle("hidden", !review);
+    $("tagged").classList.toggle("hidden", view !== TAGGED_VIEW);
     $("strength").classList.toggle("hidden", !strength);
     $("tilt").classList.toggle("hidden", view !== "tilt");
     $("timing").classList.toggle("hidden", view !== "timing");
@@ -3283,6 +3303,7 @@
     if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
     if (view === MANUAL_VIEW) { renderManual(d); return; }
+    if (view === TAGGED_VIEW) { renderTagged(d); return; }
     if (review) { renderReview(d, view); return; }
     if (view === "results") { renderResults(d); return; }
     if (view === "tilt") { renderTilt(d); return; }
@@ -4036,7 +4057,7 @@
   // A manual row leaves the list as soon as its 🚩 is cleared.
   const manualRows = (d) => d.hands.filter(h => h.flagged);
   const listRows = (view) => view === SESSION_VIEW ? sessionRows(state.data)
-    : view === MANUAL_VIEW ? manualRows(state.data) : reviewRows(state.data, view);
+    : view === MANUAL_VIEW ? manualRows(state.data) : view === TAGGED_VIEW ? state.data.hands : reviewRows(state.data, view);
 
   function renderSession(d) {
     $("review-kinds").replaceChildren();
@@ -4093,6 +4114,96 @@
     }
   }
 
+  // ---- tagged ------------------------------------------------------------------
+  // GET /tagged: the hands you tagged, in the list views' rows, one tag at a time
+  // (none picked: every tagged hand). The chips above the list are this player's
+  // tags in the spot with their counts, the 🚩 first as `flagged`. A tag added or
+  // removed anywhere on the page (a row's box, the replay's) is followed: the rows
+  // carry it at once, and this view asks again for its counts. See SPEC.md, "Saved
+  // spots and hand tags".
+  async function loadTagged(quiet, live) {
+    const key = `${state.player}|${state.filter}|${state.tag}`;
+    if (!quiet && state.tagged?.key === key) return state.tagged.data;
+    const q = new URLSearchParams({ player: state.player });
+    if (state.filter) q.set("filter", state.filter);
+    if (state.tag) q.set("tag", state.tag);
+    const data = await getJson("/tagged?" + q);
+    if (live()) state.tagged = { key, data };
+    return data;
+  }
+
+  function renderTaggedTiles(d) {
+    setTileKeys(d.tag ? `tagged ${d.tag}` : "hands tagged", "marked reviewed", "net");
+    const rows = d.hands;
+    $("t-hands").textContent = rows.length;
+    $("t-known").textContent = rows.filter(h => h.reviewed).length;
+    $("t-cov").textContent = rows.length ? fmtBb(rows.reduce((s, h) => s + (h.net_bb ?? 0), 0)) : "–";
+    $("t-raise").textContent = d.tags.filter(t => !t.builtin && t.hands).length;
+    setRaiseKey("tags in this spot", `${rows.filter(h => h.note).length} with a note`);
+  }
+
+  function renderTagged(d) {
+    $("review-kinds").replaceChildren();
+    renderTagChips(d);
+    syncListControls(TAGGED_VIEW);
+    const all = d.hands;
+    const rows = orderReview(listedReview(all), TAGGED_VIEW);
+    const list = $("review-rows");
+    list.replaceChildren();
+    resetReplay();
+    setReviewCount();
+    if (!rows.length) {
+      list.appendChild(message(state.hideSeen && all.length ? "every tagged hand here is reviewed"
+        : state.filter ? "nothing tagged in this spot" : state.tag ? `no hand of theirs is tagged ${state.tag}` : "nothing tagged yet"));
+      return;
+    }
+    for (const h of rows.slice(0, HAND_LIMIT)) list.appendChild(reviewedRow(h, handRowButton(h, list, $("review-replay"))));
+  }
+
+  function renderTagChips(d) {
+    const pick = $("tagged");
+    pick.replaceChildren();
+    for (const t of d.tags) {
+      const b = document.createElement("button"); b.type = "button";
+      b.append(t.builtin ? "🚩 flagged" : t.tag);
+      if (t.builtin) { b.dataset.builtin = ""; b.title = "the hands you flagged 🚩"; }
+      else b.title = `tag=${t.tag}`;
+      const n = document.createElement("small"); n.textContent = t.hands; b.appendChild(n);
+      b.setAttribute("aria-pressed", String(state.tag === t.tag));
+      // Clicking the tag on show goes back to every tagged hand.
+      b.addEventListener("click", () => { state.tag = state.tag === t.tag ? "" : t.tag; writeUrl(); load(); });
+      pick.appendChild(b);
+    }
+    if (d.tags.length < 2) pick.appendChild(message("no tags yet: type one in the + tag box under a hand"));
+  }
+
+  // A write from any tag box: every cached row of that hand takes the new tags.
+  // On the tagged view the counts are asked for again; the list is redrawn only
+  // when a hand joined or left it, so a box being typed in and an open replay stay.
+  document.addEventListener("pnt-tags", async (e) => {
+    const { game_id, hand_number, tags } = e.detail;
+    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands,
+      state.tagged?.data.hands, state.handRows?.rows])) {
+      if (!Array.isArray(hands)) continue;
+      for (const h of hands) if (h.game_id === game_id && h.hand_number === hand_number) h.tags = tags;
+    }
+    if (state.by !== TAGGED_VIEW || state.dataView !== TAGGED_VIEW) { state.tagged = null; return; }
+    const seq = loadSeq;
+    const shown = state.data;
+    try {
+      state.tagged = null;
+      const fresh = await loadTagged(false, () => seq === loadSeq);
+      if (seq !== loadSeq || state.data !== shown) return;
+      const ids = (d) => d.hands.map(h => h.hand_id).join(",");
+      if (ids(fresh) !== ids(shown)) { state.data = fresh; render(); return; }
+      shown.tags = fresh.tags;
+      renderTagChips(shown);
+      renderTaggedTiles(shown);
+    } catch (err) {
+      showErr(err);
+    }
+  });
+
   // ---- side by side ------------------------------------------------------
   // In the split layout the replay pane is always there, so the right half does
   // not collapse before a hand is picked.
@@ -4135,7 +4246,7 @@
     const n = listedReview(all).length;
     const seen = all.filter(h => h.reviewed).length;
     const noted = all.filter(h => h.note).length;
-    const what = state.by === SESSION_VIEW ? "hand" : "flagged hand";
+    const what = state.by === SESSION_VIEW ? "hand" : state.by === TAGGED_VIEW ? "tagged hand" : "flagged hand";
     const order = $("review-sort").value;
     const head = n > HAND_LIMIT
       ? `${order === "newest" ? "newest" : order === "hand" ? "first" : "top"} ${HAND_LIMIT} of ${n} ${what}s`
@@ -4149,7 +4260,8 @@
   // The session view and the review views hold their own copies of a hand, so a
   // mark made in one is carried into the other.
   function applyToHand(hand_id, fields) {
-    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands, state.handRows?.rows])) {
+    for (const hands of new Set([state.data?.hands, state.review?.data.hands, state.session?.data.hands, state.manual?.data.hands,
+      state.tagged?.data.hands, state.handRows?.rows])) {
       // On the chart views `state.data.hands` is a count, not a list.
       if (!Array.isArray(hands)) continue;
       for (const other of hands) {
@@ -4314,6 +4426,8 @@
     else if (flag) { marks.classList.add("three"); marks.append(mark, flag, pen); }
     else marks.append(mark, pen);
     body.append(row, note);
+    // The hand's tags, beside its note; rows from a server too old to send them get none.
+    if (Array.isArray(h.tags)) body.append(pntReplay.tagBox(h.game_id, h.hand_number, h.tags));
     wrap.append(marks, body);
     return wrap;
   }
@@ -4401,6 +4515,7 @@
     state.review = null;
     state.session = null;
     state.manual = null;
+    state.tagged = null;
     state.games = null; // a new game may have started
     state.bluffs = null;
     gb.key = null;
@@ -4493,7 +4608,7 @@
   // Up and down step through a list, replaying each hand as they land on it.
   for (const id of ["review-rows", "hand-rows"]) $(id).addEventListener("keydown", (e) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    if (e.target.closest("textarea")) return;
+    if (e.target.closest("textarea, input")) return;
     const rows = [...$(id).querySelectorAll(".hand-row")];
     if (!rows.length) return;
     const cur = rows.indexOf(e.target.closest(".hand-row") || $(id).querySelector(".hand-row[aria-pressed=true]"));
@@ -4698,6 +4813,26 @@
     $("common").appendChild(more);
     show(open);
   }
+  // Saved spots you pinned (the ★ by the Spot box, filter-help.js), first in the
+  // Common row. Unlike the stock chips each sets the whole filter, and it is on
+  // when the box holds exactly that filter (syncChips reads `data-preset`).
+  // filter-help.js sends the list on load and after every change to it.
+  document.addEventListener("pnt-spots", (e) => {
+    const row = $("common");
+    row.querySelectorAll("[data-spot]").forEach(b => b.remove());
+    const after = row.querySelector(".lbl");
+    for (const s of [...e.detail].filter(x => x.pinned).reverse()) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = s.name; b.title = s.filter;
+      b.dataset.spot = s.spot_id;
+      b.dataset.preset = s.filter;
+      b.addEventListener("click", () => {
+        $("filter").value = $("filter").value.trim() === s.filter ? "" : s.filter;
+        apply();
+      });
+      after.after(b);
+    }
+    syncChips();
+  });
   $("filter").addEventListener("input", syncChips);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.data && render());
 

@@ -646,7 +646,7 @@ unit := "(" conj ")" | "!(" conj ")" | term
 4. **Every `=` family takes a list**: `position`, `fold_street`, `vs`, `hand`, the
    preflop decisions (`faced_open=call|raise`), the answers
    (`bet_answer_river=call|raise`), the size buckets (`cbet_flop=small|medium`),
-   `line_`/`line`, `action_`/`action`, `tempo_`, and the textures
+   `line_`/`line`, `action_`/`action`, `tempo_`, `tag`, and the textures
    (`flop=paired|monotone`). `made_` and `tier_` keep their own `|` exactly as
    before: a union of names under `=`, none of them under `!=`, and a comparison
    with a list refused.
@@ -657,7 +657,8 @@ unit := "(" conj ")" | "!(" conj ")" | term
    display name or PokerNow ID is that player, even when a flag has the same name.
    Without a name map, which only internal callers omit, every operator-free
    segment after `vs=` is a name. Brackets make a term of it either way:
-   `vs=henry|(won)`.
+   `vs=henry|(won)`. A tag can be any word, so the other way round: a flag after
+   `tag=` is always the flag (`tag=study|won`), and `tag=study|tag=won` names the tag.
 7. **An unknown value raises**, which the server answers with a 400: `position=XYZ`,
    `position=`, `faced_open=jam`, `fold_street=showdown`. A segment after a key that
    is neither its value nor a term raises the key's own error, so
@@ -681,6 +682,53 @@ reads, so a count is the chart's `hands` for `filter,term`. With `player: null` 
 counts every player's rows from `facts_by_player(game)`, which `/stats?filter=`
 groups, so a count is the sum of that table's `hands` column. It reads only, but
 carries the write header like every POST.
+
+### Saved spots and hand tags
+
+Both are yours, not the log's (`db/userdata.py`), kept like a flag: keyed on
+`(game_id, hand_number)` for a tag, never touched by a rebuild, a merge or a
+game deletion.
+
+**A saved spot** is a filter under a name: `GET /spots`, `POST /spots {name,
+filter}`, `PATCH /spots/{id} {name?, filter?, pinned?, ord?}`, `DELETE
+/spots/{id}`. The filter is parsed on every save and refused with the parser's
+400; a name is unique. Pinned spots list first, then by `ord` (a PATCH `ord` is
+the spot's place in the list, from 0). The pages' ★ beside the Spot box applies
+one, and the chart puts the pinned ones first in its Common row, where a chip
+replaces the whole filter and is on when the box holds exactly it.
+
+**A hand tag** is a word on a hand: trimmed, lower case, spaces as `-`, letters,
+digits, `-` and `_`, at most 40 characters (`River Bluff` is `river-bluff`).
+`GET /tags` (with hand counts), `GET|POST /games/{g}/hands/{n}/tags {tag}`,
+`DELETE /games/{g}/hands/{n}/tags/{tag}`. A POST is checked against the raw log
+as a flag is, so the hand that just ended can be tagged.
+
+**`tag=<tag>`** keeps the rows of the hands carrying it:
+
+| | |
+|---|---|
+| Numerator | rows whose `(game_id, hand_number)` carries the tag |
+| Denominator | the rows the rest of the filter keeps |
+| Exclusions | none: the hand, not the seat, so every player's row of a tagged hand matches |
+
+- `tag=a|b` is either, `tag!=a` every hand without it, `tag!=a|b` neither.
+- **`tag=flagged` is the 🚩**: the hands in `hand_flags`. No tag may be named
+  `flagged` (the POST answers 400), so the two never mix.
+- A tag no hand carries matches nothing; that is an empty spot, not an error. A
+  value that cannot be a tag (`tag=a.b`) is a 400.
+- **Tags are read when the filter is parsed**, through the `tags` resolver
+  `parse_filter` takes beside `names`. Without one (the CLI) `tag=` raises. A
+  cache keyed by filter text (the spot pool, the spot tree) adds every tag and
+  flag to its key when the filter may hold a `tag=`, since tagging a hand moves no
+  generation.
+
+`GET /tagged?tag=&player=&filter=&game=` lists the hands carrying `tag`
+(`flagged` for the 🚩; none for every tagged hand) newest first, in the rows
+`/players/{alias}/flagged` lists, each with its `tags`. `tags` counts the hands
+per tag over the same hands, `flagged` first. With `player` the rows are theirs
+in the spot; without, one row per hand from the log owner's seat when they were
+dealt in, else the first seat from the button, derived alone, so the session
+terms (`post_loss`, `session_hand`...) see no session there.
 
 ---
 
