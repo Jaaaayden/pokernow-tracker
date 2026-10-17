@@ -643,6 +643,71 @@
     .gb td small { display: none; }
     .gb td.mix { min-width: 60px; }
   }
+
+  /* --- the spot tree (by=tree) ---
+     One row per decision point: caret, how they got there (muted), the spot, its
+     hands, and what they chose there as a stacked bar and as text. Each level sits
+     one step further in; narrow, the steps shrink and the text drops under the bar. */
+  #tree { --tr-fold: #b4b2a9; --tr-check: #e1e0d9; --tr-call: #6da7ec; --tr-raise: #b93a39; --tind: 16px;
+    display: flex; flex-direction: column; gap: 8px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #tree { --tr-fold: #6b6a65; --tr-check: #44433f; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+  }
+  :root[data-theme="dark"] #tree { --tr-fold: #6b6a65; --tr-check: #44433f; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+  #tree .tbase code { color: var(--ink); }
+  #tree .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+  #tree .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .trows { display: grid; grid-template-columns: minmax(0, max-content) max-content minmax(120px, 1fr) max-content;
+    gap: 5px 12px; align-items: center; max-width: 1100px; }
+  .trows .h { color: var(--muted); font-size: 12px; }
+  .trows .trow { display: contents; }
+  .trows .trow.dim > * { opacity: .45; }
+  .trows .tl { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap;
+    padding-left: calc(var(--d, 0) * var(--tind)); font-size: 13px; }
+  .trows .caret { flex: none; width: 18px; height: 18px; padding: 0; border: 1px solid var(--axis); border-radius: 5px;
+    background: var(--surface); color: var(--ink-2); font-size: 10px; line-height: 16px; text-align: center; cursor: pointer; }
+  .trows .caret:hover, .trows .caret:focus-visible { border-color: var(--accent); color: var(--accent); outline: 0; }
+  .trows .caret[aria-expanded=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .trows .caret.leaf { visibility: hidden; }
+  .trows .edge { color: var(--muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .trows .spot { flex: none; cursor: pointer; }
+  .trows .spot:hover, .trows .spot:focus-visible { text-decoration: underline; outline: 0; }
+  .trows .seat .spot { font-weight: 600; }
+  .trows .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .trows .stack { display: flex; gap: 2px; height: 14px; }
+  .trows .stack i { display: block; height: 100%; min-width: 3px; cursor: pointer; }
+  .trows .stack i:first-child { border-radius: 4px 0 0 4px; }
+  .trows .stack i:last-child { border-radius: 0 4px 4px 0; }
+  .trows .stack i:only-child { border-radius: 4px; }
+  .trows .stack i:hover, .trows .stack i:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .trows .stack.none { color: var(--muted); font-size: 12px; align-items: center; }
+  .trows .txt { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; color: var(--ink-2); }
+  #treectl .lbl { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  @media (max-width: 600px) {
+    #tree { --tind: 7px; }
+    .trows { grid-template-columns: minmax(0, 1fr) max-content minmax(56px, 26%); gap: 2px 8px; }
+    .trows .h:nth-child(4) { display: none; }
+    .trows .tl { font-size: 12px; gap: 4px; }
+    .trows .txt { grid-column: 1 / -1; padding-left: calc(var(--d, 0) * var(--tind) + 22px); margin-bottom: 4px;
+      font-size: 10.5px; white-space: normal; }
+  }
+
+  /* --- made hands by street (Made hands › Streets) ---
+     Flop holding against river holding, each cell tinted by its share of the row. */
+  #streets { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; }
+  #streets h3 { font-size: 13px; font-weight: 600; margin: 10px 0 0; display: flex; gap: 4px 10px; flex-wrap: wrap; align-items: baseline; }
+  #streets h3:first-child { margin-top: 0; }
+  #streets h3 small { color: var(--muted); font-weight: 400; }
+  #streets table { margin-top: 4px; min-width: 560px; max-width: 1100px; }
+  #streets th { font-weight: 500; font-size: 12px; color: var(--ink-2); }
+  #streets td.c { cursor: pointer; text-align: center; }
+  #streets td.c:hover, #streets td.c:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  #streets td.c.on-dark { color: #fff; }
+  #streets td.c.on-light { color: #0b0b0b; }
+  #streets td.zero { color: var(--muted); text-align: center; }
+  #streets td small { display: block; color: inherit; opacity: .7; font-size: 10.5px; }
+  #streets tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
+  #streets .snote { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
 </style>
 </head>
 <body>
@@ -668,6 +733,7 @@
       <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
       <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
+      <button data-view="tree" aria-pressed="false" title="every spot they reached, seat first, and what they chose there">Tree</button>
       <button data-view="bluffs" aria-pressed="false" title="what they bet, raised and jammed with: value against bluffs, by size">Bluff:value</button>
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
@@ -749,6 +815,21 @@
           <option value="river">river</option>
         </select>
       </span>
+      <!-- The spot tree's controls, and the made view's Mix / Streets tabs. -->
+      <span class="ctl hidden" id="treectl">
+        <select id="tdepth" aria-label="Depth" title="how many decisions deep below the seat">
+          <option value="3">3 deep</option>
+          <option value="4">4 deep</option>
+          <option value="6">6 deep</option>
+        </select>
+        <button id="ttexture" aria-pressed="false" title="split the first flop node by high card and pairing (texture=1)">Split flops by texture</button>
+        <label class="lbl" for="tmin" title="dim spots with fewer hands; the counts stay">Dim under
+          <input id="tmin" type="number" min="0" step="1" style="width: 4.5em"></label>
+      </span>
+      <span class="seg hidden" id="madeseg" role="group" aria-label="Made hands">
+        <button data-made="mix" aria-pressed="true" title="what the shown hands had made by the end">Mix</button>
+        <button data-made="streets" aria-pressed="false" title="flop holding against river holding, and where your own flops went">Streets</button>
+      </span>
       <span class="ctl hidden" id="reviewctl">
         <span class="kinds" id="review-kinds" role="group" aria-label="Which flags"></span>
         <select id="session-game" class="hidden" aria-label="Session"></select>
@@ -771,6 +852,8 @@
     <div id="sizing" class="sizing hidden"></div>
     <div id="results" class="hidden"></div>
     <div id="lineview" class="lineview hidden"></div>
+    <div id="tree" class="hidden"></div>
+    <div id="streets" class="hidden"></div>
     <div id="bluffs" class="bv hidden"></div>
     <div id="strength" class="hidden"></div>
     <div id="table" class="hidden"></div>
@@ -1114,6 +1197,12 @@
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
   const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "shows", "bounties", "results"];
+  // The spot tree: one player's decision points, seat first. See "spot tree" below.
+  const TREE_VIEW = "tree";
+  VIEWS.push(TREE_VIEW);
+  // Asked 4 deep, without the nodes under 5 hands: the whole 6-deep tree of a
+  // 14,000-hand player is about a megabyte. Spots under TREE_DIM hands are dimmed.
+  const TREE_DEPTH = 4, TREE_MIN = 5, TREE_DIM = 20;
   // The views with the Group by panel, and each one's rows when none is picked.
   const GB_VIEWS = ["preflop", "made"];
   const GB_DEFAULT = { preflop: "position", made: "made_flop" };
@@ -1169,6 +1258,11 @@
     state.gbStreet = ["turn", "river"].includes(q.get("gbs")) ? q.get("gbs") : "flop";
     state.gbMin = /^\d+$/.test(q.get("gbmin") || "") ? Number(q.get("gbmin")) : 0;
     state.gbScope = q.get("gbp") === "pool" ? "pool" : "player";
+    // The spot tree's depth, texture split and dimming; the made view's tab.
+    state.tdepth = ["3", "6"].includes(q.get("depth")) ? Number(q.get("depth")) : TREE_DEPTH;
+    state.tx = q.get("tx") === "1";
+    state.tmin = /^\d+$/.test(q.get("tmin") || "") ? Number(q.get("tmin")) : TREE_DIM;
+    state.made = q.get("made") === "streets" ? "streets" : "mix";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -1187,6 +1281,12 @@
       if (state.gbMin) q.set("gbmin", state.gbMin);
       if (state.gbScope === "pool") q.set("gbp", "pool");
     }
+    if (state.by === TREE_VIEW) {
+      if (state.tdepth !== TREE_DEPTH) q.set("depth", state.tdepth);
+      if (state.tx) q.set("tx", "1");
+      if (state.tmin !== TREE_DIM) q.set("tmin", state.tmin);
+    }
+    if (state.by === "made" && state.made === "streets") q.set("made", "streets");
     if (isListView(state.by)) {
       if (state.order && state.order !== ORDERS[state.by][0]) q.set("order", state.order);
       if (state.hide.size) q.set("hide", [...state.hide].join(","));
@@ -1408,6 +1508,14 @@
         data = await getJson(`/players/${player}/results?` + q);
         data.winnings = await w;
         data.funnel = await fn;
+      } else if (view === TREE_VIEW) {
+        data = await loadTree(quiet, live);
+      } else if (view === "made" && state.made === "streets") {
+        // The made view's tiles ride on its range; the Streets tab draws /streets.
+        const st = getJson(`/players/${player}/streets?` + q).catch(e => ({ error: String(e.message || e) }));
+        const rq = new URLSearchParams(q); rq.set("by", view);
+        data = await getJson(`/players/${player}/range?` + rq);
+        data.streets = await st;
       } else {
         q.set("by", view);
         data = await getJson(`/players/${player}/range?` + q);
@@ -1959,7 +2067,8 @@
     setNote(BV_NOTE);
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby",
+      "tree", "treectl", "madeseg", "streets"]) {
       $(id).classList.add("hidden");
     }
     $("duo").classList.remove("two");
@@ -3230,6 +3339,296 @@
     body.replaceChildren(t, foot);
   }
 
+  // ---- spot tree -----------------------------------------------------------------
+  // GET /players/{alias}/tree: seat, then each spot they reached, what they chose
+  // there, and the spot those hands reached next, in one request up to the depth
+  // asked. Every node and choice carries the filter that finds exactly its hands,
+  // added to the spot the tree was built on; a click puts it in the Spot box and
+  // goes to the grid, where the range and the group-by panel follow it. See
+  // SPEC.md, "Spot tree".
+  TITLE[TREE_VIEW] = "Spot tree";
+  const TREE_NOTE = [
+    "**Every hand**, shown or not: what they did, not what they held.",
+    "Click a spot for its range and group-by; a bar part for one choice.",
+    "Untracked spots (a bet into a limped pot) are skipped.",
+  ];
+  // A preflop raise named by the level it is made at; a call when nobody has raised is a limp.
+  const TREE_RAISE = { unopened: "raise", faced_open: "3-bet", faced_3bet_any: "4-bet", faced_4bet: "5-bet", faced_5bet: "6-bet" };
+  const TREE_COLOR = { fold: "fold", check: "check", call: "call", raise: "raise", bet: "raise" };
+  const TREE_KEY = [["fold", "fold"], ["check", "check"], ["call", "call / limp"], ["raise", "bet / raise"]];
+  const choiceWord = (n, d) => {
+    const spot = n.filter.split(",").at(-1); // a node's own spot term ends its filter
+    return spot === "unopened" && d === "call" ? "limp" : d === "raise" && TREE_RAISE[spot] || d;
+  };
+  // The ids toggled from their default: a seat starts open, every other node closed.
+  const treeToggled = new Set();
+
+  async function loadTree(quiet, live) {
+    const q = new URLSearchParams({ depth: state.tdepth, texture: state.tx, min_hands: TREE_MIN });
+    if (state.filter) q.set("filter", state.filter);
+    const key = `${state.player}|${q}`;
+    if (!quiet && state.tree?.key === key) return state.tree.data;
+    // Built from scratch it takes a second or two: say so while the card is dimmed.
+    const building = `${TITLE[TREE_VIEW]} · building…`;
+    if (!quiet) $("card-title").textContent = building;
+    try {
+      const data = await getJson(`/players/${encodeURIComponent(state.player)}/tree?` + q);
+      if (!("roots" in data)) throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+      if (live()) state.tree = { key, data };
+      return data;
+    } finally {
+      if ($("card-title").textContent === building) $("card-title").textContent = TITLE[state.dataView] || "";
+    }
+  }
+
+  function renderTreeTiles(d) {
+    setTileKeys("hands in this spot ›", "seats", "no seat, left out");
+    $("t-hands").textContent = d.hands;
+    $("t-known").textContent = d.roots.length;
+    $("t-cov").textContent = d.unplaced;
+    tileTip("t-cov", "dead-button hands have no seat, so no place in the tree");
+    $("t-raise").textContent = d.depth;
+    setRaiseKey("decisions deep", `spots under ${d.min_hands} hands cut`);
+  }
+
+  // A node's (or one choice's) terms onto the spot the tree was built on, then the
+  // grid: the range and the group-by panel for exactly those hands.
+  function drillTree(base, filter) {
+    hideTip();
+    const cur = (base || "").split(",").map(t => t.trim()).filter(Boolean);
+    $("filter").value = [...cur, ...filter.split(",").filter(t => !cur.includes(t))].join(",");
+    state.by = "preflop";
+    document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
+    apply();
+  }
+
+  function renderTree(d) {
+    $("tdepth").value = String(state.tdepth);
+    $("ttexture").setAttribute("aria-pressed", state.tx);
+    $("tmin").value = state.tmin;
+    const host = $("tree");
+    host.replaceChildren();
+    if (d.filter) {
+      const p = message("Tree of hands matching "); p.classList.add("tbase");
+      const code = document.createElement("code"); code.textContent = d.filter;
+      p.appendChild(code);
+      host.appendChild(p);
+    }
+    if (!d.roots.length) {
+      host.appendChild(message(d.hands ? `every seat has under ${d.min_hands} hands here` : "no hands in this spot"));
+      return;
+    }
+    const legend = document.createElement("div"); legend.className = "legend";
+    for (const [k, text] of TREE_KEY) {
+      const s = document.createElement("span");
+      const i = document.createElement("i"); i.style.background = `var(--tr-${k})`;
+      s.append(i, text); legend.appendChild(s);
+    }
+    host.appendChild(legend);
+
+    const rows = document.createElement("div"); rows.className = "trows";
+    for (const h of ["spot", "hands", "what they chose", ""]) {
+      const el = document.createElement("div"); el.className = "h" + (h === "hands" ? " num" : ""); el.textContent = h;
+      rows.appendChild(el);
+    }
+    const addNode = (n, depth, parent) => {
+      const seat = parent == null;
+      const kids = n.children.length > 0;
+      const open = kids && (seat ? !treeToggled.has(n.id) : treeToggled.has(n.id));
+      const row = document.createElement("div");
+      row.className = "trow" + (seat ? " seat" : "") + (n.hands < state.tmin ? " dim" : "");
+      row.style.setProperty("--d", depth);
+
+      const tl = document.createElement("div"); tl.className = "tl";
+      const caret = document.createElement("button"); caret.type = "button";
+      caret.className = "caret" + (kids ? "" : " leaf");
+      caret.textContent = open ? "▾" : "▸";
+      if (kids) {
+        caret.setAttribute("aria-expanded", open);
+        caret.title = open ? "close" : `open the ${n.children.length} spot${n.children.length === 1 ? "" : "s"} after this`;
+        caret.addEventListener("click", () => {
+          if (treeToggled.has(n.id)) treeToggled.delete(n.id); else treeToggled.add(n.id);
+          renderTree(d);
+        });
+      } else caret.tabIndex = -1;
+      tl.appendChild(caret);
+      const how = [parent && n.via ? `${choiceWord(parent, n.via)} →` : "", n.edge || ""].filter(Boolean).join(" ");
+      if (how) {
+        const edge = document.createElement("span"); edge.className = "edge"; edge.textContent = how + " ·";
+        edge.title = how;
+        tl.appendChild(edge);
+      }
+      const spot = document.createElement("span"); spot.className = "spot"; spot.textContent = n.label;
+      spot.tabIndex = 0; spot.setAttribute("role", "button");
+      spot.title = `${n.filter} · range and group-by for these ${n.hands} hands`;
+      spot.addEventListener("click", () => drillTree(d.filter, n.filter));
+      spot.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillTree(d.filter, n.filter); } });
+      tl.appendChild(spot);
+
+      const num = document.createElement("div"); num.className = "num"; num.textContent = n.hands;
+      num.title = seat ? `${n.hands} hands in this seat · ${n.ended} with no decision`
+        : `${n.hands} hands reached this spot · ${n.ended} stopped here`;
+      const stack = document.createElement("div"); stack.className = "stack";
+      const made = n.decisions.filter(x => x.hands > 0);
+      for (const x of made) {
+        const word = choiceWord(n, x.decision);
+        const seg = document.createElement("i");
+        seg.style.flex = `${x.hands} 1 0`;
+        seg.style.background = `var(--tr-${TREE_COLOR[x.decision] || "check"})`;
+        seg.tabIndex = 0; seg.setAttribute("role", "button");
+        seg.setAttribute("aria-label", `${word}: ${x.hands} of ${n.hands}, ${fmtPct(x.pct)}`);
+        const tip = [[word, `${x.hands} of ${n.hands}`], ["share", fmtPct(x.pct)], ["click", "range for this choice"]];
+        seg.addEventListener("pointermove", (ev) => showLineTip(ev, n.label, tip));
+        seg.addEventListener("pointerleave", hideTip);
+        seg.addEventListener("focus", (ev) => showLineTip(ev, n.label, tip));
+        seg.addEventListener("blur", hideTip);
+        seg.addEventListener("click", () => drillTree(d.filter, x.filter));
+        seg.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillTree(d.filter, x.filter); } });
+        stack.appendChild(seg);
+      }
+      if (!seat && !made.length) { stack.classList.add("none"); stack.textContent = "no choice read"; }
+      const txt = document.createElement("div"); txt.className = "txt";
+      txt.textContent = seat ? (n.ended ? `${n.ended} with no decision` : "")
+        : n.decisions.map(x => `${choiceWord(n, x.decision)} ${x.pct > 0 && x.pct < 0.5 ? "<1" : Math.round(x.pct ?? 0)}%`).join(" · ");
+      row.append(tl, num, stack, txt);
+      rows.appendChild(row);
+      if (open) for (const c of n.children) addNode(c, depth + 1, n);
+    };
+    for (const r of d.roots) addNode(r, 0, null);
+    host.appendChild(rows);
+    const hint = message(`dimmed: under ${state.tmin} hands · ${d.notes?.[0] || ""}`);
+    hint.classList.add("note"); hint.style.margin = "4px 0 0";
+    host.appendChild(hint);
+  }
+
+  $("tdepth").addEventListener("change", () => { state.tdepth = Number($("tdepth").value) || TREE_DEPTH; writeUrl(); load(); });
+  $("ttexture").addEventListener("click", () => { state.tx = !state.tx; writeUrl(); load(); });
+  // Dimming is the page's own: the tree on show is drawn again, not asked for.
+  $("tmin").addEventListener("change", () => {
+    const n = Number($("tmin").value);
+    state.tmin = Number.isInteger(n) && n >= 0 ? n : TREE_DIM;
+    writeUrl();
+    if (state.data && state.dataView === TREE_VIEW) render();
+  });
+
+  // ---- made hands by street (Made hands › Streets) ------------------------------
+  // GET /players/{alias}/streets: the shown hands' flop holding against their river
+  // holding, and for a log's owner where each flop holding went. Every cell carries
+  // the filter that finds its hands; a click adds it and lists them. See SPEC.md,
+  // "Holdings by street".
+  const STREET_PATHS = [["fold_flop", "fold F"], ["fold_turn", "fold T"], ["fold_river", "fold R"],
+    ["won_flop", "won F"], ["won_turn", "won T"], ["won_river", "won R"], ["showdown", "showdown"]];
+  // A count tinted by its share of the row: the deeper the blue, the more of the row.
+  function shareCell(td, share) {
+    const hex = ramp(BLUE)[Math.min(6, Math.floor(share * 7 - 1e-9))];
+    td.style.background = hex;
+    const k = inkClass(hex); if (k) td.classList.add(k);
+  }
+  function streetCell(tr, c, of, title, { tint = true, small = null } = {}) {
+    const td = document.createElement("td");
+    if (!c || !c.hands) { td.className = "zero"; td.textContent = "·"; tr.appendChild(td); return; }
+    td.className = "c"; td.textContent = c.hands;
+    if (small) { const s = document.createElement("small"); s.textContent = small; td.appendChild(s); }
+    const share = of ? c.hands / of : 0;
+    if (tint && share > 0) shareCell(td, share);
+    td.title = `${title}: ${c.hands} hands${of ? ` · ${fmtPct(100 * share)} of the row` : ""} · net ${fmtNet(c.net_bb)}`
+      + (c.filter ? ` · ${c.filter}` : "");
+    if (c.filter) {
+      td.tabIndex = 0; td.setAttribute("role", "button");
+      td.addEventListener("click", () => drillLine(c.filter, title));
+      td.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); drillLine(c.filter, title); } });
+    }
+    tr.appendChild(td);
+  }
+  function streetMatrix(m, rows, label) {
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    const th = (text, title) => { const el = document.createElement("th"); el.textContent = text; if (title) el.title = title; head.appendChild(el); };
+    th(`${rows} ↓ · river →`);
+    for (const c of m.totals) th(label[c.river]);
+    th("all");
+    if (rows === "flop") th("reach river", "of the shown hands that saw the flop with it; runs high, shown hands went far");
+    const thead = document.createElement("thead"); thead.appendChild(head); t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    for (const r of m.rows) {
+      const tr = document.createElement("tr");
+      const lab = document.createElement("td"); lab.textContent = r.label; tr.appendChild(lab);
+      for (const c of r.cells) streetCell(tr, c, r.hands, `${r.label} on the ${rows} → ${label[c.river]} on the river`);
+      streetCell(tr, r, 0, `${r.label} on the ${rows}, to the river`, { tint: false });
+      if (rows === "flop") {
+        const td = document.createElement("td"); td.textContent = fmtPct(r.reach_river_pct);
+        td.title = `${r.hands} of ${r.saw_flop} shown hands with ${r.label} on the flop`;
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+    const tot = document.createElement("tr"); tot.className = "total";
+    const lab = document.createElement("td"); lab.textContent = "all"; tot.appendChild(lab);
+    for (const c of m.totals) streetCell(tot, c, 0, `${label[c.river]} on the river`, { tint: false });
+    const all = document.createElement("td"); all.textContent = m.hands; tot.appendChild(all);
+    if (rows === "flop") {
+      const td = document.createElement("td"); td.textContent = fmtPct(m.saw_flop ? 100 * m.hands / m.saw_flop : null);
+      tot.appendChild(td);
+    }
+    tb.appendChild(tot);
+    t.appendChild(tb);
+    return t;
+  }
+
+  function renderStreets(d) {
+    const host = $("streets");
+    host.replaceChildren();
+    const s = d.streets;
+    if (!s) return; // the Mix tab's data, with the Streets tab's on its way
+    if (s.error) { host.appendChild(message(s.error, "err")); return; }
+    const label = Object.fromEntries(s.groups.map(g => [g.key, g.label]));
+    const h3 = (text, small, title) => {
+      const h = document.createElement("h3"); h.textContent = text;
+      if (small) { const sm = document.createElement("small"); sm.textContent = small; h.appendChild(sm); }
+      if (title) h.title = title;
+      host.appendChild(h);
+    };
+    const m = s.shown_matrix;
+    h3("Shown hands: flop → river", `${m.hands} reached the river · click a cell to add it`);
+    host.appendChild(m.hands ? streetMatrix(m, "flop", label) : message("no shown hand in this spot reached the river"));
+    const note = document.createElement("p"); note.className = "snote"; note.textContent = s.notes.join(" ");
+    host.appendChild(note);
+
+    const hf = s.hero_funnel;
+    if (!hf) return;
+    h3("Their own logs: flop → outcome", `${hf.flops} flops`, "the logs they recorded: every card known, no showdown lean");
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    const names = Object.fromEntries(hf.rows[0]?.paths.map(p => [p.key, p.label]) || []);
+    const cut = hf.rows.some(r => r.paths.some(p => p.key === "other" && p.hands));
+    for (const [k, text] of [["", "flop"], ["", "flops"], ...STREET_PATHS, ...(cut ? [["other", "cut short"]] : [])]) {
+      const el = document.createElement("th"); el.textContent = text; if (names[k]) el.title = names[k];
+      head.appendChild(el);
+    }
+    const thead = document.createElement("thead"); thead.appendChild(head); t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    for (const r of hf.rows) {
+      const tr = document.createElement("tr");
+      const lab = document.createElement("td"); lab.textContent = r.label; tr.appendChild(lab);
+      streetCell(tr, r, 0, `${r.label} on the flop`, { tint: false });
+      const by = Object.fromEntries(r.paths.map(p => [p.key, p]));
+      for (const [k] of [...STREET_PATHS, ...(cut ? [["other"]] : [])]) {
+        const p = by[k];
+        streetCell(tr, p, r.hands, `${r.label} on the flop · ${p?.label ?? k}`, { small: p?.hands ? fmtNet(p.net_bb) : null });
+      }
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    host.appendChild(t);
+    h3("Their own logs: turn → river", `${hf.turn_river.hands} reached the river`);
+    host.appendChild(hf.turn_river.hands ? streetMatrix(hf.turn_river, "turn", label) : message("none reached the river"));
+  }
+
+  document.querySelectorAll("[data-made]").forEach(b => b.addEventListener("click", () => {
+    if (state.made === b.dataset.made) return;
+    state.made = b.dataset.made; writeUrl(); closeHands(); load();
+  }));
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -3247,12 +3646,14 @@
     else if (view === "sizing") renderSizingTiles(d);
     else if (view === LINES_VIEW) renderLinesTiles(d);
     else if (strength) renderStrengthTiles(d);
+    else if (view === TREE_VIEW) renderTreeTiles(d);
     else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
     setNote(review ? REVIEW_NOTE[view]
       : view === "sizing" ? KIND_NOTE[d.kind]
       : view === LINES_VIEW ? LINES_NOTE
       : strength ? SP_NOTE
+      : view === TREE_VIEW ? TREE_NOTE
       : (d.filter || "").split(",").some(t => JAM_TERM.test(t.trim())) ? [...RANGE_NOTE, JAM_NOTE] : RANGE_NOTE,
       (view === "preflop" || view === "made") && isLimpReraise(d.filter) ? LIMP_NOTE : []);
     $("colorseg").classList.toggle("hidden", view !== "preflop");
@@ -3275,6 +3676,15 @@
     $("timing").classList.toggle("hidden", view !== "timing");
     $("shows").classList.toggle("hidden", view !== "shows");
     $("bounty").classList.toggle("hidden", view !== "bounties");
+    // The spot tree and the made view's Streets tab draw into boxes of their own,
+    // with no grid or table to switch to.
+    const madeStreets = view === "made" && state.made === "streets";
+    $("tree").classList.toggle("hidden", view !== TREE_VIEW);
+    $("treectl").classList.toggle("hidden", view !== TREE_VIEW);
+    $("madeseg").classList.toggle("hidden", view !== "made");
+    $("streets").classList.toggle("hidden", !madeStreets);
+    document.querySelectorAll("[data-made]").forEach(b => b.setAttribute("aria-pressed", b.dataset.made === state.made));
+    if (view === TREE_VIEW || madeStreets) for (const id of ["tabletoggle", "table", "bars"]) $(id).classList.add("hidden");
     const gbOn = GB_VIEWS.includes(view) && !EMBED;
     $("groupby").classList.toggle("hidden", !gbOn);
     $("duo").classList.toggle("two", gbOn);
@@ -3290,6 +3700,8 @@
     if (view === "shows") { renderShows(d); return; }
     if (view === "bounties") { renderBounties(d); return; }
     if (view === LINES_VIEW) { renderLines(d, table); return; }
+    if (view === TREE_VIEW) { renderTree(d); return; }
+    if (madeStreets) { renderStreets(d); return; }
     if (view === "preflop") renderGrid(d);
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);
     else renderSizing(d);
