@@ -1568,7 +1568,9 @@ and only when there are at least `MIN_SHOWN` = 5 of them:
    (one or two gaps, not both broadway, no ace), offsuit broadways (both T+),
    offsuit aces (A2o–A9o). A class in none moves alone.
 3. The combos moved in are taken back from the bottom of the range, weakest
-   class first, never from a shown or moved class, so the range keeps its size.
+   class first, never from a moved class, and from a shown class only once no
+   other is left, so the range keeps its size. It grows only when the moved
+   classes alone outgrow it.
 
 `calibration` lists every shown class: `{class, shown, outside, family, moved}`;
 `demoted` lists the combos taken back. Under five shown hands nothing moves and

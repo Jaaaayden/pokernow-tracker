@@ -143,6 +143,16 @@ def test_calibration_moves_only_past_the_threshold():
     assert not shown & {d["class"] for d in out["demoted"]}
 
 
+def test_the_range_keeps_its_size_when_every_class_in_it_was_shown():
+    """With nothing unshown left to give back, the weakest shown classes go."""
+    cells = est.top_fill(5)
+    shown = {k: 1 for k in cells} | {"72o": 1}
+    out, _, demoted, moved = est.calibrate(dict(cells), est.Counter(shown))
+    assert moved and out["72o"] == 1
+    assert est.combo_count(out) == pytest.approx(est.combo_count(cells))
+    assert demoted and all(d["class"] in shown for d in demoted)
+
+
 def test_a_shown_class_pulls_its_family_up():
     decisions = ["raise"] * 20 + ["fold"] * 80
     shown = {0: "5h4h", 1: "AsAd", 2: "KsKd", 3: "QsQd", 4: "JsJd"}

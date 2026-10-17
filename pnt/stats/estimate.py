@@ -288,19 +288,22 @@ def calibrate(cells: dict[str, float], shown: Counter, *, floor: int = 0) -> tup
     added = sum(combos_of(m) * (1 - out.get(m, 0.0)) for m in moved)
     for m in moved:
         out[m] = 1.0
-    demoted: list[dict] = []
+    taken: Counter = Counter()
     left = added
-    for label in reversed(HAND_RANKING):
-        if left <= 1e-9:
-            break
-        if label in moved or label in shown or out.get(label, 0) <= 1e-9:
-            continue
-        c = combos_of(label)
-        have = out[label] * c
-        take = min(have, left)
-        out[label] = (have - take) / c
-        left -= take
-        demoted.append({"class": label, "combos": round(take, 2)})
+    # Weakest first, sparing the shown classes while anything else is left.
+    for spare in (shown, ()):
+        for label in reversed(HAND_RANKING):
+            if left <= 1e-9:
+                break
+            if label in moved or label in spare or out.get(label, 0) <= 1e-9:
+                continue
+            c = combos_of(label)
+            have = out[label] * c
+            take = min(have, left)
+            out[label] = (have - take) / c
+            left -= take
+            taken[label] += take
+    demoted = [{"class": k, "combos": round(v, 2)} for k, v in sorted(taken.items(), key=lambda kv: -_INDEX[kv[0]])]
     out = {k: w for k, w in out.items() if w > 1e-9}
     rows = [
         {

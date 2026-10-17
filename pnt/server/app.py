@@ -1991,7 +1991,7 @@ def player_estimate(
     _predicate(conn, filter)  # a bad term is the parser's 400, in its words
     facts = _player_facts(conn, alias, game)
     try:
-        out = estimate(facts, filter, display_names(conn), _tag_keys(conn))
+        out = estimate(facts, filter, display_names(conn), tag_resolver(conn))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"player": alias, "filter": filter, **out}
@@ -2010,7 +2010,7 @@ def player_board(
     from pnt.stats.estimate import board_report
 
     conn = db()
-    names, tags = display_names(conn), _tag_keys(conn)
+    names, tags = display_names(conn), tag_resolver(conn)
     pred = _predicate(conn, filter)
     facts = _player_facts(conn, alias, game)
     spot = [f for f in facts if pred(f)] if pred is not None else facts
