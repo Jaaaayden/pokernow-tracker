@@ -41,7 +41,9 @@
     margin: 0; background: var(--page); color: var(--ink);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 960px; margin: 0 auto; padding: 20px 20px 48px; }
+  /* Fluid: the page takes the window, with gutters that grow with it. What would
+     balloon -- the grid's cells, the notes -- caps itself instead. */
+  main { max-width: none; margin: 0; padding: 20px clamp(12px, 2vw, 28px) 48px; }
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
 
@@ -126,7 +128,9 @@
   .card-head .ctl { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
   .grid-wrap { overflow-x: auto; }
-  .grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; background: var(--surface); min-width: 520px; }
+  /* At most 64px a cell: wider, the 169 hands stop reading as one chart. */
+  .grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; background: var(--surface); min-width: 520px;
+    max-width: calc(13 * 64px + 12 * 2px); }
   .cell {
     aspect-ratio: 1 / 1; border-radius: 4px; padding: 4px 5px; position: relative;
     display: flex; flex-direction: column; justify-content: space-between;
@@ -329,10 +333,9 @@
 
   /* --- side by side: the list on the left, the replay on the right ---
      The replay pane sticks to the top of the window and scrolls on its own, so
-     clicking down a list never moves the page. The page widens to make room.
-     Narrow (the extension side panel, a small window) it stacks again. The
-     review views and the drill-down list under the charts share the one switch. */
-  body.wide main { max-width: 1400px; }
+     clicking down a list never moves the page. Narrow (the extension side panel,
+     a small window) it stacks again. The review views and the drill-down list
+     under the charts share the one switch. */
   #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
   #review.split #review-count, #hands.split .card-head { grid-column: 1 / -1; }
   #review.split .hand-rows.tall, #hands.split .hand-rows { max-height: calc(100vh - 140px); }
@@ -340,7 +343,6 @@
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); overflow-y: auto; }
   #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   @media (max-width: 900px) {
-    body.wide main { max-width: 960px; }
     #review.split, #hands.split { display: block; }
     #review.split .hand-rows.tall { max-height: 560px; }
     #hands.split .hand-rows { max-height: 360px; }
@@ -596,6 +598,51 @@
   #funnel .fill { position: relative; height: 14px; background: var(--mid); border-radius: 4px; }
   #funnel .fill i { position: absolute; left: 0; top: 0; height: 100%; min-width: 1px; background: var(--accent); border-radius: 4px; }
   #funnel tr.sub td { color: var(--ink-2); }
+
+  /* --- group by, beside the grid ---
+     The chart card and the Group by card side by side once the window has room
+     for both, the grid at its full size on the left; stacked below that. Only the
+     preflop and made views have the panel, and the HUD's embed never does. */
+  /* The page is fluid, so on a wide window the bars, tables and hand lists keep a
+     reading width inside their card rather than spreading figures a screen apart. */
+  .bars, .lrows, .bv-rows, #table table, .foldeq table, .sp-wrap table,
+  #results table, #tilt table, #timing table, #shows table, #bounty table { max-width: 1100px; }
+  #review:not(.split) .hand-rows, #hands:not(.split) .hand-rows { max-width: 1280px; }
+  .duo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (min-width: 1500px) { .duo.two { grid-template-columns: minmax(0, 920px) minmax(440px, 1fr); } }
+  .gb .card-head small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .gb-ctl { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  .gb-ctl label { display: inline-flex; gap: 6px; align-items: center; }
+  .gb-ctl input[type=number] { width: 5em; }
+  .gb-body { overflow-x: auto; }
+  .gb-body.loading { opacity: .45; transition: opacity .15s; }
+  .gb table { margin-top: 8px; }
+  .gb th.sort { cursor: pointer; user-select: none; white-space: nowrap; }
+  .gb th.sort:hover { color: var(--ink); }
+  .gb td.lab { white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
+  .gb td.lab .add { color: var(--accent); margin-right: 6px; }
+  .gb td small { color: var(--muted); margin-left: 3px; }
+  .gb tr.row { cursor: pointer; }
+  .gb tr.row:hover td, .gb tr.row:focus-visible td { background: var(--mid); }
+  .gb tr.row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .gb tr.grp td { font-weight: 600; padding-top: 9px; }
+  .gb tr.sub td.lab { padding-left: 22px; color: var(--ink-2); }
+  .gb tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
+  .gb td.mix { width: 26%; min-width: 90px; }
+  .gb-mix { display: flex; gap: 2px; height: 12px; }
+  .gb-mix i { display: block; height: 100%; min-width: 3px; }
+  .gb-mix i:first-child { border-radius: 3px 0 0 3px; }
+  .gb-mix i:last-child { border-radius: 0 3px 3px 0; }
+  .gb-mix i:only-child { border-radius: 3px; }
+  .gb-mix.none { box-shadow: inset 0 0 0 1px var(--grid); border-radius: 3px; }
+  .gb-foot { color: var(--muted); font-size: 12px; margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .gb-foot i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  @media (max-width: 600px) {
+    .gb-ctl { font-size: 11px; gap: 4px 8px; }
+    .gb-foot { font-size: 10px; }
+    .gb td small { display: none; }
+    .gb td.mix { min-width: 60px; }
+  }
 </style>
 </head>
 <body>
@@ -669,6 +716,7 @@
   <div class="strip hidden" id="strip"></div>
   <div class="err hidden" id="err"></div>
 
+  <div class="duo" id="duo">
   <section class="card" id="card">
     <div class="card-head">
       <h2 id="card-title">Starting hands</h2>
@@ -737,6 +785,27 @@
       <div class="replay hidden" id="review-replay"></div>
     </div>
   </section>
+
+  <!-- The spot split by one or two dimensions (GET /groupby). A row adds its term
+       to the spot. -->
+  <section class="card gb hidden" id="groupby" aria-live="polite">
+    <div class="card-head">
+      <h2>Group by <small id="gb-sub"></small></h2>
+      <span class="seg" id="gb-scope" role="group" aria-label="Whose hands">
+        <button type="button" data-gbscope="player" aria-pressed="true" title="this player's hands">player</button>
+        <button type="button" data-gbscope="pool" aria-pressed="false" title="every player's hands in the spot">Pool</button>
+      </span>
+    </div>
+    <div class="gb-ctl">
+      <label>Rows <select id="gb-by" aria-label="Group rows by"></select></label>
+      <label>then by <select id="gb-by2" aria-label="Then by"></select></label>
+      <label title="the street the made-hand mix reads its board on">Mix on
+        <select id="gb-street"><option value="flop">flop</option><option value="turn">turn</option><option value="river">river</option></select></label>
+      <label title="hide rows with fewer hands (min=20)">Min <input id="gb-min" type="number" min="0" step="1" placeholder="0"></label>
+    </div>
+    <div class="gb-body" id="gb-body"></div>
+  </section>
+  </div>
 
   <section class="card hidden" id="hands" aria-live="polite">
     <div class="card-head">
@@ -1045,6 +1114,11 @@
   const MANUAL_VIEW = "manual";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === MANUAL_VIEW;
   const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, MANUAL_VIEW, "tilt", "timing", "shows", "bounties", "results"];
+  // The views with the Group by panel, and each one's rows when none is picked.
+  const GB_VIEWS = ["preflop", "made"];
+  const GB_DEFAULT = { preflop: "position", made: "made_flop" };
+  // Embedded in the HUD's side panel there is no room for it, nor a need.
+  const EMBED = parent !== window;
   const REVIEW_KINDS = {
     review: [["missed_bluff", "Missed bluff"], ["missed_value", "Missed value"], ["failed_bluff", "Failed bluff"]],
     beats: [["suckout", "Suckout"], ["cooler_pre", "Preflop cooler"], ["cooler_post", "Postflop cooler"]],
@@ -1089,6 +1163,12 @@
     state.bluffScope = q.get("scope") === "pool" ? "pool" : "player";
     state.floor = SP_FLOORS.some(([f]) => f === q.get("floor")) ? q.get("floor") : "set";
     state.hand = /^\d+$/.test(q.get("hand") || "") ? Number(q.get("hand")) : null; // opened once, at boot
+    // The group-by panel's: a dimension the server does not know falls back to the view's own.
+    state.gb = /^\w+$/.test(q.get("gb") || "") ? q.get("gb") : null;
+    state.gb2 = /^\w+$/.test(q.get("gb2") || "") ? q.get("gb2") : "";
+    state.gbStreet = ["turn", "river"].includes(q.get("gbs")) ? q.get("gbs") : "flop";
+    state.gbMin = /^\d+$/.test(q.get("gbmin") || "") ? Number(q.get("gbmin")) : 0;
+    state.gbScope = q.get("gbp") === "pool" ? "pool" : "player";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -1100,6 +1180,13 @@
     if (state.by === "lines") { if (state.lmode !== "own") q.set("lmode", state.lmode); if (state.lstreet) q.set("lstreet", state.lstreet); }
     if (state.by === "bluffs" && state.bluffScope === "pool") q.set("scope", "pool");
     if (state.by === "strength") { q.set("street", state.street); q.set("floor", state.floor); }
+    if (GB_VIEWS.includes(state.by)) {
+      if (state.gb) q.set("gb", state.gb);
+      if (state.gb2) q.set("gb2", state.gb2);
+      if (state.gbStreet !== "flop") q.set("gbs", state.gbStreet);
+      if (state.gbMin) q.set("gbmin", state.gbMin);
+      if (state.gbScope === "pool") q.set("gbp", "pool");
+    }
     if (isListView(state.by)) {
       if (state.order && state.order !== ORDERS[state.by][0]) q.set("order", state.order);
       if (state.hide.size) q.set("hide", [...state.hide].join(","));
@@ -1872,9 +1959,10 @@
     setNote(BV_NOTE);
     // Every other view's parts: whichever view came before, it leaves nothing behind.
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
-      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty"]) {
+      "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby"]) {
       $(id).classList.add("hidden");
     }
+    $("duo").classList.remove("two");
     $("card-title").textContent = TITLE.bluffs;
     applyLayout();
 
@@ -2900,6 +2988,248 @@
     wrap.appendChild(sb);
   }
 
+  // ---- group by ----------------------------------------------------------------
+  // GET /groupby: the spot's hands split by one dimension, or two nested, beside
+  // the grid. The dimensions come from the server's own catalog. Every row carries
+  // the term that finds its hands, and a click adds it to the spot. See SPEC.md,
+  // "Group by". The pool scope reads every player's hands and offers `player`.
+  const GB_MIX = [["two_pair+", "two pair+", () => ramp(BLUE)[5]], ["top_pair+", "top pair+", () => ramp(BLUE)[2]],
+    ["weak_pair", "weak pair", () => "var(--axis)"], ["draw", "draw", () => ramp(RED)[2]], ["air", "air", () => ramp(RED)[5]]];
+  const GB_MIX_OF = Object.fromEntries(GB_MIX.map(([g, text, color]) => [g, { text, color }]));
+  // [key, header, tip, sort value]: the label column sorts back to the server's order.
+  const GB_COLS = [
+    ["hands", "hands", "hands in the spot in this row", (c) => c.hands],
+    ["shown", "shown", "hands with their cards known", (c) => c.shown],
+    ["net", "net bb", "big blinds won or lost", (c) => c.net_bb],
+    ["bb100", "bb/100", "bb won per 100 complete hands; hover a value for its 95% interval", (c) => c.bb_per_100],
+    ["vsfold", "vs fold", "bb/100 against folding every hand; 0 = no better than folding", (c) => c.bb_per_100_vs_fold],
+    ["mix", "made", "", null],
+  ];
+  // The request on show: its key, so an unchanged state never asks again, and its
+  // controller, so a newer request aborts it. Each scope's catalog, once seen.
+  const gb = { key: null, ctl: null, timer: 0, data: null, dims: { player: null, pool: null }, sort: null };
+  const gbScope = () => state.gbScope === "pool" ? "pool" : "player";
+  const gbDims = () => {
+    const a = state.gb || GB_DEFAULT[state.by] || "position";
+    return state.gb2 && state.gb2 !== a ? [a, state.gb2] : [a];
+  };
+  const scheduleGroupby = () => { clearTimeout(gb.timer); gb.timer = setTimeout(loadGroupby, 120); };
+
+  async function loadGroupby(retried = false) {
+    if (!GB_VIEWS.includes(state.by) || EMBED || !state.player) return;
+    const scope = gbScope();
+    // A dimension the scope's catalog lacks (`player` taken back to one player)
+    // goes back to the view's own rows.
+    const known = gb.dims[scope]?.map(d => d.name);
+    if (known) {
+      if (state.gb && !known.includes(state.gb)) state.gb = null;
+      if (state.gb2 && !known.includes(state.gb2)) state.gb2 = "";
+    }
+    const q = new URLSearchParams({ by: gbDims().join(","), street: state.gbStreet });
+    if (scope === "player") q.set("player", state.player);
+    if (state.filter) q.set("filter", state.filter);
+    if (state.gbMin) q.set("min", state.gbMin);
+    const key = q.toString();
+    paintGroupbyControls();
+    if (key === gb.key) return; // on show, or on its way
+    gb.ctl?.abort();
+    const ctl = gb.ctl = new AbortController();
+    gb.key = key;
+    $("gb-body").classList.add("loading");
+    try {
+      const r = await fetch("/groupby?" + q, { signal: ctl.signal });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (r.status === 404 && body.detail === "Not Found") {
+          throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+        }
+        // A dimension from the URL this scope does not have, before its catalog is known.
+        if (r.status === 400 && !retried && !known && (state.gb || state.gb2)) {
+          state.gb = null; state.gb2 = ""; gb.key = null; writeUrl();
+          return loadGroupby(true);
+        }
+        throw new Error(body.detail || `${r.status} ${r.statusText}`);
+      }
+      if (ctl !== gb.ctl) return;
+      gb.dims[scope] = body.dims;
+      gb.data = body;
+      paintGroupbyControls();
+      renderGroupby();
+    } catch (e) {
+      if (ctl !== gb.ctl || e.name === "AbortError") return;
+      gb.key = null; // asked again next time
+      gb.data = null;
+      $("gb-body").replaceChildren(message(String(e.message || e), "err"));
+    } finally {
+      if (ctl === gb.ctl) $("gb-body").classList.remove("loading");
+    }
+  }
+
+  // The selects, from the scope's catalog; before it is known, the choices alone.
+  function paintGroupbyControls() {
+    const scope = gbScope();
+    const [a, b = ""] = gbDims();
+    const dims = gb.dims[scope] || [...new Set([a, b].filter(Boolean))].map(name => ({ name, label: name }));
+    const fill = (sel, opts, value) => {
+      sel.replaceChildren(...opts.map(([v, text]) => Object.assign(document.createElement("option"), { value: v, textContent: text })));
+      sel.value = value;
+    };
+    fill($("gb-by"), dims.map(d => [d.name, d.label]), a);
+    fill($("gb-by2"), [["", "—"], ...dims.filter(d => d.name !== a).map(d => [d.name, d.label])], b);
+    $("gb-street").value = state.gbStreet;
+    $("gb-min").value = state.gbMin || "";
+    document.querySelectorAll("[data-gbscope]").forEach(x => {
+      x.setAttribute("aria-pressed", x.dataset.gbscope === scope);
+      if (x.dataset.gbscope === "player") x.textContent = state.player || "player";
+    });
+  }
+
+  // A row's click: its term onto the spot, as a chip adds one. A pool row of
+  // `player` names whose hands it is instead, so it switches the chart to them.
+  function pickGroupRow(c) {
+    if (c.player && [...$("player").options].some(o => o.value === c.player)) {
+      $("player").value = c.player;
+      state.gbScope = "player";
+      if (state.gb === "player") state.gb = null;
+      if (state.gb2 === "player") state.gb2 = "";
+    }
+    if (c.term) {
+      const cur = terms();
+      $("filter").value = [...cur, ...c.term.split(",").filter(t => !cur.includes(t))].join(",");
+    }
+    apply();
+  }
+
+  function renderGroupby() {
+    const d = gb.data;
+    const body = $("gb-body");
+    if (!d) return;
+    const pool = d.player == null;
+    $("gb-sub").textContent = `${pool ? "the pool" : d.player} · ${d.filter || "all hands"}`;
+    if (!d.cells.length) {
+      body.replaceChildren(message(d.hidden.cells
+        ? `every row has under ${d.min} hands (${d.hidden.cells} rows, ${d.hidden.hands} hands)` : "no hands in this spot"));
+      return;
+    }
+    const two = d.by.length === 2;
+    const t = document.createElement("table");
+    const head = document.createElement("tr");
+    const sortTh = (text, tip, key) => {
+      const th = document.createElement("th");
+      th.className = "sort";
+      const on = gb.sort?.key === key || (key == null && !gb.sort);
+      th.textContent = text + (on && key != null ? (gb.sort.dir < 0 ? " ▾" : " ▴") : "");
+      if (tip) th.title = tip;
+      th.addEventListener("click", () => {
+        // Most first, then least first; the label column goes back to the order served.
+        gb.sort = key == null ? null : gb.sort?.key === key && gb.sort.dir < 0 ? { key, dir: 1 } : { key, dir: -1 };
+        renderGroupby();
+      });
+      return th;
+    };
+    head.appendChild(sortTh(d.by.map(x => x.label).join(" › "), "click a row to add it to the spot", null));
+    for (const [key, text, tip, val] of GB_COLS) {
+      if (val) { head.appendChild(sortTh(text, tip, key)); continue; }
+      const th = document.createElement("th");
+      th.textContent = `${text} (${d.street})`;
+      th.title = `their made hand on the ${d.street}, of the shown hands: ${GB_MIX.map(([, text]) => text).join(" · ")}`;
+      head.appendChild(th);
+    }
+    const thead = document.createElement("thead"); thead.appendChild(head); t.appendChild(thead);
+
+    const cellRow = (c, label, cls) => {
+      const tr = document.createElement("tr");
+      tr.className = cls;
+      const lab = document.createElement("td"); lab.className = "lab";
+      if (cls !== "total") {
+        const add = document.createElement("span"); add.className = "add"; add.textContent = "⊕"; add.setAttribute("aria-hidden", "true");
+        lab.appendChild(add);
+      }
+      lab.append(label);
+      tr.appendChild(lab);
+      const td = (text, small, title) => {
+        const el = document.createElement("td"); el.textContent = text;
+        if (small) { const s = document.createElement("small"); s.textContent = small; el.appendChild(s); }
+        if (title) el.title = title;
+        tr.appendChild(el);
+      };
+      const ci = (v, h) => v == null || h == null ? "" : `95%: ${(v - h).toFixed(1)} to ${(v + h).toFixed(1)} over ${c.bb_hands} complete hands`;
+      td(String(c.hands));
+      td(String(c.shown), c.hands ? `${Math.round(100 * c.shown / c.hands)}%` : "");
+      td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1));
+      td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
+        ci(c.bb_per_100, c.bb_per_100_ci));
+      td(c.bb_per_100_vs_fold == null ? "–" : c.bb_per_100_vs_fold.toFixed(1), "", ci(c.bb_per_100_vs_fold, c.bb_per_100_vs_fold_ci));
+      const mixTd = document.createElement("td"); mixTd.className = "mix";
+      const bar = document.createElement("div"); bar.className = "gb-mix";
+      if (!c.mix.known) bar.classList.add("none");
+      for (const g of c.mix.groups) {
+        const i = document.createElement("i");
+        i.style.width = g.pct + "%";
+        i.style.background = (GB_MIX_OF[g.group]?.color ?? (() => "var(--axis)"))();
+        bar.appendChild(i);
+      }
+      const tipRows = [...c.mix.groups.map(g => [GB_MIX_OF[g.group]?.text ?? g.group, `${g.n} · ${fmtPct(g.pct)}`]),
+        ["known", `${c.mix.known} of ${c.hands}`]];
+      bar.addEventListener("mousemove", (ev) => showLineTip(ev, `${label} · ${c.mix.street}`, tipRows));
+      bar.addEventListener("mouseleave", hideTip);
+      mixTd.appendChild(bar);
+      tr.appendChild(mixTd);
+      if (cls !== "total") {
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        const what = c.term ? `adds ${c.term} to the spot` : `switches the chart to ${c.player}`;
+        tr.title = `${c.keys.join(" · ")}: ${c.hands} hands · ${what}`;
+        tr.addEventListener("click", () => pickGroupRow(c));
+        tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); pickGroupRow(c); } });
+      }
+      return tr;
+    };
+    const val = gb.sort && GB_COLS.find(([k]) => k === gb.sort.key)[3];
+    const sorted = (cells) => !val ? cells : [...cells].sort((x, y) => {
+      const a = val(x), b = val(y);
+      if (a == null || b == null) return (a == null) - (b == null); // blanks last
+      return gb.sort.dir * (a - b);
+    });
+    const tb = document.createElement("tbody");
+    if (!two) {
+      for (const c of sorted(d.cells)) tb.appendChild(cellRow(c, c.keys[0], "row"));
+    } else {
+      // Row groups, not a pivot: each first-dimension bucket, the second under it.
+      const groups = new Map();
+      for (const c of d.cells) {
+        if (!groups.has(c.keys[0])) groups.set(c.keys[0], []);
+        groups.get(c.keys[0]).push(c);
+      }
+      for (const [label, cells] of groups) {
+        const tr = document.createElement("tr"); tr.className = "grp";
+        const td = document.createElement("td"); td.colSpan = GB_COLS.length + 1;
+        td.textContent = label;
+        tr.appendChild(td);
+        tb.appendChild(tr);
+        for (const c of sorted(cells)) tb.appendChild(cellRow(c, c.keys[1], "row sub"));
+      }
+    }
+    t.appendChild(tb);
+    const tf = document.createElement("tbody");
+    tf.appendChild(cellRow(d.total, "all", "total"));
+    t.appendChild(tf);
+
+    const foot = document.createElement("p"); foot.className = "gb-foot";
+    for (const [g, text, color] of GB_MIX) {
+      const s = document.createElement("span");
+      const i = document.createElement("i"); i.style.background = color();
+      s.append(i, text);
+      s.title = g;
+      foot.appendChild(s);
+    }
+    const bits = [];
+    if (d.skipped) bits.push(`${d.skipped} hands in no row`);
+    if (d.hidden.cells) bits.push(`${d.hidden.cells} rows under ${d.min} hands hidden (${d.hidden.hands} hands)`);
+    if (bits.length) foot.append(bits.join(" · "));
+    body.replaceChildren(t, foot);
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -2945,6 +3275,10 @@
     $("timing").classList.toggle("hidden", view !== "timing");
     $("shows").classList.toggle("hidden", view !== "shows");
     $("bounty").classList.toggle("hidden", view !== "bounties");
+    const gbOn = GB_VIEWS.includes(view) && !EMBED;
+    $("groupby").classList.toggle("hidden", !gbOn);
+    $("duo").classList.toggle("two", gbOn);
+    if (gbOn) scheduleGroupby();
     applyLayout();
     if (strength) { renderStrength(d); return; }
     if (view === SESSION_VIEW) { renderSession(d); return; }
@@ -3779,7 +4113,6 @@
     const handsSplit = state.split && !$("hands").classList.contains("hidden");
     $("review").classList.toggle("split", split);
     $("hands").classList.toggle("split", handsSplit);
-    document.body.classList.toggle("wide", split || handsSplit);
     $("review-split").setAttribute("aria-pressed", state.split);
     $("hands-split").setAttribute("aria-pressed", state.split);
   }
@@ -4070,6 +4403,7 @@
     state.manual = null;
     state.games = null; // a new game may have started
     state.bluffs = null;
+    gb.key = null;
   }
   // The spots this page has been through, newest last: a click into a line or a
   // bar adds terms, and Back takes the spot to what it was before, in one click,
@@ -4186,6 +4520,26 @@
   $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
   $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });
   $("vs").addEventListener("change", () => { setVsTerm($("vs").value); apply(); });
+  // The group-by panel's controls ask again at once; the chart above stays as it is.
+  const regroup = () => { writeUrl(); clearTimeout(gb.timer); loadGroupby(); };
+  $("gb-by").addEventListener("change", () => {
+    state.gb = $("gb-by").value;
+    if (state.gb2 === state.gb) state.gb2 = "";
+    gb.sort = null;
+    regroup();
+  });
+  $("gb-by2").addEventListener("change", () => { state.gb2 = $("gb-by2").value; regroup(); });
+  $("gb-street").addEventListener("change", () => { state.gbStreet = $("gb-street").value; regroup(); });
+  $("gb-min").addEventListener("change", () => {
+    const n = Number($("gb-min").value);
+    state.gbMin = Number.isInteger(n) && n > 0 ? n : 0;
+    regroup();
+  });
+  document.querySelectorAll("[data-gbscope]").forEach(b => b.addEventListener("click", () => {
+    if (state.gbScope === b.dataset.gbscope) return;
+    state.gbScope = b.dataset.gbscope;
+    regroup();
+  }));
   {
     const rows = new Map(PRESET_GROUPS.map(([label]) => {
       const row = document.createElement("div"); row.className = "presets";

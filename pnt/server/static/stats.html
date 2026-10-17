@@ -27,7 +27,7 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
+  main { max-width: none; margin: 0; padding: 20px clamp(12px, 2vw, 28px) 48px; }
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
   .controls { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; margin-bottom: 12px; }
