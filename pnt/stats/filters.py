@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping
+from functools import lru_cache
 
 from ..logfmt.parser import position_name
 from .cards import (
@@ -266,6 +267,9 @@ DECIDED: dict[str, Callable[[Facts], str | None]] = {
 #: `board` is the whole board as dealt (three to five cards). Each street needs
 #: that many cards on the board; a hand that ended earlier never matches.
 _BOARD_CARDS = {"flop": 3, "turn": 4, "river": 5, "board": 3}
+#: Cached by board: a texture term re-reads every row's board, and `/counts` asks
+#: a dozen texture chips over the same rows at once. `Facts.board` is a tuple.
+_texture_of = lru_cache(maxsize=1 << 16)(board_texture)
 
 
 def _texture_term(term: str) -> Predicate | None:
@@ -285,7 +289,7 @@ def _texture_term(term: str) -> Predicate | None:
                 if len(f.board) < need:
                     return False
                 cards = f.board if street == "board" else f.board[:need]
-                return (tag in board_texture(cards)) == want
+                return (tag in _texture_of(tuple(cards))) == want
 
             return pred
     return None
