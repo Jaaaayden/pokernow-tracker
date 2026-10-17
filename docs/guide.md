@@ -267,14 +267,17 @@ so the four rows can add up to fewer hands than the whole row. The range chart's
 flops where one or two bets get the stacks in.
 
 *Position* gives one sub-row per seat (`position=BTN`, `position=BB`, ...) and adds
-**vs fold**: bb/100 against folding every hand.
+**vs folding all** on the SB, BB and BTN/SB rows: bb/100 against folding every blind
+with a choice, with what folding all of them would have scored beside it.
 
 - **0 is no better than folding; below 0 is the leak.** A big blind at −80 bb/100
-  raw is +20 vs fold, which is fine; a small blind at −60 raw is −10, defending too
-  much.
+  raw is +20 vs folding all, which is fine; a small blind at −60 raw is −10,
+  defending too much.
 - **Walks add 0.** Folding could not have changed a walk, and counting its post
   would hand every big blind about +10 bb/100 it never earned.
-- **Red on a blind's sub-row** only when it is below 0 by more than its ± range.
+- **Red** only when it is below 0 by more than its ± range.
+- **Other seats leave it blank**: with no blind posted, folding scores 0, so it
+  would only repeat bb/100.
 
 The postflop columns also cover the bets a missed c-bet leaves open. **DCB** is the
 preflop raiser's delayed c-bet, **Probe** is betting into a preflop raiser who checked
@@ -286,8 +289,9 @@ your turn check-raise a weapon. The chart's Lines view has **probe** and **float
 chips for the turn.
 
 The front door, [http://127.0.0.1:52000](http://127.0.0.1:52000), shows what is in
-the database (hands, players, log lines and parse misses), links to every page, and
-lists the handful of commands worth knowing when something looks wrong.
+the database (hands, players, log lines and parse misses), links to every page,
+holds the **HUD stats** picker and the **Files** panel, and lists the handful of
+commands worth knowing when something looks wrong.
 
 ### Positional breakdown
 
@@ -538,6 +542,10 @@ The 13x13 chart can be coloured three ways:
   the spot. "Habitual" is the mean when a hand's sizes agree and the median when
   they do not, so a single tilt jam cannot repaint a cell.
 
+**Table** swaps the grid for one row per hand: shown, net bb, bb/hand, won %,
+raise % and raise size (hover it for the spread). Search it (`kq`, `pair`, `s`),
+set a minimum shown, and click a header to sort.
+
 The filter chips open on a **Common** row; **More filters** opens every chip row,
 label on the left, and counts the chips on that the Common row does not show.
 The page remembers which you left it on.
@@ -547,8 +555,8 @@ The page remembers which you left it on.
 A chip that would leave none is dimmed.
 
 **Group by.** Beside the grid on Preflop and Made hands (below it on a window under
-1200px), the spot split into rows, each with hands, bb/100, vs fold and the core
-rates.
+1200px), the spot split into rows, each with hands, bb/100 and the core rates, and
+on a position split's blind rows **vs folding all**.
 
 - **Rows** picks the split (position on Preflop, flop holding on Made); **then by**
   crosses a second: position, then pot type.
@@ -638,14 +646,17 @@ HUD embeds it. `GET /players/{alias}/range` returns the same data as JSON, with 
 
 ### Estimated ranges
 
-- **Estimate** (preflop view): outlines the range their frequency at one preflop
-  decision implies, top X% by hand ranking, calls capped below their raises.
-  `position=BTN,unopened=raise` at 25% opens outlines the top 25%; from 5 shown
+- **Estimate** (preflop view): fades every class outside the range their frequency
+  at one preflop decision implies, top X% by hand ranking, calls capped below their
+  raises. Bright is in, faded is out, a dashed edge is a class only partly in, and
+  an in-range class never shown keeps a visible edge.
+  `position=BTN,unopened=raise` at 25% opens keeps the top 25% bright; from 5 shown
   hands on, it is refilled by how often each class was shown (72o shown once in
   1,300 opens stays out; shown 14 times where 18 were expected, it is in).
 - **Board** (under it): that range on a board, cut at their next action's rate.
   `Ah7c2d` with a 42% c-bet: the mix, the cut (middle pair), and their bets'
-  value/draw/air against what they showed. Blank with `flop=king_high` in the spot
+  value/draw/air if they bet only by strength against what they showed, in one line
+  saying which way it leans. Blank with `flop=king_high` in the spot
   averages 30 king-high flops.
 - Both are estimates, linear by assumption; `GET /players/{alias}/estimate` and
   `/board` return them as JSON. SPEC.md, "Estimated ranges", has the rules.

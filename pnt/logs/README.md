@@ -5,7 +5,7 @@ package, and `pnt import` and `pnt setup` fall back to them when your own log fo
 is empty — so a fresh install has something to query instead of an empty page.
 
 **These are someone else's hands.** Every name in `pnt stats` after a fallback import
-is a stranger. Drop your own exports in `~/Downloads/pokernow-logs` and re-run to add
+is a stranger. Drop your own exports in your log folder (`pnt where` names it) and re-run to add
 yours, or pass `--no-sample` to skip these entirely.
 
 ```bash

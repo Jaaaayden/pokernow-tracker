@@ -11,8 +11,10 @@ PokerNow.
   the table: seats, actions, showdowns, stacks, and the names and PokerNow IDs of
   the players. Where PokerNow sends it to you, this includes your own hole cards.
 - **What you add yourself:** which of a player's IDs are the same person (aliases),
-  notes on hands, and marks on the hands you have reviewed.
-- **Your settings.**
+  notes on hands and players, marks on the hands you have reviewed, 🚩 flags, hand
+  tags and saved spots.
+- **Your settings:** the extension's (server address, poll interval, side panel or
+  floating), the HUD's chosen stats, and which database and log folder to use.
 
 Everything shown (stats, charts, reviews) is worked out from those logs on your
 computer.
@@ -20,12 +22,14 @@ computer.
 ## Where it is kept
 
 In the SQLite file `pnt setup` created on your computer (`pnt where` names it), plus
-a CSV copy of each game in `~/Downloads/pokernow-logs`. The local server listens
+a CSV copy of each game in your log folder (`~/Downloads/pokernow-logs` unless you
+chose another). Which database and folder you chose is kept in `~/.pnt/config.json`,
+and the HUD's chosen stats in the database. The local server listens
 only on your own computer (127.0.0.1), answers only requests that name this machine
 as their host, and takes writes only from the extension and its own pages.
 
-Your settings are kept with Chrome's synced storage, so they follow your Chrome
-account like any extension's settings. Nothing else is synced.
+The extension's own settings are kept with Chrome's synced storage, so they follow
+your Chrome account like any extension's settings. Nothing else is synced.
 
 ## What it sends, and to whom
 
@@ -50,7 +54,7 @@ The data is not sold, shared, or used for anything but showing it back to you.
 
 ## Deleting it
 
-Delete the database file (`pnt where` names it) and the log folder, run
+Delete the database file (`pnt where` names it), the log folder and `~/.pnt`, run
 `pnt service uninstall`, and remove the extension.
 
 ## Questions

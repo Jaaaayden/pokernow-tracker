@@ -27,8 +27,8 @@ pins what they count.
 | 2 | WWSF and the give-up funnel | WWSF and W$WSF columns on `/stats`; funnel tables under Results, `/players/{alias}/funnel` |
 | 3 | Multiway vs heads-up | **Split by** on `/stats`; `players_flop`; a players step in the HUD's spot search |
 | 4 | Steal and blind defense | ATS, F2S and 3BvS columns; chart chips; FOLDS TO STEAL and STEALS WIDE tags |
-| 5 | Head-to-head money flow | Each player's card and the "Who pays whom" matrix on `/players`, `pnt h2h` |
-| 6 | Voluntary-show tells | "Shows without being asked" on `/players`, `pnt shows`, SHOWS BLUFFS / SHOWS NUTS |
+| 5 | Head-to-head money flow | The **Head to head** table on each player's row on `/players`, `/h2h`, `pnt h2h` |
+| 6 | Voluntary-show tells | The chart's **Shows** tab, `pnt shows` (the SHOWS BLUFFS / SHOWS NUTS tags were dropped) |
 | 7 | Confidence intervals | ± ranges on hover in `/stats`, the chart and the HUD; the ± column beside bb/100 |
 | 8 | Delayed c-bet, probe and float | DCB, Probe, F2P and Float columns; HUD spots; Lines chips |
 | 9 | Tilt and session dynamics | The chart's **Tilt** view, `post_loss` and the session terms, the HUD's "tilt?" chip, TILTS |
@@ -36,9 +36,9 @@ pins what they count.
 | 11 | Squeeze and cold-call | SQZ and CC columns, chart chips, NEVER SQUEEZES |
 | 12 | Limp-reraise | LRR column, Limped chips, LIMP-RERAISE = STRONG |
 | 13 | Straddled pots | Straddle in **Split by**, the straddled chip on the Pot row |
-| 14 | Leak finder for the hero | "Your leaks" on `/stats`, `/leaks`, `pnt leaks` |
+| 14 | Leak finder for the hero | `/leaks`, `pnt leaks` (experimental; the **Tendencies** page replaced its panel) |
 | 15 | Timing tells | The chart's **Timing** view, `tempo_<street>=` and `think_<street>`, the HUD clock, `pnt timing` (needs one `pnt rebuild`) |
-| 16 | 7-2 bounty ledger | The leaderboard on `/players`, `/bounties`, `pnt bounties` |
+| 16 | 7-2 bounty ledger | The chart's **7-2** tab, `/bounties`, `pnt bounties` |
 
 ## October 2026 batch 2
 
@@ -55,7 +55,7 @@ The HUD and group-by batch. [`guide.md`](guide.md) says how to use each one.
 | Hand tags | The **+ tag** box on rows and replays, `tag=` (also on the CLI), the chart's **Tagged** view, `/tags`, `/tagged` |
 | Spot tree | The chart's **Tree** view, `GET /players/{alias}/tree` |
 | Holdings by street | **Made hands › Streets** on the chart, `GET /players/{alias}/streets` |
-| Estimated ranges (R1 frequency range, R2 board breakdown) | The chart preflop view's **Estimate** toggle |
+| Estimated ranges (R1 frequency range, R2 board breakdown) | The chart preflop view's **Estimate** toggle and **Board** panel, `GET /players/{alias}/estimate` and `/board` |
 
 ## Already planned
 

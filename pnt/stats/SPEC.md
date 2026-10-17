@@ -1418,7 +1418,7 @@ since nothing here is positional. Shows are not `Facts`, so no spot filter
 reproduces a row; each row carries its `hand_id` instead, and
 `test_fixture_counts_match_the_view` holds every count to the view.
 `GET /players/{alias}/shows?game=` returns it, `pnt shows <alias>` prints it, and
-the players page lists it as **Shows without being asked**.
+the chart's **Shows** tab lists it.
 
 Judgement calls:
 
@@ -1594,7 +1594,9 @@ bluff is a draw or air.
 With no board typed, the spot's own flop texture terms (`flop=ace_high`,
 `flop!=paired`, top level) pick about 30 random flops that have every one of
 them (seeded by the terms, so the same spot samples the same flops), and every
-figure is the average over them. 400 with neither a board nor a flop texture.
+figure is the average over them, each share over only the flops that have one: a
+flop the range has no combos on has no share, not a share of 0. 400 with neither
+a board nor a flop texture.
 
 **The next action** is read over the spot's hands, every filter term counted:
 after a raise, the c-bet on the board's street (`cbet_S` / `cbet_S_opp`); after a
@@ -2443,7 +2445,7 @@ Judgement calls:
 ### 7-2 bounty ledger
 
 Who has collected and paid the 7-2 side bet. `bounty.py` mirrors this section;
-`GET /bounties`, `pnt bounties` and the leaderboard on the players page read it.
+`GET /bounties`, `pnt bounties` and the chart's **7-2** tab read it.
 SQL over `hand_players.bounty`, the signed side-bet result already in `net`,
 resolved to people through `player_identities`. Nothing is derived.
 

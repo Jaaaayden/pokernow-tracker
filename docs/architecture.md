@@ -55,6 +55,15 @@ pinned in [`pnt/stats/SPEC.md`](../pnt/stats/SPEC.md). That file is the artifact
   along: a merge appends the source's note to the target's, an alias import that
   empties a player passes its note to whoever now holds the IDs, and deleting a
   game never removes a player with a note. `test_player_notes.py` holds all three.
+- **Flags, hand tags, saved spots and settings** (`hand_flags`, `hand_tags`,
+  `saved_spots`, `settings`, the last holding the HUD's chosen stats) are kept the
+  same way: keyed on the game and hand number, not `hand_id`, and untouched by
+  `pnt rebuild`. A flag is accepted before its hand is derived, since the HUD sends
+  it seconds after the hand ends.
+- **Which database and which log folder** live outside the database, in
+  `~/.pnt/config.json` (`local_config.py`), because one of them *is* the database.
+  The front page's *Files* panel writes it; the server, the background task and the
+  CLI's defaults all read it, so a choice made once reaches every part.
 - **The alias table** is the one thing a re-import cannot rebuild, which is why
   it is exported to [`pnt/logs/aliases.csv`](../pnt/logs/aliases.csv) and kept in
   the repo.
@@ -183,7 +192,17 @@ terminal and no admin rights. It is built this way for these reasons:
 - **`--db` is resolved to a full path at install.** The task does not start in your
   project folder, and a missing database file is created empty rather than
   reported, so a relative path would give a server that answers and shows zero
-  hands. `install` refuses a path that does not exist.
+  hands. `install` refuses a path that does not exist, and records it as the chosen
+  database.
+- **The database chosen on the front page wins over the task's `--db`.** That one
+  is only what the task was installed with, and it is the fallback if the chosen
+  file has gone. Switching on the page moves the running server to it, no restart, and
+  forgets the log files the new database recorded that this machine lacks, so a
+  copy from another PC is not read as every game deleted.
+- **It runs at normal priority.** Task Scheduler's default is below normal, with
+  low disk and memory priority, which queued every HUD answer behind the browser.
+  The task sets priority 5; a task installed before that needs one
+  `pnt service install`, since `pnt update` keeps the task as it is.
 - **A terminal `pnt serve` wins.** If the port is already taken, the task waits
   instead of crash-looping, and takes over once you close the terminal.
 - **Two Windows defaults would kill it:** tasks are ended after 72 hours, and
