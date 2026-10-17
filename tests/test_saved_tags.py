@@ -208,7 +208,7 @@ def test_vocabulary_has_tag():
 
 
 def _script_of(html: str) -> str:
-    blocks = re.findall(r"<script>(.*?)</script>", html, flags=re.S)
+    blocks = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
     assert blocks
     return "\n".join(blocks)
 
@@ -219,7 +219,7 @@ def test_the_pages_scripts_parse(tmp_path, name):
     text = (STATIC / name).read_text("utf-8")
     path = Path(tmp_path / (name + ".js"))
     path.write_text(_script_of(text) if name.endswith(".html") else text, "utf-8")
-    out = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True)
+    out = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True, check=False)
     assert out.returncode == 0, out.stderr
 
 
