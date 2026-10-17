@@ -451,6 +451,7 @@
     return r.json();
   }
   const withTerm = (term) => [state.filter, term].filter(Boolean).join(",");
+  const OLD_SERVER = "the running server is older than this page: restart `pnt service`";
   async function load() {
     const seq = ++loadSeq;
     $("card").classList.add("loading");
@@ -458,6 +459,8 @@
     const groups = SPLITS[state.split] || [];
     try {
       const got = await fetchStats(state.filter, state.min, groups.map(([, term]) => term));
+      // A server from before split ignores it and sends the plain list.
+      if (groups.length && !Array.isArray(got.rows)) throw new Error(OLD_SERVER);
       const rows = groups.length ? got.rows : got;
       const parts = groups.length ? got.splits.map((s) => s.rows) : [];
       if (seq !== loadSeq) return;
@@ -472,7 +475,7 @@
             kept.map(([[label, term], m]) => [label, term, m.get(r.player) || null])]))
         : null;
       if (state.rows.length && !("raise_cbet_flop" in state.rows[0])) {
-        throw new Error("the running server is older than this page: restart `pnt service`");
+        throw new Error(OLD_SERVER);
       }
       render();
     } catch (e) {
