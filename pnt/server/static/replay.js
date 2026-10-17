@@ -92,6 +92,7 @@
     sub.textContent = [h.game_id, h.ts, `${h.n_dealt_in} dealt in`].filter(Boolean).join(" · ");
     title.appendChild(sub);
     box.appendChild(title);
+    box.appendChild(tagBox(h.game_id, h.hand_number));
 
     const who = document.createElement("p"); who.className = "who";
     d.players.forEach((p, i) => {
@@ -155,5 +156,121 @@
     }
   }
 
-  window.pntReplay = { pretty, cardsEl, bucketOf, SIZE_LABEL, show, cancel, render };
+  // ---- hand tags -------------------------------------------------------------
+  // A hand's tags as chips, × to take one off, and a box to add one (Enter), which
+  // suggests every tag in use. The replay has one, and the chart puts one on each
+  // hand row. Each write that lands is announced on `document` as a `pnt-tags`
+  // event, {game_id, hand_number, tags}, so every box on that hand -- and the page
+  // -- follows it.
+  const TAG_CSS = `
+    .tagbox { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 4px; margin: 2px 0 4px; font-size: 11px; }
+    .tagbox .tg { display: inline-flex; align-items: center; padding: 0 0 0 7px; border: 1px solid var(--ring);
+      border-radius: 999px; color: var(--ink-2); line-height: 1.6; }
+    .tagbox .tg button { border: 0; background: transparent; color: var(--muted); padding: 0 6px 0 4px;
+      font-size: 12px; line-height: 1; border-radius: 999px; }
+    .tagbox .tg button:hover, .tagbox .tg button:focus-visible { color: var(--ink); outline: 0; }
+    .tagbox input[type=text] { flex: none; width: 6.5em; min-width: 0; font: inherit; font-size: 11px; padding: 1px 7px;
+      border: 1px dashed var(--ring); border-radius: 999px; background: transparent; color: var(--ink); }
+    .tagbox input[type=text]:focus { border-style: solid; border-color: var(--accent); outline: 0; width: 10em; }
+    .tagbox input::-webkit-calendar-picker-indicator { display: none !important; }
+    .tagbox .tg-err { color: #c62f2f; }`;
+  if (!document.getElementById("pnt-tags-css")) {
+    const style = document.createElement("style");
+    style.id = "pnt-tags-css";
+    style.textContent = TAG_CSS;
+    document.head.appendChild(style);
+  }
+  // One list of suggestions for every box: filled from /tags on first use, and
+  // again after each write, since a new tag belongs in it.
+  let tagList = null;
+  function fillTagList() {
+    if (!tagList) {
+      tagList = document.createElement("datalist");
+      tagList.id = "pnt-tag-list";
+      document.body.appendChild(tagList);
+    }
+    fetch("/tags").then(r => (r.ok ? r.json() : [])).then(rows => {
+      tagList.replaceChildren(...rows.map(t => { const o = document.createElement("option"); o.value = t.tag; return o; }));
+    }).catch(() => {});
+  }
+
+  // `tags` is what the caller already holds (a row's `tags`); left out, the box
+  // asks the server.
+  function tagBox(gameId, handNumber, tags) {
+    const box = document.createElement("div");
+    box.className = "tagbox";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "+ tag";
+    input.spellcheck = false;
+    input.maxLength = 40;
+    input.setAttribute("aria-label", `tag hand ${handNumber}`);
+    input.title = "Enter adds it, e.g. river-bluff · cooler · study";
+    const err = document.createElement("span");
+    err.className = "tg-err";
+    let current = tags ? [...tags] : [];
+    const url = `/games/${encodeURIComponent(gameId)}/hands/${handNumber}/tags`;
+
+    function paint() {
+      const chips = current.map(t => {
+        const c = document.createElement("span");
+        c.className = "tg";
+        c.append(t);
+        const x = document.createElement("button");
+        x.type = "button"; x.textContent = "×"; x.title = `remove ${t}`;
+        x.setAttribute("aria-label", `remove tag ${t}`);
+        x.addEventListener("click", () => send("DELETE", `${url}/${encodeURIComponent(t)}`));
+        c.appendChild(x);
+        return c;
+      });
+      box.replaceChildren(...chips, input, err);
+    }
+    async function send(method, path, body) {
+      err.textContent = "";
+      try {
+        const r = await fetch(path, {
+          // x-pnt: the server refuses writes without it (see app.py).
+          method, headers: { "Content-Type": "application/json", "x-pnt": "1" },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const out = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(out.detail || `${r.status} ${r.statusText}`);
+        document.dispatchEvent(new CustomEvent("pnt-tags", { detail: out }));
+        fillTagList();
+        return true;
+      } catch (e) {
+        err.textContent = String(e.message || e);
+        return false;
+      }
+    }
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); input.value = ""; err.textContent = ""; input.blur(); return; }
+      if (e.key !== "Enter" || !input.value.trim()) return;
+      e.preventDefault();
+      if (await send("POST", url, { tag: input.value })) { input.value = ""; input.focus(); }
+    });
+    const follow = (e) => {
+      if (!box.isConnected && box.dataset.drawn) { document.removeEventListener("pnt-tags", follow); return; }
+      const d = e.detail;
+      if (d.game_id !== gameId || d.hand_number !== handNumber) return;
+      const focused = document.activeElement === input;
+      current = d.tags;
+      paint();
+      if (focused) input.focus();
+    };
+    document.addEventListener("pnt-tags", follow);
+    paint();
+    // Marked once on the page, so a box not yet attached is not taken for one thrown away.
+    requestAnimationFrame(() => { box.dataset.drawn = "1"; });
+    if (!tagList) fillTagList();
+    input.setAttribute("list", "pnt-tag-list");
+    if (!tags) {
+      fetch(url).then(r => (r.ok ? r.json() : null)).then(d => {
+        if (d && d.tags) { current = d.tags; paint(); }
+      }).catch(() => {});
+    }
+    return box;
+  }
+
+  window.pntReplay = { pretty, cardsEl, bucketOf, SIZE_LABEL, show, cancel, render, tagBox };
 })();

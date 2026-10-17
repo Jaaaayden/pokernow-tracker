@@ -30,7 +30,7 @@ brackets (SPEC.md, "Filter language").
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from functools import lru_cache
 
 from ..logfmt.parser import position_name
@@ -52,6 +52,10 @@ from .strength import TIERS, hs_of, tier_of
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
 Predicate = Callable[[Facts], bool]
+#: What `tag=` reads its hands from: one tag as written -> the (game_id,
+#: hand_number) of every hand carrying it. A tag is your data, not the log's, so
+#: the caller with a connection passes one (the server's `_tag_keys`).
+TagResolver = Callable[[str], Collection[tuple[str, int]]]
 
 STREETS = ("flop", "turn", "river")
 
@@ -607,6 +611,32 @@ def _hand_term(term: str) -> Predicate | None:
     return None
 
 
+def _tag_term(term: str, tags: TagResolver | None) -> Predicate | None:
+    """`tag=river-bluff` / `tag!=cooler`: a hand you tagged (SPEC.md, "Hand tags").
+
+    The hand, not the seat: every player's row of a tagged hand matches. A tag no
+    hand carries matches nothing, as an empty spot should; without a resolver
+    there is nothing to read, and that raises.
+    """
+    for op in ("!=", "="):
+        prefix = f"tag{op}"
+        if not term.startswith(prefix):
+            continue
+        want = term[len(prefix):].strip()
+        if not want:
+            raise ValueError("tag= needs a tag")
+        if tags is None:
+            raise ValueError(f"{term!r}: hand tags are only read where the tracker's database is (the pages, /stats)")
+        keys = frozenset(tags(want))
+        positive = op == "="
+
+        def pred(f: Facts, keys=keys, positive=positive) -> bool:
+            return ((f.game_id, f.hand_number) in keys) == positive
+
+        return pred
+    return None
+
+
 def _numeric_term(term: str) -> Predicate | None:
     for name, getter in NUMERIC.items():
         if not term.startswith(name):
@@ -795,6 +825,9 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("vs=NAME", "vs=henry", "played against that player"),
         ("vs!=NAME", "vs!=henry", "not against that player"),
     )),
+    ("Your tags", (
+        ("tag=TAG", "tag=river-bluff", "hands you tagged, e.g. tag=cooler|study · tag=flagged the 🚩 ones"),
+    )),
     ("Session", (
         ("post_loss", "post_loss", f"the {WINDOW} hands after losing {BIG_LOSS_BB} bb or more in one hand, same session"),
         ("hands_since_loss<=N", "hands_since_loss<=5", "their hands since that big loss: 1 is the next hand"),
@@ -908,7 +941,9 @@ def vocabulary() -> dict:
     }
 
 
-def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate:
+def parse_filter(
+    expr: str, names: Mapping[str, str] | None = None, tags: TagResolver | None = None
+) -> Predicate:
     """Compile a filter expression into one predicate (SPEC.md, "Filter language").
 
     Terms are joined by ``,`` (and) and ``|`` (or), ``|`` binding tighter;
@@ -917,7 +952,8 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
     once, and a row only walks it.
 
     `names` maps pn_id -> display name and is only needed for `vs=`; pass
-    `display_names(conn)` from queries.py.
+    `display_names(conn)` from queries.py. `tags` resolves a tag to its hands and
+    is only needed for `tag=`, which raises without it.
 
     Supported terms:
       ``3bet``               a flag from FLAGS
@@ -961,25 +997,30 @@ def parse_filter(expr: str, names: Mapping[str, str] | None = None) -> Predicate
                              cold-call, probe, delayed c-bet and float families
       ``think_river>=5``     seconds their first river decision took; ``tempo_river=tank``
                              its bucket (pre, snap, normal, tank, timeout), preflop included
+      ``tag=river-bluff``    a hand you tagged; ``tag!=`` negates
       ``!cbet_flop``         any flag, negated
     """
-    preds = _Parser(expr, names).parse()
+    preds = _Parser(expr, names, tags).parse()
     if not preds:
         return lambda f: True
     return lambda f: all(p(f) for p in preds)
 
 
 def count_terms(
-    facts: Iterable[Facts], base: str, terms: Iterable[str], names: Mapping[str, str] | None = None
+    facts: Iterable[Facts],
+    base: str,
+    terms: Iterable[str],
+    names: Mapping[str, str] | None = None,
+    tags: TagResolver | None = None,
 ) -> dict:
     """How many rows match `base`, and how many match `(base),(term)` per term
     (SPEC.md, "Counting terms"). A bad base raises; a bad term counts None."""
-    pred = parse_filter(base, names)
+    pred = parse_filter(base, names, tags)
     rows = [f for f in facts if pred(f)]
     counts: dict[str, int | None] = {}
     for term in terms:
         try:
-            p = parse_filter(term, names)
+            p = parse_filter(term, names, tags)
         except ValueError:
             counts[term] = None
             continue
@@ -987,7 +1028,9 @@ def count_terms(
     return {"base": len(rows), "counts": counts}
 
 
-def _compile_term(term: str, names: Mapping[str, str] | None) -> tuple[Predicate, str]:
+def _compile_term(
+    term: str, names: Mapping[str, str] | None, tags: TagResolver | None = None
+) -> tuple[Predicate, str]:
     """One term as a predicate, with the family that read it: `numeric` for a
     comparison, `flag` and `not` for the bare forms, else the family a value list
     has to stay inside (`position=BTN|CO` is two `position` terms)."""
@@ -1023,6 +1066,7 @@ def _compile_term(term: str, names: Mapping[str, str] | None) -> tuple[Predicate
     # reads it, so `bet_river=small` is a size and `bet_river=1` a comparison.
     for family, read in (
         ("vs", lambda t: _player_term(t, names)),
+        ("tag", lambda t: _tag_term(t, tags)),
         ("hand", _hand_term),
         ("decision", _decision_term),
         ("answer", _answer_term),
@@ -1042,7 +1086,7 @@ def _compile_term(term: str, names: Mapping[str, str] | None) -> tuple[Predicate
     raise ValueError(
         f"unknown filter term: {term!r}. "
         f"Known flags: {', '.join(sorted(FLAGS))}; "
-        f"position=<POS>; fold_street=<street>; vs=<player>; hand=<class>; "
+        f"position=<POS>; fold_street=<street>; vs=<player>; tag=<tag>; hand=<class>; "
         f"a comparison on {', '.join(NUMERIC)}; "
         f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
         f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
@@ -1068,11 +1112,13 @@ class _Values:
     their own `|` reads exactly as it always has.
     """
 
-    def __init__(self, term: str, pred: Predicate, family: str, names: Mapping[str, str] | None):
+    def __init__(
+        self, term: str, pred: Predicate, family: str, names: Mapping[str, str] | None, tags: TagResolver | None
+    ):
         m = _OPERATOR.search(term)
         assert m is not None, term
         self.key, self.op = term[: m.start()], m.group()
-        self.family, self.names = family, names
+        self.family, self.names, self.tags = family, names, tags
         self.values = [term[m.end():]]
         self.preds = [pred]
 
@@ -1080,13 +1126,17 @@ class _Values:
         """Add `segment` as one more value if it is one; False leaves it a term."""
         if self.family == "numeric":
             return False
+        # Any word can be a tag, so a flag after a tag list stays the flag:
+        # `tag=study|won` is either. `tag=study|tag=won` names the tag.
+        if self.family == "tag" and segment.strip().lower() in FLAGS:
+            return False
         if self.family in ("made", "tier"):
             if segment.strip().lower() not in (MADE_NAMES if self.family == "made" else TIERS):
                 return False
             self.values.append(segment)
             return True
         try:
-            pred, family = _compile_term(f"{self.key}{self.op}{segment}", self.names)
+            pred, family = _compile_term(f"{self.key}{self.op}{segment}", self.names, self.tags)
         except ValueError:
             return False
         if family != self.family:
@@ -1103,14 +1153,14 @@ class _Values:
                 f"so write each as its own term (eff_bb<40|eff_bb>=200)"
             )
         try:
-            _compile_term(f"{self.key}{self.op}{segment}", self.names)
+            _compile_term(f"{self.key}{self.op}{segment}", self.names, self.tags)
         except ValueError as own:
             return own
         return err
 
     def predicate(self) -> Predicate:
         if self.family in ("made", "tier"):
-            return _compile_term(f"{self.key}{self.op}{'|'.join(self.values)}", self.names)[0]
+            return _compile_term(f"{self.key}{self.op}{'|'.join(self.values)}", self.names, self.tags)[0]
         preds = tuple(self.preds)
         if len(preds) == 1:
             return preds[0]
@@ -1127,8 +1177,8 @@ class _Parser:
         unit := "(" conj ")" | "!(" conj ")" | term
     """
 
-    def __init__(self, expr: str, names: Mapping[str, str] | None):
-        self.expr, self.names = expr, names
+    def __init__(self, expr: str, names: Mapping[str, str] | None, tags: TagResolver | None = None):
+        self.expr, self.names, self.tags = expr, names, tags
         self.tokens = list(self._tokens(expr))
         self.at = 0
 
@@ -1202,7 +1252,7 @@ class _Parser:
                 bare = not _OPERATOR_CHARS & set(segment)
                 if not (values is not None and bare and values.take(segment)):
                     try:
-                        pred, family = _compile_term(segment, self.names)
+                        pred, family = _compile_term(segment, self.names, self.tags)
                     except ValueError as err:
                         if values is not None and bare:
                             raise values.refuse(segment, err) from None
@@ -1213,7 +1263,7 @@ class _Parser:
                     if family in ("flag", "not"):
                         alts.append(pred)
                     else:
-                        values = _Values(segment, pred, family, self.names)
+                        values = _Values(segment, pred, family, self.names, self.tags)
             else:
                 if values is not None and values.family in ("made", "tier"):
                     # `made_flop=set|`: the made term says what is missing, as it always has.

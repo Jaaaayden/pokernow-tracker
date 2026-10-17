@@ -386,7 +386,7 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
-        return count_terms(facts, req.filter, req.terms, display_names(conn))
+        return count_terms(facts, req.filter, req.terms, display_names(conn), _tag_keys(conn))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -490,9 +490,39 @@ def stats(
 def _predicate(conn: sqlite3.Connection, filter: str | None):
     """Compile a spot filter, or 400 on a term the parser does not know."""
     try:
-        return parse_filter(filter, display_names(conn)) if filter else None
+        return parse_filter(filter, display_names(conn), _tag_keys(conn)) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+#: The 🚩 as a tag: `tag=flagged` is the hands flagged for manual review, and the
+#: Tagged view lists them first. No hand can carry a tag of that name.
+FLAGGED_TAG = "flagged"
+
+
+def _tag_keys(conn: sqlite3.Connection):
+    """`tag=`'s resolver (filters.TagResolver): the hands carrying a tag, or the
+    flagged ones for `flagged`. A bad tag raises ValueError, as a bad term does."""
+    from pnt.db.userdata import normalise_tag, tagged_keys
+
+    def resolve(tag: str) -> set[tuple[str, int]]:
+        if normalise_tag(tag) == FLAGGED_TAG:
+            return set(flagged_hands(conn))
+        return tagged_keys(conn, tag)
+
+    return resolve
+
+
+def _spot_key(conn: sqlite3.Connection, filter: str | None) -> str | None:
+    """`filter` as a cache key. A `tag=` term reads tags no generation counts, so
+    a filter that may hold one carries every tag and flag along with it."""
+    if not filter or "tag" not in filter:
+        return filter
+    rows = conn.execute(
+        "SELECT game_id, hand_number, tag FROM hand_tags UNION ALL"
+        " SELECT game_id, hand_number, '' FROM hand_flags ORDER BY 1, 2, 3"
+    ).fetchall()
+    return f"{filter}\x00{hash(tuple(tuple(r) for r in rows))}"
 
 
 @app.get("/allin", response_model=None)
@@ -573,9 +603,11 @@ def player_review(
     conn = db()
     pred = _predicate(conn, filter)
     try:
-        return {"filter": filter, **review_hand_list(conn, alias, game, pred)}
+        out = review_hand_list(conn, alias, game, pred)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _with_tags(conn, out["hands"], game)
+    return {"filter": filter, **out}
 
 
 @app.get("/players", response_model=None)
@@ -746,11 +778,12 @@ def player_hands(
 
 
 def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
-    """Rows with the marks, notes and manual flags the review rows carry, so any
-    hand -- flagged or not -- can be ticked off and written on from the session view."""
+    """Rows with the marks, notes, manual flags and tags the review rows carry, so
+    any hand -- flagged or not -- can be ticked off and written on from the session view."""
     marks = reviewed_marks(conn, game)
     notes = hand_notes(conn, game)
     flags = flagged_hands(conn, game)
+    _with_tags(conn, rows, game)
     for r in rows:
         key = (r["game_id"], r["hand_number"])
         note = notes.get(key) or {}
@@ -837,7 +870,7 @@ def _tag_pool(conn: sqlite3.Connection, filter: str | None, game: str | None):
     if not filter:
         return pool
     pred = _predicate(conn, filter)
-    key = (path_of(conn), generation(conn), game, filter)
+    key = (path_of(conn), generation(conn), game, _spot_key(conn, filter))
     return pool_from_facts(
         {a: [f for f in facts_cached(conn, a, game) if pred(f)] for a in pool.players},
         pool.owners, f"spot: {filter}", key,
@@ -1699,8 +1732,8 @@ def player_tree(
     conn = db()
     pred = _predicate(conn, filter)
     try:
-        out = tree_for(conn, alias, game, pred, spot=filter, max_depth=depth, min_hands=min_hands,
-                       texture=texture)
+        out = tree_for(conn, alias, game, pred, spot=_spot_key(conn, filter), max_depth=depth,
+                       min_hands=min_hands, texture=texture)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {**out, "filter": filter}
@@ -1721,3 +1754,226 @@ def player_streets(
     conn = db()
     facts = _spot_facts(alias, filter, game, conn)
     return {"player": alias, "filter": filter, **made_by_street(facts, owners(conn))}
+
+
+# ---- saved spots and hand tags --------------------------------------------------
+# What you told the tracker (db/userdata.py): spot filters kept under a name for
+# the pages' star menu, and your words on a hand. Imported inside the endpoints so
+# this block stands alone. See SPEC.md, "Saved spots and hand tags".
+
+
+class SpotRequest(BaseModel):
+    name: str
+    filter: str
+
+
+class SpotPatch(BaseModel):
+    name: str | None = None
+    filter: str | None = None
+    pinned: bool | None = None
+    #: Its place in `GET /spots`, from 0. Pinned spots still list first.
+    ord: int | None = Field(None, ge=0)
+
+
+def _spot_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=404 if isinstance(exc, LookupError) else 400, detail=str(exc))
+
+
+@app.get("/spots")
+def spots() -> list[dict]:
+    """Every saved spot, pinned first, then in your order: `spot_id`, `name`,
+    `filter`, `pinned`, `ord`, `created_at`."""
+    from pnt.db.userdata import list_spots
+
+    return list_spots(db())
+
+
+@app.post("/spots")
+def save_spot(req: Annotated[SpotRequest, Body()]) -> dict:
+    """Save a filter under a name. 400 on a filter the parser refuses (its own
+    message), an empty name, or a name already taken."""
+    from pnt.db.userdata import save_spot as save
+
+    conn = db()
+    _predicate(conn, req.filter.strip())
+    try:
+        return save(conn, req.name, req.filter)
+    except ValueError as exc:
+        raise _spot_error(exc) from exc
+
+
+@app.patch("/spots/{spot_id}")
+def edit_spot(spot_id: int, req: Annotated[SpotPatch, Body()]) -> dict:
+    """Rename, re-filter, pin or move one spot; a field left out is left alone.
+    404 on an unknown id, 400 as `POST /spots`."""
+    from pnt.db.userdata import list_spots, reorder_spots, update_spot
+
+    conn = db()
+    if req.filter is not None:
+        _predicate(conn, req.filter.strip())
+    try:
+        out = update_spot(conn, spot_id, name=req.name, filter=req.filter, pinned=req.pinned)
+        if req.ord is not None:
+            rest = [s["spot_id"] for s in list_spots(conn) if s["spot_id"] != spot_id]
+            rest.insert(min(req.ord, len(rest)), spot_id)
+            out = next(s for s in reorder_spots(conn, rest) if s["spot_id"] == spot_id)
+    except (LookupError, ValueError) as exc:
+        raise _spot_error(exc) from exc
+    return out
+
+
+@app.delete("/spots/{spot_id}")
+def remove_spot(spot_id: int) -> dict:
+    """Forget one saved spot. 404 when there is none with that id."""
+    from pnt.db.userdata import delete_spot
+
+    if not delete_spot(db(), spot_id):
+        raise HTTPException(status_code=404, detail=f"no saved spot {spot_id}")
+    return {"spot_id": spot_id, "deleted": True}
+
+
+class TagRequest(BaseModel):
+    tag: str
+
+
+def _hand_tags(conn: sqlite3.Connection, game_id: str, hand_number: int) -> dict:
+    from pnt.db.userdata import tags_for_hand
+
+    return {"game_id": game_id, "hand_number": hand_number, "tags": tags_for_hand(conn, game_id, hand_number)}
+
+
+def _tag_or_400(tag: str) -> str:
+    """The tag as stored, or 400. `flagged` is the 🚩's, never a tag of its own."""
+    from pnt.db.userdata import normalise_tag
+
+    try:
+        out = normalise_tag(tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out == FLAGGED_TAG:
+        raise HTTPException(status_code=400, detail="flagged is the 🚩: flag the hand instead")
+    return out
+
+
+def _with_tags(conn: sqlite3.Connection, rows: list[dict], game: str | None) -> list[dict]:
+    """Each row with its hand's `tags`, alphabetically."""
+    from pnt.db.userdata import tags_for_hands
+
+    tags = tags_for_hands(conn, game)
+    for r in rows:
+        r["tags"] = tags.get((r["game_id"], r["hand_number"]), [])
+    return rows
+
+
+@app.get("/tags")
+def tag_list() -> list[dict]:
+    """Every tag in use, most used first: `tag`, `hands`, and `last`, when it was
+    last put on a hand. What a tag box suggests."""
+    from pnt.db.userdata import all_tags
+
+    return all_tags(db())
+
+
+@app.get("/games/{game_id}/hands/{hand_number}/tags")
+def hand_tags(game_id: GameId, hand_number: int) -> dict:
+    """One hand's tags, by the log's own name for it, as the flag is addressed."""
+    return _hand_tags(db(), game_id, hand_number)
+
+
+@app.post("/games/{game_id}/hands/{hand_number}/tags")
+def add_hand_tag(game_id: GameId, hand_number: int, req: Annotated[TagRequest, Body()]) -> dict:
+    """Tag one hand; tagging it again is a no-op. Returns the hand's tags. 400 on
+    a tag that cannot be one, 404 on a hand the log does not have."""
+    from pnt.db.userdata import add_tag
+
+    tag = _tag_or_400(req.tag)
+    conn = db()
+    try:
+        add_tag(conn, game_id, hand_number, tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _hand_tags(conn, game_id, hand_number)
+
+
+@app.delete("/games/{game_id}/hands/{hand_number}/tags/{tag}")
+def remove_hand_tag(game_id: GameId, hand_number: int, tag: str) -> dict:
+    """Take one tag off a hand; one it did not carry is a no-op. Returns the
+    hand's tags."""
+    from pnt.db.userdata import remove_tag
+
+    conn = db()
+    remove_tag(conn, game_id, hand_number, _tag_or_400(tag))
+    return _hand_tags(conn, game_id, hand_number)
+
+
+def _owner_seats(conn: sqlite3.Connection, keys: set[tuple[str, int]], game: str | None) -> list[Facts]:
+    """One row per hand in `keys`: its log owner's seat when they were dealt in,
+    else the first seat from the button. Derived on the spot, a hand alone, so
+    the session terms (`post_loss`, `session_hand`) have no run to read."""
+    from pnt.stats.derive import derive
+    from pnt.stats.pool import owners
+    from pnt.stats.queries import load_hands
+
+    sql, args = "SELECT hand_id, game_id, hand_number FROM hands", ()
+    if game:
+        sql, args = sql + " WHERE game_id = ?", (game,)
+    ids = [r["hand_id"] for r in conn.execute(sql, args) if (r["game_id"], r["hand_number"]) in keys]
+    if not ids:
+        return []
+    own = owners(conn)
+    out = []
+    for h in load_hands(conn, game, hand_ids=ids):
+        seats = derive(h)
+        if seats:
+            out.append(min(seats, key=lambda f: (
+                (f.game_id, f.pn_id) not in own,
+                f.seats_from_button is None,
+                f.seats_from_button or 0,
+            )))
+    return out
+
+
+@app.get("/tagged")
+def tagged(
+    tag: Annotated[str | None, Query(description="e.g. 'river-bluff'; 'flagged' for the 🚩 ones")] = None,
+    player: str | None = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The hands carrying `tag`, newest first, in the rows `/players/{alias}/flagged`
+    lists, each with its `tags`; with no tag, every hand you tagged. `tags` counts
+    hands per tag over the same hands, `flagged` (the 🚩) first, for the chips.
+
+    With `player` the rows are theirs and `filter` narrows their spot, as the
+    chart's other views do; without, each hand is one row (see `_owner_seats`).
+    """
+    from pnt.db.userdata import tags_for_hands
+
+    want = None
+    if tag:
+        want = FLAGGED_TAG if tag.strip().lower() == FLAGGED_TAG else _tag_or_400(tag)
+    conn = db()
+    flags = flagged_hands(conn, game)
+    tagged_ = tags_for_hands(conn, game)
+    marked = set(tagged_) | set(flags)
+    if player is not None:
+        facts = [f for f in _spot_facts(player, filter, game, conn) if (f.game_id, f.hand_number) in marked]
+    else:
+        pred = _predicate(conn, filter)
+        facts = [f for f in _owner_seats(conn, marked, game) if pred is None or pred(f)]
+    hands = {(f.game_id, f.hand_number) for f in facts}
+    counts: dict[str, int] = {}
+    for key in hands:
+        for t in tagged_.get(key, []):
+            counts[t] = counts.get(t, 0) + 1
+    chips = [{"tag": FLAGGED_TAG, "hands": len(hands & set(flags)), "builtin": True}]
+    chips += [{"tag": t, "hands": n} for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    keep = set(flags) if want == FLAGGED_TAG else {k for k, ts in tagged_.items() if want is None or want in ts}
+    facts = [f for f in facts if (f.game_id, f.hand_number) in keep]
+    names = display_names(conn)
+    rows = _with_marks(conn, hand_list(facts, names), game)
+    if player is None:
+        whose = {f.hand_id: names.get(f.pn_id, f.pn_id) for f in facts}
+        for r in rows:
+            r["player"] = whose[r["hand_id"]]
+    return {"tag": want, "player": player, "filter": filter, "game": game, "tags": chips, "hands": rows}

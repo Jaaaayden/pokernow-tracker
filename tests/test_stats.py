@@ -167,7 +167,7 @@ def test_filter_vocabulary_covers_every_term():
     documented: set[str] = set()
     for _, terms in VOCABULARY:
         for term, example, _ in terms:
-            parse_filter(example)  # every example is a working filter
+            parse_filter(example, tags=lambda t: ())  # every example is a working filter
             for s in STREETS:
                 documented.add(re.split(r"[!<>=]", term.replace("<street>", s), maxsplit=1)[0])
     for key in [*FLAGS, *NUMERIC, *SIZED, *ANSWERED, *LINE_TERMS, *ACTION_TERMS, *MADE_TERMS, *TIER_TERMS]:
