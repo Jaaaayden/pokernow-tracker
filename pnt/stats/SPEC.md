@@ -2970,8 +2970,9 @@ therefore when it was *last* written, where `reviewed_at` is when the hand was
 **A manual flag is the third judgement** (`hand_flags`): "look at this one later",
 set with the HUD's 🚩 for the hand that just ended, or with the 🚩 beside any list
 row. It is keyed, kept and made idempotent like the mark (`flagged_at` is when it was
-*first* set), and is independent of both the mark and the note. The Manual review
-tab lists the flagged hands; `GET /players/{alias}/flagged` serves it, and
+*first* set), and is independent of both the mark and the note. The Tagged
+tab lists the flagged hands as its built-in `flagged` tag;
+`GET /players/{alias}/flagged` returns them too, and
 `POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one. Two things
 differ from the mark:
 
@@ -2979,7 +2980,7 @@ differ from the mark:
   hand seconds after its ending line arrives, often before the rebuild has derived
   it, so there is no `hand_id` yet.
 - **It is checked against the raw log.** A flag is accepted for any hand with a
-  `-- starting hand #N` line in `raw_entries`, derived or not. The Manual review
+  `-- starting hand #N` line in `raw_entries`, derived or not. The Tagged
   list still shows only derived hands, so a fresh flag appears there once the
   rebuild lands.
 

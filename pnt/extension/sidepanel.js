@@ -157,7 +157,7 @@
   });
 
   // ------------------------------------------------------------------ flag --
-  // 🚩 flags the hand that last ended for the chart's Manual review tab; pressed
+  // 🚩 flags the hand that last ended for the chart's Tagged tab; pressed
   // means flagged, and a second click clears it. /live says which hand that is and
   // whether it is flagged, but it is read again only when new lines arrive, so
   // what the button last wrote stands in for it until /live names the same hand.
@@ -175,8 +175,8 @@
     $("flag-n").textContent = `#${p.n}`;
     $("flag").setAttribute("aria-pressed", String(p.flagged));
     $("flag").title = p.flagged
-      ? `hand #${p.n} is flagged for manual review — click to unflag`
-      : `flag hand #${p.n}, the last to finish, for manual review in the chart`;
+      ? `hand #${p.n} is flagged for review — click to unflag`
+      : `flag hand #${p.n}, the last to finish, for review on the chart's Tagged tab`;
   }
   $("flag").addEventListener("click", async () => {
     const p = previousHand();
@@ -188,7 +188,7 @@
     if (!r.ok) { setStatus(`could not flag hand #${p.n}: ${r.error}`); return; }
     state.flagged = { game, n: p.n, flagged: r.data.flagged };
     paintFlag();
-    // An open chart may be on its Manual review tab: it fetches again, quietly.
+    // An open chart may be on its Tagged tab: it fetches again, quietly.
     if (isOpen()) $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, origin());
   });
 

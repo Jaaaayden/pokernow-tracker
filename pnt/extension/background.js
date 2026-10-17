@@ -76,7 +76,7 @@ const handlers = {
   live: ({ game_id, min, known }) =>
     call(`/live/${encodeURIComponent(game_id)}?min=${count(min, 1, 1)}&known=${count(known, DEFAULTS.liveKnown, 0)}`),
 
-  // The HUD's 🚩: flag a hand for the chart's Manual review tab, or clear the flag.
+  // The HUD's 🚩: flag a hand for the chart's Tagged tab, or clear the flag.
   flag: ({ game_id, hand_number, flagged }) =>
     call(`/games/${encodeURIComponent(game_id)}/hands/${count(hand_number, 0, 0)}/flag`, {
       method: "POST",
