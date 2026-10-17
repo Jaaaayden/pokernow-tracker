@@ -1977,3 +1977,62 @@ def tagged(
         for r in rows:
             r["player"] = whose[r["hand_id"]]
     return {"tag": want, "player": player, "filter": filter, "game": game, "tags": chips, "hands": rows}
+
+
+# ---- estimated ranges and the board breakdown -----------------------------------
+# A range from how often the player takes the action, not only from what they
+# showed, and what it makes on a board. Imported inside the endpoints so this
+# block stands alone. See SPEC.md, "Estimated ranges".
+
+
+def _player_facts(conn: sqlite3.Connection, alias: str, game: str | None) -> list[Facts]:
+    """Every hand of one player's, unfiltered: 404 on an unknown alias."""
+    try:
+        return facts_cached(conn, alias, game)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/players/{alias:path}/estimate")
+def player_estimate(
+    alias: str,
+    filter: Annotated[str | None, Query(description="one preflop spot, e.g. 'position=BTN,unopened=raise'")] = None,
+    game: str | None = None,
+) -> dict:
+    """The estimated range at the preflop decision the spot names: the top X% of
+    hands at the player's frequency there (capped for a call), calibrated by the
+    hands they showed. 400 when the spot names no single raise or call."""
+    from pnt.stats.estimate import estimate
+
+    conn = db()
+    _predicate(conn, filter)  # a bad term is the parser's 400, in its words
+    facts = _player_facts(conn, alias, game)
+    try:
+        out = estimate(facts, filter, display_names(conn), _tag_keys(conn))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"player": alias, "filter": filter, **out}
+
+
+@app.get("/players/{alias:path}/board")
+def player_board(
+    alias: str,
+    filter: Annotated[str | None, Query(description="e.g. 'position=BTN,unopened=raise,flop=ace_high'")] = None,
+    board: Annotated[str | None, Query(description="3 to 5 cards, e.g. 'Ah7c2d'; blank samples the flop texture")] = None,
+    game: str | None = None,
+) -> dict:
+    """The estimated range on a board: its made-hand groups, the cut at the
+    player's next-action rate, what they showed after that action, and the bluffs
+    that implies were never shown. 400 on a bad board or no usable spot."""
+    from pnt.stats.estimate import board_report
+
+    conn = db()
+    names, tags = display_names(conn), _tag_keys(conn)
+    pred = _predicate(conn, filter)
+    facts = _player_facts(conn, alias, game)
+    spot = [f for f in facts if pred(f)] if pred is not None else facts
+    try:
+        out = board_report(facts, spot, filter, (board or "").strip() or None, names, tags)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"player": alias, "filter": filter, **out}
