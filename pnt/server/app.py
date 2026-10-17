@@ -1024,10 +1024,14 @@ def hud(game_id: GameId) -> dict:
 
     `note` is what you have written about the player, or null -- the one thing
     on the card no log could have told it.
+
+    `columns` is the stats chosen on the front page (`/settings/hud`), in order,
+    each with its label, hover text and `_opp` key; `hands` comes before them.
     """
     from pnt.stats.shows import with_show_tags
 
     conn = db()
+    columns = _hud_columns(conn)
     latest = conn.execute(
         "SELECT hand_id FROM hands WHERE game_id = ? ORDER BY ord DESC LIMIT 1",
         (game_id,),
@@ -1048,6 +1052,7 @@ def hud(game_id: GameId) -> dict:
     notes = player_notes(conn)
     return {
         "game_id": game_id,
+        "columns": columns,
         "seats": [
             {
                 "seat": r["seat"],
@@ -1070,6 +1075,58 @@ def hud(game_id: GameId) -> dict:
             for r in seated
         ],
     }
+
+
+# ------------------------------------------------------------- HUD columns ---
+# Which stats the HUD shows, chosen on the front page. Kept in the database, not
+# the extension, so every browser pointed at this server shows the same set.
+HUD_SETTING = "hud_columns"
+
+
+def _hud_columns(conn: sqlite3.Connection) -> list[dict]:
+    """The chosen columns as `/hud` sends them: catalog entries in order."""
+    from pnt.db.userdata import get_setting
+    from pnt.stats.hud_catalog import BY_KEY, chosen
+
+    return [
+        {k: BY_KEY[key][k] for k in ("key", "label", "tip", "opp")}
+        for key in chosen(get_setting(conn, HUD_SETTING))
+    ]
+
+
+def _hud_settings(columns: list[str]) -> dict:
+    from pnt.stats.hud_catalog import CATALOG, DEFAULT, MAX
+
+    return {"catalog": CATALOG, "columns": columns, "default": DEFAULT, "max": MAX}
+
+
+class HudColumnsRequest(BaseModel):
+    #: Catalog keys, in the order the HUD prints them after `hands`.
+    columns: list[str]
+
+
+@app.get("/settings/hud")
+def read_hud_settings() -> dict:
+    """Every stat the HUD can show (`catalog`), the ones it shows (`columns`),
+    and the default and cap the front page offers."""
+    from pnt.db.userdata import get_setting
+    from pnt.stats.hud_catalog import chosen
+
+    return _hud_settings(chosen(get_setting(db(), HUD_SETTING)))
+
+
+@app.put("/settings/hud")
+def write_hud_settings(req: Annotated[HudColumnsRequest, Body()]) -> dict:
+    """Choose the HUD's stats. 400 on a key not in the catalog, a key listed
+    twice, or more than the cap. The HUD picks the change up on its next poll."""
+    from pnt.db.userdata import set_setting
+    from pnt.stats.hud_catalog import check
+
+    try:
+        check(req.columns)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _hud_settings(set_setting(db(), HUD_SETTING, req.columns))
 
 
 @app.get("/live/{game_id}")
