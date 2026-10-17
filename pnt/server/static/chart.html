@@ -152,6 +152,32 @@
   .cell .l { font-size: 12px; font-weight: 600; letter-spacing: .01em; }
   .cell .n { font-size: 15px; font-weight: 500; align-self: flex-end; }
   @media (max-width: 720px) { .cell .l { font-size: 10px; } .cell .n { font-size: 12px; } }
+  /* The estimated range over the grid: an outline as thick and as strong as the
+     share of the class's combos in it (--w, 0..1). Shown hands keep their fill. */
+  .cell.est-in::after { content: ""; position: absolute; inset: 0; border-radius: 4px; pointer-events: none;
+    box-shadow: inset 0 0 0 calc(1px + 2.5px * var(--w, 1)) var(--ink); opacity: calc(.3 + .7 * var(--w, 1)); }
+  .est { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+  .est .cap { color: var(--ink-2); }
+  .est .cap b { color: var(--ink); font-weight: 600; }
+  .est .sub { color: var(--muted); font-size: 11.5px; }
+  .est .bd-ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .est .bd-ctl input { flex: 0 0 11em; width: 11em; min-width: 0; font-family: ui-monospace, Consolas, monospace; }
+  .est h3 { font-size: 13px; font-weight: 600; margin: 6px 0 0; }
+  .est h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .est .catbar { position: relative; display: flex; gap: 2px; height: 16px; margin-top: 18px; }
+  .est .catbar i { display: block; height: 100%; min-width: 2px; }
+  .est .catbar i:first-child { border-radius: 4px 0 0 4px; }
+  .est .catbar i:last-of-type { border-radius: 0 4px 4px 0; }
+  .est .cut { position: absolute; top: -18px; bottom: -3px; border-left: 2px solid var(--ink); pointer-events: none; }
+  .est .cut span { position: absolute; left: 4px; top: 0; white-space: nowrap; font-size: 11px; color: var(--ink); }
+  .est .cut.right span { left: auto; right: 4px; }
+  .est .catkey { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: 12px; }
+  .est .catkey i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .est table { border-collapse: collapse; max-width: 640px; }
+  .est th, .est td { text-align: right; padding: 3px 10px 3px 0; font-variant-numeric: tabular-nums; }
+  .est th:first-child, .est td:first-child { text-align: left; }
+  .est th { font-weight: 500; color: var(--ink-2); font-size: 12px; }
+  .est ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 11.5px; }
 
   .scale { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--ink-2); font-size: 12px; flex-wrap: wrap; }
   .scale .bar { display: flex; gap: 2px; }
@@ -805,6 +831,7 @@
         <button data-color="pfr" aria-pressed="false">Raise %</button>
         <button data-color="size" aria-pressed="false">Raise size</button>
       </span>
+      <button id="esttoggle" aria-pressed="false" title="outline the range their frequency at this spot implies (e.g. position=BTN,unopened=raise)">Estimate</button>
       <span class="ctl hidden" id="sizingctl">
         <select id="street" aria-label="Street">
           <option value="flop">flop</option>
@@ -862,6 +889,8 @@
     </div>
     <div class="grid-wrap" id="grid-wrap"><div id="grid" class="grid" role="grid" aria-label="Starting hand chart"></div></div>
     <div id="scale" class="scale"></div>
+    <!-- The estimate's caption and the Board panel (GET /estimate, /board). -->
+    <div id="est" class="est hidden" aria-live="polite"></div>
     <div id="bars" class="bars hidden"></div>
     <div id="sizing" class="sizing hidden"></div>
     <div id="results" class="hidden"></div>
@@ -1405,6 +1434,9 @@
     state.tx = q.get("tx") === "1";
     state.tmin = /^\d+$/.test(q.get("tmin") || "") ? Number(q.get("tmin")) : TREE_DIM;
     state.made = q.get("made") === "streets" ? "streets" : "mix";
+    // The preflop grid's estimate overlay, and the board its panel breaks it down on.
+    state.est = q.get("est") === "1";
+    state.estBoard = /^[2-9TJQKA10cdhs ]{0,16}$/i.test(q.get("eb") || "") ? (q.get("eb") || "") : "";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
@@ -1429,6 +1461,7 @@
       if (state.tmin !== TREE_DIM) q.set("tmin", state.tmin);
     }
     if (state.by === "made" && state.made === "streets") q.set("made", "streets");
+    if (state.by === "preflop" && state.est) { q.set("est", "1"); if (state.estBoard) q.set("eb", state.estBoard); }
     if (isListView(state.by)) {
       if (state.order && state.order !== ORDERS[state.by][0]) q.set("order", state.order);
       if (state.hide.size) q.set("hide", [...state.hide].join(","));
@@ -2214,7 +2247,7 @@
     for (const id of ["colorseg", "sizingctl", "linesctl", "reviewctl", "tabletoggle", "grid", "scale", "bars", "sizing",
       "foldeq", "results", "lineview", "strength", "table", "review", "tilt", "timing", "shows", "bounty", "groupby",
       "tree", "treectl", "madeseg", "streets",
-      "tagged"]) {
+      "tagged", "est", "esttoggle"]) {
       $(id).classList.add("hidden");
     }
     $("duo").classList.remove("two");
@@ -3776,6 +3809,219 @@
     state.made = b.dataset.made; writeUrl(); closeHands(); load();
   }));
 
+  // ---- estimated range ---------------------------------------------------------
+  // GET /players/{alias}/estimate: the range their frequency at the spot's one
+  // preflop decision implies, outlined on the grid; GET /board breaks it down on a
+  // board. Each answer is kept by its key, so a re-render does not ask again, and
+  // a newer request aborts the one before it. See "Estimated ranges" in SPEC.md.
+  const est = { key: null, ctl: null, data: null, err: null, bkey: null, bctl: null, board: null, berr: null };
+  const GROUP_FILL = { strong: BLUE[6], trips: BLUE[5], two_pair: BLUE[4], top_pair: BLUE[3], weak_pair: BLUE[1],
+    draw: RED[3], air: "var(--axis)" };
+  const VALUE_GROUPS = ["strong", "trips", "two_pair", "top_pair", "weak_pair"];
+  const leafWord = (x) => MADE_LABEL[x] || x.replace(/_/g, " ");
+  const estOn = () => state.est && state.by === "preflop" && !state.table && !EMBED;
+  const estKey = () => `${state.player}|${state.filter}`;
+  // A class's weight in the estimate on show, 0 outside it; null with none on show.
+  const estWeight = (label) => estOn() && est.data && est.key === estKey() ? (est.data.cells[label] || 0) : null;
+
+  async function getAbortable(url, ctl) {
+    const r = await fetch(url, { signal: ctl.signal });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 404 && body.detail === "Not Found") {
+        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+      }
+      throw new Error(body.detail || `${r.status} ${r.statusText}`);
+    }
+    return body;
+  }
+
+  async function loadEstimate() {
+    const key = estKey();
+    if (key === est.key) { paintEstimate(); return; } // on show, or on its way
+    est.ctl?.abort(); est.bctl?.abort();
+    const ctl = est.ctl = new AbortController();
+    Object.assign(est, { key, data: null, err: null, bkey: null, board: null, berr: null });
+    paintEstimate();
+    const q = new URLSearchParams();
+    if (state.filter) q.set("filter", state.filter);
+    try {
+      const d = await getAbortable(`/players/${encodeURIComponent(state.player)}/estimate?` + q, ctl);
+      if (ctl !== est.ctl) return;
+      est.data = d;
+    } catch (e) {
+      if (ctl !== est.ctl || e.name === "AbortError") return;
+      est.err = String(e.message || e);
+    }
+    paintEstimate();
+  }
+
+  function paintEstimate() {
+    const on = estOn();
+    const d = on && est.key === estKey() ? est.data : null;
+    for (const el of $("grid").children) {
+      const w = d ? d.cells[el.dataset.hand] || 0 : 0;
+      el.classList.toggle("est-in", w > 0);
+      if (w > 0) el.style.setProperty("--w", w); else el.style.removeProperty("--w");
+    }
+    if (!on) return;
+    const box = $("est");
+    box.replaceChildren();
+    if (est.err) { box.appendChild(message(est.err)); return; }
+    if (!d) { box.appendChild(message("estimating…")); return; }
+    box.appendChild(estCaption(d));
+    if (d.n) { box.appendChild(boardPanel()); loadBoard(); }
+  }
+
+  // "Estimated 62% (±6) from 380 hands unopened (open 236×); 3 shown outside → moved suited connectors up"
+  function estCaption(d) {
+    const wrap = document.createElement("div");
+    const nd = d.node;
+    const cap = document.createElement("div"); cap.className = "cap";
+    if (!d.n) {
+      cap.textContent = `No hands at this spot to estimate from (${nd.spot_filter}).`;
+      wrap.appendChild(cap); return wrap;
+    }
+    const b = document.createElement("b"); b.textContent = `Estimated ${d.pct}% (±${d.pm})`;
+    const parts = [`from ${d.n} hands ${nd.spot} (${nd.label} ${d.count}×)`];
+    if (d.method === "capped") parts.push(`less the top ${d.slice_pct}% they raise`);
+    if (d.calibrated) {
+      // Families first, the most combos moved first; the rest as a count.
+      const by = new Map();
+      for (const r of d.calibration) {
+        if (!r.moved.length) continue;
+        const k = r.family || r.class;
+        by.set(k, (by.get(k) || 0) + r.moved.length + (r.family ? 100 : 0));
+      }
+      const moved = [...by].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+      const more = moved.length > 3 ? ` +${moved.length - 3} more` : "";
+      parts.push(`${d.outside} shown outside → moved ${moved.slice(0, 3).join(", ")}${more} up`);
+    } else if (d.outside) {
+      parts.push(`${d.outside} shown outside; nothing moves under ${d.min_shown} shown (${d.shown})`);
+    }
+    cap.append(b, " " + parts.join("; "));
+    const sub = document.createElement("div"); sub.className = "sub";
+    sub.textContent = "outline = estimated, thicker = more of its combos · filled = shown" +
+      (nd.ignored.length ? ` · not in the frequency: ${nd.ignored.join(", ")}` : "");
+    wrap.append(cap, sub);
+    return wrap;
+  }
+
+  function boardPanel() {
+    const wrap = document.createElement("div");
+    const h = document.createElement("h3"); h.textContent = "Board";
+    const sm = document.createElement("small"); sm.textContent = "the estimate's combos on it, card removal applied";
+    h.appendChild(sm);
+    const ctl = document.createElement("div"); ctl.className = "bd-ctl";
+    const input = document.createElement("input");
+    Object.assign(input, { id: "est-board", type: "text", spellcheck: false, placeholder: "Ah7c2d", value: state.estBoard });
+    input.setAttribute("aria-label", "Board, 3 to 5 cards");
+    const go = document.createElement("button"); go.type = "button"; go.textContent = "Break down";
+    const run = () => { state.estBoard = input.value.trim(); writeUrl(); loadBoard(); };
+    go.addEventListener("click", run);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+    const hint = document.createElement("span"); hint.className = "sub";
+    hint.textContent = "blank: ~30 flops of the spot's flop texture, e.g. flop=king_high";
+    ctl.append(input, go, hint);
+    const body = document.createElement("div"); body.id = "est-bd";
+    wrap.append(h, ctl, body);
+    return wrap;
+  }
+
+  async function loadBoard() {
+    const box = () => $("est-bd");
+    if (!estOn() || !est.data?.n) return;
+    const key = `${est.key}|${state.estBoard}`;
+    if (key === est.bkey) { if (box()) paintBoard(box()); return; }
+    est.bctl?.abort();
+    const ctl = est.bctl = new AbortController();
+    Object.assign(est, { bkey: key, board: null, berr: null });
+    if (box()) paintBoard(box());
+    const q = new URLSearchParams();
+    if (state.filter) q.set("filter", state.filter);
+    if (state.estBoard) q.set("board", state.estBoard);
+    try {
+      const d = await getAbortable(`/players/${encodeURIComponent(state.player)}/board?` + q, ctl);
+      if (ctl !== est.bctl) return;
+      est.board = d;
+    } catch (e) {
+      if (ctl !== est.bctl || e.name === "AbortError") return;
+      est.berr = String(e.message || e);
+    }
+    if (box()) paintBoard(box());
+  }
+
+  // value / draw / air shares of a group mix, in percent.
+  function vda(mix) {
+    const sum = (keys) => mix.filter(m => keys.includes(m.group)).reduce((s, m) => s + (m.pct || 0), 0);
+    return [sum(VALUE_GROUPS), sum(["draw"]), sum(["air"])];
+  }
+
+  function paintBoard(body) {
+    body.replaceChildren();
+    if (est.berr) { body.appendChild(message(est.berr)); return; }
+    const d = est.board;
+    if (!d) { body.appendChild(message("breaking down…")); return; }
+    const head = document.createElement("div"); head.className = "cap";
+    head.textContent = d.sampled
+      ? `${d.boards.length} random flops with ${d.flop_terms.join(", ")} · ${d.combos} combos each, averaged`
+      : `${d.board.map(pretty).join(" ")} · ${d.combos} combos`;
+    body.appendChild(head);
+
+    const bar = document.createElement("div"); bar.className = "catbar";
+    const key = document.createElement("div"); key.className = "catkey";
+    for (const c of d.categories) {
+      if (!c.pct) continue;
+      const i = document.createElement("i");
+      i.style.flex = `${c.pct} 1 0`; i.style.background = GROUP_FILL[c.group];
+      i.title = `${c.label} ${fmtPct(c.pct)} · ` + c.leaves.map(x => `${leafWord(x.leaf)} ${fmtPct(x.pct)}`).join(", ");
+      bar.appendChild(i);
+      const k = document.createElement("span");
+      const sw = document.createElement("i"); sw.style.background = GROUP_FILL[c.group];
+      k.append(sw, `${c.label} ${fmtPct(c.pct)}`);
+      key.appendChild(k);
+    }
+    const cut = d.linear_cut, nx = d.next;
+    if (cut && nx) {
+      // The cut takes the strongest combos first, and the bar runs strongest first.
+      const m = document.createElement("div"); m.className = "cut" + (cut.pct > 60 ? " right" : "");
+      m.style.left = cut.pct + "%";
+      const s = document.createElement("span"); s.textContent = `${nx.label} ${fmtPct(cut.pct)} → cut at ${leafWord(cut.at)}`;
+      m.appendChild(s); bar.appendChild(m);
+    }
+    body.append(bar, key);
+
+    const notes = [];
+    if (!nx) notes.push("no next action after a limp: the mix alone");
+    else {
+      const t = document.createElement("table");
+      const tr = (cells, tag = "td") => {
+        const r = document.createElement("tr");
+        for (const c of cells) { const e = document.createElement(tag); e.textContent = c; r.appendChild(e); }
+        t.appendChild(r); return r;
+      };
+      tr(["", "value", "draw", "air", ""], "th");
+      const pct = (v) => fmtPct(Math.round(10 * v) / 10);
+      if (cut) tr(["Estimated betting range", ...vda(cut.mix).map(pct), `${cut.combos} combos`]);
+      const sm = nx.shown_mix;
+      tr(sm.n ? ["Shown at showdown", ...vda(sm.mix).map(pct), `${sm.n} shown`] : ["Shown at showdown", "–", "–", "–", "none shown"]);
+      const imp = d.implied_unshown_bluffs;
+      if (imp) {
+        const r = tr(["Implied unseen", "", "", "", ""]);
+        const cell = r.children[1]; cell.colSpan = 4; cell.style.textAlign = "left";
+        while (r.children.length > 2) r.lastChild.remove();
+        cell.textContent = `≥ ${fmtPct(imp.floor_pct)} draws or air even if all value acts`
+          + (imp.pct == null ? "" : ` · shown ${fmtPct(imp.shown_pct)} → ~${fmtPct(imp.pct)} never shown`);
+      }
+      body.appendChild(t);
+      notes.push(`${nx.label} ${fmtPct(nx.pct)} of ${nx.n}` + (nx.ci ? ` (${nx.ci[0]}–${nx.ci[1]}%)` : ""));
+      if (d.texture.length) notes.push(`rate and shown hands: boards like this (${d.texture.join(",")})`);
+    }
+    const ul = document.createElement("ul");
+    bulletsInto(ul, [...notes, ...d.notes]);
+    body.appendChild(ul);
+  }
+
   function render() {
     const d = state.data;
     const view = state.by;
@@ -3812,6 +4058,9 @@
     $("card-title").textContent = TITLE[view];
     $("grid").classList.toggle("hidden", view !== "preflop" || table);
     $("scale").classList.toggle("hidden", view !== "preflop" || table);
+    $("esttoggle").classList.toggle("hidden", view !== "preflop" || EMBED);
+    $("esttoggle").setAttribute("aria-pressed", state.est);
+    $("est").classList.toggle("hidden", view !== "preflop" || table || !state.est || EMBED);
     $("bars").classList.toggle("hidden", view !== "made" || table);
     $("sizing").classList.toggle("hidden", view !== "sizing" || table);
     $("results").classList.toggle("hidden", view !== "results");
@@ -3852,7 +4101,7 @@
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === TREE_VIEW) { renderTree(d); return; }
     if (madeStreets) { renderStreets(d); return; }
-    if (view === "preflop") renderGrid(d);
+    if (view === "preflop") { renderGrid(d); if (state.est && !table && !EMBED) loadEstimate(); }
     else if (view === "made") renderClassBars($("bars"), d.classes, "", true);
     else renderSizing(d);
     renderTable(d, view);
@@ -4176,6 +4425,7 @@
         const c = d.cells[label];
         const el = document.createElement("div");
         el.className = "cell";
+        el.dataset.hand = label;
         el.tabIndex = 0;
         el.setAttribute("role", "gridcell");
         const l = document.createElement("span"); l.className = "l"; l.textContent = label;
@@ -4237,6 +4487,8 @@
         ["raised", `${c.raise.n} of ${c.n}`],
       ] : [["raised", "0 of " + c.n]]),
     ];
+    const weight = estWeight(label);
+    if (weight != null) rows.push(["estimate", weight ? `${Math.round(100 * weight)}% of its combos` : "outside"]);
     for (const [k, v] of rows) {
       const r = document.createElement("div"); r.className = "row";
       const kk = document.createElement("span"); kk.textContent = k;
@@ -5060,6 +5312,7 @@
     state.games = null; // a new game may have started
     state.bluffs = null;
     gb.key = null;
+    est.key = null; // the estimate and its board read the same hands
   }
   // The spots this page has been through, newest last: a click into a line or a
   // bar adds terms, and Back takes the spot to what it was before, in one click,
@@ -5103,6 +5356,9 @@
   }));
   $("street").addEventListener("change", () => { state.street = $("street").value; writeUrl(); load(); });
   $("kind").addEventListener("change", () => { state.kind = $("kind").value; writeUrl(); load(); });
+  $("esttoggle").addEventListener("click", () => {
+    state.est = !state.est; writeUrl(); if (state.data) render();
+  });
   $("tabletoggle").addEventListener("click", () => {
     state.table = !state.table; $("tabletoggle").setAttribute("aria-pressed", state.table); if (state.data) render();
   });

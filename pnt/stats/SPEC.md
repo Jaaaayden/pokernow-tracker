@@ -1500,6 +1500,126 @@ Judgement calls:
 3. **A busted draw on the river stays a draw**, as `made_river` reads it: the row
    says what they were drawing to, the cell that it missed.
 
+### Estimated ranges
+
+Shown hands miss the bluffs that got folds. An *estimated* range starts from how
+often the player takes an action instead, the way HM3's range charts do, and then
+says what that range makes on a board, the way Flopzilla does. `estimate.py`
+mirrors this section. **Both are estimates, linear by assumption**: nothing here
+is a count of hands.
+
+**The node.** `GET /players/{alias}/estimate?filter=&game=` reads one preflop
+decision from the spot filter. Its top-level comma terms are read like this:
+
+| Term | Node |
+|---|---|
+| `unopened=raise`, `opener` | open (level 1, raise) |
+| `steal` | open, with `steal_opp` added to the spot |
+| `unopened=call`, `limp` | limp (level 1, call) |
+| `faced_open=raise`, `3bet` | 3-bet (level 2); `squeeze` and `3bet_vs_steal` add `squeeze_opp` / `fold_to_steal_opp` |
+| `faced_open=call`, `called_open` | call vs open (level 2); `cold_call` adds `cold_call_opp` |
+| `faced_3bet=` (opener only), `faced_3bet_any=`, `4bet` | level 3 |
+| `faced_4bet=`, `5bet`; `faced_5bet=` | levels 4 and 5 |
+
+The highest level named is the node; a decision term at a lower level is history
+and stays in the spot (`opener,faced_3bet=call` is the opener calling a 3-bet).
+400, with a short reason, when no term names a preflop decision ("pick one
+preflop spot, e.g. position=BTN,unopened=raise"), when the node's decision is a
+fold or a check, or when two decisions are named at the node's level. A term
+inside brackets never names the node.
+
+**The spot** is the node's situation flag (`unopened`, `faced_open`,
+`faced_3bet`, `faced_3bet_any`, `faced_4bet`, `faced_5bet`) and the terms that
+were settled before the decision: `position=`, the lower-level history,
+situation flags at or below the node, `first_in`, `steal_opp`, `squeeze_opp`,
+`cold_call_opp`, `3bet_opp`, `fold_to_steal_opp`, `acted_preflop`, `straddled`,
+`dead_button`, `post_loss` and their `!` forms, and comparisons on `players`,
+`eff_bb`, `callers_before`, `session_hand`, `session_hour`, `hands_since_loss`,
+plus `open_bb` from level 2 up. **Every other term is left out and listed as
+`ignored`**: a postflop term, a pot type, `hand=` or `cards_known` would count
+only the hands that got that far, and a term that implies the decision would
+make the frequency 100%.
+
+**The frequency.** Over the spot's hands, `n`, each hand's decision at the node
+(`filters.DECIDED`, the reading `faced_open=call` makes):
+
+| Node | Range | `pct` |
+|---|---|---|
+| raise at any level, or a limp | `linear`: the top X% | raises / n (limps / n) |
+| call at level 2 and up | `capped`: the top (call% + raise%) less the top raise% | calls / n |
+
+The interval is the Wilson interval on `pct`'s count and `n`; the caption's ± is
+its half-width, rounded.
+
+**Filling X%.** Classes are taken in `cards.HAND_RANKING` order, each worth its
+combos (6 a pair, 4 suited, 12 offsuit), until X% of 1,326 combos is filled; the
+class at the boundary gets the fraction that fits. A capped range is the top
+fill less the raise fill, class by class, so its weights stay between 0 and 1.
+Each cell's weight is that fraction of its combos.
+
+**Calibration** reads the hands shown at the node (cards known, this decision),
+and only when there are at least `MIN_SHOWN` = 5 of them:
+
+1. A shown class with weight 0 is **outside** the estimate.
+2. Each outside class moves in at weight 1, and so does every member of its
+   family that is ranked above it, is outside, and sits below the top of the
+   range (for a capped range, below the raise slice). Families: small pairs
+   (22–66), suited aces (A2s–A9s), suited connectors (32s–JTs), suited gappers
+   (one or two gaps, not both broadway, no ace), offsuit broadways (both T+),
+   offsuit aces (A2o–A9o). A class in none moves alone.
+3. The combos moved in are taken back from the bottom of the range, weakest
+   class first, never from a moved class, and from a shown class only once no
+   other is left, so the range keeps its size. It grows only when the moved
+   classes alone outgrow it.
+
+`calibration` lists every shown class: `{class, shown, outside, family, moved}`;
+`demoted` lists the combos taken back. Under five shown hands nothing moves and
+the rows still say which were outside.
+
+**Board breakdown.** `GET /players/{alias}/board?filter=&board=&game=` takes the
+estimate and a board of 3 to 5 cards (`Ah7c2d`; 400 on anything else, a card
+twice included). Every combo of every weighted class not using a board card is
+classified by `cards.made_hand` on the board and grouped as "Holdings by street"
+groups them (strong, trips, two pair, top pair+, weaker pair, draw, air), each
+combo counting its class's weight. Value is the five pair-or-better groups; a
+bluff is a draw or air.
+
+With no board typed, the spot's own flop texture terms (`flop=ace_high`,
+`flop!=paired`, top level) pick about 30 random flops that have every one of
+them (seeded by the terms, so the same spot samples the same flops), and every
+figure is the average over them. 400 with neither a board nor a flop texture.
+
+**The next action** is read over the spot's hands, every filter term counted:
+after a raise, the c-bet on the board's street (`cbet_S` / `cbet_S_opp`); after a
+call from level 2 up, continuing against it (1 − `fold_to_cbet_S`). A limp has
+none. For a typed board, the spot is first narrowed to boards like it
+(`nodes.texture_terms`: high card, then pairing) and kept narrowed while at
+least `MIN_SHOWN` hands are shown taking the action.
+
+- `linear_cut`: the strongest X% of the range's combos by hand strength on the
+  board ("Hand strength"), X the next action's rate; `at` is the leaf the cut
+  falls in, `mix` the cut range's groups.
+- `shown_mix`: the shown hands that took that action, grouped on that street's
+  board as it stood (`made_at`).
+- `implied_unshown_bluffs`: even if every value combo in the range takes the
+  action, a range that is V% value acting X% of the time is at least
+  `floor = 1 − V/X` draws and air (0 when V ≥ X). `pct = floor − shown bluff
+  share`, at least 0: the bluffs the showdowns do not show. It assumes the
+  estimate is right, that value always acts, and that shown hands are a fair
+  sample of the hands that called down -- each of them wrong somewhere, so it is
+  a direction, never a count.
+
+Judgement calls:
+
+1. **A limp is linear**, as the plan has it, though a player who both limps and
+   opens limps the hands under their opens.
+2. **Turn and river boards use the preflop range**, not narrowed by the earlier
+   streets' actions.
+3. **Hand strength puts draws with high card**, so a linear cut bets them last;
+   most players bet their draws sooner. The cut is what "bets only value first"
+   would look like.
+4. Sampled flops are averaged with equal weight; `at` is the most common cut leaf.
+
 ---
 
 ## Decision points (nodes)

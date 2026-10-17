@@ -630,7 +630,16 @@ HUD embeds it. `GET /players/{alias}/range` returns the same data as JSON, with 
 
 ### Estimated ranges
 
-Coming soon: the preflop view's **Estimate** toggle.
+- **Estimate** (preflop view): outlines the range their frequency at one preflop
+  decision implies, top X% by hand ranking, calls capped below their raises.
+  `position=BTN,unopened=raise` at 25% opens outlines the top 25%; shown hands
+  outside it pull their family up once 5 are shown.
+- **Board** (under it): that range on a board, cut at their next action's rate.
+  `Ah7c2d` with a 42% c-bet: the mix, the cut (middle pair), and their bets'
+  value/draw/air against what they showed. Blank with `flop=king_high` in the spot
+  averages 30 king-high flops.
+- Both are estimates, linear by assumption; `GET /players/{alias}/estimate` and
+  `/board` return them as JSON. SPEC.md, "Estimated ranges", has the rules.
 
 ## The live HUD
 
