@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pnt.db.conn import connect, generation, path_of
+from pnt.db.userdata import FLAGGED_TAG, tag_resolver
 from pnt.ingest import log_folder, sync
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
@@ -386,7 +387,7 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
-        return count_terms(facts, req.filter, req.terms, display_names(conn), _tag_keys(conn))
+        return count_terms(facts, req.filter, req.terms, display_names(conn), tag_resolver(conn))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -490,27 +491,9 @@ def stats(
 def _predicate(conn: sqlite3.Connection, filter: str | None):
     """Compile a spot filter, or 400 on a term the parser does not know."""
     try:
-        return parse_filter(filter, display_names(conn), _tag_keys(conn)) if filter else None
+        return parse_filter(filter, display_names(conn), tag_resolver(conn)) if filter else None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-#: The 🚩 as a tag: `tag=flagged` is the hands flagged for manual review, and the
-#: Tagged view lists them first. No hand can carry a tag of that name.
-FLAGGED_TAG = "flagged"
-
-
-def _tag_keys(conn: sqlite3.Connection):
-    """`tag=`'s resolver (filters.TagResolver): the hands carrying a tag, or the
-    flagged ones for `flagged`. A bad tag raises ValueError, as a bad term does."""
-    from pnt.db.userdata import normalise_tag, tagged_keys
-
-    def resolve(tag: str) -> set[tuple[str, int]]:
-        if normalise_tag(tag) == FLAGGED_TAG:
-            return set(flagged_hands(conn))
-        return tagged_keys(conn, tag)
-
-    return resolve
 
 
 def _spot_key(conn: sqlite3.Connection, filter: str | None) -> str | None:

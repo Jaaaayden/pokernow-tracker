@@ -181,6 +181,9 @@ TAG_MAX = 40
 #: filter language's own characters (`, | ( ) ! = < >`) are out, so `tag=<tag>`
 #: always reads as one term.
 _TAG_RE = re.compile(r"[\w-]+")
+#: The 🚩 as a tag: `tag=flagged` is the hands flagged for manual review, and the
+#: Tagged view lists them first. No hand can carry a tag of that name.
+FLAGGED_TAG = "flagged"
 
 
 def normalise_tag(tag: str) -> str:
@@ -287,3 +290,17 @@ def tagged_keys(conn: sqlite3.Connection, tags: str | Iterable[str]) -> set[tupl
             wanted,
         )
     }
+
+
+def tag_resolver(conn: sqlite3.Connection):
+    """`tag=`'s resolver (filters.TagResolver) for `parse_filter`, shared by the
+    server and the CLI: the hands carrying a tag, or the flagged ones for
+    `flagged`. A bad tag raises ValueError, as a bad term does."""
+
+    def resolve(tag: str) -> set[tuple[str, int]]:
+        if normalise_tag(tag) == FLAGGED_TAG:
+            rows = conn.execute("SELECT game_id, hand_number FROM hand_flags")
+            return {(r["game_id"], r["hand_number"]) for r in rows}
+        return tagged_keys(conn, tag)
+
+    return resolve

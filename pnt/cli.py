@@ -16,6 +16,7 @@ import typer
 from . import service as svc
 from . import update as upd
 from .db.conn import DEFAULT_DB, connect
+from .db.userdata import tag_resolver
 from .ingest import fetch as fetchmod
 from .ingest import sync as syncmod
 from .ingest.csv_source import HAND_START, has_hands, read_csv
@@ -42,7 +43,14 @@ from .stats.lines import DEFAULT_MIN as LINES_MIN
 from .stats.lines import MODES as LINES_MODES
 from .stats.lines import TIERS, line_breakdown
 from .stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
-from .stats.queries import display_names, facts_by_player, facts_for, identities_of, positional_report, report
+from .stats.queries import (
+    display_names,
+    facts_by_player,
+    facts_for,
+    identities_of,
+    positional_report,
+    report,
+)
 from .stats.ranges import SIZING_KINDS, composition, range_grid, sizing_tells
 from .stats.review import KIND_LABELS as REVIEW_LABELS
 from .stats.review import KINDS as REVIEW_KINDS
@@ -655,7 +663,7 @@ def stats(
 ) -> None:
     """Per-player stats. Rates show `--` when the denominator is empty."""
     conn = connect(db)
-    pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+    pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
     rows = report(conn, game_id=game, min_hands=min_hands, predicate=pred)
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
@@ -698,7 +706,7 @@ def allin(
     every run after it is instant. Running this once also warms the page.
     """
     conn = connect(db)
-    pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+    pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
     rows = allin_report(conn, game_id=game, min_hands=min_hands, predicate=pred)
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
@@ -799,7 +807,7 @@ def review(
         raise typer.BadParameter(f"unknown kind {kind!r}. Known: {', '.join(REVIEW_KINDS)}", param_hint="--kind")
     conn = connect(db)
     try:
-        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--filter") from exc
     try:
@@ -1015,7 +1023,7 @@ def range_cmd(
         raise typer.BadParameter(str(exc)) from exc
     if filter_:
         try:
-            pred = parse_filter(filter_, display_names(conn))
+            pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
         facts = [f for f in facts if pred(f)]
@@ -1068,7 +1076,7 @@ def sizing(
     try:
         facts = facts_for(conn, alias, game)
         if filter_:
-            pred = parse_filter(filter_, display_names(conn))
+            pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]
         out = sizing_tells(facts, street, kind)
     except ValueError as exc:
@@ -1119,7 +1127,7 @@ def tags(
     conn = connect(db)
     spot_pool = bool(filter_) and basis == "pool"
     try:
-        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
         if alias:
             identities_of(conn, alias)  # raises on an alias that does not exist
         # Everyone's hands are derived only to list everyone or to pool a filtered
@@ -1545,7 +1553,7 @@ def results(
     try:
         facts = facts_for(conn, alias, game)
         if filter_:
-            pred = parse_filter(filter_, display_names(conn))
+            pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -1600,7 +1608,7 @@ def lines_cmd(
     try:
         facts = facts_for(conn, alias, game)
         if filter_:
-            pred = parse_filter(filter_, display_names(conn))
+            pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]
         out = line_breakdown(facts, mode, street, max(1, min_n))
     except ValueError as exc:
@@ -1677,7 +1685,7 @@ def bluffs(
     """
     conn = connect(db)
     try:
-        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
         scopes = []
         if alias:
             scopes.append((alias, facts_for(conn, alias, game)))
@@ -1750,7 +1758,7 @@ def foldeq(
     """
     conn = connect(db)
     try:
-        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
         results = []
         if alias:
             facts = facts_for(conn, alias, game)
@@ -1803,7 +1811,7 @@ def slowplay(
 
     conn = connect(db)
     try:
-        pred = parse_filter(filter_, display_names(conn)) if filter_ else None
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
         if alias:
             grouped = {0: facts_for(conn, alias, game)}
             aliases = {0: alias}
@@ -2035,7 +2043,7 @@ def winnings(
     try:
         facts = facts_for(conn, alias, game)
         if filter_:
-            pred = parse_filter(filter_, display_names(conn))
+            pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -2152,7 +2160,7 @@ def timing(
     conn = connect(db)
     names = display_names(conn)
     try:
-        pred = parse_filter(filter_, names) if filter_ else None
+        pred = parse_filter(filter_, names, tag_resolver(conn)) if filter_ else None
         if alias:
             everything = facts_for(conn, alias, game)
             out = timing_report([f for f in everything if pred is None or pred(f)], baseline=everything)
