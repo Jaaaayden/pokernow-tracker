@@ -159,7 +159,8 @@ three optionally suffixed ` and go all in`
 **Pot**: `Uncalled bet of N returned to "P"`, `"P" collected N from pot`,
 `"P" collected N from pot with <ranking> (combination: …)`
 
-**Bounties**: `"P" paid N for the <kind> bounty to "P"`,
+**Bounties**: `"P" paid N for the <kind> bounty to "P"` (or `to "P", "P"` when the
+winners chopped the pot, each then collecting their share),
 `"P" collected N from the <kind> bounty`. A side bet (the 7-2 game), settled
 outside the pot — so it belongs in `net` but never in pot arithmetic.
 

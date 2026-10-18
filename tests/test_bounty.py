@@ -123,3 +123,17 @@ def test_bounty_fact_and_filters(tmp_path):
         assert {p for p, x in f.items() if paid(x)} == {"BBB", "CCC"}
         assert f["AAA"].won_pot and not f["BBB"].won_pot, "the bounty is not the pot"
     conn.close()
+
+
+def test_a_bounty_paid_to_two_winners_is_split_between_them():
+    """A chopped pot pays the bounty to both: `to "A", "B"`, then 15 collected each."""
+    lines = LINES[:-3] + [
+        '"Pay1 @ BBB" paid 30 for the 7-2 bounty to "Win @ AAA", "Pay2 @ CCC"',
+        '"Win @ AAA" collected 15 from the 7-2 bounty',
+        '"Pay2 @ CCC" collected 15 from the 7-2 bounty',
+    ]
+    entries = [RawEntry(ord=i, at="2026-01-01T00:00:00Z", entry=t) for i, t in enumerate(lines)]
+    res = parse(entries, GAME)
+    assert not res.misses
+    bounty = {pid: p.bounty for pid, p in res.hands[0].players.items()}
+    assert bounty == {"AAA": 15, "BBB": -30, "CCC": 15}

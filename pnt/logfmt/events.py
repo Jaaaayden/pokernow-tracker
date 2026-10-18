@@ -128,6 +128,9 @@ class BountyPaid(Event):
     payee: PlayerRef
     amount: int
     kind: str = "7-2"
+    #: More winners after `payee`, when two chopped the pot: ``to "A @ x", "B @ y"``.
+    #: The amount is split between them all, as their ``collected`` lines show.
+    others: tuple[PlayerRef, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

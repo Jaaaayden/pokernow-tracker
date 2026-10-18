@@ -394,14 +394,18 @@ def _apply_bounty(hand: ParsedHand, ev: E.BountyPaid) -> None:
     Takes a `ParsedHand` rather than a builder because these lines arrive *after*
     ``-- ending hand #N --``: by then the hand is finished and the builder is gone.
     Players not dealt into the hand are ignored, the same way every other handler
-    treats an unknown pn_id.
+    treats an unknown pn_id. Several winners split the amount; an odd chip goes to
+    the first.
     """
     payer = hand.players.get(ev.payer.pn_id)
-    payee = hand.players.get(ev.payee.pn_id)
     if payer is not None:
         payer.bounty -= ev.amount
-    if payee is not None:
-        payee.bounty += ev.amount
+    winners = (ev.payee, *ev.others)
+    share, odd = divmod(ev.amount, len(winners))
+    for i, ref in enumerate(winners):
+        payee = hand.players.get(ref.pn_id)
+        if payee is not None:
+            payee.bounty += share + (odd if i == 0 else 0)
 
 
 @dataclass(slots=True)

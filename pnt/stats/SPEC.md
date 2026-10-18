@@ -2363,8 +2363,10 @@ Judgement calls:
 3. **Bounties go to the player they were paid to.** They are their own ledger:
    settled with the pot, a bounty would be spread across the pot's winners. The
    log names payer and payee, but the hand keeps only each player's sum, so a
-   hand with two bounty receivers would fall back to the proportional rule; none
-   has occurred.
+   hand with two bounty receivers falls back to the proportional rule. One has
+   occurred: a bounty paid to both winners of a chopped pot (`to "A", "B"`),
+   which the parser splits evenly, an odd chip to the first, so the
+   proportional rule settles it exactly.
 4. **Two IDs of one person in the same hand are one person**, and money between
    them is not a pair. Folding happens through the identity map at read time, so
    a merge or a split re-answers on the next request.

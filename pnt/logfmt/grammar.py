@@ -205,7 +205,8 @@ RULES: list[Rule] = [
     # as noise -- counting both would credit the winner twice.
     (
         re.compile(
-            rf"^{_P} paid (?P<amt>\d+) for the (?P<kind>.+?) bounty to \"(?P<p2>[^\"]*)\"$"
+            rf"^{_P} paid (?P<amt>\d+) for the (?P<kind>.+?) bounty to "
+            rf"\"(?P<p2>[^\"]*)\"(?P<more>(?:, \"[^\"]*\")*)$"
         ),
         lambda m, o, r: E.BountyPaid(
             ord=o,
@@ -214,6 +215,7 @@ RULES: list[Rule] = [
             payee=split_player_token(m.group("p2")),
             amount=int(m.group("amt")),
             kind=m.group("kind"),
+            others=tuple(split_player_token(t) for t in re.findall(r'"([^"]*)"', m.group("more"))),
         ),
     ),
     (
