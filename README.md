@@ -326,9 +326,9 @@ pnt setup
 ```
 
 `pnt setup` handles the whole first run and is safe to re-run. It creates the
-database, imports any exports it finds (or a bundled 5,257-hand sample if there are
-none; `--no-sample` skips it), installs the always-on background server on Windows,
-and prints the extension folder.
+database, imports any exports it finds, installs the always-on background server on Windows
+and macOS, and prints the extension folder. A new database starts empty;
+`pnt setup --sample` fills it with a 16k-hand anonymized sample to try things on.
 
 1. In Chrome, go to `chrome://extensions`, turn on **Developer mode**, click **Load
    unpacked**, and pick the folder `pnt setup` printed. `pnt extension --open`

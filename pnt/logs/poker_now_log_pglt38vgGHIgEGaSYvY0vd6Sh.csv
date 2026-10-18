@@ -1,0 +1,793 @@
+entry,at,order
+"The player ""player 6 @ 4anR3O4Tdu"" quits the game with a stack of 809.",2026-09-17T00:20:53.751Z,178960445375100
+"Undealt cards:  [10♣, 4♦, 2♦, 2♠, 9♦]",2026-09-17T00:20:48.923Z,178960444892300
+"-- ending hand #52 --",2026-09-17T00:20:47.740Z,178960444774002
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:20:47.740Z,178960444774001
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:20:47.740Z,178960444774000
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:20:46.934Z,178960444693400
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:20:29.974Z,178960442997405
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:20:29.974Z,178960442997404
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (304) | #5 ""player 6 @ 4anR3O4Tdu"" (811)",2026-09-17T00:20:29.974Z,178960442997401
+"-- starting hand #52 (id: c9vvkx7arg0b)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:20:29.974Z,178960442997400
+"Undealt cards:  [K♦, Q♦, Q♠, J♠, Q♥]",2026-09-17T00:20:24.882Z,178960442488200
+"-- ending hand #51 --",2026-09-17T00:20:24.005Z,178960442400502
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:20:24.005Z,178960442400501
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:20:24.005Z,178960442400500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:20:23.170Z,178960442317000
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:19:57.356Z,178960439735600
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:19:55.276Z,178960439527605
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:19:55.276Z,178960439527604
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (299) | #5 ""player 6 @ 4anR3O4Tdu"" (816)",2026-09-17T00:19:55.276Z,178960439527601
+"-- starting hand #51 (id: jnh5lpjnjdsu)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:19:55.276Z,178960439527600
+"Undealt cards: 5♠, 6♣, 6♠, J♠ [7♦]",2026-09-17T00:19:49.835Z,178960438983500
+"-- ending hand #50 --",2026-09-17T00:19:49.317Z,178960438931702
+"""player 2 @ wZe-uSpbRP"" collected 20 from pot",2026-09-17T00:19:49.317Z,178960438931701
+"Uncalled bet of 22 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:19:49.317Z,178960438931700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:19:48.481Z,178960438848100
+"""player 2 @ wZe-uSpbRP"" bets 22",2026-09-17T00:19:40.345Z,178960438034500
+"Turn: 5♠, 6♣, 6♠ [J♠]",2026-09-17T00:19:37.650Z,178960437765000
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:19:36.792Z,178960437679200
+"""player 2 @ wZe-uSpbRP"" bets 5",2026-09-17T00:19:34.366Z,178960437436600
+"Flop:  [5♠, 6♣, 6♠]",2026-09-17T00:19:30.546Z,178960437054600
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:19:29.726Z,178960436972600
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:19:28.469Z,178960436846900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:19:06.889Z,178960434688905
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:19:06.889Z,178960434688904
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (289) | #5 ""player 6 @ 4anR3O4Tdu"" (826)",2026-09-17T00:19:06.889Z,178960434688901
+"-- starting hand #50 (id: 1iqn2evchykd)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:19:06.889Z,178960434688900
+"Undealt cards:  [6♥, 5♣, 6♠, K♣, 2♦]",2026-09-17T00:19:01.746Z,178960434174600
+"-- ending hand #49 --",2026-09-17T00:19:00.867Z,178960434086702
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:19:00.867Z,178960434086701
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:19:00.867Z,178960434086700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:18:59.958Z,178960433995800
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:18:57.328Z,178960433732800
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:18:55.463Z,178960433546305
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:18:55.463Z,178960433546304
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (284) | #5 ""player 6 @ 4anR3O4Tdu"" (831)",2026-09-17T00:18:55.463Z,178960433546301
+"-- starting hand #49 (id: bq1rz96fpsxo)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:18:55.463Z,178960433546300
+"-- ending hand #48 --",2026-09-17T00:18:52.467Z,178960433246702
+"""player 2 @ wZe-uSpbRP"" collected 30 from pot",2026-09-17T00:18:52.467Z,178960433246701
+"Uncalled bet of 25 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:18:52.467Z,178960433246700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:18:51.593Z,178960433159300
+"""player 2 @ wZe-uSpbRP"" bets 25",2026-09-17T00:18:50.559Z,178960433055900
+"River: A♠, 5♣, K♣, 9♦ [8♠]",2026-09-17T00:18:46.661Z,178960432666100
+"""player 6 @ 4anR3O4Tdu"" calls 10",2026-09-17T00:18:45.802Z,178960432580200
+"""player 2 @ wZe-uSpbRP"" bets 10",2026-09-17T00:18:44.680Z,178960432468000
+"Turn: A♠, 5♣, K♣ [9♦]",2026-09-17T00:18:42.061Z,178960432206100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:18:41.206Z,178960432120600
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:18:39.807Z,178960431980700
+"Flop:  [A♠, 5♣, K♣]",2026-09-17T00:18:38.058Z,178960431805800
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:18:37.249Z,178960431724900
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:18:36.049Z,178960431604900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:18:09.606Z,178960428960605
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:18:09.606Z,178960428960604
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (269) | #5 ""player 6 @ 4anR3O4Tdu"" (846)",2026-09-17T00:18:09.606Z,178960428960601
+"-- starting hand #48 (id: 5tk1ys0sr5vi)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:18:09.606Z,178960428960600
+"Undealt cards:  [5♠, Q♠, 5♣, J♣, 9♥]",2026-09-17T00:18:03.832Z,178960428383200
+"-- ending hand #47 --",2026-09-17T00:18:03.603Z,178960428360302
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-17T00:18:03.603Z,178960428360301
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:18:03.603Z,178960428360300
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:18:02.756Z,178960428275600
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:18:00.205Z,178960428020505
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:18:00.205Z,178960428020504
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (271) | #5 ""player 6 @ 4anR3O4Tdu"" (844)",2026-09-17T00:18:00.205Z,178960428020501
+"-- starting hand #47 (id: nrxvgr3ag71z)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:18:00.205Z,178960428020500
+"Undealt cards: 9♥, 5♦, 4♠, 3♥ [2♦]",2026-09-17T00:17:54.921Z,178960427492100
+"-- ending hand #46 --",2026-09-17T00:17:54.255Z,178960427425502
+"""player 2 @ wZe-uSpbRP"" collected 30 from pot",2026-09-17T00:17:54.255Z,178960427425501
+"Uncalled bet of 33 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:17:54.255Z,178960427425500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:17:53.399Z,178960427339900
+"""player 2 @ wZe-uSpbRP"" bets 33",2026-09-17T00:17:52.026Z,178960427202600
+"Turn: 9♥, 5♦, 4♠ [3♥]",2026-09-17T00:17:48.447Z,178960426844700
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:17:47.597Z,178960426759700
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:17:46.637Z,178960426663700
+"Flop:  [9♥, 5♦, 4♠]",2026-09-17T00:17:44.312Z,178960426431200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:17:43.456Z,178960426345600
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:17:40.580Z,178960426058000
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:17:39.006Z,178960425900600
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:17:33.312Z,178960425331205
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:17:33.312Z,178960425331204
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (256) | #5 ""player 6 @ 4anR3O4Tdu"" (859)",2026-09-17T00:17:33.312Z,178960425331201
+"-- starting hand #46 (id: 2jbcnsk0vboc)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:17:33.312Z,178960425331200
+"""player 2 @ wZe-uSpbRP"" shows a 10♠, 10♣.",2026-09-17T00:17:30.238Z,178960425023800
+"-- ending hand #45 --",2026-09-17T00:17:26.778Z,178960424677802
+"""player 6 @ 4anR3O4Tdu"" collected 74 from pot with Full House, A's over 6's (combination: 6♣, 6♦, A♥, A♦, A♠)",2026-09-17T00:17:26.778Z,178960424677801
+"""player 6 @ 4anR3O4Tdu"" shows a 9♣, A♥.",2026-09-17T00:17:26.778Z,178960424677800
+"""player 2 @ wZe-uSpbRP"" calls 22",2026-09-17T00:17:25.967Z,178960424596700
+"""player 6 @ 4anR3O4Tdu"" bets 22",2026-09-17T00:17:24.052Z,178960424405200
+"River: 6♣, A♦, A♠, J♠ [6♦]",2026-09-17T00:17:18.369Z,178960423836900
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:17:17.525Z,178960423752500
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:17:13.834Z,178960423383400
+"Turn: 6♣, A♦, A♠ [J♠]",2026-09-17T00:17:13.365Z,178960423336500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:17:12.503Z,178960423250300
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:17:11.291Z,178960423129100
+"Flop:  [6♣, A♦, A♠]",2026-09-17T00:17:09.561Z,178960422956100
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:17:08.748Z,178960422874800
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:17:03.251Z,178960422325100
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:17:01.604Z,178960422160405
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:17:01.604Z,178960422160404
+"Your hand is 10♠, 10♣",2026-09-17T00:17:01.604Z,178960422160402
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (293) | #5 ""player 6 @ 4anR3O4Tdu"" (822)",2026-09-17T00:17:01.604Z,178960422160401
+"-- starting hand #45 (id: uhk2ugtmioew)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:17:01.604Z,178960422160400
+"Undealt cards:  [5♠, 7♠, 8♣, Q♥, K♥]",2026-09-17T00:16:55.943Z,178960421594300
+"-- ending hand #44 --",2026-09-17T00:16:55.682Z,178960421568202
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:16:55.682Z,178960421568201
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:16:55.682Z,178960421568200
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:16:54.842Z,178960421484200
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:16:52.916Z,178960421291605
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:16:52.916Z,178960421291604
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (291) | #5 ""player 6 @ 4anR3O4Tdu"" (824)",2026-09-17T00:16:52.916Z,178960421291601
+"-- starting hand #44 (id: lnpp2ooavc0h)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:16:52.916Z,178960421291600
+"""player 2 @ wZe-uSpbRP"" shows a K♥.",2026-09-17T00:16:48.166Z,178960420816600
+"Undealt cards: 2♣, 3♣, 4♣ [9♦, 5♥]",2026-09-17T00:16:46.573Z,178960420657300
+"-- ending hand #43 --",2026-09-17T00:16:46.276Z,178960420627601
+"""player 2 @ wZe-uSpbRP"" collected 30 from pot",2026-09-17T00:16:46.276Z,178960420627600
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:16:45.454Z,178960420545400
+"Flop:  [2♣, 3♣, 4♣]",2026-09-17T00:16:42.912Z,178960420291200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:16:42.102Z,178960420210200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:16:39.487Z,178960419948700
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:16:37.377Z,178960419737706
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:16:37.377Z,178960419737705
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (276) | #5 ""player 6 @ 4anR3O4Tdu"" (839)",2026-09-17T00:16:37.377Z,178960419737702
+"-- starting hand #43 (id: ztqcvxa5jwzx)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:16:37.377Z,178960419737701
+"The player ""player 7 @ OXRF5q58c9"" stand up with the stack of 885.",2026-09-17T00:16:37.377Z,178960419737700
+"Undealt cards:  [2♣, 10♠, A♠, 8♣, 6♦]",2026-09-17T00:16:32.300Z,178960419230000
+"-- ending hand #42 --",2026-09-17T00:16:31.449Z,178960419144902
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:16:31.449Z,178960419144901
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:16:31.449Z,178960419144900
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:16:30.607Z,178960419060700
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:16:28.019Z,178960418801900
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:16:26.271Z,178960418627100
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:16:23.703Z,178960418370306
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:16:23.703Z,178960418370305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (885) | #3 ""player 2 @ wZe-uSpbRP"" (271) | #5 ""player 6 @ 4anR3O4Tdu"" (844)",2026-09-17T00:16:23.703Z,178960418370301
+"-- starting hand #42 (id: drzme33mnnzp)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:16:23.703Z,178960418370300
+"Undealt cards:  [4♥, 10♦, 5♥, 3♠, 10♠]",2026-09-17T00:16:19.704Z,178960417970400
+"-- ending hand #41 --",2026-09-17T00:16:17.701Z,178960417770102
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:16:17.701Z,178960417770101
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:16:17.701Z,178960417770100
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:16:16.831Z,178960417683100
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:15:50.998Z,178960415099800
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:15:48.469Z,178960414846906
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:15:48.469Z,178960414846905
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (887) | #3 ""player 2 @ wZe-uSpbRP"" (269) | #5 ""player 6 @ 4anR3O4Tdu"" (844)",2026-09-17T00:15:48.469Z,178960414846901
+"-- starting hand #41 (id: jbmgxjzbrxsb)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:15:48.469Z,178960414846900
+"-- ending hand #40 --",2026-09-17T00:15:45.464Z,178960414546402
+"""player 6 @ 4anR3O4Tdu"" collected 30 from pot",2026-09-17T00:15:45.464Z,178960414546401
+"Uncalled bet of 30 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:15:45.464Z,178960414546400
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:15:44.585Z,178960414458500
+"""player 6 @ 4anR3O4Tdu"" bets 30",2026-09-17T00:15:42.524Z,178960414252400
+"River: 7♦, 4♥, 6♣, K♥ [Q♣]",2026-09-17T00:15:39.057Z,178960413905700
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:15:38.180Z,178960413818000
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:15:33.265Z,178960413326500
+"Turn: 7♦, 4♥, 6♣ [K♥]",2026-09-17T00:15:31.051Z,178960413105100
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:15:30.096Z,178960413009600
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:15:28.343Z,178960412834300
+"Flop:  [7♦, 4♥, 6♣]",2026-09-17T00:15:26.092Z,178960412609200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:15:25.279Z,178960412527900
+"""player 7 @ OXRF5q58c9"" raises to 15",2026-09-17T00:15:22.816Z,178960412281600
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:15:19.623Z,178960411962300
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:15:17.636Z,178960411763600
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:15:16.222Z,178960411622206
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:15:16.222Z,178960411622205
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (902) | #3 ""player 2 @ wZe-uSpbRP"" (269) | #5 ""player 6 @ 4anR3O4Tdu"" (829)",2026-09-17T00:15:16.222Z,178960411622201
+"-- starting hand #40 (id: rm30otsl4roc)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:15:16.222Z,178960411622200
+"Undealt cards:  [J♦, 8♠, K♦, 6♥, 9♦]",2026-09-17T00:15:10.704Z,178960411070400
+"-- ending hand #39 --",2026-09-17T00:15:10.214Z,178960411021402
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:15:10.214Z,178960411021401
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:15:10.214Z,178960411021400
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:15:09.403Z,178960410940300
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:15:04.185Z,178960410418500
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:15:02.309Z,178960410230900
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:15:00.591Z,178960410059106
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:15:00.591Z,178960410059105
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (902) | #3 ""player 2 @ wZe-uSpbRP"" (264) | #5 ""player 6 @ 4anR3O4Tdu"" (834)",2026-09-17T00:15:00.591Z,178960410059101
+"-- starting hand #39 (id: gdgyehjan6nf)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:15:00.591Z,178960410059100
+"Undealt cards:  [8♥, Q♥, 9♦, 6♣, 4♣]",2026-09-17T00:14:54.933Z,178960409493300
+"-- ending hand #38 --",2026-09-17T00:14:54.625Z,178960409462502
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:14:54.625Z,178960409462501
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:14:54.625Z,178960409462500
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:14:53.819Z,178960409381900
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:14:52.519Z,178960409251900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:14:50.706Z,178960409070606
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:14:50.706Z,178960409070605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (904) | #3 ""player 2 @ wZe-uSpbRP"" (262) | #5 ""player 6 @ 4anR3O4Tdu"" (834)",2026-09-17T00:14:50.706Z,178960409070601
+"-- starting hand #38 (id: ltsbirotqw0n)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:14:50.706Z,178960409070600
+"Undealt cards:  [K♥, 6♦, 9♦, 7♦, K♣]",2026-09-17T00:14:45.845Z,178960408584500
+"-- ending hand #37 --",2026-09-17T00:14:44.779Z,178960408477902
+"""player 7 @ OXRF5q58c9"" collected 4 from pot",2026-09-17T00:14:44.779Z,178960408477901
+"Uncalled bet of 3 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:14:44.779Z,178960408477900
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:14:43.924Z,178960408392400
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:14:33.897Z,178960407389700
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:14:32.373Z,178960407237306
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:14:32.373Z,178960407237305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (902) | #3 ""player 2 @ wZe-uSpbRP"" (262) | #5 ""player 6 @ 4anR3O4Tdu"" (836)",2026-09-17T00:14:32.373Z,178960407237301
+"-- starting hand #37 (id: 4wllhtmvfrrw)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:14:32.373Z,178960407237300
+"""player 7 @ OXRF5q58c9"" shows a J♥.",2026-09-17T00:14:30.022Z,178960407002200
+"-- ending hand #36 --",2026-09-17T00:14:28.671Z,178960406867102
+"""player 7 @ OXRF5q58c9"" collected 374 from pot",2026-09-17T00:14:28.671Z,178960406867101
+"Uncalled bet of 374 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:14:28.671Z,178960406867100
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:14:27.825Z,178960406782500
+"""player 7 @ OXRF5q58c9"" bets 374",2026-09-17T00:14:13.326Z,178960405332600
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:14:10.384Z,178960405038400
+"River: 7♥, 4♣, 6♥, J♠ [K♣]",2026-09-17T00:14:07.862Z,178960404786200
+"""player 2 @ wZe-uSpbRP"" calls 142",2026-09-17T00:14:07.004Z,178960404700400
+"""player 7 @ OXRF5q58c9"" raises to 142",2026-09-17T00:13:57.307Z,178960403730700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:13:51.661Z,178960403166100
+"""player 2 @ wZe-uSpbRP"" bets 30",2026-09-17T00:13:50.671Z,178960403067100
+"Turn: 7♥, 4♣, 6♥ [J♠]",2026-09-17T00:13:46.263Z,178960402626300
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:13:45.421Z,178960402542100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:13:43.876Z,178960402387600
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:13:42.826Z,178960402282600
+"Flop:  [7♥, 4♣, 6♥]",2026-09-17T00:13:37.565Z,178960401756500
+"""player 7 @ OXRF5q58c9"" calls 30",2026-09-17T00:13:36.701Z,178960401670100
+"""player 6 @ 4anR3O4Tdu"" calls 30",2026-09-17T00:13:34.462Z,178960401446200
+"""player 2 @ wZe-uSpbRP"" raises to 30",2026-09-17T00:13:30.810Z,178960401081000
+"""player 7 @ OXRF5q58c9"" raises to 10",2026-09-17T00:13:28.003Z,178960400800300
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:13:24.887Z,178960400488706
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:13:24.887Z,178960400488705
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (700) | #3 ""player 2 @ wZe-uSpbRP"" (434) | #5 ""player 6 @ 4anR3O4Tdu"" (866)",2026-09-17T00:13:24.887Z,178960400488701
+"-- starting hand #36 (id: l76wgzjnrasb)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:13:24.887Z,178960400488700
+"""player 7 @ OXRF5q58c9"" shows a 2♠, 2♣.",2026-09-17T00:13:19.905Z,178960399990500
+"Undealt cards:  [3♥, 5♦, 4♣, K♠, 10♠]",2026-09-17T00:13:18.529Z,178960399852900
+"-- ending hand #35 --",2026-09-17T00:13:18.276Z,178960399827602
+"""player 7 @ OXRF5q58c9"" collected 10 from pot",2026-09-17T00:13:18.276Z,178960399827601
+"Uncalled bet of 10 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:13:18.276Z,178960399827600
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:13:17.447Z,178960399744700
+"""player 7 @ OXRF5q58c9"" raises to 15",2026-09-17T00:13:16.116Z,178960399611600
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:13:10.979Z,178960399097900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:13:08.540Z,178960398854006
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:13:08.540Z,178960398854005
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (695) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (866)",2026-09-17T00:13:08.540Z,178960398854001
+"-- starting hand #35 (id: ts9zydhxsr9m)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:13:08.540Z,178960398854000
+"-- ending hand #34 --",2026-09-17T00:13:05.595Z,178960398559501
+"""player 7 @ OXRF5q58c9"" collected 20 from pot",2026-09-17T00:13:05.595Z,178960398559500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:13:04.742Z,178960398474200
+"River: 10♣, 3♥, 2♦, 6♦ [Q♦]",2026-09-17T00:13:03.203Z,178960398320300
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:13:02.367Z,178960398236700
+"""player 7 @ OXRF5q58c9"" bets 5",2026-09-17T00:12:59.004Z,178960397900400
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:12:55.214Z,178960397521400
+"Turn: 10♣, 3♥, 2♦ [6♦]",2026-09-17T00:12:42.776Z,178960396277600
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:12:41.958Z,178960396195800
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:12:39.612Z,178960395961200
+"Flop:  [10♣, 3♥, 2♦]",2026-09-17T00:12:27.401Z,178960394740100
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:12:26.578Z,178960394657800
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:12:25.176Z,178960394517600
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:12:17.703Z,178960393770300
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:12:13.187Z,178960393318706
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:12:13.187Z,178960393318705
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (685) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (876)",2026-09-17T00:12:13.187Z,178960393318701
+"-- starting hand #34 (id: eexs7dw41weg)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:12:13.187Z,178960393318700
+"Undealt cards:  [3♦, 4♣, 6♠, 2♥, 3♥]",2026-09-17T00:12:07.434Z,178960392743400
+"-- ending hand #33 --",2026-09-17T00:12:07.271Z,178960392727102
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-17T00:12:07.271Z,178960392727101
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:12:07.271Z,178960392727100
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:12:06.441Z,178960392644100
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:12:05.204Z,178960392520400
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:12:03.144Z,178960392314406
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:12:03.144Z,178960392314405
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (685) | #3 ""player 2 @ wZe-uSpbRP"" (441) | #5 ""player 6 @ 4anR3O4Tdu"" (874)",2026-09-17T00:12:03.144Z,178960392314401
+"-- starting hand #33 (id: kv9fjlxchkcx)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:12:03.144Z,178960392314400
+"Undealt cards:  [4♥, A♦, 4♠, 8♥, K♠]",2026-09-17T00:11:57.485Z,178960391748500
+"-- ending hand #32 --",2026-09-17T00:11:57.172Z,178960391717202
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:11:57.172Z,178960391717201
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:11:57.172Z,178960391717200
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:11:56.302Z,178960391630200
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:11:52.760Z,178960391276000
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:11:47.166Z,178960390716606
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:11:47.166Z,178960390716605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (687) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (874)",2026-09-17T00:11:47.166Z,178960390716601
+"-- starting hand #32 (id: jbumzd49ei0v)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:11:47.166Z,178960390716600
+"Undealt cards:  [9♠, 8♣, 3♣, K♣, 4♠]",2026-09-17T00:11:41.893Z,178960390189300
+"-- ending hand #31 --",2026-09-17T00:11:41.210Z,178960390121002
+"""player 7 @ OXRF5q58c9"" collected 4 from pot",2026-09-17T00:11:41.210Z,178960390121001
+"Uncalled bet of 3 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:11:41.210Z,178960390121000
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:11:40.383Z,178960390038300
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:11:39.325Z,178960389932500
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:11:38.156Z,178960389815606
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:11:38.156Z,178960389815605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (685) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (876)",2026-09-17T00:11:38.156Z,178960389815601
+"-- starting hand #31 (id: tquysncpohuk)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:11:38.156Z,178960389815600
+"""player 7 @ OXRF5q58c9"" shows a K♦.",2026-09-17T00:11:36.185Z,178960389618500
+"""player 6 @ 4anR3O4Tdu"" shows a 10♠.",2026-09-17T00:11:34.800Z,178960389480000
+"-- ending hand #30 --",2026-09-17T00:11:33.755Z,178960389375501
+"""player 7 @ OXRF5q58c9"" collected 12 from pot",2026-09-17T00:11:33.755Z,178960389375500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:11:32.926Z,178960389292600
+"River: A♠, 8♦, 7♥, K♣ [7♣]",2026-09-17T00:11:31.407Z,178960389140700
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:11:30.598Z,178960389059800
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:11:29.245Z,178960388924500
+"Turn: A♠, 8♦, 7♥ [K♣]",2026-09-17T00:11:27.850Z,178960388785000
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:11:27.040Z,178960388704000
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:11:25.788Z,178960388578800
+"Flop:  [A♠, 8♦, 7♥]",2026-09-17T00:11:23.797Z,178960388379700
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:11:22.982Z,178960388298200
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:11:13.727Z,178960387372700
+"""player 7 @ OXRF5q58c9"" calls 5",2026-09-17T00:11:11.065Z,178960387106500
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:11:04.133Z,178960386413306
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:11:04.133Z,178960386413305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (678) | #3 ""player 2 @ wZe-uSpbRP"" (441) | #5 ""player 6 @ 4anR3O4Tdu"" (881)",2026-09-17T00:11:04.133Z,178960386413301
+"-- starting hand #30 (id: xuhfakyt1xz5)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:11:04.133Z,178960386413300
+"Undealt cards:  [9♣, 10♦, 3♣, Q♥, A♣]",2026-09-17T00:10:58.610Z,178960385861000
+"-- ending hand #29 --",2026-09-17T00:10:58.168Z,178960385816802
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:10:58.168Z,178960385816801
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:10:58.168Z,178960385816800
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:10:57.303Z,178960385730300
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:10:55.193Z,178960385519300
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:10:52.567Z,178960385256706
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:10:52.567Z,178960385256705
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (680) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (881)",2026-09-17T00:10:52.567Z,178960385256701
+"-- starting hand #29 (id: yiqx56qvweih)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:10:52.567Z,178960385256700
+"-- ending hand #28 --",2026-09-17T00:10:46.562Z,178960384656202
+"""player 7 @ OXRF5q58c9"" collected 50 from pot with Two Pair, J's & 5's (combination: K♦, 5♠, 5♥, J♠, J♣)",2026-09-17T00:10:46.562Z,178960384656201
+"""player 7 @ OXRF5q58c9"" shows a 5♠, J♠.",2026-09-17T00:10:46.562Z,178960384656200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:10:45.726Z,178960384572600
+"""player 7 @ OXRF5q58c9"" bets 15",2026-09-17T00:10:44.391Z,178960384439100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:10:41.659Z,178960384165900
+"River: 9♠, K♦, 3♣, 5♥ [J♣]",2026-09-17T00:10:40.249Z,178960384024900
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:10:39.362Z,178960383936200
+"""player 7 @ OXRF5q58c9"" bets 5",2026-09-17T00:10:37.810Z,178960383781000
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:10:35.851Z,178960383585100
+"Turn: 9♠, K♦, 3♣ [5♥]",2026-09-17T00:10:33.044Z,178960383304400
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:10:32.176Z,178960383217600
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:10:30.279Z,178960383027900
+"Flop:  [9♠, K♦, 3♣]",2026-09-17T00:10:27.557Z,178960382755700
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:10:26.682Z,178960382668200
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:10:24.251Z,178960382425100
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:10:07.210Z,178960380721000
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:10:05.341Z,178960380534106
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:10:05.341Z,178960380534105
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (655) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (906)",2026-09-17T00:10:05.341Z,178960380534101
+"-- starting hand #28 (id: nk6wnzzzt05k)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:10:05.341Z,178960380534100
+"""player 7 @ OXRF5q58c9"" shows a 4♥, 4♣.",2026-09-17T00:10:04.238Z,178960380423800
+"""player 6 @ 4anR3O4Tdu"" shows a 5♣.",2026-09-17T00:10:01.855Z,178960380185500
+"""player 6 @ 4anR3O4Tdu"" shows a K♣.",2026-09-17T00:10:01.723Z,178960380172300
+"-- ending hand #27 --",2026-09-17T00:10:00.967Z,178960380096702
+"""player 7 @ OXRF5q58c9"" collected 12 from pot",2026-09-17T00:10:00.967Z,178960380096701
+"Uncalled bet of 9 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:10:00.967Z,178960380096700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:10:00.116Z,178960380011600
+"""player 7 @ OXRF5q58c9"" bets 9",2026-09-17T00:09:57.176Z,178960379717600
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:09:54.197Z,178960379419700
+"River: 10♠, J♠, 7♦, 8♣ [2♥]",2026-09-17T00:09:51.760Z,178960379176000
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:09:50.859Z,178960379085900
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:09:49.810Z,178960378981000
+"Turn: 10♠, J♠, 7♦ [8♣]",2026-09-17T00:09:36.741Z,178960377674100
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:09:35.881Z,178960377588100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:09:34.597Z,178960377459700
+"Flop:  [10♠, J♠, 7♦]",2026-09-17T00:09:30.137Z,178960377013700
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:09:29.219Z,178960376921900
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:09:27.016Z,178960376701600
+"""player 7 @ OXRF5q58c9"" calls 5",2026-09-17T00:09:26.075Z,178960376607500
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:09:21.732Z,178960376173206
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:09:21.732Z,178960376173205
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (648) | #3 ""player 2 @ wZe-uSpbRP"" (441) | #5 ""player 6 @ 4anR3O4Tdu"" (911)",2026-09-17T00:09:21.732Z,178960376173201
+"-- starting hand #27 (id: zzxjapncewet)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:09:21.732Z,178960376173200
+"Undealt cards:  [8♦, 4♣, A♠, 3♥, 10♠]",2026-09-17T00:09:17.718Z,178960375771800
+"-- ending hand #26 --",2026-09-17T00:09:15.728Z,178960375572802
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:09:15.728Z,178960375572801
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:09:15.728Z,178960375572800
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:09:14.905Z,178960375490500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:09:13.206Z,178960375320600
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:09:10.923Z,178960375092306
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:09:10.923Z,178960375092305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (650) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (911)",2026-09-17T00:09:10.923Z,178960375092301
+"-- starting hand #26 (id: iaogbhjojvfv)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:09:10.923Z,178960375092300
+"Undealt cards:  [K♥, 7♦, 9♣, J♥, K♠]",2026-09-17T00:09:08.248Z,178960374824800
+"""player 7 @ OXRF5q58c9"" shows a 9♦.",2026-09-17T00:09:07.911Z,178960374791100
+"-- ending hand #25 --",2026-09-17T00:09:04.319Z,178960374431902
+"""player 7 @ OXRF5q58c9"" collected 4 from pot",2026-09-17T00:09:04.319Z,178960374431901
+"Uncalled bet of 3 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:09:04.319Z,178960374431900
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:09:03.508Z,178960374350800
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:09:02.475Z,178960374247500
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:09:00.881Z,178960374088106
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:09:00.881Z,178960374088105
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (648) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (913)",2026-09-17T00:09:00.881Z,178960374088101
+"-- starting hand #25 (id: atwbzdyqkknn)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:09:00.881Z,178960374088100
+"""player 7 @ OXRF5q58c9"" shows a 3♦, K♥.",2026-09-17T00:08:56.099Z,178960373609900
+"""player 6 @ 4anR3O4Tdu"" shows a A♥.",2026-09-17T00:08:54.253Z,178960373425300
+"""player 6 @ 4anR3O4Tdu"" shows a Q♦.",2026-09-17T00:08:54.110Z,178960373411000
+"-- ending hand #24 --",2026-09-17T00:08:53.465Z,178960373346502
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-17T00:08:53.465Z,178960373346501
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:08:53.465Z,178960373346500
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:08:52.627Z,178960373262700
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:08:50.149Z,178960373014900
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:08:48.689Z,178960372868906
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:08:48.689Z,178960372868905
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (648) | #3 ""player 2 @ wZe-uSpbRP"" (441) | #5 ""player 6 @ 4anR3O4Tdu"" (911)",2026-09-17T00:08:48.689Z,178960372868901
+"-- starting hand #24 (id: 5xmge9i4vg2e)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:08:48.689Z,178960372868900
+"""player 7 @ OXRF5q58c9"" shows a 3♣, 6♠.",2026-09-17T00:08:46.664Z,178960372666400
+"""player 2 @ wZe-uSpbRP"" shows a 3♦, 7♥.",2026-09-17T00:08:45.398Z,178960372539800
+"""player 6 @ 4anR3O4Tdu"" shows a 4♥, 10♦.",2026-09-17T00:08:43.921Z,178960372392100
+"Undealt cards:  [7♠, K♠, 4♣, 10♣, 3♥]",2026-09-17T00:08:41.758Z,178960372175800
+"-- ending hand #23 --",2026-09-17T00:08:40.684Z,178960372068402
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:08:40.684Z,178960372068401
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:08:40.684Z,178960372068400
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:08:39.867Z,178960371986700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:08:38.739Z,178960371873900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:08:37.246Z,178960371724606
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:08:37.246Z,178960371724605
+"Your hand is 3♦, 7♥",2026-09-17T00:08:37.246Z,178960371724603
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (650) | #3 ""player 2 @ wZe-uSpbRP"" (439) | #5 ""player 6 @ 4anR3O4Tdu"" (911)",2026-09-17T00:08:37.246Z,178960371724601
+"-- starting hand #23 (id: ajo1zkyakuxh)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:08:37.246Z,178960371724600
+"""player 6 @ 4anR3O4Tdu"" shows a 4♣.",2026-09-17T00:08:32.252Z,178960371225200
+"""player 7 @ OXRF5q58c9"" shows a 7♥.",2026-09-17T00:08:31.493Z,178960371149300
+"Undealt cards: 3♦, 7♠, 7♦, 5♦ [2♠]",2026-09-17T00:08:30.083Z,178960371008300
+"-- ending hand #22 --",2026-09-17T00:08:29.879Z,178960370987902
+"""player 2 @ wZe-uSpbRP"" collected 35 from pot",2026-09-17T00:08:29.879Z,178960370987901
+"Uncalled bet of 25 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:08:29.879Z,178960370987900
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:08:29.060Z,178960370906000
+"""player 2 @ wZe-uSpbRP"" bets 25",2026-09-17T00:08:27.534Z,178960370753400
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:08:21.874Z,178960370187400
+"Turn: 3♦, 7♠, 7♦ [5♦]",2026-09-17T00:08:19.215Z,178960369921500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:08:18.384Z,178960369838400
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:08:13.825Z,178960369382500
+"Flop:  [3♦, 7♠, 7♦]",2026-09-17T00:08:10.204Z,178960369020400
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:08:09.312Z,178960368931200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:08:06.702Z,178960368670200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:08:05.125Z,178960368512500
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:08:03.116Z,178960368311606
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:08:03.116Z,178960368311605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (655) | #3 ""player 2 @ wZe-uSpbRP"" (419) | #5 ""player 6 @ 4anR3O4Tdu"" (926)",2026-09-17T00:08:03.116Z,178960368311601
+"-- starting hand #22 (id: gumhjdd6laju)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:08:03.116Z,178960368311600
+"-- ending hand #21 --",2026-09-17T00:07:56.964Z,178960367696402
+"""player 7 @ OXRF5q58c9"" collected 30 from pot with Two Pair, K's & J's (combination: 10♣, J♥, J♦, K♠, K♦)",2026-09-17T00:07:56.964Z,178960367696401
+"""player 7 @ OXRF5q58c9"" shows a K♠, 10♣.",2026-09-17T00:07:56.964Z,178960367696400
+"""player 6 @ 4anR3O4Tdu"" calls 9",2026-09-17T00:07:56.117Z,178960367611700
+"""player 7 @ OXRF5q58c9"" bets 9",2026-09-17T00:07:55.064Z,178960367506400
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:52.149Z,178960367214900
+"River: K♦, 4♠, 2♠, J♥ [J♦]",2026-09-17T00:07:51.356Z,178960367135600
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:07:50.476Z,178960367047600
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:49.407Z,178960366940700
+"Turn: K♦, 4♠, 2♠ [J♥]",2026-09-17T00:07:47.999Z,178960366799900
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:07:47.158Z,178960366715800
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:45.940Z,178960366594000
+"Flop:  [K♦, 4♠, 2♠]",2026-09-17T00:07:42.212Z,178960366221200
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:41.407Z,178960366140700
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:07:39.031Z,178960365903100
+"""player 7 @ OXRF5q58c9"" calls 5",2026-09-17T00:07:38.030Z,178960365803000
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:07:35.346Z,178960365534606
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:07:35.346Z,178960365534605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (639) | #3 ""player 2 @ wZe-uSpbRP"" (421) | #5 ""player 6 @ 4anR3O4Tdu"" (940)",2026-09-17T00:07:35.346Z,178960365534601
+"-- starting hand #21 (id: ifqieyl5ctpz)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:07:35.346Z,178960365534600
+"""player 6 @ 4anR3O4Tdu"" shows a 10♦.",2026-09-17T00:07:30.521Z,178960365052100
+"""player 6 @ 4anR3O4Tdu"" shows a A♣.",2026-09-17T00:07:30.352Z,178960365035200
+"-- ending hand #20 --",2026-09-17T00:07:28.781Z,178960364878102
+"""player 2 @ wZe-uSpbRP"" collected 109 from pot with Pair, J's (combination: Q♦, K♠, A♠, J♠, J♥)",2026-09-17T00:07:28.781Z,178960364878101
+"""player 2 @ wZe-uSpbRP"" shows a Q♦, A♠.",2026-09-17T00:07:28.781Z,178960364878100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:27.976Z,178960364797600
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:07:25.394Z,178960364539400
+"River: 2♥, J♠, J♥, 7♦ [K♠]",2026-09-17T00:07:24.742Z,178960364474200
+"""player 2 @ wZe-uSpbRP"" calls 27",2026-09-17T00:07:23.822Z,178960364382200
+"""player 6 @ 4anR3O4Tdu"" bets 27",2026-09-17T00:07:22.819Z,178960364281900
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:07:19.345Z,178960363934500
+"Turn: 2♥, J♠, J♥ [7♦]",2026-09-17T00:07:14.735Z,178960363473500
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:07:13.835Z,178960363383500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:07:12.819Z,178960363281900
+"Flop:  [2♥, J♠, J♥]",2026-09-17T00:07:10.934Z,178960363093400
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:07:10.018Z,178960363001800
+"""player 6 @ 4anR3O4Tdu"" calls 25",2026-09-17T00:07:08.414Z,178960362841400
+"""player 2 @ wZe-uSpbRP"" raises to 25",2026-09-17T00:07:06.978Z,178960362697800
+"""player 7 @ OXRF5q58c9"" calls 5",2026-09-17T00:07:05.026Z,178960362502600
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:07:01.111Z,178960362111100
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:06:58.094Z,178960361809406
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:06:58.094Z,178960361809405
+"Your hand is Q♦, A♠",2026-09-17T00:06:58.094Z,178960361809403
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (644) | #3 ""player 2 @ wZe-uSpbRP"" (364) | #5 ""player 6 @ 4anR3O4Tdu"" (992)",2026-09-17T00:06:58.094Z,178960361809401
+"-- starting hand #20 (id: fu9r3jgoii2m)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:06:58.094Z,178960361809400
+"Undealt cards: 8♣, 7♣, Q♦, Q♣ [9♠]",2026-09-17T00:06:52.400Z,178960361240000
+"-- ending hand #19 --",2026-09-17T00:06:52.121Z,178960361212102
+"""player 7 @ OXRF5q58c9"" collected 304 from pot",2026-09-17T00:06:52.121Z,178960361212101
+"Uncalled bet of 340 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:06:52.121Z,178960361212100
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:06:51.308Z,178960361130800
+"""player 7 @ OXRF5q58c9"" raises to 460 and go all in",2026-09-17T00:06:48.891Z,178960360889100
+"""player 2 @ wZe-uSpbRP"" raises to 120",2026-09-17T00:06:45.723Z,178960360572300
+"""player 7 @ OXRF5q58c9"" bets 48",2026-09-17T00:06:43.324Z,178960360332400
+"Turn: 8♣, 7♣, Q♦ [Q♣]",2026-09-17T00:06:38.704Z,178960359870400
+"""player 2 @ wZe-uSpbRP"" calls 16",2026-09-17T00:06:37.901Z,178960359790100
+"""player 7 @ OXRF5q58c9"" bets 16",2026-09-17T00:06:35.376Z,178960359537600
+"Flop:  [8♣, 7♣, Q♦]",2026-09-17T00:06:28.464Z,178960358846400
+"""player 7 @ OXRF5q58c9"" calls 15",2026-09-17T00:06:27.612Z,178960358761200
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:06:25.702Z,178960358570200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:06:24.708Z,178960358470800
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:06:21.490Z,178960358149006
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:06:21.490Z,178960358149005
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (491) | #3 ""player 2 @ wZe-uSpbRP"" (515) | #5 ""player 6 @ 4anR3O4Tdu"" (994)",2026-09-17T00:06:21.490Z,178960358149001
+"-- starting hand #19 (id: 3jneocxcf09b)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:06:21.490Z,178960358149000
+"""player 7 @ OXRF5q58c9"" shows a 8♣.",2026-09-17T00:06:18.032Z,178960357803200
+"Undealt cards:  [3♥, 5♥, 9♠, 8♦, 8♠]",2026-09-17T00:06:15.606Z,178960357560600
+"-- ending hand #18 --",2026-09-17T00:06:14.857Z,178960357485702
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:06:14.857Z,178960357485701
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:06:14.857Z,178960357485700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:06:14.033Z,178960357403300
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:06:13.071Z,178960357307100
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:06:11.164Z,178960357116400
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:06:08.485Z,178960356848506
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:06:08.485Z,178960356848505
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (491) | #3 ""player 2 @ wZe-uSpbRP"" (510) | #5 ""player 6 @ 4anR3O4Tdu"" (999)",2026-09-17T00:06:08.485Z,178960356848501
+"-- starting hand #18 (id: rxvzspuhwrva)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:06:08.485Z,178960356848500
+"""player 7 @ OXRF5q58c9"" shows a 3♣.",2026-09-17T00:06:06.092Z,178960356609200
+"-- ending hand #17 --",2026-09-17T00:06:04.879Z,178960356487902
+"""player 2 @ wZe-uSpbRP"" collected 74 from pot",2026-09-17T00:06:04.879Z,178960356487901
+"Uncalled bet of 25 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:06:04.879Z,178960356487900
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:06:04.070Z,178960356407000
+"""player 2 @ wZe-uSpbRP"" bets 25",2026-09-17T00:06:02.800Z,178960356280000
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:05:59.885Z,178960355988500
+"River: 5♦, K♦, 2♠, 4♠ [4♥]",2026-09-17T00:05:57.084Z,178960355708400
+"""player 2 @ wZe-uSpbRP"" calls 22",2026-09-17T00:05:56.254Z,178960355625400
+"""player 7 @ OXRF5q58c9"" bets 22",2026-09-17T00:05:55.150Z,178960355515000
+"Turn: 5♦, K♦, 2♠ [4♠]",2026-09-17T00:05:48.875Z,178960354887500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:05:48.055Z,178960354805500
+"""player 7 @ OXRF5q58c9"" checks",2026-09-17T00:05:45.814Z,178960354581400
+"Flop:  [5♦, K♦, 2♠]",2026-09-17T00:05:43.924Z,178960354392400
+"""player 7 @ OXRF5q58c9"" calls 15",2026-09-17T00:05:43.091Z,178960354309100
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:05:41.392Z,178960354139200
+"""player 7 @ OXRF5q58c9"" calls 5",2026-09-17T00:05:38.008Z,178960353800800
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:05:32.617Z,178960353261700
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:05:30.853Z,178960353085306
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:05:30.853Z,178960353085305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (528) | #3 ""player 2 @ wZe-uSpbRP"" (473) | #5 ""player 6 @ 4anR3O4Tdu"" (999)",2026-09-17T00:05:30.853Z,178960353085301
+"-- starting hand #17 (id: skh5u6b2npyz)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:05:30.853Z,178960353085300
+"Undealt cards:  [2♥, 9♠, A♥, 10♥, Q♣]",2026-09-17T00:05:25.844Z,178960352584400
+"-- ending hand #16 --",2026-09-17T00:05:24.846Z,178960352484602
+"""player 7 @ OXRF5q58c9"" collected 4 from pot",2026-09-17T00:05:24.846Z,178960352484601
+"Uncalled bet of 3 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:05:24.846Z,178960352484600
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:05:23.963Z,178960352396300
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:05:22.943Z,178960352294300
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:05:21.243Z,178960352124306
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:05:21.243Z,178960352124305
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (526) | #3 ""player 2 @ wZe-uSpbRP"" (473) | #5 ""player 6 @ 4anR3O4Tdu"" (1001)",2026-09-17T00:05:21.243Z,178960352124301
+"-- starting hand #16 (id: j2kevnhqbgrx)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:05:21.243Z,178960352124300
+"Undealt cards:  [Q♥, 3♥, Q♦, J♣, 9♥]",2026-09-17T00:05:15.939Z,178960351593900
+"-- ending hand #15 --",2026-09-17T00:05:15.224Z,178960351522402
+"""player 2 @ wZe-uSpbRP"" collected 10 from pot",2026-09-17T00:05:15.224Z,178960351522401
+"Uncalled bet of 10 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:05:15.224Z,178960351522400
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:05:14.372Z,178960351437200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:05:06.603Z,178960350660300
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:05:04.592Z,178960350459200
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:04:56.964Z,178960349696406
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:04:56.964Z,178960349696405
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (526) | #3 ""player 2 @ wZe-uSpbRP"" (468) | #5 ""player 6 @ 4anR3O4Tdu"" (1006)",2026-09-17T00:04:56.964Z,178960349696401
+"-- starting hand #15 (id: zdflc1tto823)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:04:56.964Z,178960349696400
+"""player 2 @ wZe-uSpbRP"" shows a 7♦.",2026-09-17T00:04:55.323Z,178960349532300
+"-- ending hand #14 --",2026-09-17T00:04:53.360Z,178960349336001
+"""player 2 @ wZe-uSpbRP"" collected 12 from pot",2026-09-17T00:04:53.360Z,178960349336000
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:04:52.483Z,178960349248300
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:04:48.819Z,178960348881900
+"River: 10♣, 2♥, A♦, 3♦ [4♥]",2026-09-17T00:04:43.757Z,178960348375700
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:04:42.900Z,178960348290000
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:04:40.085Z,178960348008500
+"Turn: 10♣, 2♥, A♦ [3♦]",2026-09-17T00:04:36.668Z,178960347666800
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:04:35.822Z,178960347582200
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:04:34.116Z,178960347411600
+"Flop:  [10♣, 2♥, A♦]",2026-09-17T00:04:29.863Z,178960346986300
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:04:29.048Z,178960346904800
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:04:22.477Z,178960346247700
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:04:21.520Z,178960346152000
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:04:11.016Z,178960345101606
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:04:11.016Z,178960345101605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (528) | #3 ""player 2 @ wZe-uSpbRP"" (461) | #5 ""player 6 @ 4anR3O4Tdu"" (1011)",2026-09-17T00:04:11.016Z,178960345101601
+"-- starting hand #14 (id: qocef9m8absz)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:04:11.016Z,178960345101600
+"""player 6 @ 4anR3O4Tdu"" shows a K♦.",2026-09-17T00:04:07.897Z,178960344789700
+"Undealt cards:  [2♣, 9♣, 5♠, 10♠, K♠]",2026-09-17T00:04:06.595Z,178960344659500
+"-- ending hand #13 --",2026-09-17T00:04:04.410Z,178960344441002
+"""player 7 @ OXRF5q58c9"" collected 45 from pot",2026-09-17T00:04:04.410Z,178960344441001
+"Uncalled bet of 45 returned to ""player 7 @ OXRF5q58c9""",2026-09-17T00:04:04.410Z,178960344441000
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:04:03.550Z,178960344355000
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:04:00.171Z,178960344017100
+"""player 7 @ OXRF5q58c9"" raises to 60",2026-09-17T00:03:58.575Z,178960343857500
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:03:55.465Z,178960343546500
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:03:47.563Z,178960342756300
+"""player 7 @ OXRF5q58c9"" posts a big blind of 5",2026-09-17T00:03:43.756Z,178960342375606
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:03:43.756Z,178960342375605
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (498) | #3 ""player 2 @ wZe-uSpbRP"" (476) | #5 ""player 6 @ 4anR3O4Tdu"" (1026)",2026-09-17T00:03:43.756Z,178960342375601
+"-- starting hand #13 (id: v8i54yorfrwg)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:03:43.756Z,178960342375600
+"""player 7 @ OXRF5q58c9"" shows a 2♦.",2026-09-17T00:03:40.018Z,178960342001800
+"""player 6 @ 4anR3O4Tdu"" shows a 2♣.",2026-09-17T00:03:37.772Z,178960341777200
+"""player 6 @ 4anR3O4Tdu"" shows a K♠.",2026-09-17T00:03:37.604Z,178960341760400
+"Undealt cards:  [5♦, J♠, 7♠, K♣, 10♦]",2026-09-17T00:03:36.927Z,178960341692700
+"-- ending hand #12 --",2026-09-17T00:03:36.436Z,178960341643602
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-17T00:03:36.436Z,178960341643601
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:03:36.436Z,178960341643600
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:03:35.558Z,178960341555800
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:03:34.672Z,178960341467200
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:03:31.277Z,178960341127706
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:03:31.277Z,178960341127705
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (498) | #3 ""player 2 @ wZe-uSpbRP"" (478) | #5 ""player 6 @ 4anR3O4Tdu"" (1024)",2026-09-17T00:03:31.277Z,178960341127701
+"-- starting hand #12 (id: nnw6swrynhxc)  No Limit Texas Hold'em (dealer: ""player 7 @ OXRF5q58c9"") --",2026-09-17T00:03:31.277Z,178960341127700
+"""player 7 @ OXRF5q58c9"" shows a 3♦, 10♠.",2026-09-17T00:03:29.359Z,178960340935900
+"-- ending hand #11 --",2026-09-17T00:03:27.648Z,178960340764802
+"""player 6 @ 4anR3O4Tdu"" collected 46 from pot",2026-09-17T00:03:27.648Z,178960340764801
+"Uncalled bet of 46 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:03:27.648Z,178960340764800
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:03:26.806Z,178960340680600
+"""player 6 @ 4anR3O4Tdu"" bets 46",2026-09-17T00:03:22.539Z,178960340253900
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:03:19.478Z,178960339947800
+"River: 9♣, 4♥, 3♠, 6♣ [4♣]",2026-09-17T00:03:16.819Z,178960339681900
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:03:15.933Z,178960339593300
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:03:14.788Z,178960339478800
+"Turn: 9♣, 4♥, 3♠ [6♣]",2026-09-17T00:03:12.824Z,178960339282400
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:03:11.985Z,178960339198500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-17T00:03:10.627Z,178960339062700
+"Flop:  [9♣, 4♥, 3♠]",2026-09-17T00:03:09.413Z,178960338941300
+"""player 2 @ wZe-uSpbRP"" calls 22",2026-09-17T00:03:08.514Z,178960338851400
+"""player 7 @ OXRF5q58c9"" folds",2026-09-17T00:03:05.793Z,178960338579300
+"""player 6 @ 4anR3O4Tdu"" raises to 22",2026-09-17T00:02:46.114Z,178960336611400
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:02:40.457Z,178960336045709
+"""player 7 @ OXRF5q58c9"" posts a small blind of 2",2026-09-17T00:02:40.457Z,178960336045708
+"Player stacks: #1 ""player 7 @ OXRF5q58c9"" (500) | #3 ""player 2 @ wZe-uSpbRP"" (500) | #5 ""player 6 @ 4anR3O4Tdu"" (1000)",2026-09-17T00:02:40.457Z,178960336045704
+"The player ""player 6 @ 4anR3O4Tdu"" joined the game with a stack of 1000.",2026-09-17T00:02:40.457Z,178960336045703
+"The player ""player 2 @ wZe-uSpbRP"" joined the game with a stack of 500.",2026-09-17T00:02:40.457Z,178960336045702
+"The player ""player 7 @ OXRF5q58c9"" joined the game with a stack of 500.",2026-09-17T00:02:40.457Z,178960336045701
+"-- starting hand #11 (id: 8uv6afnkesyz)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:02:40.457Z,178960336045700
+"The admin approved the player ""player 2 @ wZe-uSpbRP"" participation with a stack of 500.",2026-09-17T00:02:39.515Z,178960335951501
+"The player ""player 2 @ wZe-uSpbRP"" requested a seat.",2026-09-17T00:02:39.515Z,178960335951500
+"The admin approved the player ""player 7 @ OXRF5q58c9"" participation with a stack of 500.",2026-09-17T00:02:34.085Z,178960335408500
+"The player ""player 2 @ wZe-uSpbRP"" quits the game with a stack of 0.",2026-09-17T00:02:32.282Z,178960335228200
+"-- ending hand #10 --",2026-09-17T00:02:26.198Z,178960334619804
+"""player 2 @ wZe-uSpbRP"" shows a K♣, Q♦.",2026-09-17T00:02:26.198Z,178960334619803
+"""player 6 @ 4anR3O4Tdu"" collected 880 from pot with Straight, Q High (combination: 8♣, 9♥, 10♦, J♠, Q♥)",2026-09-17T00:02:26.198Z,178960334619802
+"""player 6 @ 4anR3O4Tdu"" shows a 9♥, 10♦.",2026-09-17T00:02:26.198Z,178960334619801
+"Uncalled bet of 120 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:02:26.198Z,178960334619800
+"""player 2 @ wZe-uSpbRP"" calls 365 and go all in",2026-09-17T00:02:25.355Z,178960334535500
+"""player 6 @ 4anR3O4Tdu"" raises to 485 and go all in",2026-09-17T00:02:24.426Z,178960334442600
+"""player 2 @ wZe-uSpbRP"" bets 125",2026-09-17T00:02:20.976Z,178960334097600
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:02:10.974Z,178960333097400
+"River: 8♣, J♠, Q♠, Q♥ [4♣]",2026-09-17T00:02:10.128Z,178960333012800
+"""player 6 @ 4anR3O4Tdu"" calls 45",2026-09-17T00:02:09.270Z,178960332927000
+"""player 2 @ wZe-uSpbRP"" bets 45",2026-09-17T00:02:07.313Z,178960332731300
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:02:02.342Z,178960332234200
+"Turn: 8♣, J♠, Q♠ [Q♥]",2026-09-17T00:02:00.775Z,178960332077500
+"The player ""player 7 @ OXRF5q58c9"" requested a seat.",2026-09-17T00:02:00.162Z,178960332016200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:01:59.915Z,178960331991500
+"""player 2 @ wZe-uSpbRP"" bets 15",2026-09-17T00:01:57.960Z,178960331796000
+"The player ""player 7 @ OXRF5q58c9"" canceled the seat request.",2026-09-17T00:01:55.219Z,178960331521900
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-17T00:01:53.683Z,178960331368300
+"Flop:  [8♣, J♠, Q♠]",2026-09-17T00:01:51.309Z,178960331130900
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:01:50.492Z,178960331049200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:01:44.968Z,178960330496800
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:01:41.505Z,178960330150505
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:01:41.505Z,178960330150504
+"Your hand is K♣, Q♦",2026-09-17T00:01:41.505Z,178960330150502
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (440) | #5 ""player 6 @ 4anR3O4Tdu"" (560)",2026-09-17T00:01:41.505Z,178960330150501
+"-- starting hand #10 (id: igr0jomjaj51)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:01:41.505Z,178960330150500
+"""player 2 @ wZe-uSpbRP"" collected 15 from the 7-2 bounty",2026-09-17T00:01:38.581Z,178960329858101
+"""player 6 @ 4anR3O4Tdu"" paid 15 for the 7-2 bounty to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:01:38.581Z,178960329858100
+"Undealt cards: 10♠, 8♣, K♣ [8♥, A♣]",2026-09-17T00:01:33.155Z,178960329315500
+"""player 2 @ wZe-uSpbRP"" shows a 7♠, 2♣.",2026-09-17T00:01:32.425Z,178960329242500
+"-- ending hand #9 --",2026-09-17T00:01:31.976Z,178960329197602
+"""player 2 @ wZe-uSpbRP"" collected 150 from pot",2026-09-17T00:01:31.976Z,178960329197601
+"Uncalled bet of 275 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:01:31.976Z,178960329197600
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:01:31.154Z,178960329115400
+"""player 2 @ wZe-uSpbRP"" raises to 335 and go all in",2026-09-17T00:01:28.651Z,178960328865100
+"""player 6 @ 4anR3O4Tdu"" raises to 60",2026-09-17T00:01:26.395Z,178960328639500
+"""player 2 @ wZe-uSpbRP"" bets 15",2026-09-17T00:01:20.815Z,178960328081500
+"Flop:  [10♠, 8♣, K♣]",2026-09-17T00:01:18.092Z,178960327809200
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-17T00:01:17.281Z,178960327728100
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:01:15.877Z,178960327587700
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-17T00:01:14.024Z,178960327402400
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:01:11.838Z,178960327183805
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:01:11.838Z,178960327183804
+"Your hand is 7♠, 2♣",2026-09-17T00:01:11.838Z,178960327183802
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (350) | #5 ""player 6 @ 4anR3O4Tdu"" (650)",2026-09-17T00:01:11.838Z,178960327183801
+"-- starting hand #9 (id: xrqaani2tjyu)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:01:11.838Z,178960327183800
+"Undealt cards:  [9♠, 10♣, Q♥, 7♠, 5♦]",2026-09-17T00:01:06.063Z,178960326606300
+"-- ending hand #8 --",2026-09-17T00:01:05.892Z,178960326589202
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-17T00:01:05.892Z,178960326589201
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:01:05.892Z,178960326589200
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:01:05.087Z,178960326508700
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:01:03.693Z,178960326369305
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:01:03.693Z,178960326369304
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (352) | #5 ""player 6 @ 4anR3O4Tdu"" (648)",2026-09-17T00:01:03.693Z,178960326369301
+"-- starting hand #8 (id: ibr4wyvjj2dt)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:01:03.693Z,178960326369300
+"""player 6 @ 4anR3O4Tdu"" shows a 3♠.",2026-09-17T00:01:02.636Z,178960326263600
+"""player 6 @ 4anR3O4Tdu"" shows a 5♦.",2026-09-17T00:01:02.503Z,178960326250300
+"Undealt cards:  [4♣, 8♥, A♠, Q♣, 9♥]",2026-09-17T00:00:57.863Z,178960325786300
+"-- ending hand #7 --",2026-09-17T00:00:57.087Z,178960325708702
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:00:57.087Z,178960325708701
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:00:57.087Z,178960325708700
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:00:56.262Z,178960325626200
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:00:52.660Z,178960325266005
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:00:52.660Z,178960325266004
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (350) | #5 ""player 6 @ 4anR3O4Tdu"" (650)",2026-09-17T00:00:52.660Z,178960325266001
+"-- starting hand #7 (id: crry7igd3ekh)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:00:52.660Z,178960325266000
+"""player 6 @ 4anR3O4Tdu"" shows a 5♥.",2026-09-17T00:00:49.820Z,178960324982000
+"""player 6 @ 4anR3O4Tdu"" shows a A♥.",2026-09-17T00:00:49.613Z,178960324961300
+"""player 2 @ wZe-uSpbRP"" shows a 7♥.",2026-09-17T00:00:49.173Z,178960324917300
+"Undealt cards:  [Q♣, 3♣, 4♣, 2♣, 2♠]",2026-09-17T00:00:45.525Z,178960324552500
+"-- ending hand #6 --",2026-09-17T00:00:45.288Z,178960324528802
+"""player 6 @ 4anR3O4Tdu"" collected 30 from pot",2026-09-17T00:00:45.288Z,178960324528801
+"Uncalled bet of 22 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:00:45.288Z,178960324528800
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:00:44.464Z,178960324446400
+"""player 6 @ 4anR3O4Tdu"" raises to 37",2026-09-17T00:00:38.235Z,178960323823500
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:00:34.769Z,178960323476900
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:00:33.251Z,178960323325105
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:00:33.251Z,178960323325104
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (365) | #5 ""player 6 @ 4anR3O4Tdu"" (635)",2026-09-17T00:00:33.251Z,178960323325101
+"-- starting hand #6 (id: ticsdpakamc2)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:00:33.251Z,178960323325100
+"Undealt cards:  [4♦, 8♣, 9♥, 8♦, 3♠]",2026-09-17T00:00:29.656Z,178960322965600
+"-- ending hand #5 --",2026-09-17T00:00:27.265Z,178960322726502
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-17T00:00:27.265Z,178960322726501
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-17T00:00:27.265Z,178960322726500
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-17T00:00:26.439Z,178960322643900
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-17T00:00:21.037Z,178960322103705
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-17T00:00:21.037Z,178960322103704
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (363) | #5 ""player 6 @ 4anR3O4Tdu"" (637)",2026-09-17T00:00:21.037Z,178960322103701
+"-- starting hand #5 (id: qgt6w80g6dou)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-17T00:00:21.037Z,178960322103700
+"""player 2 @ wZe-uSpbRP"" shows a 5♠.",2026-09-17T00:00:16.997Z,178960321699700
+"""player 6 @ 4anR3O4Tdu"" shows a A♣, A♦.",2026-09-17T00:00:14.774Z,178960321477400
+"Undealt cards:  [J♦, 5♦, 8♥, 9♥, 9♦]",2026-09-17T00:00:14.152Z,178960321415200
+"-- ending hand #4 --",2026-09-17T00:00:13.709Z,178960321370902
+"""player 6 @ 4anR3O4Tdu"" collected 30 from pot",2026-09-17T00:00:13.709Z,178960321370901
+"Uncalled bet of 30 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-17T00:00:13.709Z,178960321370900
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-17T00:00:12.891Z,178960321289100
+"""player 6 @ 4anR3O4Tdu"" raises to 45",2026-09-17T00:00:11.376Z,178960321137600
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-17T00:00:06.074Z,178960320607400
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-17T00:00:02.007Z,178960320200705
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-17T00:00:02.007Z,178960320200704
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (378) | #5 ""player 6 @ 4anR3O4Tdu"" (622)",2026-09-17T00:00:02.007Z,178960320200701
+"-- starting hand #4 (id: alb73fgt6bkb)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-17T00:00:02.007Z,178960320200700
+"Undealt cards: Q♥, 9♦, 2♦ [J♦, 5♥]",2026-09-16T23:59:58.413Z,178960319841300
+"-- ending hand #3 --",2026-09-16T23:59:55.862Z,178960319586202
+"""player 2 @ wZe-uSpbRP"" collected 30 from pot",2026-09-16T23:59:55.862Z,178960319586201
+"Uncalled bet of 15 returned to ""player 2 @ wZe-uSpbRP""",2026-09-16T23:59:55.862Z,178960319586200
+"""player 6 @ 4anR3O4Tdu"" folds",2026-09-16T23:59:55.054Z,178960319505400
+"""player 2 @ wZe-uSpbRP"" bets 15",2026-09-16T23:59:51.334Z,178960319133400
+"Flop:  [Q♥, 9♦, 2♦]",2026-09-16T23:59:48.599Z,178960318859900
+"""player 6 @ 4anR3O4Tdu"" calls 15",2026-09-16T23:59:47.782Z,178960318778200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-16T23:59:41.819Z,178960318181900
+"""player 6 @ 4anR3O4Tdu"" calls 5",2026-09-16T23:59:40.293Z,178960318029300
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-16T23:59:35.563Z,178960317556305
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-16T23:59:35.563Z,178960317556304
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (363) | #5 ""player 6 @ 4anR3O4Tdu"" (637)",2026-09-16T23:59:35.563Z,178960317556301
+"-- starting hand #3 (id: x5jdyjoyxtiv)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-16T23:59:35.563Z,178960317556300
+"The player ""player 7 @ OXRF5q58c9"" requested a seat.",2026-09-16T23:59:32.675Z,178960317267500
+"Undealt cards:  [Q♦, 6♣, Q♥, A♥, 10♠]",2026-09-16T23:59:30.632Z,178960317063200
+"-- ending hand #2 --",2026-09-16T23:59:29.550Z,178960316955002
+"""player 6 @ 4anR3O4Tdu"" collected 4 from pot",2026-09-16T23:59:29.550Z,178960316955001
+"Uncalled bet of 3 returned to ""player 6 @ 4anR3O4Tdu""",2026-09-16T23:59:29.550Z,178960316955000
+"""player 2 @ wZe-uSpbRP"" folds",2026-09-16T23:59:28.694Z,178960316869400
+"""player 6 @ 4anR3O4Tdu"" posts a big blind of 5",2026-09-16T23:59:26.770Z,178960316677005
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-16T23:59:26.770Z,178960316677004
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (365) | #5 ""player 6 @ 4anR3O4Tdu"" (635)",2026-09-16T23:59:26.770Z,178960316677001
+"-- starting hand #2 (id: yd2ehzn8p3ts)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-16T23:59:26.770Z,178960316677000
+"-- ending hand #1 --",2026-09-16T23:59:20.744Z,178960316074402
+"""player 6 @ 4anR3O4Tdu"" collected 270 from pot with Two Pair, A's & K's (combination: 9♠, K♠, K♣, A♣, A♦)",2026-09-16T23:59:20.744Z,178960316074401
+"""player 6 @ 4anR3O4Tdu"" shows a K♠, A♣.",2026-09-16T23:59:20.744Z,178960316074400
+"""player 2 @ wZe-uSpbRP"" calls 90",2026-09-16T23:59:19.917Z,178960315991700
+"""player 6 @ 4anR3O4Tdu"" bets 90",2026-09-16T23:59:08.819Z,178960314881900
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-16T23:59:04.887Z,178960314488700
+"River: 5♠, 9♠, A♦, K♣ [6♠]",2026-09-16T23:59:04.542Z,178960314454200
+"""player 2 @ wZe-uSpbRP"" calls 30",2026-09-16T23:59:03.719Z,178960314371900
+"""player 6 @ 4anR3O4Tdu"" bets 30",2026-09-16T23:59:02.587Z,178960314258700
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-16T23:59:00.187Z,178960314018700
+"Turn: 5♠, 9♠, A♦ [K♣]",2026-09-16T23:58:59.251Z,178960313925100
+"""player 6 @ 4anR3O4Tdu"" checks",2026-09-16T23:58:58.377Z,178960313837700
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-16T23:58:56.964Z,178960313696400
+"Flop:  [5♠, 9♠, A♦]",2026-09-16T23:58:55.848Z,178960313584800
+"""player 2 @ wZe-uSpbRP"" calls 15",2026-09-16T23:58:54.929Z,178960313492900
+"""player 6 @ 4anR3O4Tdu"" raises to 15",2026-09-16T23:58:53.666Z,178960313366600
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-16T23:58:48.586Z,178960312858607
+"""player 6 @ 4anR3O4Tdu"" posts a small blind of 2",2026-09-16T23:58:48.586Z,178960312858606
+"Player stacks: #3 ""player 2 @ wZe-uSpbRP"" (500) | #5 ""player 6 @ 4anR3O4Tdu"" (500)",2026-09-16T23:58:48.586Z,178960312858603
+"The player ""player 6 @ 4anR3O4Tdu"" joined the game with a stack of 500.",2026-09-16T23:58:48.586Z,178960312858602
+"The player ""player 2 @ wZe-uSpbRP"" joined the game with a stack of 500.",2026-09-16T23:58:48.586Z,178960312858601
+"-- starting hand #1 (id: qvqfdoonsubu)  No Limit Texas Hold'em (dealer: ""player 6 @ 4anR3O4Tdu"") --",2026-09-16T23:58:48.586Z,178960312858600
+"The admin approved the player ""player 6 @ 4anR3O4Tdu"" participation with a stack of 500.",2026-09-16T23:58:46.342Z,178960312634200
+"The player ""player 6 @ 4anR3O4Tdu"" requested a seat.",2026-09-16T23:58:43.101Z,178960312310100
+"The admin approved the player ""player 2 @ wZe-uSpbRP"" participation with a stack of 500.",2026-09-16T23:58:03.862Z,178960308386201
+"The player ""player 2 @ wZe-uSpbRP"" requested a seat.",2026-09-16T23:58:03.862Z,178960308386200
+"The game's big blind was changed from 10 to 5.",2026-09-16T23:57:47.350Z,178960306735002
+"The game's small blind was changed from 5 to 2.",2026-09-16T23:57:47.350Z,178960306735001
+"Game Config Changes
+* Blind Schedule: L1: 5/10 » L1: 2/5
+* 7-2 bounty: 30 » 15
+* Restart Blind Schedule at Level: none » 1",2026-09-16T23:57:47.350Z,178960306735000
+"The game's ante was changed from 0 to 0.",2026-09-16T23:57:26.580Z,178960304658003
+"The game's big blind was changed from 20 to 10.",2026-09-16T23:57:26.580Z,178960304658002
+"The game's small blind was changed from 10 to 5.",2026-09-16T23:57:26.580Z,178960304658001
+"Game Config Changes
+* Nit Minimum Players: off » 3
+* Allow Rebuy: off » off
+* Blind Schedule: L1: 10/20 » L1: 5/10
+* Rabbit Hunt: off » on
+* Allow Run it Twice: no » ask players
+* 7-2 bounty: off » 30
+* Restart Blind Schedule at Level: none » 1",2026-09-16T23:57:26.580Z,178960304658000

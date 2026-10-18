@@ -1,0 +1,84 @@
+entry,at,order
+"The player ""player 7 @ UtEQmWnbJ1"" requested a seat.",2026-09-11T07:20:08.585Z,178911120858500
+"Undealt cards:  [4♣, 8♠, 6♦, J♠, K♣]",2026-09-11T07:20:04.082Z,178911120408200
+"-- ending hand #3 --",2026-09-11T07:20:03.090Z,178911120309002
+"""player 2 @ wZe-uSpbRP"" collected 4 from pot",2026-09-11T07:20:03.090Z,178911120309001
+"Uncalled bet of 3 returned to ""player 2 @ wZe-uSpbRP""",2026-09-11T07:20:03.090Z,178911120309000
+"""player 9 @ irNHTeDEZD"" folds",2026-09-11T07:20:02.215Z,178911120221500
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-11T07:19:31.374Z,178911117137400
+"""player 2 @ wZe-uSpbRP"" posts a big blind of 5",2026-09-11T07:19:01.842Z,178911114184206
+"""player 9 @ irNHTeDEZD"" posts a small blind of 2",2026-09-11T07:19:01.842Z,178911114184205
+"Player stacks: #3 ""player 1 @ gKO_jMA0j2"" (473) | #6 ""player 9 @ irNHTeDEZD"" (960) | #9 ""player 2 @ wZe-uSpbRP"" (567)",2026-09-11T07:19:01.842Z,178911114184201
+"-- starting hand #3 (id: nbmujwglpvrn)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-11T07:19:01.842Z,178911114184200
+"-- ending hand #2 --",2026-09-11T07:18:55.776Z,178911113577602
+"""player 2 @ wZe-uSpbRP"" collected 82 from pot with Two Pair, K's & Q's (combination: J♠, Q♥, Q♦, K♦, K♣)",2026-09-11T07:18:55.776Z,178911113577601
+"""player 2 @ wZe-uSpbRP"" shows a K♦, 4♦.",2026-09-11T07:18:55.776Z,178911113577600
+"""player 9 @ irNHTeDEZD"" calls 15",2026-09-11T07:18:54.970Z,178911113497000
+"""player 2 @ wZe-uSpbRP"" bets 15",2026-09-11T07:18:43.040Z,178911112304000
+"""player 9 @ irNHTeDEZD"" checks",2026-09-11T07:18:40.732Z,178911112073200
+"River: 5♣, Q♥, Q♦, J♠ [K♣]",2026-09-11T07:18:25.155Z,178911110515500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-11T07:18:24.350Z,178911110435000
+"""player 9 @ irNHTeDEZD"" checks",2026-09-11T07:18:22.783Z,178911110278300
+"Turn: 5♣, Q♥, Q♦ [J♠]",2026-09-11T07:18:17.150Z,178911109715000
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-11T07:18:16.340Z,178911109634000
+"""player 9 @ irNHTeDEZD"" checks",2026-09-11T07:18:14.694Z,178911109469400
+"Flop:  [5♣, Q♥, Q♦]",2026-09-11T07:18:11.548Z,178911109154800
+"""player 2 @ wZe-uSpbRP"" calls 25",2026-09-11T07:18:10.725Z,178911109072500
+"""player 9 @ irNHTeDEZD"" raises to 25",2026-09-11T07:18:07.980Z,178911108798000
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-11T07:18:04.472Z,178911108447200
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-11T07:17:43.222Z,178911106322200
+"""player 9 @ irNHTeDEZD"" posts a big blind of 5",2026-09-11T07:17:35.348Z,178911105534806
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 2",2026-09-11T07:17:35.348Z,178911105534805
+"Your hand is K♦, 4♦",2026-09-11T07:17:35.348Z,178911105534804
+"Player stacks: #3 ""player 1 @ gKO_jMA0j2"" (475) | #6 ""player 9 @ irNHTeDEZD"" (1000) | #9 ""player 2 @ wZe-uSpbRP"" (525)",2026-09-11T07:17:35.348Z,178911105534801
+"-- starting hand #2 (id: 2pghwxucpeh3)  No Limit Texas Hold'em (dealer: ""player 2 @ wZe-uSpbRP"") --",2026-09-11T07:17:35.348Z,178911105534800
+"-- ending hand #1 --",2026-09-11T07:17:29.331Z,178911104933102
+"""player 2 @ wZe-uSpbRP"" collected 50 from pot with Two Pair, A's & 10's (combination: Q♠, 10♦, 10♠, A♦, A♠)",2026-09-11T07:17:29.331Z,178911104933101
+"""player 2 @ wZe-uSpbRP"" shows a A♦, 10♦.",2026-09-11T07:17:29.331Z,178911104933100
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-11T07:17:28.503Z,178911104850300
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-11T07:17:19.592Z,178911103959200
+"River: Q♠, 2♣, J♥, A♠ [10♠]",2026-09-11T07:17:15.045Z,178911103504500
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-11T07:17:14.171Z,178911103417100
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-11T07:16:54.639Z,178911101463900
+"Turn: Q♠, 2♣, J♥ [A♠]",2026-09-11T07:16:52.952Z,178911101295200
+"""player 2 @ wZe-uSpbRP"" calls 10",2026-09-11T07:16:52.117Z,178911101211700
+"""player 1 @ gKO_jMA0j2"" bets 10",2026-09-11T07:16:42.365Z,178911100236500
+"""player 2 @ wZe-uSpbRP"" checks",2026-09-11T07:16:06.287Z,178911096628700
+"Flop:  [Q♠, 2♣, J♥]",2026-09-11T07:16:02.643Z,178911096264300
+"""player 1 @ gKO_jMA0j2"" calls 15",2026-09-11T07:16:01.801Z,178911096180100
+"""player 2 @ wZe-uSpbRP"" raises to 15",2026-09-11T07:15:28.346Z,178911092834600
+"""player 9 @ irNHTeDEZD"" folds",2026-09-11T07:15:25.850Z,178911092585000
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 5",2026-09-11T07:15:05.840Z,178911090584009
+"""player 2 @ wZe-uSpbRP"" posts a small blind of 2",2026-09-11T07:15:05.840Z,178911090584008
+"Your hand is A♦, 10♦",2026-09-11T07:15:05.840Z,178911090584007
+"Player stacks: #3 ""player 1 @ gKO_jMA0j2"" (500) | #6 ""player 9 @ irNHTeDEZD"" (1000) | #9 ""player 2 @ wZe-uSpbRP"" (500)",2026-09-11T07:15:05.840Z,178911090584004
+"The player ""player 2 @ wZe-uSpbRP"" joined the game with a stack of 500.",2026-09-11T07:15:05.840Z,178911090584003
+"The player ""player 9 @ irNHTeDEZD"" joined the game with a stack of 1000.",2026-09-11T07:15:05.840Z,178911090584002
+"The player ""player 1 @ gKO_jMA0j2"" joined the game with a stack of 500.",2026-09-11T07:15:05.840Z,178911090584001
+"-- starting hand #1 (id: w4whryop9im3)  No Limit Texas Hold'em (dealer: ""player 9 @ irNHTeDEZD"") --",2026-09-11T07:15:05.840Z,178911090584000
+"The game's big blind was changed from 10 to 5.",2026-09-11T06:48:15.874Z,178910929587402
+"The game's small blind was changed from 5 to 2.",2026-09-11T06:48:15.874Z,178910929587401
+"Game Config Changes
+* Blind Schedule: L1: 5/10 » L1: 2/5
+* Restart Blind Schedule at Level: none » 1",2026-09-11T06:48:15.874Z,178910929587400
+"The admin approved the player ""player 1 @ gKO_jMA0j2"" participation with a stack of 500.",2026-09-11T06:48:09.546Z,178910928954600
+"The game's big blind was changed from 5 to 10.",2026-09-11T06:48:06.369Z,178910928636902
+"The game's small blind was changed from 2 to 5.",2026-09-11T06:48:06.369Z,178910928636901
+"Game Config Changes
+* Blind Schedule: L1: 2/5 » L1: 5/10
+* Restart Blind Schedule at Level: none » 1",2026-09-11T06:48:06.369Z,178910928636900
+"The player ""player 1 @ gKO_jMA0j2"" requested a seat.",2026-09-11T06:48:03.365Z,178910928336500
+"The admin approved the player ""player 9 @ irNHTeDEZD"" participation with a stack of 1000.",2026-09-11T06:47:44.295Z,178910926429500
+"The player ""player 9 @ irNHTeDEZD"" requested a seat.",2026-09-11T06:47:39.626Z,178910925962600
+"The game's ante was changed from 0 to 0.",2026-09-11T06:45:53.340Z,178910915334003
+"The game's big blind was changed from 20 to 5.",2026-09-11T06:45:53.340Z,178910915334002
+"The game's small blind was changed from 10 to 2.",2026-09-11T06:45:53.340Z,178910915334001
+"Game Config Changes
+* Nit Minimum Players: off » 3
+* Allow Rebuy: off » off
+* Blind Schedule: L1: 10/20 » L1: 2/5
+* Rabbit Hunt: off » on
+* Allow Run it Twice: no » ask players
+* Restart Blind Schedule at Level: none » 1",2026-09-11T06:45:53.340Z,178910915334000
+"The admin approved the player ""player 2 @ wZe-uSpbRP"" participation with a stack of 500.",2026-09-11T06:45:43.114Z,178910914311401
+"The player ""player 2 @ wZe-uSpbRP"" requested a seat.",2026-09-11T06:45:43.114Z,178910914311400

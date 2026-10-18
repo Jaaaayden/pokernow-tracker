@@ -1,0 +1,212 @@
+entry,at,order
+"The player ""player 3 @ zQPzG-POVb"" sit back with the stack of 1140.",2026-09-20T01:22:35.693Z,178986735569300
+"The admin updated the player ""player 3 @ zQPzG-POVb"" stack from 1180 to 1140.",2026-09-20T01:22:32.010Z,178986735201000
+"The player ""player 3 @ 0I1CroL2Am"" quits the game with a stack of 1140.",2026-09-20T01:22:12.012Z,178986733201200
+"The player ""player 3 @ 0I1CroL2Am"" passed the room ownership to ""player 3 @ zQPzG-POVb"".",2026-09-20T01:22:10.104Z,178986733010400
+"The player ""player 3 @ iFwAfMYw9U"" requested a seat.",2026-09-20T00:58:06.847Z,178986588684700
+"The player ""player 3 @ 0I1CroL2Am"" stand up with the stack of 1140.",2026-09-20T00:57:26.748Z,178986584674800
+"-- ending hand #14 --",2026-09-20T00:57:20.800Z,178986584080002
+"""player 3 @ 0I1CroL2Am"" collected 20 from pot",2026-09-20T00:57:20.800Z,178986584080001
+"Uncalled bet of 30 returned to ""player 3 @ 0I1CroL2Am""",2026-09-20T00:57:20.800Z,178986584080000
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-20T00:57:19.956Z,178986583995600
+"""player 3 @ 0I1CroL2Am"" raises to 40",2026-09-20T00:57:18.925Z,178986583892500
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:57:15.137Z,178986583513705
+"""player 3 @ 0I1CroL2Am"" posts a small blind of 5",2026-09-20T00:57:15.137Z,178986583513704
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (870) | #5 ""player 3 @ 0I1CroL2Am"" (1130)",2026-09-20T00:57:15.137Z,178986583513701
+"-- starting hand #14 (id: sttiblrktbhm)  No Limit Texas Hold'em (dealer: ""player 3 @ 0I1CroL2Am"") --",2026-09-20T00:57:15.137Z,178986583513700
+"-- ending hand #13 --",2026-09-20T00:57:09.134Z,178986582913402
+"""player 1 @ gKO_jMA0j2"" collected 100 from pot",2026-09-20T00:57:09.134Z,178986582913401
+"Uncalled bet of 50 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:57:09.134Z,178986582913400
+"""player 3 @ 0I1CroL2Am"" folds",2026-09-20T00:57:08.285Z,178986582828500
+"""player 1 @ gKO_jMA0j2"" bets 50",2026-09-20T00:57:06.248Z,178986582624800
+"""player 3 @ 0I1CroL2Am"" checks",2026-09-20T00:57:02.287Z,178986582228700
+"Flop:  [3♦, 6♠, A♠]",2026-09-20T00:56:49.664Z,178986580966400
+"""player 3 @ 0I1CroL2Am"" calls 50",2026-09-20T00:56:48.844Z,178986580884400
+"""player 1 @ gKO_jMA0j2"" raises to 50",2026-09-20T00:56:44.326Z,178986580432600
+"""player 3 @ 0I1CroL2Am"" posts a big blind of 10",2026-09-20T00:56:35.945Z,178986579594508
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:56:35.945Z,178986579594507
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (820) | #5 ""player 3 @ 0I1CroL2Am"" (1180)",2026-09-20T00:56:35.945Z,178986579594504
+"The player ""player 3 @ zQPzG-POVb"" joined the game with a stack of 1180.",2026-09-20T00:56:35.945Z,178986579594503
+"The player ""player 3 @ 0I1CroL2Am"" joined the game with a stack of 1180.",2026-09-20T00:56:35.945Z,178986579594502
+"The player ""player 1 @ gKO_jMA0j2"" joined the game with a stack of 820.",2026-09-20T00:56:35.945Z,178986579594501
+"-- starting hand #13 (id: ppvglqms0rem)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:56:35.945Z,178986579594500
+"The player ""player 3 @ zQPzG-POVb"" passed the room ownership to ""player 3 @ 0I1CroL2Am"".",2026-09-20T00:55:48.586Z,178986574858600
+"The admin approved the player ""player 3 @ 0I1CroL2Am"" participation with a stack of 1180.",2026-09-20T00:55:40.278Z,178986574027800
+"The player ""player 3 @ 0I1CroL2Am"" requested a seat.",2026-09-20T00:55:37.234Z,178986573723400
+"The player ""player 3 @ zQPzG-POVb"" stand up with the stack of 1180.",2026-09-20T00:54:30.639Z,178986567063900
+"-- ending hand #12 --",2026-09-20T00:54:24.727Z,178986566472702
+"""player 1 @ gKO_jMA0j2"" collected 20 from pot",2026-09-20T00:54:24.727Z,178986566472701
+"Uncalled bet of 40 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:54:24.727Z,178986566472700
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:54:23.843Z,178986566384300
+"""player 1 @ gKO_jMA0j2"" raises to 50",2026-09-20T00:54:15.826Z,178986565582600
+"""player 3 @ zQPzG-POVb"" calls 10",2026-09-20T00:54:13.247Z,178986565324700
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:54:08.744Z,178986564874407
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:54:08.744Z,178986564874406
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (810) | #6 ""player 3 @ zQPzG-POVb"" (1190)",2026-09-20T00:54:08.744Z,178986564874403
+"The player ""player 3 @ zQPzG-POVb"" joined the game with a stack of 1190.",2026-09-20T00:54:08.744Z,178986564874402
+"The player ""player 1 @ gKO_jMA0j2"" joined the game with a stack of 810.",2026-09-20T00:54:08.744Z,178986564874401
+"-- starting hand #12 (id: nfnsdotvimpp)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:54:08.744Z,178986564874400
+"The player ""player 1 @ gKO_jMA0j2"" sit back with the stack of 810.",2026-09-20T00:53:02.852Z,178986558285200
+"The player ""player 3 @ zQPzG-POVb"" sit back with the stack of 1190.",2026-09-20T00:49:48.709Z,178986538870900
+"The player ""player 1 @ gKO_jMA0j2"" stand up with the stack of 810.",2026-09-20T00:49:44.756Z,178986538475601
+"The player ""player 3 @ zQPzG-POVb"" stand up with the stack of 1190.",2026-09-20T00:49:44.756Z,178986538475600
+"-- ending hand #11 --",2026-09-20T00:49:31.548Z,178986537154802
+"""player 3 @ zQPzG-POVb"" collected 60 from pot",2026-09-20T00:49:31.548Z,178986537154801
+"Uncalled bet of 90 returned to ""player 3 @ zQPzG-POVb""",2026-09-20T00:49:31.548Z,178986537154800
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-20T00:49:30.676Z,178986537067600
+"""player 3 @ zQPzG-POVb"" raises to 120",2026-09-20T00:49:27.992Z,178986536799200
+"""player 1 @ gKO_jMA0j2"" raises to 30",2026-09-20T00:49:24.354Z,178986536435400
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:49:14.209Z,178986535420905
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:49:14.209Z,178986535420904
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (840) | #6 ""player 3 @ zQPzG-POVb"" (1160)",2026-09-20T00:49:14.209Z,178986535420901
+"-- starting hand #11 (id: hkrpbsq7hops)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:49:14.209Z,178986535420900
+"-- ending hand #10 --",2026-09-20T00:49:08.248Z,178986534824802
+"""player 1 @ gKO_jMA0j2"" collected 10 from pot",2026-09-20T00:49:08.248Z,178986534824801
+"Uncalled bet of 5 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:49:08.248Z,178986534824800
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:49:07.435Z,178986534743500
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:49:05.403Z,178986534540305
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:49:05.403Z,178986534540304
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (835) | #6 ""player 3 @ zQPzG-POVb"" (1165)",2026-09-20T00:49:05.403Z,178986534540301
+"-- starting hand #10 (id: cciifldhx0fu)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:49:05.403Z,178986534540300
+"-- ending hand #9 --",2026-09-20T00:48:59.463Z,178986533946302
+"""player 1 @ gKO_jMA0j2"" collected 160 from pot",2026-09-20T00:48:59.463Z,178986533946301
+"Uncalled bet of 150 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:48:59.463Z,178986533946300
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:48:58.633Z,178986533863300
+"""player 1 @ gKO_jMA0j2"" bets 150",2026-09-20T00:48:56.706Z,178986533670600
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:48:53.635Z,178986533363500
+"Turn: 4♠, 5♣, 10♦ [4♥]",2026-09-20T00:48:52.360Z,178986533236000
+"""player 1 @ gKO_jMA0j2"" calls 40",2026-09-20T00:48:51.465Z,178986533146500
+"""player 3 @ zQPzG-POVb"" bets 40",2026-09-20T00:48:50.470Z,178986533047000
+"Flop:  [4♠, 5♣, 10♦]",2026-09-20T00:48:47.816Z,178986532781600
+"""player 1 @ gKO_jMA0j2"" calls 40",2026-09-20T00:48:46.954Z,178986532695400
+"""player 3 @ zQPzG-POVb"" raises to 40",2026-09-20T00:48:46.019Z,178986532601900
+"""player 1 @ gKO_jMA0j2"" calls 10",2026-09-20T00:48:44.428Z,178986532442800
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:48:41.150Z,178986532115005
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:48:41.150Z,178986532115004
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (755) | #6 ""player 3 @ zQPzG-POVb"" (1245)",2026-09-20T00:48:41.150Z,178986532115001
+"-- starting hand #9 (id: gzmbebvdd8ip)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:48:41.150Z,178986532115000
+"-- ending hand #8 --",2026-09-20T00:48:35.206Z,178986531520602
+"""player 1 @ gKO_jMA0j2"" collected 60 from pot",2026-09-20T00:48:35.206Z,178986531520601
+"Uncalled bet of 20 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:48:35.206Z,178986531520600
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:48:34.384Z,178986531438400
+"""player 1 @ gKO_jMA0j2"" bets 20",2026-09-20T00:48:31.821Z,178986531182100
+"Flop:  [5♥, 3♠, 8♥]",2026-09-20T00:48:29.740Z,178986530974000
+"""player 1 @ gKO_jMA0j2"" calls 30",2026-09-20T00:48:28.873Z,178986530887300
+"""player 3 @ zQPzG-POVb"" raises to 30",2026-09-20T00:48:26.949Z,178986530694900
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:48:24.341Z,178986530434105
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:48:24.341Z,178986530434104
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (725) | #6 ""player 3 @ zQPzG-POVb"" (1275)",2026-09-20T00:48:24.341Z,178986530434101
+"-- starting hand #8 (id: y9dpevrbf3gb)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:48:24.341Z,178986530434100
+"-- ending hand #7 --",2026-09-20T00:48:18.338Z,178986529833802
+"""player 3 @ zQPzG-POVb"" collected 10 from pot",2026-09-20T00:48:18.338Z,178986529833801
+"Uncalled bet of 5 returned to ""player 3 @ zQPzG-POVb""",2026-09-20T00:48:18.338Z,178986529833800
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-20T00:48:17.458Z,178986529745800
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:48:16.135Z,178986529613505
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:48:16.135Z,178986529613504
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (730) | #6 ""player 3 @ zQPzG-POVb"" (1270)",2026-09-20T00:48:16.135Z,178986529613501
+"-- starting hand #7 (id: co7ufbi8c5tr)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:48:16.135Z,178986529613500
+"-- ending hand #6 --",2026-09-20T00:48:10.193Z,178986529019302
+"""player 3 @ zQPzG-POVb"" collected 20 from pot",2026-09-20T00:48:10.193Z,178986529019301
+"Uncalled bet of 20 returned to ""player 3 @ zQPzG-POVb""",2026-09-20T00:48:10.193Z,178986529019300
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-20T00:48:09.297Z,178986528929700
+"""player 3 @ zQPzG-POVb"" bets 20",2026-09-20T00:48:08.319Z,178986528831900
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-20T00:48:06.858Z,178986528685800
+"Flop:  [J♣, 2♥, 8♣]",2026-09-20T00:48:05.290Z,178986528529000
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-20T00:48:04.403Z,178986528440300
+"""player 3 @ zQPzG-POVb"" calls 10",2026-09-20T00:48:02.969Z,178986528296900
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:48:01.110Z,178986528111005
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:48:01.110Z,178986528111004
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (740) | #6 ""player 3 @ zQPzG-POVb"" (1260)",2026-09-20T00:48:01.110Z,178986528111001
+"-- starting hand #6 (id: 9qkyfizklxa6)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:48:01.110Z,178986528111000
+"-- ending hand #5 --",2026-09-20T00:47:55.151Z,178986527515102
+"""player 1 @ gKO_jMA0j2"" collected 20 from pot",2026-09-20T00:47:55.151Z,178986527515101
+"Uncalled bet of 40 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:47:55.151Z,178986527515100
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:47:54.334Z,178986527433400
+"""player 1 @ gKO_jMA0j2"" raises to 50",2026-09-20T00:47:53.324Z,178986527332400
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:47:51.101Z,178986527110105
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:47:51.101Z,178986527110104
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (730) | #6 ""player 3 @ zQPzG-POVb"" (1270)",2026-09-20T00:47:51.101Z,178986527110101
+"-- starting hand #5 (id: jjuta1ulkdsa)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:47:51.101Z,178986527110100
+"-- ending hand #4 --",2026-09-20T00:47:45.109Z,178986526510902
+"""player 1 @ gKO_jMA0j2"" collected 120 from pot",2026-09-20T00:47:45.109Z,178986526510901
+"Uncalled bet of 50 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:47:45.109Z,178986526510900
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:47:44.200Z,178986526420000
+"""player 1 @ gKO_jMA0j2"" bets 50",2026-09-20T00:47:43.145Z,178986526314500
+"Turn: 8♠, Q♥, Q♠ [J♥]",2026-09-20T00:47:40.736Z,178986526073600
+"""player 3 @ zQPzG-POVb"" calls 20",2026-09-20T00:47:39.929Z,178986525992900
+"""player 1 @ gKO_jMA0j2"" bets 20",2026-09-20T00:47:38.172Z,178986525817200
+"Flop:  [8♠, Q♥, Q♠]",2026-09-20T00:47:33.486Z,178986525348600
+"""player 3 @ zQPzG-POVb"" calls 40",2026-09-20T00:47:32.555Z,178986525255500
+"""player 1 @ gKO_jMA0j2"" raises to 40",2026-09-20T00:47:31.576Z,178986525157600
+"""player 3 @ zQPzG-POVb"" calls 10",2026-09-20T00:47:29.033Z,178986524903300
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:47:27.685Z,178986524768505
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:47:27.685Z,178986524768504
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (670) | #6 ""player 3 @ zQPzG-POVb"" (1330)",2026-09-20T00:47:27.685Z,178986524768501
+"-- starting hand #4 (id: oxrbaasqoq37)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:47:27.685Z,178986524768500
+"-- ending hand #3 --",2026-09-20T00:47:24.682Z,178986524468202
+"""player 1 @ gKO_jMA0j2"" collected 40 from pot",2026-09-20T00:47:24.682Z,178986524468201
+"Uncalled bet of 20 returned to ""player 1 @ gKO_jMA0j2""",2026-09-20T00:47:24.682Z,178986524468200
+"""player 3 @ zQPzG-POVb"" folds",2026-09-20T00:47:23.779Z,178986524377900
+"""player 1 @ gKO_jMA0j2"" bets 20",2026-09-20T00:47:22.904Z,178986524290400
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:47:21.269Z,178986524126900
+"River: 7♥, Q♦, 5♥, 2♦ [10♠]",2026-09-20T00:47:20.679Z,178986524067900
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-20T00:47:19.795Z,178986523979500
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:47:18.778Z,178986523877800
+"Turn: 7♥, Q♦, 5♥ [2♦]",2026-09-20T00:47:17.947Z,178986523794700
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-20T00:47:17.120Z,178986523712000
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:47:16.109Z,178986523610900
+"Flop:  [7♥, Q♦, 5♥]",2026-09-20T00:47:14.870Z,178986523487000
+"""player 1 @ gKO_jMA0j2"" calls 20",2026-09-20T00:47:14.009Z,178986523400900
+"""player 3 @ zQPzG-POVb"" raises to 20",2026-09-20T00:47:13.099Z,178986523309900
+"""player 1 @ gKO_jMA0j2"" calls 10",2026-09-20T00:47:09.502Z,178986522950200
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:47:07.650Z,178986522765005
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:47:07.650Z,178986522765004
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (650) | #6 ""player 3 @ zQPzG-POVb"" (1350)",2026-09-20T00:47:07.650Z,178986522765001
+"-- starting hand #3 (id: me4s6cu4bhs7)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:47:07.650Z,178986522765000
+"-- ending hand #2 --",2026-09-20T00:47:01.692Z,178986522169202
+"""player 3 @ zQPzG-POVb"" collected 20 from pot",2026-09-20T00:47:01.692Z,178986522169201
+"Uncalled bet of 30 returned to ""player 3 @ zQPzG-POVb""",2026-09-20T00:47:01.692Z,178986522169200
+"""player 1 @ gKO_jMA0j2"" folds",2026-09-20T00:47:00.733Z,178986522073300
+"""player 3 @ zQPzG-POVb"" raises to 40",2026-09-20T00:46:59.758Z,178986521975800
+"""player 1 @ gKO_jMA0j2"" posts a big blind of 10",2026-09-20T00:46:54.832Z,178986521483205
+"""player 3 @ zQPzG-POVb"" posts a small blind of 5",2026-09-20T00:46:54.832Z,178986521483204
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (660) | #6 ""player 3 @ zQPzG-POVb"" (1340)",2026-09-20T00:46:54.832Z,178986521483201
+"-- starting hand #2 (id: 3qgf0ri7wqx9)  No Limit Texas Hold'em (dealer: ""player 3 @ zQPzG-POVb"") --",2026-09-20T00:46:54.832Z,178986521483200
+"-- ending hand #1 --",2026-09-20T00:46:48.824Z,178986520882403
+"""player 3 @ zQPzG-POVb"" collected 680 from pot with Full House, 10's over Q's (combination: Q♦, Q♣, 10♣, 10♦, 10♥)",2026-09-20T00:46:48.824Z,178986520882402
+"""player 3 @ zQPzG-POVb"" shows a K♠, Q♦.",2026-09-20T00:46:48.824Z,178986520882401
+"""player 1 @ gKO_jMA0j2"" shows a 4♠, 5♥.",2026-09-20T00:46:48.824Z,178986520882400
+"""player 3 @ zQPzG-POVb"" calls 250",2026-09-20T00:46:47.886Z,178986520788600
+"""player 1 @ gKO_jMA0j2"" raises to 250",2026-09-20T00:46:47.000Z,178986520700000
+"""player 3 @ zQPzG-POVb"" bets 70",2026-09-20T00:46:44.538Z,178986520453800
+"River: 10♣, 10♦, Q♣, 10♥ [6♣]",2026-09-20T00:46:42.382Z,178986520238200
+"""player 1 @ gKO_jMA0j2"" checks",2026-09-20T00:46:41.530Z,178986520153000
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:46:40.247Z,178986520024700
+"Turn: 10♣, 10♦, Q♣ [10♥]",2026-09-20T00:46:38.180Z,178986519818000
+"""player 3 @ zQPzG-POVb"" calls 50",2026-09-20T00:46:37.351Z,178986519735100
+"""player 1 @ gKO_jMA0j2"" bets 50",2026-09-20T00:46:33.222Z,178986519322200
+"""player 3 @ zQPzG-POVb"" checks",2026-09-20T00:46:30.817Z,178986519081700
+"Flop:  [10♣, 10♦, Q♣]",2026-09-20T00:46:27.571Z,178986518757100
+"""player 1 @ gKO_jMA0j2"" calls 40",2026-09-20T00:46:26.669Z,178986518666900
+"""player 3 @ zQPzG-POVb"" raises to 40",2026-09-20T00:46:25.479Z,178986518547900
+"""player 1 @ gKO_jMA0j2"" calls 10",2026-09-20T00:46:21.972Z,178986518197200
+"""player 3 @ zQPzG-POVb"" posts a big blind of 10",2026-09-20T00:46:15.509Z,178986517550907
+"""player 1 @ gKO_jMA0j2"" posts a small blind of 5",2026-09-20T00:46:15.509Z,178986517550906
+"Player stacks: #1 ""player 1 @ gKO_jMA0j2"" (1000) | #6 ""player 3 @ zQPzG-POVb"" (1000)",2026-09-20T00:46:15.509Z,178986517550903
+"The player ""player 3 @ zQPzG-POVb"" joined the game with a stack of 1000.",2026-09-20T00:46:15.509Z,178986517550902
+"The player ""player 1 @ gKO_jMA0j2"" joined the game with a stack of 1000.",2026-09-20T00:46:15.509Z,178986517550901
+"-- starting hand #1 (id: zyv2gex3khux)  No Limit Texas Hold'em (dealer: ""player 1 @ gKO_jMA0j2"") --",2026-09-20T00:46:15.509Z,178986517550900
+"The admin approved the player ""player 1 @ gKO_jMA0j2"" participation with a stack of 1000.",2026-09-20T00:46:13.325Z,178986517332500
+"The player ""player 1 @ gKO_jMA0j2"" requested a seat.",2026-09-20T00:45:24.171Z,178986512417100
+"The game's ante was changed from 0 to 0.",2026-09-20T00:43:43.349Z,178986502334903
+"The game's big blind was changed from 20 to 10.",2026-09-20T00:43:43.349Z,178986502334902
+"The game's small blind was changed from 10 to 5.",2026-09-20T00:43:43.349Z,178986502334901
+"Game Config Changes
+* Nit Minimum Players: off » 3
+* Allow Rebuy: off » off
+* Blind Schedule: L1: 10/20 » L1: 5/10
+* Rabbit Hunt: off » on
+* Allow Run it Twice: no » ask players
+* Restart Blind Schedule at Level: none » 1",2026-09-20T00:43:43.349Z,178986502334900
+"The admin approved the player ""player 3 @ zQPzG-POVb"" participation with a stack of 1000.",2026-09-20T00:43:33.140Z,178986501314001
+"The player ""player 3 @ zQPzG-POVb"" requested a seat.",2026-09-20T00:43:33.140Z,178986501314000

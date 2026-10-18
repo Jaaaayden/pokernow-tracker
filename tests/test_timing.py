@@ -16,11 +16,11 @@ from pnt.logfmt.parser import parse
 from pnt.stats.derive import TEMPO_BUCKETS, TEMPO_CUTS, derive, tempo_of
 from pnt.stats.filters import parse_filter
 from pnt.stats.queries import load_hands
-from tests.conftest import ALL_LOGS, EDGE_LOGS, ROOT
+from tests.conftest import ALL_LOGS, EDGE_LOGS, FIXTURES, ROOT
 
 GAME = "pgltest_timing"
-#: The one bundled log whose table changed its decision clock (20 s to 10 s).
-CLOCK_LOG = ROOT / "pnt" / "logs" / "poker_now_log_pglSP7RQmNX3BBkEAr9HPCGLW.csv"
+#: A log whose table changed its decision clock (20 s to 10 s).
+CLOCK_LOG = FIXTURES / "poker_now_log_pglSP7RQmNX3BBkEAr9HPCGLW.csv"
 
 
 def ms(t: float) -> int:

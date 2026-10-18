@@ -309,8 +309,9 @@ The Python suite is organized around invariants rather than examples:
   order, every stat is unchanged, and hero is still identifiable.
 - `test_sample_logs.py` guards what actually ships. Every file in `pnt/logs/` is
   re-audited, so a raw export dropped in there fails the suite rather than shipping
-  in the next release. It also proves the sample fallback triggers on an *empty*
-  log folder only, never on a small one and never on an explicit path.
+  in the next release, and every player in them must be a `player N` stand-in. It
+  also proves a new install starts empty and the `--sample` fallback triggers on an
+  *empty* log folder only, never on a small one and never on an explicit path.
 - `test_concurrency.py`: concurrent writers queue instead of failing. Two tabs on
   one table, or `pnt import` while the server is up, put two writers on the file. A
   deferred transaction that reads before it writes cannot upgrade, and SQLite

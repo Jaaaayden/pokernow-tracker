@@ -89,12 +89,17 @@ topped up later.
 
 ### The bundled sample
 
-With no exports of its own to import, `pnt setup` loads the
-[bundled sample corpus](../pnt/logs): 5,257 real hands, so the first page you open
-is not an empty one. Those are someone else's games, and setup says so.
-`--no-sample` leaves the database empty for live capture to fill.
+A new database starts empty. To try the tracker before you have hands of your own,
+`pnt setup --sample` loads the [bundled sample corpus](../pnt/logs) instead: 15,996
+real hands with every player anonymized to `player N`. Players who joined from
+several devices stay merged, so one person is one `player N`, not one per ID.
 
-`pnt import` falls back to the same corpus when the log folder is empty. The
+```bash
+pnt setup --sample                 # empty log folder: load the sample
+pnt import --sample                # same, into an existing database
+```
+
+The sample only loads when the log folder is empty. The
 fallback triggers on *empty*, never on *small*: with one log of your own in the
 folder, that log is the only thing imported. Explicit paths and `--log-dir` never
 reach the fallback, because being handed a different folder than the one you named
@@ -1012,9 +1017,15 @@ Opponents get one line per showdown, but you get one line per hand:
 output, and it is what ships in the wheel:
 
 ```bash
-pnt redact --out pnt/logs        # every log in the log folder -> the bundled corpus
+pnt redact --out shared          # every log in the log folder, your unshown cards removed
 pnt redact --audit pnt/logs      # verify what you are about to commit; exits 1 on a leak
 ```
+
+For logs going to people who were not at the table, `--anonymize` also replaces
+every player with `player N` and every PokerNow ID and game ID with a stand-in,
+and `--aliases merges.csv` (from `pnt alias export`) carries the merges across so
+one person stays one player. The bundled corpus is built that way;
+[`pnt/logs/README.md`](../pnt/logs/README.md) has the steps.
 
 It keeps your cards only on hands where you showed them anyway. Every stat is
 unchanged, since hole cards feed range charts and not action frequencies. What you

@@ -34,6 +34,7 @@ from .ingest.importer import (
     split_identities,
 )
 from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
+from .logfmt import anonymize as anon
 from .logfmt import redact as rd
 from .stats.allin import allin_report
 from .stats.bluffs import bluff_value, pool_facts
@@ -88,14 +89,16 @@ DbOpt = typer.Option(
 #: The environment variable is read once, at import, so it has to be set before the
 #: command runs -- which is exactly why `--log-dir` exists as well.
 
-#: A real 5,277-hand corpus shipped inside the package, so a fresh install has
-#: something to look at before it has logs of its own. `pnt import` and `pnt setup`
-#: fall back to it when the log folder is empty; naming a folder or passing paths
-#: never reaches it.
+#: A real corpus shipped inside the package, for trying the tracker before it has
+#: logs of its own. A fresh install starts empty: `pnt import --sample` and `pnt
+#: setup --sample` fall back to it when the log folder is empty; naming a folder or
+#: passing paths never reaches it.
 #:
-#: These are `pnt redact` output, not raw exports: a hole card survives only where
-#: it was shown down. See `pnt/logs/README.md` and `pnt/logfmt/redact.py`.
+#: These are `pnt redact --anonymize` output, not raw exports: a hole card survives
+#: only where it was shown down, and every player is a `player N` stand-in. See
+#: `pnt/logs/README.md`, `pnt/logfmt/redact.py` and `pnt/logfmt/anonymize.py`.
 BUNDLED_LOG_DIR = Path(__file__).parent / "logs"
+BUNDLED_ALIASES = BUNDLED_LOG_DIR / "aliases.csv"
 
 LogDirOpt = typer.Option(
     None, "--log-dir", help=f"Folder of PokerNow exports. Default: {LOG_DIR}"
@@ -108,12 +111,18 @@ OutOpt = typer.Option(
     Path("logs"), "--out", help="Folder to write the redacted copies into."
 )
 SampleOpt = typer.Option(
-    True,
+    False,
     "--sample/--no-sample",
-    help="Fall back to the bundled sample logs when the log folder is empty.",
+    help="Load the bundled, anonymized sample logs when the log folder is empty.",
 )
 AuditOpt = typer.Option(
     False, "--audit", help="Check files for unshown hole cards instead of writing."
+)
+AnonymizeOpt = typer.Option(
+    False, "--anonymize", help="Also replace every player and game ID with a stand-in."
+)
+AnonAliasesOpt = typer.Option(
+    None, "--aliases", help="With --anonymize: an alias CSV to carry over (`pnt alias export`)."
 )
 AliasOpt = typer.Option(..., "--alias", help="Name for the player they move to.")
 AliasFileArg = typer.Argument(
@@ -180,10 +189,18 @@ def _announce_sample(folder: Path) -> None:
     """
     typer.echo(f"no {LOG_GLOB} in {folder}")
     typer.echo(f"importing the bundled sample corpus instead: {BUNDLED_LOG_DIR}")
-    typer.echo("These are someone else's hands, kept so a fresh install has something to")
-    typer.echo("query. Drop your own exports in the log folder and re-run to add yours;")
-    typer.echo("pass --no-sample to skip them.")
+    typer.echo("These are someone else's hands, anonymized to 'player N', for trying the")
+    typer.echo("tracker out. Drop your own exports in the log folder and re-run to add yours.")
     typer.echo("")
+
+
+def _apply_bundled_aliases(conn) -> None:
+    """Merge the sample's players the way the original table's were: one person on
+    several devices is one `player N`, not one per PokerNow ID."""
+    with BUNDLED_ALIASES.open(newline="", encoding="utf-8") as fh:
+        pairs = [(r["pn_id"], r["alias"]) for r in csv.DictReader(fh)]
+    moved, _ = apply_aliases(conn, pairs)
+    typer.echo(f"merged {moved} sample identity row(s) per {BUNDLED_ALIASES.name}")
 
 
 def _import(conn, path: str, folder: Path) -> dict:
@@ -241,14 +258,16 @@ def import_cmd(
     given, else $PNT_LOG_DIR, else the folder chosen on the front page, else
     ~/Downloads/pokernow-logs. `pnt where` prints which one is in effect.
 
-    If that folder is empty, the bundled sample corpus is imported instead, so a
-    fresh install has something to query. `--no-sample` turns that off.
+    If that folder is empty, `--sample` imports the bundled, anonymized sample
+    corpus instead, for trying the tracker out. Without it an empty folder is an
+    error: a fresh install starts with no one else's hands.
     """
     conn = connect(db)
     folder = log_dir or LOG_DIR
     expanded = _expand(paths, folder, sample=sample)
     if not paths and expanded and Path(expanded[0]).parent == BUNDLED_LOG_DIR:
         _announce_sample(folder)
+    bundled = any(Path(p).resolve().parent == BUNDLED_LOG_DIR.resolve() for p in expanded)
     for path in expanded:
         if not has_hands(read_csv(path)):
             typer.echo(f"{Path(path).name}: no hands (joined and left before a deal), skipped")
@@ -262,6 +281,8 @@ def import_cmd(
         )
         if s["hero_pn_id"]:
             typer.echo(f"    hero: {s['hero_pn_id']} ({s['hero_votes']} showdown matches)")
+    if bundled:
+        _apply_bundled_aliases(conn)
 
 
 LinksArg = typer.Argument(None, help="Game links or game IDs.")
@@ -440,9 +461,9 @@ def setup(
     it for you, so a new install hit an error with no obvious next move. This does
     them in the order that works, and is safe to re-run.
 
-    With no exports to import, it falls back to the bundled sample corpus, so the
-    page it points you at has hands on it. `--no-sample` leaves the database empty
-    for live capture to fill.
+    With no exports to import the database starts empty, for live capture to fill.
+    `--sample` loads the bundled, anonymized sample corpus into it instead, for
+    trying the tracker out.
     """
     db = db.resolve()
     fresh = not db.exists()
@@ -451,7 +472,8 @@ def setup(
 
     folder = log_dir or LOG_DIR
     logs = _logs_in(folder)
-    if not logs and sample:
+    bundled = not logs and sample
+    if bundled:
         _announce_sample(folder)
         logs = _logs_in(BUNDLED_LOG_DIR)
     if logs:
@@ -460,11 +482,14 @@ def setup(
         for path in logs:
             s = _import(conn, path, folder)
             typer.echo(f"  {Path(path).name}: {s['hands']} hands, {s['parse_misses']} parse misses")
+        if bundled:
+            _apply_bundled_aliases(conn)
         conn.close()
     else:
         # Not an error. Live capture fills an empty database on its own; the export
         # folder only matters for backfilling games played before the extension.
         typer.echo(f"no {LOG_GLOB} in {folder} -- skipping import (live capture will fill it)")
+        typer.echo("To try it on sample hands first: pnt setup --sample")
 
     hands = connect(db).execute("SELECT COUNT(*) FROM hands").fetchone()[0]
 
@@ -594,7 +619,7 @@ def where(db: Path = DbOpt) -> None:
             else "off",
             "PNT_SAVE_LOGS=0 turns it off; restart the service after changing it",
         ),
-        ("sample logs", str(BUNDLED_LOG_DIR), f"{n} inside the package, used when the above is empty"),
+        ("sample logs", str(BUNDLED_LOG_DIR), f"{n} inside the package, anonymized; loaded by --sample"),
         ("extension", str(EXTENSION_DIR), "inside the package"),
         ("server log", str(svc.LOG_FILE), "fixed"),
     ]
@@ -1250,6 +1275,8 @@ def redact(
     out: Path = OutOpt,
     log_dir: Path | None = LogDirOpt,
     audit: bool = AuditOpt,
+    anonymize: bool = AnonymizeOpt,
+    aliases: Path | None = AnonAliasesOpt,
 ) -> None:
     """Write publishable copies of your logs with your unshown hole cards removed.
 
@@ -1263,6 +1290,10 @@ def redact(
 
     `--audit` skips writing and checks files instead. Run it on the folder you are
     about to commit; anything it prints is a hand you did not show.
+
+    `--anonymize` also replaces every player's name and PokerNow ID, and each game's
+    ID, with stand-ins (pnt/logfmt/anonymize.py): for logs going to people who were
+    not at the table. `--aliases` carries an alias file across with them.
     """
     folder = log_dir or LOG_DIR
     expanded = _expand(paths, folder)
@@ -1284,13 +1315,27 @@ def redact(
             f"--out {out} is where the originals live; pick a different folder"
         )
 
+    import tempfile
+
     hero_hands = kept = 0
-    for path in expanded:
-        src = Path(path)
-        p = rd.redact_file(src, out / src.name)
-        hero_hands += p.hero_hands
-        kept += p.kept
-        typer.echo(f"{src.name}: removed {p.dropped} of {p.hero_hands} hole-card entries")
+    # Anonymized, the redacted copies are a step on the way: they go to a scratch
+    # folder, and only their anonymized versions reach --out.
+    with tempfile.TemporaryDirectory() as scratch:
+        stage = Path(scratch) if anonymize else out
+        names = anon.Pseudonyms(aliases=anon.read_aliases(aliases) if aliases else None)
+        for path in expanded:
+            src = Path(path)
+            p = rd.redact_file(src, stage / src.name)
+            hero_hands += p.hero_hands
+            kept += p.kept
+            typer.echo(f"{src.name}: removed {p.dropped} of {p.hero_hands} hole-card entries")
+            if anonymize:
+                anon.anonymize_file(stage / src.name, out, names)
+        if anonymize:
+            typer.echo(f"anonymized {len(names.ids)} player ID(s) and {len(names.names)} name(s)")
+            if aliases:
+                n = anon.anonymize_aliases(aliases, out / "aliases.csv", names)
+                typer.echo(f"carried {n} alias row(s) over to {out / 'aliases.csv'}")
 
     leaks = [line for f in sorted(out.glob(LOG_GLOB)) for line in rd.audit(f)]
     if leaks:  # redact_file already refuses to write a partial redaction

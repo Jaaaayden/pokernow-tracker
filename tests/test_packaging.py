@@ -80,8 +80,8 @@ def test_runtime_file_is_shipped(wheel_contents, path):
 
 
 def test_the_sample_corpus_is_shipped(wheel_contents):
-    """`pnt import` and `pnt setup` fall back to `pnt/logs/` when the user's log
-    folder is empty. Left out of the wheel that fallback is dead code everywhere
+    """`pnt import --sample` and `pnt setup --sample` fall back to `pnt/logs/` when
+    the user's log folder is empty. Left out of the wheel that fallback is dead code everywhere
     except a checkout -- the same shape of bug as the missing `db/schema.sql`,
     and just as invisible to a suite that runs from one.
     """
