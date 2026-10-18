@@ -211,8 +211,8 @@ lighter than his value.
 ### Timing tells
 
 Every decision is timed from the action before it: pre-selected, snap, normal or
-tank. Across the pool, a river bet after a long think (over 5 s) was value 58.9% of
-the time, and a snapped one 26.1%. A turn call after a tank was value 49.1% of the
+tank. Looking at data from my friends, a river bet after a long think (over 5 s) was value
+58.9% of the time, and a snapped one 26.1%. A turn call after a tank was value 49.1% of the
 time, against 16.2% for a pre-selected one. River calls carry little signal.
 
 ![Pool timing: what flop calls, turn calls, river bets and river calls held at each speed](docs/images/timing-pool.png)
