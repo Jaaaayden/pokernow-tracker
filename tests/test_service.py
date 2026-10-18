@@ -1,14 +1,15 @@
 """The background server: task definition, supervision, and install guards.
 
-Nothing here touches the real Task Scheduler -- `schtasks` is replaced by a
-recorder, and time by a fake clock. Registering, starting, stopping and
-restarting a real task were checked by hand on Windows 11.
+Nothing here touches the real Task Scheduler or launchd -- `schtasks` and
+`launchctl` are replaced by recorders, and time by a fake clock. Registering,
+starting, stopping and restarting a real task were checked by hand on Windows 11.
 """
 
 from __future__ import annotations
 
 import copy
 import itertools
+import plistlib
 import socket
 import subprocess
 import sys
@@ -203,6 +204,15 @@ def test_listening_pids_reads_netstat_in_any_language(monkeypatch):
     )
     assert svc.listening_pids(52000) == [16084, 39440]
     assert "Stop-Process -Id 16084, 39440" in svc.port_holder_hint(52000)
+
+
+def test_listening_pids_reads_lsof_on_macos(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        svc.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "812\n812\n903\n", "")
+    )
+    assert svc.listening_pids(52000) == [812, 903]
+    assert "kill 812 903" in svc.port_holder_hint(52000)
 
 
 def test_listening_pids_names_none_off_windows(monkeypatch):
@@ -401,3 +411,133 @@ def test_a_fresh_install_does_not_try_to_end_anything(schtasks, tmp_path):
     (tmp_path / "pokernow.sqlite").touch()
     svc.install(tmp_path / "pokernow.sqlite", port=52000)
     assert [call[0] for call in schtasks] == ["/Create", "/Run"]
+
+
+# ------------------------------------------------------------------ launchd ---
+
+
+class FakeLaunchd:
+    """launchctl as far as `pnt service` uses it: one agent, loaded or not."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, ...]] = []
+        self.loaded = False
+        self.pid: int | None = None
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        verb = args[0]
+        if verb == "list":
+            if not self.loaded:
+                return subprocess.CompletedProcess(args, 113, "", "Could not find service")
+            pid = f'\t"PID" = {self.pid};\n' if self.pid else ""
+            out = '{\n\t"Label" = "x";\n' + pid + "};"
+            return subprocess.CompletedProcess(args, 0, out, "")
+        if verb == "bootstrap":
+            self.loaded, self.pid = True, 4242
+        elif verb == "bootout":
+            self.loaded, self.pid = False, None
+        elif verb == "kickstart":
+            self.pid = 4243
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    def verbs(self) -> list[str]:
+        return [c[0] for c in self.calls if c[0] != "list"]
+
+
+@pytest.fixture()
+def launchd(monkeypatch, tmp_path):
+    """Pretend to be macOS, with the agent's plist and logs under tmp_path."""
+    fake = FakeLaunchd()
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(svc, "_launchctl", fake)
+    monkeypatch.setattr(svc.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(svc, "AGENT_PLIST", tmp_path / "LaunchAgents" / "agent.plist")
+    monkeypatch.setattr(svc, "AGENT_LOG_FILE", tmp_path / "state" / "launchd.log")
+    monkeypatch.setattr(svc.time, "sleep", lambda _: None)
+    return fake
+
+
+def test_agent_install_writes_the_absolute_database_path_then_loads(launchd, tmp_path, monkeypatch):
+    (tmp_path / "pokernow.sqlite").touch()
+    monkeypatch.chdir(tmp_path)
+    interpreter = svc.install(Path("pokernow.sqlite"), port=8123)
+
+    assert interpreter == Path(sys.executable)
+    assert launchd.verbs() == ["bootstrap"]
+    assert launchd.calls[-1] == ("bootstrap", "gui/501", str(svc.AGENT_PLIST))
+    spec = plistlib.loads(svc.AGENT_PLIST.read_bytes())
+    db = str((tmp_path / "pokernow.sqlite").resolve())
+    assert spec["ProgramArguments"][1:] == [
+        "-m", "pnt.cli", "service", "run", "--db", db, "--host", "127.0.0.1", "--port", "8123",
+    ]  # fmt: skip
+    assert spec["WorkingDirectory"] == str(tmp_path.resolve())
+    assert svc.task_state() == "Running"
+
+
+def test_agent_starts_at_login_restarts_on_crash_and_is_not_throttled():
+    spec = plistlib.loads(svc.agent_plist(program=["python"], working_dir="/data"))
+    assert spec["Label"] == svc.AGENT_LABEL
+    assert spec["RunAtLoad"] is True
+    assert spec["KeepAlive"] == {"SuccessfulExit": False}, "a stop must stay stopped"
+    assert spec["ThrottleInterval"] == 60
+    assert spec["ProcessType"] == "Interactive"
+
+
+def test_agent_paths_with_plist_metacharacters_round_trip():
+    weird = "/Users/me/<poker> & \"friends\"/pokernow.sqlite"
+    spec = plistlib.loads(svc.agent_plist(program=["python", "--db", weird], working_dir="/x"))
+    assert spec["ProgramArguments"][-1] == weird
+
+
+def test_agent_reinstall_unloads_the_old_definition_first(launchd, tmp_path):
+    """launchd keeps the definition it loaded: swapping the plist under a loaded
+    agent would leave the old --db and --port running, as IgnoreNew did on Windows."""
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite")
+    svc.install(tmp_path / "pokernow.sqlite", port=8124)
+    assert launchd.verbs() == ["bootstrap", "bootout", "bootstrap"]
+    assert "8124" in plistlib.loads(svc.AGENT_PLIST.read_bytes())["ProgramArguments"]
+
+
+def test_agent_states_match_the_tasks(launchd, tmp_path):
+    assert svc.task_state() is None
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite")
+    assert svc.task_state() == "Running"
+    launchd.pid = None  # exited, waiting out KeepAlive's throttle
+    assert svc.task_state() == "Ready"
+    svc.stop()
+    assert svc.task_state() == "Ready", "stopped, but still installed: it starts at the next login"
+
+
+def test_agent_start_loads_an_unloaded_agent_and_kicks_a_loaded_one(launchd, tmp_path):
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite")
+    svc.stop()
+    svc.start()
+    launchd.pid = None
+    svc.start()
+    assert launchd.verbs() == ["bootstrap", "bootout", "bootstrap", "kickstart"]
+
+
+def test_agent_stop_and_wait_returns_once_unloaded(launchd, tmp_path):
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite")
+    svc.stop_and_wait()
+    assert not launchd.loaded
+
+
+def test_agent_uninstall_unloads_and_removes_the_plist(launchd, tmp_path):
+    assert svc.uninstall() is False
+    (tmp_path / "pokernow.sqlite").touch()
+    svc.install(tmp_path / "pokernow.sqlite")
+    assert svc.uninstall() is True
+    assert not svc.AGENT_PLIST.exists()
+    assert not launchd.loaded
+    assert svc.task_state() is None
+
+
+def test_agent_commands_need_it_installed(launchd):
+    with pytest.raises(svc.ServiceError, match="not installed"):
+        svc.start()

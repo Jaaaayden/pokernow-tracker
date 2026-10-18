@@ -338,8 +338,10 @@ and prints the extension folder.
 3. Open **<http://127.0.0.1:52000>** for everything else: stats, charts, review,
    tendencies, pots, players and settings.
 
-On Windows the server starts at every login and restarts itself if it crashes.
-On macOS and Linux, run `pnt serve` yourself, or put it under launchd or systemd.
+On Windows and macOS the server starts at every login and restarts itself if it
+crashes. On Linux, run `pnt serve` yourself, or put it under systemd. On macOS, if
+it asks whether Python may use your Downloads folder, allow it: that is where the
+logs live.
 
 ### Updating
 
@@ -347,14 +349,19 @@ On macOS and Linux, run `pnt serve` yourself, or put it under launchd or systemd
 pnt update
 ```
 
-This stops the server, reinstalls from wherever you installed from, and starts the
-server again on the new code. The extension notices the new files and reloads
-itself within a minute. If you use the side panel, Chrome closes it when the
+This stops the background server, reinstalls from wherever you installed from, and
+starts the server again on the new code. Without the background server (Linux, or
+a `pnt serve` in a terminal) it only reinstalls, then tells you to restart
+`pnt serve`. The extension notices the new files and reloads itself within a minute
+of the new server starting. If you use the side panel, Chrome closes it when the
 extension reloads, so click the icon to open it again.
 
-Some updates change what is stored for each hand. When the restart says so, run
+Some updates change what is stored for each hand. When the restart (or the new `pnt serve`) says so, run
 `pnt rebuild` once: it re-reads every stored log, so nothing needs importing
 again. The update that added think times (the chart's **Timing** view) is one.
+
+On a Mac set up before the background server came to macOS, run `pnt service
+install --db <full path to pokernow.sqlite>` once to get it.
 
 On Windows, run `pnt service install` once after this update: the background
 server now runs at normal priority, so HUD answers no longer queue behind the
@@ -406,7 +413,7 @@ defaults to `~/Downloads/pokernow-logs`; change it under *Files* on the front pa
 set `PNT_LOG_DIR`, which wins over the page. The database chosen there is the one
 every command uses too, from any folder; `--db` still overrides it.
 
-| Background server (Windows) | |
+| Background server (Windows, macOS) | |
 |---|---|
 | `pnt service status` | Whether it's up, and which database it has open |
 | `pnt service restart` | Run after `git pull` in a checkout (`pnt update` restarts it for you). If an old server still holds the port, it names the process to end |

@@ -185,9 +185,12 @@ poll is fast enough for a HUD and survives a PokerNow socket change.
 
 ## Background server
 
-`pnt service install` registers a Task Scheduler task for your Windows user. The
-server starts hidden at every login and restarts itself after a crash, with no
-terminal and no admin rights. It is built this way for these reasons:
+`pnt service install` registers a Task Scheduler task for your Windows user, or a
+launch agent (`~/Library/LaunchAgents/com.pokernow-tracker.server.plist`) for your
+macOS user. The server starts hidden at every login and restarts itself after a
+crash, with no terminal and no admin rights or sudo. Every `pnt service` command,
+and so `pnt setup` and `pnt update`, works the same on both. It is built this way
+for these reasons:
 
 - **`--db` is resolved to a full path at install.** The task does not start in your
   project folder, and a missing database file is created empty rather than
@@ -218,7 +221,15 @@ terminal and no admin rights. It is built this way for these reasons:
   Without ending it first, changing `--db` or `--port` rewrote the definition,
   reported success, and left the old server running on the old settings.
 - **Crashes restart in-process**, after 1 s and doubling up to 60 s. A run longer
-  than a minute resets the delay. Task Scheduler's own restart is only a backup.
+  than a minute resets the delay. Task Scheduler's own restart, and launchd's
+  KeepAlive, are only a backup.
+- **On macOS, stopping unloads the agent** (`launchctl bootout`), so KeepAlive
+  cannot bring it back; the plist stays, so the next login starts it again, as a
+  stopped task does. Re-installing unloads first for the same reason as `IgnoreNew`
+  above: launchd keeps the definition it loaded. The agent runs as `Interactive`,
+  launchd's equivalent of normal priority. Output from before the server opens its
+  own log goes to `~/.pnt/launchd.log`. macOS asks once whether the agent's Python
+  may use Downloads, where the log folder lives by default.
 - **Idle cost** is about 75 MB of memory (a 62 MB server behind an 11 MB venv
   launcher) and no measurable CPU. The server only works when the extension posts.
   Stopping or restarting the task takes the launcher's child down with it, so

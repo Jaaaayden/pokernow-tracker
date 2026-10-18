@@ -1,16 +1,20 @@
 """Keep the tracker server running in the background: start at login, restart on crash.
 
 `pnt serve` in a terminal lasts until the terminal closes. This module makes the
-same server permanent on Windows with a per-user Task Scheduler task.
+same server permanent with a per-user Task Scheduler task on Windows, and a
+per-user launch agent on macOS. Both answer to the same `pnt service` commands,
+so `pnt setup` and `pnt update` treat the two alike.
 
 * **Task Scheduler, not a Windows service.** Installing a service needs admin
   rights, and a service runs as another account in session 0, away from this
   user's files. A task registered for the current user at logon needs neither.
 * **Not a Startup-folder shortcut.** A shortcut starts the server once and has no
   state to ask about; a task can be started, stopped, restarted and queried.
+* **A launch agent, not a daemon,** on macOS for the same reason: it runs as this
+  user, in their login session, with no sudo.
 * **Restarts happen in-process** (`supervise`). Task Scheduler's restart-on-failure
-  is kept as a second layer only: it waits at least a minute between attempts and
-  logs nothing about why.
+  and launchd's KeepAlive are kept as a second layer only: they wait a minute
+  between attempts and log nothing about why.
 
 Idle, the server costs tens of megabytes and no measurable CPU; it only does work
 while the extension is posting.
@@ -22,6 +26,7 @@ import copy
 import json
 import logging
 import os
+import plistlib
 import socket
 import subprocess
 import sys
@@ -36,6 +41,9 @@ from typing import TextIO
 from xml.sax.saxutils import escape
 
 TASK_NAME = "PokerNow Tracker"
+#: macOS: the launch agent's label, and the plist launchd reads at every login.
+AGENT_LABEL = "com.pokernow-tracker.server"
+AGENT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{AGENT_LABEL}.plist"
 DEFAULT_HOST = "127.0.0.1"
 #: Deliberately not 8000. That is the busiest port on a developer's machine --
 #: Django, `python -m http.server` and most tutorials all default to it -- and
@@ -52,6 +60,10 @@ DEFAULT_PORT = 52000
 #: task definition and Explorer never shows the log.
 LOG_DIR = Path.home() / ".pnt"
 LOG_FILE = LOG_DIR / "server.log"
+#: macOS: launchd's own capture of the agent's output, for a crash before the
+#: server has redirected it to LOG_FILE. Separate, since LOG_FILE is rotated by
+#: renaming, which would leave launchd writing to the old file.
+AGENT_LOG_FILE = LOG_DIR / "launchd.log"
 #: Checked at each start. With access logging off, a day of play writes far less.
 LOG_MAX_BYTES = 5 * 1024 * 1024
 
@@ -206,7 +218,7 @@ def _file_log_config() -> dict:
 
 
 def run_service(db: Path, host: str, port: int) -> None:
-    """What the scheduled task executes: the supervised server, logging to a file."""
+    """What the task or launch agent executes: the supervised server, logging to a file."""
     stream = _open_log()
     # Under pythonw, stdout and stderr are None and anything written to them is lost.
     # uvicorn resolves `ext://sys.stderr` when it configures logging, so it follows.
@@ -295,11 +307,16 @@ def task_xml(*, command: str, arguments: str, working_dir: str, user: str) -> st
 """
 
 
-def _require_windows() -> None:
-    if sys.platform != "win32":
+def supported() -> bool:
+    """Whether `pnt service` can manage a background server on this platform."""
+    return sys.platform in ("win32", "darwin")
+
+
+def _require_supported() -> None:
+    if not supported():
         raise ServiceError(
-            "`pnt service` uses Windows Task Scheduler. On macOS or Linux, run "
-            "`pnt serve` under launchd or systemd instead."
+            "`pnt service` uses Windows Task Scheduler or a macOS launch agent. On Linux,"
+            " run `pnt serve` under systemd instead."
         )
 
 
@@ -340,9 +357,13 @@ def task_state(name: str = TASK_NAME) -> str | None:
     """`Ready`, `Running` or `Disabled`; None when no such task exists.
 
     Asked through PowerShell because its states are enum names, whereas
-    `schtasks /Query` prints them in the system language.
+    `schtasks /Query` prints them in the system language. On macOS, the launch
+    agent's state in the same words (`name` is the Windows task's; the agent has
+    the one label).
     """
-    _require_windows()
+    _require_supported()
+    if sys.platform == "darwin":
+        return _agent_state()
     quoted = name.replace("'", "''")
     result = subprocess.run(
         [
@@ -368,13 +389,15 @@ def install(
     something: the task starts elsewhere, and a relative path there would open --
     and silently create -- an empty database.
     """
-    _require_windows()
+    _require_supported()
     db = db.resolve()
     if not db.exists():
         raise ServiceError(
             f"no database at {db}. Pass --db with the full path to the pokernow.sqlite "
             "you use; a missing file would be created empty and the HUD would show nothing."
         )
+    if sys.platform == "darwin":
+        return _agent_install(db, host, port, timeout)
     interpreter = _pythonw()
     arguments = subprocess.list2cmdline(
         ["-m", "pnt.cli", "service", "run", "--db", str(db), "--host", host, "--port", str(port)]
@@ -413,12 +436,17 @@ def _require_installed(name: str) -> None:
 
 def start(name: str = TASK_NAME) -> None:
     _require_installed(name)
+    if sys.platform == "darwin":
+        _agent_start()
+        return
     _check(_schtasks("/Run", "/TN", name), "start the task")
 
 
 def stop(name: str = TASK_NAME) -> None:
     _require_installed(name)
-    if task_state(name) == "Running":
+    if sys.platform == "darwin":
+        _agent_stop()
+    elif task_state(name) == "Running":
         _check(_schtasks("/End", "/TN", name), "stop the task")
 
 
@@ -484,19 +512,130 @@ def uninstall(name: str = TASK_NAME) -> bool:
     if task_state(name) is None:
         return False
     stop(name)
-    _check(_schtasks("/Delete", "/TN", name, "/F"), "remove the task")
+    if sys.platform == "darwin":
+        AGENT_PLIST.unlink()
+    else:
+        _check(_schtasks("/Delete", "/TN", name, "/F"), "remove the task")
     return True
+
+
+# ------------------------------------------------------------------ launchd ---
+
+
+def agent_plist(*, program: list[str], working_dir: str) -> bytes:
+    """The launch agent's definition. Each setting below overrides a default that
+    would break a server meant to stay up, as `task_xml` does on Windows."""
+    return plistlib.dumps(
+        {
+            "Label": AGENT_LABEL,
+            "ProgramArguments": program,
+            "WorkingDirectory": working_dir,
+            # Started at load, which launchd does at every login.
+            "RunAtLoad": True,
+            # A second layer only, as on Windows: `supervise` restarts in-process
+            # first. A clean exit (a stop) is left alone.
+            "KeepAlive": {"SuccessfulExit": False},
+            # The default, 10s, would retry a missing database six times a minute.
+            "ThrottleInterval": 60,
+            # The default runs a job under resource limits an app does not have;
+            # Interactive runs it with an app's, which are none. The task's normal
+            # priority on Windows is for the same reason: HUD answers queued behind
+            # the browser.
+            "ProcessType": "Interactive",
+            "StandardOutPath": str(AGENT_LOG_FILE),
+            "StandardErrorPath": str(AGENT_LOG_FILE),
+        }
+    )
+
+
+def _launchctl(*args: str) -> subprocess.CompletedProcess[str]:
+    # check=False: callers read the return code and raise a ServiceError themselves.
+    return subprocess.run(
+        ["launchctl", *args], capture_output=True, text=True, errors="replace", check=False
+    )
+
+
+def _agent_target() -> str:
+    """This user's login session, where a launch agent runs (`gui/<uid>`)."""
+    return f"gui/{os.getuid()}"
+
+
+def _agent_loaded() -> bool:
+    return _launchctl("list", AGENT_LABEL).returncode == 0
+
+
+def _agent_state() -> str | None:
+    """None without a plist; `Running` while the agent has a process, else `Ready`.
+
+    Installed but not loaded is `Ready` too: `pnt service stop` unloads it, and it
+    loads again at the next login, just as a stopped task starts again.
+    """
+    if not AGENT_PLIST.exists():
+        return None
+    result = _launchctl("list", AGENT_LABEL)
+    return "Running" if result.returncode == 0 and '"PID" =' in result.stdout else "Ready"
+
+
+def _agent_start() -> None:
+    # A loaded agent with no process (one that exited) is kicked; bootstrapping it
+    # again would fail as already loaded.
+    if _agent_loaded():
+        _check(_launchctl("kickstart", f"{_agent_target()}/{AGENT_LABEL}"), "start the agent")
+    else:
+        _check(_launchctl("bootstrap", _agent_target(), str(AGENT_PLIST)), "start the agent")
+
+
+def _agent_stop() -> None:
+    """Unload the agent, which ends its process. KeepAlive cannot bring it back
+    while it is unloaded; the plist stays, so the next login starts it again."""
+    if _agent_loaded():
+        _check(_launchctl("bootout", f"{_agent_target()}/{AGENT_LABEL}"), "stop the agent")
+
+
+def _agent_install(db: Path, host: str, port: int, timeout: float) -> Path:
+    """Write (or replace) the plist and load it. Returns the interpreter it runs.
+
+    `sys.executable` as invoked, not resolved: in a pipx or virtualenv install it
+    is a symlink to the base interpreter, and only the symlink's path finds the
+    environment's packages.
+    """
+    interpreter = Path(sys.executable)
+    program = [
+        str(interpreter), "-m", "pnt.cli", "service", "run",
+        "--db", str(db), "--host", host, "--port", str(port),
+    ]  # fmt: skip
+    # Unloaded before the plist is swapped: launchd keeps the definition it loaded,
+    # so a reinstall to change --db or --port would otherwise leave the old one
+    # running, the same trap as the task's IgnoreNew.
+    if _agent_loaded():
+        _agent_stop()
+        _await_stopped(TASK_NAME, timeout)
+    AGENT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AGENT_PLIST.parent.mkdir(parents=True, exist_ok=True)
+    AGENT_PLIST.write_bytes(agent_plist(program=program, working_dir=str(db.parent)))
+    _check(_launchctl("bootstrap", _agent_target(), str(AGENT_PLIST)), "load the agent")
+    return interpreter
 
 
 # ------------------------------------------------------------------ status ---
 
 
 def listening_pids(port: int) -> list[int]:
-    """The processes listening on `port`, on Windows; elsewhere, none are named.
+    """The processes listening on `port`, on Windows and macOS; elsewhere, none are named.
 
     Read from `netstat -ano`, by the listening socket's 0.0.0.0:0 / [::]:0 remote
     address rather than its state, which netstat prints in the system language.
+    On macOS, from `lsof`, which ships with it.
     """
+    if sys.platform == "darwin":
+        try:
+            out = subprocess.run(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True, text=True, errors="replace", check=False,
+            ).stdout  # fmt: skip
+        except OSError:
+            return []
+        return list(dict.fromkeys(int(line) for line in out.split() if line.isdigit()))
     if sys.platform != "win32":
         return []
     try:
@@ -526,9 +665,13 @@ def port_holder_hint(port: int) -> str:
     if not pids:
         return "close any terminal running `pnt serve`, or end the process that holds it"
     ids = ", ".join(str(p) for p in pids)
+    end = (
+        f"Stop-Process -Id {ids} -Force" if sys.platform == "win32"
+        else "kill " + " ".join(str(p) for p in pids)
+    )  # fmt: skip
     return (
         f"it is held by pid {ids} -- a `pnt serve` in a terminal, or a server left over "
-        f"from before an update. End it with: Stop-Process -Id {ids} -Force"
+        f"from before an update. End it with: {end}"
     )
 
 

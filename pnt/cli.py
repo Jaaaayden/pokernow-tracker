@@ -468,13 +468,13 @@ def setup(
 
     hands = connect(db).execute("SELECT COUNT(*) FROM hands").fetchone()[0]
 
-    if service and sys.platform == "win32":
+    if service and svc.supported():
         service_install(db=db, host=host, port=port)
     elif service:
         typer.echo("")
         typer.echo(
-            f"`pnt service` is Windows-only. Run `pnt serve --db {db}` in a terminal,"
-            " or put that command under launchd (macOS) or systemd (Linux)."
+            f"`pnt service` covers Windows and macOS. Run `pnt serve --db {db}` in a terminal,"
+            " or put that command under systemd."
         )
 
     typer.echo("")
@@ -501,9 +501,10 @@ def update_cmd(
     """
     root = upd.checkout_root()
     if root is not None and source is None:
+        restart = "`pnt service restart`" if svc.supported() else "restart `pnt serve`"
         typer.echo(
             f"error: this runs from a source checkout ({root}). Update it with `git pull`,"
-            " then `pnt service restart`.",
+            f" then {restart}.",
             err=True,
         )
         raise typer.Exit(1)
@@ -511,7 +512,7 @@ def update_cmd(
 
     # Stopped first: a running server could import a module halfway through being
     # replaced, and holds files Windows will not let pip overwrite.
-    managed = sys.platform == "win32" and _svc(svc.task_state) is not None
+    managed = svc.supported() and _svc(svc.task_state) is not None
     if managed:
         typer.echo("stopping the server")
         _svc(svc.stop_and_wait)
@@ -535,12 +536,29 @@ def update_cmd(
         )
         if result.returncode != 0:
             raise typer.Exit(result.returncode)
+        typer.echo(
+            "The extension reloads itself within a minute; reopen the side panel if it closes."
+            " If the HUD still runs the old version, reload it once at chrome://extensions."
+            " If the restart above asked for `pnt rebuild`, run it once."
+        )
+        return
+
+    # No service to restart (Linux, or never `pnt service install`ed): a server
+    # started by hand keeps the old code, and the extension only reloads once a new
+    # one reports the new files, so say which of the two this is.
+    body = svc.health(host, port)
+    if body is None:
+        typer.echo("updated. Start the server with `pnt serve`.")
     else:
-        typer.echo("updated. Restart `pnt serve` to run the new code.")
+        pid = f" (pid {body['pid']})" if body.get("pid") is not None else ""
+        typer.echo(
+            f"updated, but the server on http://{host}:{port}{pid} still runs the old code."
+            " Stop it and run `pnt serve` again."
+        )
     typer.echo(
-        "The extension reloads itself within a minute; reopen the side panel if it closes."
-        " If the HUD still runs the old version, reload it once at chrome://extensions."
-        " If the restart above asked for `pnt rebuild`, run it once."
+        "The extension reloads itself within a minute of the new server starting; reopen the"
+        " side panel if it closes. If the HUD still runs the old version, reload it once at"
+        " chrome://extensions. If `pnt serve` asks for `pnt rebuild`, run it once."
     )
 
 
@@ -1320,6 +1338,13 @@ def serve(
         raise typer.Exit(1) from exc
 
 
+def _service_name() -> str:
+    """What `pnt service` manages here, for its messages."""
+    if sys.platform == "darwin":
+        return f"launch agent {svc.AGENT_LABEL} ({svc.AGENT_PLIST})"
+    return f"task {svc.TASK_NAME!r}"
+
+
 def _svc(fn, *args, **kwargs):
     """Call into `pnt.service`, turning its errors into a one-line CLI failure."""
     try:
@@ -1333,7 +1358,9 @@ def _svc(fn, *args, **kwargs):
 def service_install(
     db: Path = DbOpt, host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT
 ) -> None:
-    """Run the server in the background for this Windows user, starting now.
+    """Run the server in the background for this user, starting now.
+
+    A Task Scheduler task on Windows, a launch agent on macOS.
 
     Re-run to change --db or --port: it replaces the existing task. --db must be
     the database you actually use; the task does not start in this folder.
@@ -1350,14 +1377,25 @@ def service_install(
     except BaseException:
         local_config.put("db", before)
         raise
-    typer.echo(f"registered task {svc.TASK_NAME!r}: starts at login, restarts on crash")
+    typer.echo(f"registered {_service_name()}: starts at login, restarts on crash")
     typer.echo(f"  database:    {db.resolve()}")
     typer.echo(f"  interpreter: {interpreter}")
     typer.echo(f"  log:         {svc.LOG_FILE}")
+    # macOS guards these folders per program, and the agent's Python is not the
+    # Terminal that may already have been allowed in. Refused, it can neither read
+    # the exports nor save live-captured logs there.
+    home = Path.home()
+    guarded = [home / "Downloads", home / "Documents", home / "Desktop"]
+    folder = next((p for p in (LOG_DIR, *LOG_DIR.parents) if p in guarded), None)
+    if sys.platform == "darwin" and folder is not None:
+        typer.echo(
+            f"\nmacOS may ask whether Python can use your {folder.name} folder: allow it,"
+            " or the server cannot read or save logs there."
+        )
     if busy:
         typer.echo(
             f"\nport {port} is already in use, probably by a `pnt serve` in a terminal."
-            " The task is waiting and takes over as soon as that one stops."
+            " The service is waiting and takes over as soon as that one stops."
         )
         return
     body = svc.wait_for_health(host, port)
@@ -1371,7 +1409,7 @@ def service_install(
 def service_uninstall() -> None:
     """Stop the background server and remove the task. The database is untouched."""
     removed = _svc(svc.uninstall)
-    typer.echo(f"removed task {svc.TASK_NAME!r}" if removed else "not installed")
+    typer.echo(f"removed {_service_name()}" if removed else "not installed")
 
 
 @service_app.command("start")
@@ -1436,6 +1474,9 @@ def service_status(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) -
         pid = body.get("pid", "? (older than this install: `pnt service restart`)")
         typer.echo(f"server: up on http://{host}:{port}  pid {pid}  {body['hands']} hands  db {body['db']}")
     typer.echo(f"log:    {svc.LOG_FILE}")
+    if sys.platform == "darwin":
+        # Where a crash before the server opened its own log ends up.
+        typer.echo(f"        {svc.AGENT_LOG_FILE} (launchd)")
 
 
 @service_app.command("log")

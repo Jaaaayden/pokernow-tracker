@@ -122,14 +122,15 @@ def test_requirements_leave_out_the_dev_extra():
 # --------------------------------------------------------------------- CLI ---
 
 
-@pytest.fixture
-def updating(monkeypatch):
-    """`pnt update` on an installed copy under a Windows service, all faked."""
+@pytest.fixture(params=["win32", "darwin"])
+def updating(monkeypatch, request):
+    """`pnt update` on an installed copy under `pnt service`, all faked, on each
+    platform it covers: the two must update alike."""
     calls = []
     monkeypatch.setattr(upd, "checkout_root", lambda: None)
     monkeypatch.setattr(upd, "installed_source", lambda: "from.zip")
     monkeypatch.setattr(upd, "install", lambda source: calls.append(("install", source)))
-    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "platform", request.param)
     monkeypatch.setattr(svc, "task_state", lambda name=svc.TASK_NAME: "Running")
     monkeypatch.setattr(svc, "stop_and_wait", lambda: calls.append("stop"))
     monkeypatch.setattr(svc, "start", lambda: calls.append("start"))
@@ -175,3 +176,44 @@ def test_update_refuses_to_overwrite_a_checkout(updating, monkeypatch, tmp_path)
     assert result.exit_code == 1
     assert "git pull" in result.output
     assert updating == []
+
+
+@pytest.fixture
+def updating_unmanaged(updating, monkeypatch):
+    """The same with no service installed: nothing to stop or restart."""
+    monkeypatch.setattr(svc, "task_state", lambda name=svc.TASK_NAME: None)
+    return updating
+
+
+def test_update_without_a_service_installs_only_and_names_the_old_server(updating_unmanaged, monkeypatch):
+    monkeypatch.setattr(svc, "health", lambda host, port: {"pid": 4242})
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 0, result.output
+    assert updating_unmanaged == [("install", "from.zip")]
+    assert "pid 4242" in result.output
+    assert "still runs the old code" in result.output
+    assert "restart above" not in result.output
+
+
+def test_update_without_a_service_says_to_start_the_server(updating_unmanaged, monkeypatch):
+    monkeypatch.setattr(svc, "health", lambda host, port: None)
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 0, result.output
+    assert "Start the server with `pnt serve`" in result.output
+
+
+def test_update_on_linux_never_asks_for_a_service(updating, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(svc, "task_state", lambda name=svc.TASK_NAME: pytest.fail("no service here"))
+    monkeypatch.setattr(svc, "health", lambda host, port: None)
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 0, result.output
+    assert updating == [("install", "from.zip")]
+
+
+def test_a_checkout_on_linux_is_told_to_restart_pnt_serve(updating, monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(upd, "checkout_root", lambda: tmp_path)
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 1
+    assert "restart `pnt serve`" in result.output
