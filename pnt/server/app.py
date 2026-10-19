@@ -34,6 +34,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pnt.db.conn import connect, generation, path_of
 from pnt.db.userdata import FLAGGED_TAG, tag_resolver
 from pnt.ingest import log_folder, sync
+from pnt.ingest import sample as samplemod
 from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import (
     ingest_entries,
@@ -82,6 +83,10 @@ from pnt import update
 from pnt.update import EXTENSION_DIR, extension_build
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
+#: The front page's Data switch: on, the pages show the bundled sample, built into
+#: a database of its own (pnt/ingest/sample.py); DB_PATH stays yours, and capture
+#: keeps writing there. Never saved: every start is back on your own data.
+SAMPLE_ON = False
 STATIC = Path(__file__).parent / "static"
 ICONS = EXTENSION_DIR / "icons"
 
@@ -135,7 +140,7 @@ def _sync_loop(stop: threading.Event) -> None:
                     conn = None
                 if conn is None:
                     opened = DB_PATH
-                    conn = db()
+                    conn = capture_db()  # your logs, even while the pages show the sample
                 out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
                 for s in out.imported:
                     if s["entries_new"]:
@@ -175,16 +180,21 @@ class _Switched(Exception):
 _switches = 0
 
 
-def _warm_strength() -> None:
-    """Measure every shown holding's hand strength the database does not have yet
-    (a no-op once it is complete, a minute or two the first time; stats/strength.py),
-    then count the pool the tags are judged against, so the first HUD after a
-    start does not pay for either.
+#: The databases a warm-up is running on now; `/health` reports whether yours is one.
+_warming: set[Path] = set()
+
+
+def _warm_strength(path: Path | None = None) -> None:
+    """Derive the lifetime report, measure every shown holding's hand strength the
+    database does not have yet (a no-op once it is complete, a minute or two the
+    first time; stats/strength.py), then count the pool the tags are judged
+    against, so the first HUD after a start pays for none of them. The report
+    goes first: it needs no strengths, and it is most of a cold `/hud`.
 
     Stops at the next pause once the front page switches the database: left
     running, it would burn CPU on a database nobody reads, and its flush would take
     values the new warm-up computed into the old file."""
-    path, started = DB_PATH, _switches
+    path, started = path or DB_PATH, _switches
 
     def between() -> None:
         _wait_idle()
@@ -192,8 +202,11 @@ def _warm_strength() -> None:
             raise _Switched
 
     conn = None
+    _warming.add(path)
     try:
         conn = connect(path)
+        between()
+        report(conn)
         added = strength.warm(conn, between=between)
         if added:
             log.info("hand strength: %d stored", added)
@@ -203,6 +216,7 @@ def _warm_strength() -> None:
     except Exception:
         log.exception("warm-up failed")
     finally:
+        _warming.discard(path)
         if conn is not None:
             conn.close()
 
@@ -297,6 +311,13 @@ GameId = Annotated[str, FastApiPath(pattern=GAME_ID_PATTERN)]
 
 
 def db():
+    """The database the pages read: the bundled sample's while it is switched on."""
+    return connect(SAMPLE_PATH if SAMPLE_ON and SAMPLE_PATH else DB_PATH)
+
+
+def capture_db():
+    """Your own database, whatever the pages show: live capture, the log-folder
+    sync and the HUD never read or write the sample."""
     return connect(DB_PATH)
 
 
@@ -503,6 +524,11 @@ def health() -> dict:
         "extension_build": _extension_build(),
         # More than 0: `pnt update` would bring this many commits.
         "update_behind": UPDATE_BEHIND,
+        # Still deriving your database's lifetime stats after a start: the HUD's
+        # first answer is on its way, not lost.
+        "warming": DB_PATH in _warming,
+        # What the pages show (the counts above are its); capture is always yours.
+        "dataset": "sample" if SAMPLE_ON else "own",
     }
 
 
@@ -514,7 +540,7 @@ def ingest(req: IngestRequest) -> dict:
     the same ones the CSV export contains -- live capture and backfill run through
     one parser and cannot drift apart.
     """
-    conn = db()
+    conn = capture_db()
     entries = [RawEntry(ord=e.order, at=e.at, entry=e.entry) for e in req.entries]
     offered, n_new = ingest_entries(conn, req.game_id, entries, req.source)
     # The oldest line stored for the game: the extension's history walk jumps to it
@@ -531,7 +557,7 @@ def ingest(req: IngestRequest) -> dict:
 
 @app.post("/rebuild/{game_id}")
 def rebuild(game_id: GameId) -> dict:
-    conn = db()
+    conn = capture_db()
     out = rebuild_game(conn, game_id)
     _save_log(conn, game_id)
     return out
@@ -1065,11 +1091,17 @@ def write_flag(game_id: GameId, hand_number: int, req: Annotated[FlagRequest, Bo
 
     Addressed by the log's own (game_id, hand_number) rather than a hand_id: the
     HUD flags the hand that just ended, which the rebuild may not have derived yet.
+    While the pages show the sample, a hand not in it is the HUD's, in yours.
     """
     try:
         at = set_flag(db(), game_id, hand_number, req.flagged)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not SAMPLE_ON:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            at = set_flag(capture_db(), game_id, hand_number, req.flagged)
+        except ValueError as again:
+            raise HTTPException(status_code=404, detail=str(again)) from again
     return {"game_id": game_id, "hand_number": hand_number, "flagged": at is not None, "flagged_at": at}
 
 
@@ -1142,8 +1174,11 @@ def hud(game_id: GameId) -> dict:
 
     `columns` is the stats chosen on the front page (`/settings/hud`), in order,
     each with its label, hover text and `_opp` key; `hands` comes before them.
+
+    Always your own database (`capture_db`), even while the pages show the
+    sample; `dataset` says which one the pages -- and the panel's chart -- read.
     """
-    conn = db()
+    conn = capture_db()
     columns = _hud_columns(conn)
     latest = conn.execute(
         "SELECT hand_id FROM hands WHERE game_id = ? ORDER BY ord DESC LIMIT 1",
@@ -1183,10 +1218,12 @@ def hud(game_id: GameId) -> dict:
                 "note": notes.get(r["alias"], {}).get("note"),
                 # Whether their next hand here falls inside a post-loss window
                 # (SPEC.md, "Session dynamics"), and which loss opened it.
-                **_post_loss(conn, r["alias"], game_id),
+                # Per seat: one player merged from two accounts can hold two.
+                **_post_loss(conn, r["alias"], r["pn_id"], game_id),
             }
             for r in seated
         ],
+        "dataset": "sample" if SAMPLE_ON else "own",
     }
 
 
@@ -1225,7 +1262,7 @@ def read_hud_settings() -> dict:
     from pnt.db.userdata import get_setting
     from pnt.stats.hud_catalog import chosen
 
-    return _hud_settings(chosen(get_setting(db(), HUD_SETTING)))
+    return _hud_settings(chosen(get_setting(capture_db(), HUD_SETTING)))  # the HUD's own: see /hud
 
 
 @app.put("/settings/hud")
@@ -1239,7 +1276,7 @@ def write_hud_settings(req: Annotated[HudColumnsRequest, Body()]) -> dict:
         check(req.columns)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _hud_settings(set_setting(db(), HUD_SETTING, req.columns))
+    return _hud_settings(set_setting(capture_db(), HUD_SETTING, req.columns))
 
 
 # ---- who you are -------------------------------------------------------------
@@ -1418,6 +1455,8 @@ def write_paths(req: Annotated[PathsRequest, Body()]) -> dict:
     if new_logs is not None and not log_folder.FROM_ENV:
         local_config.put("log_dir", str(new_logs))
 
+    if new_db is not None:
+        _leave_sample()  # a database picked by hand is the one to look at
     if switching:
         DB_PATH = new_db
         _switches += 1  # before the new warm-up starts, so only the old ones stop
@@ -1427,6 +1466,125 @@ def write_paths(req: Annotated[PathsRequest, Body()]) -> dict:
     if new_logs is not None and not log_folder.FROM_ENV:
         log_folder.LOG_DIR = new_logs  # the sync loop reads it on its next pass
     return _paths()
+
+
+# ---- the sample, or your own data ------------------------------------------------
+# The front page's Data switch, for a demo or a first look before any logs of your
+# own. Only what the pages read moves (`db()`); see SAMPLE_ON. Building the sample's
+# database takes a minute the first time, so it runs in a thread the page polls.
+_sample_lock = threading.Lock()
+#: (files done, files in all) while the sample's database is being built.
+_sample_building: tuple[int, int] | None = None
+#: Whether the build under way should switch to the sample when it is done: Your
+#: hands, pressed meanwhile, says not.
+_sample_wanted = False
+_sample_error: str | None = None
+
+
+class DatasetRequest(BaseModel):
+    which: str = Field(pattern="^(own|sample)$")
+
+
+def _dataset() -> dict:
+    b = _sample_building
+    return {
+        "active": "sample" if SAMPLE_ON else "own",
+        "building": {"done": b[0], "total": b[1]} if b else None,
+        "error": _sample_error,
+        "games": len(samplemod.logs()),
+    }
+
+
+def _enter_sample(path: Path) -> None:
+    global SAMPLE_ON, SAMPLE_PATH
+    SAMPLE_PATH, SAMPLE_ON = path, True
+    # Not counted as a switch: your own database's warm-up has the HUD to serve,
+    # and strength values are the cards' alone, so two at once share them safely.
+    threading.Thread(target=_warm_strength, args=(path,), name="sample-warm", daemon=True).start()
+    log.info("pages show the sample: %s", path)
+
+
+def _leave_sample() -> None:
+    global SAMPLE_ON, _sample_wanted
+    _sample_wanted = False
+    if SAMPLE_ON:
+        SAMPLE_ON = False
+        log.info("pages show your own data again")
+
+
+def _build_sample(path: Path) -> None:
+    """Build the sample's database, then switch to it if that is still wanted. A
+    build cut short is finished on the next try: importing is idempotent."""
+    global _sample_building, _sample_error
+
+    def progress(done: int, total: int) -> None:
+        global _sample_building
+        _sample_building = (done, total)
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect(path)
+        try:
+            samplemod.build(conn, on_file=progress)
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.exception("could not build the sample")
+        _sample_error = f"could not build the sample: {exc}"
+    else:
+        for old in samplemod.stale():
+            for p in (old, old.with_name(old.name + "-wal"), old.with_name(old.name + "-shm")):
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    pass  # still open somewhere: the next build tidies it
+        with _sample_lock:
+            if _sample_wanted:
+                _enter_sample(path)
+    finally:
+        _sample_building = None
+
+
+def _sample_current(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    conn = connect(path)
+    try:
+        return samplemod.is_current(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/settings/dataset")
+def read_dataset() -> dict:
+    """What the pages show, `own` or `sample`, and the sample's build while it runs."""
+    return _dataset()
+
+
+@app.put("/settings/dataset")
+def write_dataset(req: Annotated[DatasetRequest, Body()]) -> dict:
+    """Show the bundled sample on the pages, or your own data again.
+
+    The first switch to the sample builds its database (~/.pnt/sample-*.sqlite),
+    and so does the first after an update changes the sample: the answer then
+    carries `building`, and the switch happens when the build is done. Capture, the
+    log folder and the HUD stay on your own database throughout.
+    """
+    global _sample_building, _sample_wanted, _sample_error
+    with _sample_lock:
+        if req.which == "own":
+            _leave_sample()
+            return _dataset()
+        _sample_wanted, _sample_error = True, None
+        if SAMPLE_ON or _sample_building is not None:
+            return _dataset()
+        path = samplemod.database()
+        if _sample_current(path):
+            _enter_sample(path)
+            return _dataset()
+        _sample_building = (0, len(samplemod.logs()))
+        threading.Thread(target=_build_sample, args=(path,), name="sample-build", daemon=True).start()
+        return _dataset()
 
 
 class BrowseRequest(BaseModel):
@@ -1516,7 +1674,7 @@ def live(
     A postflop spot is narrowed to boards like this one while at least `known`
     shown hands survive the narrowing.
     """
-    return snapshot(db(), game_id, min_hands=min_hands, min_known=min_known)
+    return snapshot(capture_db(), game_id, min_hands=min_hands, min_known=min_known)
 
 
 class MergeRequest(BaseModel):
@@ -1914,14 +2072,17 @@ def player_tilt(
     return {"player": alias, "filter": filter, **tilt_report(_spot_facts(alias, filter, game))}
 
 
-def _post_loss(conn: sqlite3.Connection, alias: str | None, game_id: str) -> dict:
+def _post_loss(conn: sqlite3.Connection, alias: str | None, pn_id: str, game_id: str) -> dict:
     """A HUD seat's `post_loss`: whether their next hand in this game falls inside
     a post-loss window, with how many hands since the loss that opened it and its
     size. Read from the lifetime Facts the seat's tags already fetched -- annotated
-    per game, so this game's rows carry this game's context only."""
+    per game, so this game's rows carry this game's context only -- and from this
+    seat's account alone: a player merged from two accounts sitting at once has two
+    runs of hands, and each card shows its own."""
     from pnt.stats.tilt import next_hand
 
-    out = next_hand(facts_cached(conn, alias) if alias else [], game_id)
+    facts = facts_cached(conn, alias) if alias else []
+    out = next_hand([f for f in facts if f.pn_id == pn_id], game_id)
     return {"post_loss": out["post_loss"], "post_loss_since": out["since"], "post_loss_bb": out["loss_bb"]}
 
 

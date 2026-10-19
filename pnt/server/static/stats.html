@@ -131,7 +131,7 @@
 
   <ul class="note foot">
     <li><b>Postflop columns</b> follow the street you pick. Hover a column name for what it counts, or open <b>What the columns mean</b> above for all of them.</li>
-    <li><b>C-Bet, Fold, Raise, Lead:</b> against the previous street's aggressor. <b>Agg %</b> counts every action.</li>
+    <li><b>C-Bet, Fold, Raise, Lead:</b> against the previous street's aggressor. <b>AFq</b> (aggression frequency, a %, not the AF ratio) counts every action.</li>
     <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of c-bets faced. A <b>lead</b> leaves the street out of the c-bet columns.</li>
     <li><b>All stats</b> adds squeeze, cold call, the blind war, LRR, jams, WWSF, DCB, Probe, F2P and Float.</li>
     <li><b>Split</b> adds a sub-row per group under each player: heads-up vs 3+ way, straddled or not, stack depth, position. Position adds <b>vs folding all</b> on the SB and BB rows: + means better than folding every blind (fold-all score beside it), red = losing more than folding.</li>
@@ -190,7 +190,7 @@
     ["probe", "Probe", "probe", LATER],
     ["fold_to_probe", "F2P", "fold_to_probe", LATER],
     ["float", "Float", "float"],
-    ["af", "Agg %", "af"],
+    ["af", "AFq", "af"],
   ];
   // The core columns the table opens with; "All stats" shows the rest.
   const SIMPLE = new Set(["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "wtsd", "wsd", "bb_per_100",

@@ -47,7 +47,7 @@
     sync: { cursor: 0, walk: null }, // see pager.js
     offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
     lastError: null, lastPoll: null, shape: null, envelopeOk: null,
-    hud: null, hudAt: 0, paused: false,
+    hud: null, hudAt: 0, hudEmpty: false, paused: false,
     live: null, liveInserted: -1,
     statusText: "starting…",
     rev: 0,             // bumped whenever hud or live changes, so the panel redraws only then
@@ -80,7 +80,7 @@
       history: state.sync.walk ? "loading" : state.sync.cursor ? "complete" : "not loaded",
       seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
       live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
-      text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live,
+      text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live, hudEmpty: state.hudEmpty,
       tableActing: state.tableActing, tableActingAt: state.tableActingAt,
     },
   });
@@ -276,7 +276,11 @@
   async function refreshHud() {
     const r = await send({ type: "hud", game_id: GAME });
     state.hudAt = Date.now();
-    if (!r.ok) { setStatus(r.error.includes("no hands") ? "waiting for the first hand" : r.error); return; }
+    // A table with no complete hand yet has no stats to wait for: the panel tells
+    // that apart from a first /hud still on its way (`hudEmpty`).
+    const empty = !r.ok && r.error.includes("no hands");
+    if (empty !== state.hudEmpty) { state.hudEmpty = empty; changed(); }
+    if (!r.ok) { setStatus(empty ? "waiting for the first hand" : r.error); return; }
     state.hud = r.data;
     changed();
   }
@@ -447,7 +451,8 @@
     }
     float.apply();
     const h = await send({ type: "health" });
-    setStatus(h.ok ? `connected · ${h.data.hands} hands in db` : `tracker not reachable at ${state.server}: ${h.error}`);
+    setStatus(h.ok ? `connected · ${h.data.hands} hands in db${h.data.warming ? " · warming up" : ""}`
+      : `tracker not reachable at ${state.server}: ${h.error}`);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
       if (changes.server) state.server = changes.server.newValue.replace(/\/+$/, "");

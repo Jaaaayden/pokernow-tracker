@@ -40,6 +40,7 @@
     noteEdit: null,     // the alias whose note is open for editing; redraws wait for it
   };
   let selected = null, pinned = null;
+  let selectedPn = null; // the seat `selected` was picked from, when there was one
   let heldAt = null; // the moment a card was clicked at; see followSpot
   // The data the panel is drawn from: a new /live or HUD report, or the action
   // moving on the table before the log has caught up.
@@ -122,7 +123,9 @@
       state.rev = -1;
       closeChart();
     }
-    setStatus(snap.text || "");
+    // While the server's pages show the sample (the front page's Data switch), the
+    // cards are still your own database's, but the chart below them is the sample's.
+    setStatus((snap.text || "") + (snap.hudData?.dataset === "sample" ? " · chart shows the sample" : ""));
     $("pause").textContent = snap.paused ? "▶" : "⏸";
     $("pause").title = snap.paused ? "resume capture" : "pause capture";
     // Only new data redraws the cards: a redraw on every status tick would throw
@@ -192,6 +195,121 @@
     if (isOpen()) $("frame").contentWindow?.postMessage({ type: "pnt-refresh" }, origin());
   });
 
+  // ------------------------------------------------------------------- key --
+  // ? spells out every label on show -- from the stats the front page chose, as
+  // /hud sends them -- and what the chips and the spot line mean.
+  const KEY_CHIPS = [
+    ["kind-archetype", "FISH", "the archetype: their overall style"],
+    ["", "FOLDS RIVER", "an exploit: a habit their hands show; hover for the count"],
+    ["kind-fun", "7-2 RAISES", "for fun"],
+    ["streaky", "LIMPER", "dim and dotted: one session carries it; gone without that game"],
+    ["tilt", "tilt?", "a big loss this session, a few hands ago"],
+  ];
+  const KEY_SPOT = [
+    ["›", "what they did earlier this hand › the spot they are in now"],
+    ["≈", "not enough hands in this exact spot: the closest wider one"],
+    ["value · marginal · draw · air", "what they showed up with from here, of the hands shown (n of m)"],
+  ];
+  function paintKey() {
+    const box = $("key");
+    box.replaceChildren();
+    const list = (rows) => {
+      const dl = el("dl");
+      for (const [k, v] of rows) dl.append(typeof k === "string" ? el("dt", null, k) : k, el("dd", null, v));
+      return dl;
+    };
+    box.append(el("h4", null, "stats"),
+      list(cols().map((c) => [c.label, c.tip])),
+      el("p", null, "t / r before a stat: the turn / river one, e.g. tCBet, rXR. Hover any figure for its sample."),
+      el("h4", null, "figures"),
+      list([["38 41", "this session, then lifetime in grey"], ["blue", "this session drifting from lifetime"],
+        ["–", "no chance at it yet: unknown, not zero"]]),
+      el("h4", null, "chips"),
+      list(KEY_CHIPS.map(([cls, label, what]) => {
+        const dt = el("dt");
+        dt.append(el("span", `tag ${cls}`, label));
+        return [dt, what];
+      })),
+      el("h4", null, "spot line"),
+      list(KEY_SPOT));
+  }
+  $("keybtn").addEventListener("click", () => {
+    const open = $("key").hidden;
+    if (open) paintKey();
+    $("key").hidden = !open;
+    $("keybtn").setAttribute("aria-pressed", String(open));
+    fit();
+  });
+
+  // ----------------------------------------------------------------- stuck --
+  // Something that should have arrived has not: say what to try, in order. Three
+  // cases, the first that has lasted its time wins; each clears itself once the
+  // thing arrives, and ✕ shuts one until a different one comes up.
+  const STUCK_MS = { tab: 15_000, down: 10_000, loading: 30_000 };
+  const stuckSince = {};
+  let stuckShut = null, stuckOn = null;
+  const DOWN = /failed to fetch|not reachable|networkerror|load failed/i;
+  // A stats figure still on its way: /live has come, /hud has not, and the table
+  // has hands for it (a new game's first hand has none to wait for).
+  const pending = () => !!state.live && !state.hud && !state.snap?.hudEmpty;
+  function stuckCase() {
+    const s = state.snap;
+    const down = !!s && DOWN.test(`${s.lastError || ""} ${s.text || ""}`);
+    const now = { tab: !s, down, loading: !!s && !down && pending() };
+    const t = Date.now();
+    for (const k of Object.keys(now)) stuckSince[k] = now[k] ? stuckSince[k] ?? t : null;
+    return Object.keys(now).find((k) => now[k] && t - stuckSince[k] >= STUCK_MS[k]) ?? null;
+  }
+  const cmd = (text) => {
+    const c = el("code", null, text);
+    const copy = el("button", null, "copy");
+    copy.title = "copy to the clipboard";
+    copy.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(text); copy.textContent = "copied"; } catch { copy.textContent = "select it"; }
+    });
+    const span = el("span");
+    span.append(c, " ", copy);
+    return span;
+  };
+  function reloadButton() {
+    const b = el("button", null, "Reload extension");
+    b.title = "chrome.runtime.reload(): the same as ↻ on chrome://extensions. Open game tabs are picked up again.";
+    b.addEventListener("click", () => chrome.runtime.reload());
+    return b;
+  }
+  function paintStuck(kind) {
+    const box = $("stuck");
+    box.replaceChildren();
+    const shut = el("button", "shut", "✕");
+    shut.title = "hide this";
+    shut.addEventListener("click", () => { stuckShut = kind; box.hidden = true; });
+    const li = (...parts) => { const l = el("li"); l.append(...parts); return l; };
+    const steps = el("ol");
+    if (kind === "tab") {
+      box.append(shut, el("b", null, "Nothing from this tab."));
+      steps.append(li("Reload the PokerNow tab."), li("Still nothing: ", reloadButton(), ", then reload the tab."));
+    } else if (kind === "down") {
+      box.append(shut, el("b", null, `Tracker not answering at ${state.server}.`));
+      steps.append(li("In a terminal: ", cmd("pnt service status")), li("Stopped or stuck: ", cmd("pnt service restart")),
+        li("Wrong address: fix the server in ⚙."));
+    } else {
+      box.append(shut, el("b", null, "Stats still loading."), " A big database's first load after a start can take a minute.");
+      steps.append(li(cmd("pnt service restart")), li(reloadButton()), li("Reload the PokerNow tab."));
+    }
+    box.append(steps);
+  }
+  setInterval(() => {
+    const kind = stuckCase();
+    if (kind !== stuckShut) stuckShut = null;
+    const show = kind && kind !== stuckShut ? kind : null;
+    if (show !== stuckOn) {
+      stuckOn = show;
+      if (show) paintStuck(show);
+      $("stuck").hidden = !show;
+      fit();
+    }
+  }, 1000);
+
   // The settings that used to be the toolbar popup; the toolbar icon opens this panel now.
   $("gear").addEventListener("click", () => {
     const open = $("settings").hidden;
@@ -258,8 +376,11 @@
   // Put `alias` on show in the chart, in `filter` (all their hands when empty).
   // An open chart is told over postMessage rather than reloaded, so nothing
   // flashes and the view and colour mode picked in there survive.
-  function selectPlayer(alias, filter, view) {
+  // `pn` is the seat it came from, when it came from one: the highlight goes on
+  // that card alone, since one player can hold two seats (see twinChip).
+  function selectPlayer(alias, filter, view, pn = null) {
     selected = alias;
+    selectedPn = pn;
     chartHands = handsOf(alias);
     markSel();
     const spot = { player: alias, filter: filter || "" };
@@ -286,7 +407,7 @@
     if (!pinned && heldAt === moment()) return;
     heldAt = null;
     const s = PNT.nextSpot(state.live, pinned, state.sentSpots[0], state.acting);
-    if (s) selectPlayer(s.player, s.filter);
+    if (s) selectPlayer(s.player, s.filter, undefined, PNT.pickRow(state.live, pinned, state.acting)?.pn_id ?? null);
   }
   function closeChart() {
     $("chart").hidden = true;
@@ -324,6 +445,7 @@
     const player = e.data.player ?? paramOf(e.data.url, "player");
     if (player && player !== selected) {
       selected = player;
+      selectedPn = null;
       if (pinned) pinned = player;
       markSel();
       chartHands = handsOf(player);
@@ -346,7 +468,10 @@
   }).observe($("chart"));
 
   function markSel() {
-    document.querySelectorAll(".card[data-alias]").forEach((el) => el.classList.toggle("sel", !!el.dataset.alias && el.dataset.alias === selected));
+    const cards = [...document.querySelectorAll(".card[data-alias]")];
+    const theirs = cards.filter((c) => !!c.dataset.alias && c.dataset.alias === selected);
+    const seat = theirs.find((c) => c.dataset.pn === selectedPn);
+    for (const c of cards) c.classList.toggle("sel", seat ? c === seat : theirs.includes(c));
   }
 
   // ----------------------------------------------------------------- cards --
@@ -369,7 +494,7 @@
     { key: "fold_to_3bet", label: "F3B", opp: "fold_to_3bet", tip: "Fold to Three-Bet: they opened, someone re-raised, and they folded." },
     { key: "cbet_flop", label: "CBet", opp: "cbet_flop", tip: "Continuation bet: they raised preflop and then bet the flop first-in." },
     { key: "wtsd", label: "WTSD", opp: "wtsd", tip: "Went To Showdown: of the flops they saw, how often they were still there at the end." },
-    { key: "af_flop", label: "Agg", opp: "af_flop", tip: "Aggression Frequency on the flop: of everything they did bar checking, how often "
+    { key: "af_flop", label: "AFq", opp: "af_flop", tip: "Aggression frequency (AFq; a percentage, not the AF ratio) on the flop: of everything they did bar checking, how often "
       + "it was a bet or a raise rather than a call or a fold." },
   ];
   const cols = () => [HANDS_COL, ...(Array.isArray(state.hud?.columns) ? state.hud.columns : FALLBACK_COLS)];
@@ -394,11 +519,23 @@
   function rows() {
     const hud = new Map((state.hud?.seats ?? []).map((s) => [s.pn_id, s]));
     const live = state.live?.players;
-    if (!live) return [...hud.values()].map((s) => ({ ...s, live: null }));
-    return live.map((p) => {
+    const out = !live ? [...hud.values()].map((s) => ({ ...s, live: null })) : live.map((p) => {
       const s = hud.get(p.pn_id) || { pn_id: p.pn_id, alias: p.alias, stats: { hands: 0 }, session: hud.size ? { hands: 0 } : null, tags: null };
       return { ...s, seat: p.seat, alias: s.alias || p.alias, name: p.name, live: p };
     });
+    // One player merged from two accounts can be dealt in twice: each card names
+    // the other seat, since both carry the same person's stats.
+    for (const r of out) r.twins = r.alias ? out.filter((o) => o !== r && o.alias === r.alias).map((o) => o.seat) : [];
+    return out;
+  }
+
+  function twinChip(s) {
+    if (!s.twins?.length) return null;
+    const seats = s.twins.map((n) => `#${n}`).join(" ");
+    const chip = el("span", "twin", `= ${seats}`);
+    chip.title = `Same player as seat ${seats.replaceAll("#", "")}: two accounts merged into ${s.alias}. `
+      + "The stats, tags and note are theirs together; position, stack and the spot are this seat's.";
+    return chip;
   }
 
   const el = (tag, cls, text) => {
@@ -439,7 +576,8 @@
     // The compact table carries the legend in its own header.
     $("legend").hidden = !hasSession || state.compact;
     if (!seats.length) {
-      body.append(el("div", "empty", state.hud || state.live ? "no one dealt in yet" : "waiting for the first hand…"));
+      body.append(state.hud || state.live ? el("div", "empty", "no one dealt in yet")
+        : el("div", "empty dots", "waiting for the first hand"));
     } else if (state.compact) {
       body.append(grid(seats, lv, hasSession));
     } else {
@@ -487,6 +625,10 @@
   // both use it, so the two can never read a figure differently.
   function figure(s, col, into) {
     const { key: k, tip } = col;
+    if (pending()) {
+      into.appendChild(el("span", "skel"));
+      return `${tip}\n\nloading: the first stats after a start take a moment`;
+    }
     const st = s.stats || {}, ss = s.session;
     if (!ss) {
       into.appendChild(el("span", null, fmt(st[k], k)));
@@ -549,6 +691,8 @@
       }
       const name = el("td", "name", s.alias || s.name || s.pn_id);
       name.appendChild(el("small", null, `#${s.seat}`));
+      const twin = twinChip(s);
+      if (twin) name.appendChild(twin);
       if (row.classList.contains("act") && state.acting) name.appendChild(clockChip());
       name.title = `${s.alias || s.name || s.pn_id} · seat ${s.seat} · ${s.pn_id}`;
       // No room for the note itself: the name is underlined, and the note is its hover.
@@ -587,7 +731,7 @@
       e.stopPropagation();
       pinned = s.alias;
       setFollow(false);
-      selectPlayer(s.alias, "", { by: "tilt" });
+      selectPlayer(s.alias, "", { by: "tilt" }, s.pn_id);
     });
     return chip;
   }
@@ -595,6 +739,7 @@
   function card(s, lv) {
     const c = el("div", "card");
     c.dataset.alias = s.alias || "";
+    c.dataset.pn = s.pn_id;
     c.title = `seat ${s.seat} · ${s.pn_id}`;
     if (s.live) {
       if (lv && PNT.actingId(lv, state.acting) === s.pn_id) c.classList.add("act");
@@ -605,6 +750,8 @@
     const who = el("div", "who");
     const name = el("span", "name", s.alias || s.name || s.pn_id);
     name.appendChild(el("small", null, `#${s.seat}`));
+    const twin = twinChip(s);
+    if (twin) name.appendChild(twin);
     who.appendChild(name);
     if (c.classList.contains("act") && state.acting) who.appendChild(clockChip());
     // A player without an identity yet has nowhere to keep a note.
@@ -634,7 +781,7 @@
         if (!s.alias) return;
         pinned = s.alias;
         setFollow(false);
-        selectPlayer(s.alias, tag.filter, { by: tag.by, street: tag.street, kind: tag.bet_kind });
+        selectPlayer(s.alias, tag.filter, { by: tag.by, street: tag.street, kind: tag.bet_kind }, s.pn_id);
       });
       tags.appendChild(chip);
     }
@@ -677,7 +824,7 @@
       heldAt = moment();
       if (pinned) pinned = s.alias;
       const spot = state.follow && s.live?.resolved ? s.live.resolved.filter : "";
-      selectPlayer(s.alias, spot);
+      selectPlayer(s.alias, spot, undefined, s.pn_id);
     });
     return c;
   }

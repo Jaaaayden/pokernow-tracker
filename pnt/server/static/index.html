@@ -102,7 +102,7 @@
   .files { padding: 12px 16px; }
   .files .row { display: grid; grid-template-columns: 84px 1fr auto auto; gap: 4px 8px; align-items: center;
                 margin-bottom: 10px; }
-  .files label { font-size: 13px; color: var(--ink); }
+  .files label, .files .label { font-size: 13px; color: var(--ink); }
   .files input { font: 12.5px ui-monospace, Consolas, monospace; color: var(--ink); background: var(--page);
                  border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; min-width: 0; }
   .files input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
@@ -117,11 +117,25 @@
   .files button:disabled { opacity: .4; cursor: default; }
   .files button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .files .note { grid-column: 2 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+  /* Data: your hands or the sample, a pressed pair. */
+  .seg { grid-column: 2 / -1; justify-self: start; display: inline-flex; }
+  .files .seg button { border-radius: 0; }
+  .files .seg button:first-child { border-radius: 6px 0 0 6px; }
+  .files .seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+  .files .seg button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent); position: relative; }
+  /* While the pages show the sample: unmissable, so it is never read as your own history. */
+  .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 18px;
+            padding: 8px 14px; border-radius: 10px; font-size: 13px;
+            border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .banner button, .hint button { font: inherit; font-size: 12.5px; color: var(--accent); background: none;
+            border: 1px solid var(--accent); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .hint { color: var(--ink-2); margin: -14px 0 22px; font-size: 13px; }
   .files .status { margin: 0; font-size: 12.5px; color: var(--up); min-height: 1.45em; }
   .files .status.bad { color: var(--down); }
   @media (max-width: 560px) {
     .files .row { grid-template-columns: 1fr 1fr; }
-    .files label, .files input, .files select, .files .note { grid-column: 1 / -1; }
+    .files label, .files .label, .files input, .files select, .files .seg, .files .note { grid-column: 1 / -1; }
   }
   @media (max-width: 480px) { dl { grid-template-columns: 1fr; gap: 2px 0; } dd { margin-bottom: 8px; } }
 </style>
@@ -134,7 +148,13 @@
     stats are derived when you ask for them, never stored — so a definition can change
     and the history still answers to it.</p>
 
+  <div class="banner hidden" id="sample-banner" role="status">
+    <span><b>Sample data</b> — anonymized games, not yours. Live games still save to your database.</span>
+    <button type="button" data-which="own">Back to your hands</button>
+  </div>
   <div class="facts" id="facts"></div>
+  <p class="hint hidden" id="empty-hint">No hands yet: play with the extension on, or drop exports in the
+    log folder (Files, below). <button type="button" data-which="sample">Try the sample</button></p>
   <div class="err hidden" id="err"></div>
 
   <div class="cards">
@@ -216,13 +236,27 @@
         If it <em>is</em> the same address, the server has stopped: <code>pnt service status</code>.</dd>
       <dt>“waiting for the first hand”</dt><dd>Connected, but this table has no complete hand
         stored yet. It fills in as hands finish.</dd>
+      <dt>grey bars that shimmer</dt><dd>Stats on their way: the first ones after a start take
+        a moment on a big database. Past 30 s the panel lists what to try.</dd>
+      <dt>“Stats still loading”</dt><dd><code>pnt service restart</code>, then the panel's
+        <b>Reload extension</b>, then reload the tab.</dd>
       <dt>everyone shows “–”</dt><dd>Real: an unknown rate, not a zero. They have had no
         opportunity for that stat yet.</dd>
+      <dt>“= #5” by a name</dt><dd>Two of one player's accounts (merged on the Players page)
+        at the table at once: both cards show the same person's stats.</dd>
     </dl>
   </div>
 
   <h3 id="files-h">Files</h3>
   <section class="panel files hidden" id="files" aria-labelledby="files-h">
+    <div class="row">
+      <span class="label" id="f-data-k">Data</span>
+      <div class="seg" role="group" aria-labelledby="f-data-k">
+        <button type="button" data-which="own" aria-pressed="true">Your hands</button>
+        <button type="button" data-which="sample" aria-pressed="false">Sample</button>
+      </div>
+      <p class="note" id="f-data-note">Sample: anonymized games for trying the pages. Live games still save to your database.</p>
+    </div>
     <div class="row">
       <label for="f-hero">You</label>
       <select id="f-hero"></select>
@@ -285,6 +319,8 @@
           + " Run <code>pnt update</code> in a terminal.";
         $("update").classList.remove("hidden");
       }
+      $("sample-banner").classList.toggle("hidden", health.dataset !== "sample");
+      $("empty-hint").classList.toggle("hidden", !(health.hands === 0 && health.dataset !== "sample"));
     } catch (e) {
       $("err").textContent = "could not reach the server: " + (e.message || e);
       $("err").classList.remove("hidden");
@@ -561,6 +597,56 @@
   for (const [kind, input] of Object.entries(box)) {
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") filesUse(kind); });
   }
+
+  // Data: the pages show your hands or the bundled sample. The first switch to the
+  // sample builds its database, so the server answers with `building` and is polled
+  // until the switch lands; then everything on the page is reread.
+  const dataButtons = document.querySelectorAll("[data-which]");
+  let dataBusy = false;
+
+  function dataPaint(d) {
+    for (const b of document.querySelectorAll("#files .seg button")) {
+      b.setAttribute("aria-pressed", b.dataset.which === d.active);
+    }
+    $("f-data-note").textContent = `Sample: ${d.games} anonymized games for trying the pages. `
+      + "Live games still save to your database.";
+  }
+
+  // The banner's and the hint's buttons sit far from the Files panel's status line,
+  // so the one pressed says the progress too.
+  async function dataSet(which, button) {
+    if (dataBusy) return;
+    dataBusy = true;
+    for (const b of dataButtons) b.disabled = true;
+    const say = (text, bad) => {
+      filesStatus(text, bad);
+      if (!button.closest(".seg")) button.textContent = text;
+    };
+    say(which === "sample" ? "switching to the sample…" : "switching back…");
+    try {
+      let d = await filesCall("/settings/dataset", "PUT", { which });
+      while (d.building && !d.error) {
+        say(`building the sample · ${d.building.done} of ${d.building.total} games`);
+        await new Promise((ok) => setTimeout(ok, 500));
+        d = await (await fetch("/settings/dataset")).json();
+      }
+      if (d.error) throw new Error(d.error);
+      location.reload();
+    } catch (e) {
+      say("not switched: " + (e.message || e), true);
+      dataBusy = false;
+      for (const b of dataButtons) b.disabled = false;
+    }
+  }
+
+  for (const b of dataButtons) b.addEventListener("click", () => dataSet(b.dataset.which, b));
+
+  (async () => {
+    try {
+      const r = await fetch("/settings/dataset");
+      if (r.ok) dataPaint(await r.json());
+    } catch { /* the pair keeps its markup state */ }
+  })();
 
   // You: "auto" follows whoever downloaded the most logs, which a friend's imported
   // logs can tip; picking a name fixes it for this database.

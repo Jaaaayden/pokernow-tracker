@@ -130,6 +130,22 @@ test("ahead of the log, the chart shows all their hands; the spot follows once /
     "a pinned player keeps the spot /live gave them");
 });
 
+test("one player on two seats: the chart follows the seat, not the first with their alias", () => {
+  // Chris's second account, seated after gp: merged, so the same alias.
+  const two = (over = {}) => {
+    const l = live(over);
+    l.players.push({ ...l.players[0], pn_id: "chris2", resolved: { ...l.players[1].resolved, filter: "position=BB,3bet" } });
+    return l;
+  };
+  assert.equal(nextSpot(two({ to_act: "chris2" }), null, null).filter, "position=BB,3bet", "the seat to act");
+  assert.equal(nextSpot(two({ to_act: "chris2" }), "Chris", null).filter, "position=BB,3bet",
+    "a pin on them takes the seat to act");
+  assert.equal(nextSpot(two(), "Chris", null).filter, "position=BTN/SB,unopened", "else the first seat still in");
+  const out = two();
+  out.players[0].folded = true;
+  assert.equal(nextSpot(out, "Chris", null).filter, "position=BB,3bet", "a folded seat gives way to the live one");
+});
+
 test("the chart's echo of a sent spot is recognised; an edit is not", () => {
   const sent = { player: "genericpoker", filter: "position=BB,faced_open" };
   const base = "http://127.0.0.1:52000/chart?theme=dark&player=genericpoker";

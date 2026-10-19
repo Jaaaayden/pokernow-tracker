@@ -360,6 +360,14 @@
     color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 6px; padding: 6px 8px; }
   .rev-edit .hint { color: var(--muted); font-size: 11px; }
   #review-count { margin: 0 0 6px; font-size: 12px; }
+  /* What each flag listed here fired on: the rule, its cutoffs, a matchup it catches. */
+  .rules { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; margin: 0 0 8px;
+    font-size: 12px; color: var(--ink-2); }
+  .rules:empty { display: none; }
+  .rules dt { font-weight: 600; color: var(--ink); }
+  .rules dd { margin: 0; }
+  .rules .lead { grid-column: 1 / -1; color: var(--muted); }
+  #review.split .rules { grid-column: 1 / -1; }
   .kinds { display: inline-flex; flex-wrap: wrap; gap: 4px; }
   .kinds button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .kinds button[aria-pressed=true] { background: var(--accent); color: #fff; border-color: transparent; }
@@ -926,6 +934,7 @@
     <div id="bounty" class="hidden"></div>
     <div id="tagged" class="kinds tagpick hidden" role="group" aria-label="Which tag"></div>
     <div id="review" class="hidden" aria-live="polite">
+      <dl class="rules" id="review-rules"></dl>
       <p class="muted" id="review-count"></p>
       <div class="hand-rows tall" id="review-rows"></div>
       <div class="replay hidden" id="review-replay"></div>
@@ -1360,13 +1369,13 @@
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet", floor: "set",
                   table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
-                  game: null, games: null, played: true, satOut: false, session: null, split: false };
+                  game: null, games: null, played: true, satOut: false, session: null, split: true };
 
-  // The side-by-side layout is a per-viewer setting, kept in this browser only.
-  // Storage can be missing or throw (private windows, blocked site data), and the
-  // page must work the same without it.
+  // Side by side is the default; stacked is a per-viewer choice, kept in this
+  // browser only. Storage can be missing or throw (private windows, blocked site
+  // data), and the page must work the same without it.
   const LAYOUT_KEY = "pnt.reviewLayout";
-  try { state.split = localStorage.getItem(LAYOUT_KEY) === "split"; } catch { /* stacked */ }
+  try { state.split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
 
   // ---- hand review ------------------------------------------------------
   // Both views read one endpoint and split its rows by group; see "Hand review"
@@ -1406,16 +1415,31 @@
   const ORDER_NAMES = ORDERS.session;
   const orderOf = (view) => ORDERS[view].includes(state.order) ? state.order : ORDERS[view][0];
   const REVIEW_NOTE = {
-    review: ["A flag is a prompt to replay, not a verdict.",
+    review: ["**Flagged by rule** (each one under the flag chips): a prompt to replay, not a verdict.",
       "**Missed bluffs, missed value:** showdowns only, where every live hand was shown.",
       "**Failed bluffs** also count bluffs given up before showdown."],
     tagged: ["Hands you tagged: type in the **+ tag** box on a row or a replay, Enter to add, e.g. river-bluff.",
       "Pick a tag to list its hands; **flagged** is the 🚩 ones.", "In a spot: tag=cooler|study."],
     session: ["Every hand of the session, in deal order.", "Tick hands off or write on them as you go.",
       "**Sat out** adds the hands dealt while they were away."],
-    beats: ["**Suckouts, preflop coolers:** all-in showdowns, equity taken where the betting stopped.",
-      "**Postflop cooler:** a stacks hand already behind on a dry board."],
+    beats: ["**Flagged by rule** (each one under the flag chips): the deck's doing, not a mistake.",
+      "**Suckouts, preflop coolers:** all-in showdowns, equity taken where the betting stopped."],
   };
+
+  // Each flag's rule in a line, with the cutoffs the server used (`thresholds`, the
+  // copy of review.py's THRESHOLDS on every answer) and a matchup it catches.
+  // Printed above the list for the flags on show, and on each row's pill.
+  const pctOf = (x) => `${Math.round(x * 100)}%`;
+  const FLAG_RULE = {
+    missed_bluff: (t) => `river checked through, ${t.bloated_pot_bb}bb+ pot, every hand air · e.g. K-high vs Q-high`,
+    missed_value: (t) => `both had a stacks hand on a dry board, under ${pctOf(t.stacks_in_share)} of the stacks went in · e.g. set vs top two`,
+    failed_bluff: (t) => `bet or raised air postflop, got called or raised, lost · ${t.failed_bluff_pot_bb}bb+ pot`,
+    suckout: (t) => `all in ${pctOf(t.suckout_equity)}+ to win, lost · e.g. AA vs KK, a K on the river`,
+    cooler_pre: (t) => `${t.premium.join("/")} all in preflop at ${pctOf(t.cooler_equity)} or less, lost · e.g. QQ vs KK`,
+    cooler_post: () => "a stacks hand already behind on a dry board, lost · e.g. top two vs a set",
+  };
+  const AIR_RULE = "air = high card, a draw, or a board pair the hole cards add nothing to";
+  const flagRule = (kind, t) => (t && FLAG_RULE[kind] ? FLAG_RULE[kind](t) : "");
 
   // ---- URL state so the page can be bookmarked or embedded --------------
   const readUrl = () => {
@@ -4845,7 +4869,11 @@
     const b = document.createElement("button");
     b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
     const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.append(text); b.appendChild(s); return s; };
-    if (opts.kind) span("kind", opts.kind.text).dataset.group = opts.kind.group;
+    if (opts.kind) {
+      const k = span("kind", opts.kind.text);
+      k.dataset.group = opts.kind.group;
+      if (opts.kind.title) k.title = opts.kind.title;
+    }
     span("num", `#${h.hand_number}`);
     // Whether they closed the action, not where they sat: every postflop stat
     // on these pages is defined against an aggressor, not against a seat.
@@ -4916,6 +4944,7 @@
       const b = document.createElement("button"); b.type = "button";
       b.dataset.kind = kind;
       b.setAttribute("aria-pressed", !state.hide.has(kind));
+      b.title = flagRule(kind, d.thresholds);
       b.append(label);
       const n = document.createElement("small"); n.textContent = d.counts[kind]; b.appendChild(n);
       b.addEventListener("click", () => {
@@ -4925,6 +4954,7 @@
       chips.appendChild(b);
     }
     syncListControls(view);
+    renderRules(d, view);
 
     const all = reviewRows(d, view);
     const rows = orderReview(listedReview(all), view);
@@ -4940,13 +4970,31 @@
     for (const h of rows.slice(0, HAND_LIMIT)) {
       const v = h.villains[0];
       const row = handRowButton(h, list, $("review-replay"), {
-        kind: { text: KIND_LABEL[h.kind], group: h.group },
+        kind: { text: KIND_LABEL[h.kind], group: h.group, title: flagRule(h.kind, d.thresholds) },
         vs: v ? { name: `vs ${v.player}${h.villains.length > 1 ? ` +${h.villains.length - 1}` : ""}`, cards: v.cards } : null,
         sizes: reviewDetail(h),
         why: h.why,
         title: reviewTitle(h),
       });
       list.appendChild(reviewedRow(h, row));
+    }
+  }
+
+  // The rule behind each flag on show, so a row reads as "this rule fired", not as
+  // a judgement. Air gets its own line once a flag that reads it is listed.
+  function renderRules(d, view) {
+    const box = $("review-rules");
+    box.replaceChildren();
+    if (!d?.thresholds) return;
+    const shown = REVIEW_KINDS[view].filter(([k]) => !state.hide.has(k));
+    for (const [kind, label] of shown) {
+      const dt = document.createElement("dt"); dt.textContent = label;
+      const dd = document.createElement("dd"); dd.textContent = flagRule(kind, d.thresholds);
+      box.append(dt, dd);
+    }
+    if (shown.some(([k]) => k === "missed_bluff" || k === "failed_bluff")) {
+      const dd = document.createElement("dd"); dd.className = "lead"; dd.textContent = AIR_RULE;
+      box.append(dd);
     }
   }
 
@@ -4977,7 +5025,7 @@
     : view === TAGGED_VIEW ? state.data.hands : reviewRows(state.data, view);
 
   function renderSession(d) {
-    $("review-kinds").replaceChildren();
+    $("review-kinds").replaceChildren(); $("review-rules").replaceChildren();
     syncListControls(SESSION_VIEW);
     const all = sessionRows(d);
     const rows = orderReview(listedReview(all), SESSION_VIEW);
@@ -5037,7 +5085,7 @@
   }
 
   function renderTagged(d) {
-    $("review-kinds").replaceChildren();
+    $("review-kinds").replaceChildren(); $("review-rules").replaceChildren();
     renderTagChips(d);
     syncListControls(TAGGED_VIEW);
     const all = d.hands;

@@ -114,6 +114,42 @@
   .grid tr.act td.name { color: #ffd166; }
   .grid tr.out td { opacity: .45; }
 
+  /* A figure whose first /hud is still on its way: a shimmering bar, not a "–",
+     which would read as "no data". Still, for anyone who asked for less motion. */
+  .skel { display: inline-block; width: 28px; height: 8px; border-radius: 3px; vertical-align: middle;
+    background: linear-gradient(90deg, #262624 0%, #383835 50%, #262624 100%); background-size: 200% 100%;
+    animation: shimmer 1.2s linear infinite; }
+  .grid td .skel { width: 22px; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .dots::after { content: "…"; display: inline-block; width: 1.2em; text-align: left; animation: dots 1.2s steps(4) infinite;
+    overflow: hidden; vertical-align: bottom; }
+  @keyframes dots { from { width: 0; } to { width: 1.2em; } }
+  @media (prefers-reduced-motion: reduce) { .skel, .dots::after { animation: none; } .dots::after { width: 1.2em; } }
+
+  /* Something is not arriving: what to try, in order, under the header. Not a dialog. */
+  .stuck { margin: 6px 8px; padding: 6px 8px; border: 1px solid #ff8a65; border-radius: 6px; color: #e8e6dc;
+    background: rgba(255,138,101,.08); }
+  .stuck b { color: #ff8a65; }
+  .stuck ol { margin: 4px 0 0; padding-left: 16px; }
+  .stuck li { margin: 2px 0; }
+  .stuck code { font: 10px ui-monospace, Consolas, monospace; background: #262624; padding: 0 3px; border-radius: 3px; }
+  .stuck button { padding: 0 5px; border: 1px solid #383835; font-size: 10px; }
+  .stuck .shut { float: right; border: 0; }
+
+  /* The key: every label on show spelled out, and what the chip styles mean. */
+  .key { margin: 0; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.1); color: #c3c2b7;
+    max-height: 50vh; overflow-y: auto; }
+  .key h4 { margin: 6px 0 2px; font-size: 10px; font-weight: 600; color: #898781; text-transform: uppercase; letter-spacing: .04em; }
+  .key h4:first-child { margin-top: 0; }
+  .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 1px 8px; margin: 0; }
+  .key dt { color: #fff; font-weight: 600; }
+  .key dd { margin: 0; }
+  .key p { margin: 2px 0 0; }
+  .key .tag { cursor: default; }
+
+  /* One player on two seats (two merged accounts): "= #5" beside each name. */
+  .twin { color: #86b6ef; font-weight: 400; font-size: 9px; margin-left: 4px; }
+
   /* The chart takes the panel's width; its height is dragged at the corner and remembered. */
   .chart { display: flex; flex-direction: column; border-top: 1px solid rgba(255,255,255,.1);
     resize: vertical; overflow: hidden; height: 640px; min-height: 240px; }
@@ -130,18 +166,21 @@
     <button id="flag" class="flag" aria-pressed="false" hidden>🚩<span id="flag-n"></span></button>
     <button id="pause" title="pause capture" hidden>⏸</button>
     <button id="compact" title="compact: one line of stats per player, no tags or chart">–</button>
+    <button id="keybtn" title="what the labels and chips mean" aria-pressed="false">?</button>
     <button id="gear" title="settings" aria-pressed="false">⚙</button>
     <button id="hide" title="hide the HUD — the toolbar icon brings it back" hidden>✕</button>
     <span class="live" id="live"></span>
   </div>
   <div class="update" id="update" hidden></div>
   <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
+  <div class="key" id="key" hidden></div>
+  <div class="stuck" id="stuck" role="status" hidden></div>
   <div class="empty" id="nogame">Nothing from this tab yet. If this is a PokerNow game, reload the page — a game opened before the extension was (re)loaded is not being tracked.</div>
   <main id="main" hidden>
     <div class="legend" id="legend" hidden
       title="Each figure: this game first, then every game on record in grey. A blue session figure is 10+ points from lifetime on at least 10 chances, with lifetime outside the session's 95% range.">
       this session · <span style="color:#898781">lifetime</span> · <span class="drift">blue</span> = drifting</div>
-    <div id="body"><div class="empty">waiting for the first hand…</div></div>
+    <div id="body"><div class="empty dots">waiting for the first hand</div></div>
     <div class="chart" id="chart" hidden>
       <div class="bar">
         <span id="who"></span>

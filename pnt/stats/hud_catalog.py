@@ -49,8 +49,8 @@ def _street(s: str) -> list[dict]:
         _entry(f"check_raise_{s}", f"{m}XR",
                f"Check-raise: they checked the {s}, faced a bet, and raised.",
                f"check_raise_{s}", group),
-        _entry(f"af_{s}", f"{m}Agg",
-               f"Aggression Frequency on the {s}: of everything they did bar checking, how often "
+        _entry(f"af_{s}", f"{m}AFq",
+               f"Aggression frequency (AFq; a percentage, not the AF ratio) on the {s}: of everything they did bar checking, how often "
                "it was a bet or a raise rather than a call or a fold.",
                f"af_{s}", group),
     ]

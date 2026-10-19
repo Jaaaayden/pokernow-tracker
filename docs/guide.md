@@ -305,7 +305,7 @@ pnt positions genericpoker
 ```
 
 ```
-position                 Hands  VPIP   PFR  3Bet F3Bet CBetF FCBetF   AFf  WTSD  W$SD bb/100
+position                 Hands  VPIP   PFR  3Bet   F3B  CBet    FCB   AFq  WTSD  W$SD bb/100
 --------------------------------------------------------------------------------------------
 BB                         207  69.7  28.4  23.2   100  74.2     40  76.9  41.7  63.6 163.24
 BTN/SB                     200  82.5  57.5  12.5  46.2  48.8      0  58.4  46.2    60 309.35

@@ -130,3 +130,36 @@ def test_players_counts_hands_without_deriving_them(client, stats):
         assert p["hands"] == sum(i["hands"] for i in p["identities"])
         if p["alias"] in derived:
             assert p["hands"] == derived[p["alias"]]["hands"]
+
+
+def test_two_merged_accounts_at_one_table(api):
+    """One person on two accounts, both dealt in: pinned as the code has it, not as
+    it might be. Each seat keeps its own live data and its own tilt run, but every
+    stat sums over seats, so a hand both played counts twice (SPEC.md, "Known
+    judgement calls" 35)."""
+    from pnt.db.conn import connect
+    from pnt.stats.queries import facts_cached
+    from pnt.stats.tilt import next_hand
+    from tests.conftest import HU_GAME
+
+    client, path = api
+    before = {s["alias"]: s for s in client.get(f"/hud/{HU_GAME}").json()["seats"]}
+    assert len(before) == 2
+    a, b = before
+    assert client.post("/aliases/merge", json={"source": b, "target": a}).status_code == 200
+
+    seats = client.get(f"/hud/{HU_GAME}").json()["seats"]
+    assert [s["alias"] for s in seats] == [a, a], "two cards, one player"
+    assert seats[0]["stats"] == seats[1]["stats"] and seats[0]["session"] == seats[1]["session"]
+    conn = connect(path)
+    try:
+        dealt = conn.execute("SELECT COUNT(*) FROM hands WHERE game_id = ?", (HU_GAME,)).fetchone()[0]
+        facts = facts_cached(conn, a)
+    finally:
+        conn.close()
+    session = seats[0]["session"]["hands"]
+    assert session == before[a]["session"]["hands"] + before[b]["session"]["hands"] > dealt, \
+        "a hand both seats played counts once per seat"
+    for s in seats:
+        mine = next_hand([f for f in facts if f.pn_id == s["pn_id"]], HU_GAME)
+        assert (s["post_loss"], s["post_loss_since"]) == (mine["post_loss"], mine["since"]), "tilt is per seat"

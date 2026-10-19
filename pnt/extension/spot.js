@@ -32,15 +32,28 @@
     return tableRow(live, acting)?.pn_id ?? live?.to_act ?? null;
   }
 
-  /** The alias the chart should show: the pinned player if they are seated, else
-   * whoever the action is on. Null when neither is known. */
-  function pickPlayer(live, pinned, acting) {
+  /** The /live row the chart should show: the pinned player's seat if they are
+   * seated, else the seat the action is on. Null when neither is known.
+   *
+   * A row, not an alias: one player merged from two accounts can hold two seats
+   * at once, and the spot is the seat's. A pin then takes the seat to act, else
+   * one still in. */
+  function pickRow(live, pinned, acting) {
     const players = live?.players || [];
-    if (pinned && players.some((p) => p.alias === pinned)) return pinned;
+    const mine = pinned ? players.filter((p) => p.alias === pinned) : [];
+    if (mine.length) {
+      const id = actingId(live, acting);
+      return mine.find((p) => p.pn_id === id) ?? mine.find((p) => !p.folded) ?? mine[0];
+    }
     const table = tableRow(live, acting);
-    if (table?.alias) return table.alias;
+    if (table?.alias) return table;
     const logged = live?.to_act ? players.find((p) => p.pn_id === live.to_act) : null;
-    return logged?.alias ?? null;
+    return logged?.alias ? logged : null;
+  }
+
+  /** The alias the chart should show (see pickRow). */
+  function pickPlayer(live, pinned, acting) {
+    return pickRow(live, pinned, acting)?.alias ?? null;
   }
 
   /** The next spot to put in the chart, or null when there is nothing new to
@@ -54,11 +67,11 @@
    * spot is the one they were in before the action came round, so it is left out
    * until /live agrees, and the chart shows all their hands meanwhile. */
   function nextSpot(live, pinned, lastSent, acting) {
-    const player = pickPlayer(live, pinned, acting);
-    if (!player) return null;
-    const p = live.players.find((x) => x.alias === player);
-    const ahead = player !== pinned && !!p && p.pn_id !== live.to_act;
-    const resolved = ahead ? null : p?.resolved;
+    const p = pickRow(live, pinned, acting);
+    if (!p) return null;
+    const player = p.alias;
+    const ahead = player !== pinned && p.pn_id !== live.to_act;
+    const resolved = ahead ? null : p.resolved;
     const filter = resolved?.filter || "";
     if (lastSent && lastSent.player === player && lastSent.filter === filter) return null;
     if (!resolved) return { player, filter, exact: false, label: "all hands" };
@@ -221,7 +234,7 @@
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
+  const api = { handEnded, actingId, pickRow, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);

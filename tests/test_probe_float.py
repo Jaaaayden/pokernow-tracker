@@ -61,7 +61,7 @@ def test_stats_page_has_a_column_per_family_with_its_tip_and_sample_noun():
     keys = [k for k, _ in postflop]
     for key in FAMILIES:
         assert key in keys
-    assert keys[-1] == "af", "Agg % stays the last postflop column"
+    assert keys[-1] == "af", "AFq stays the last postflop column"
     tips = re.findall(r"^\s+(\w+): \(s\) =>", _block(page, "const HEAD_TIP = {"), re.MULTILINE)
     nouns = re.findall(r"(\w+): \"", _block(page, "const OPP_NOUN = {"))
     for key in FAMILIES:

@@ -19,6 +19,7 @@ from . import update as upd
 from .db.conn import DEFAULT_DB, connect
 from .db.userdata import tag_resolver
 from .ingest import fetch as fetchmod
+from .ingest import sample as samplemod
 from .ingest import sync as syncmod
 from .ingest.csv_source import HAND_START, has_hands, read_csv
 from .ingest.importer import (
@@ -92,13 +93,9 @@ DbOpt = typer.Option(
 #: A real corpus shipped inside the package, for trying the tracker before it has
 #: logs of its own. A fresh install starts empty: `pnt import --sample` and `pnt
 #: setup --sample` fall back to it when the log folder is empty; naming a folder or
-#: passing paths never reaches it.
-#:
-#: These are `pnt redact --anonymize` output, not raw exports: a hole card survives
-#: only where it was shown down, and every player is a `player N` stand-in. See
-#: `pnt/logs/README.md`, `pnt/logfmt/redact.py` and `pnt/logfmt/anonymize.py`.
-BUNDLED_LOG_DIR = Path(__file__).parent / "logs"
-BUNDLED_ALIASES = BUNDLED_LOG_DIR / "aliases.csv"
+#: passing paths never reaches it. See pnt/ingest/sample.py.
+BUNDLED_LOG_DIR = samplemod.LOG_DIR
+BUNDLED_ALIASES = samplemod.ALIASES
 
 LogDirOpt = typer.Option(
     None, "--log-dir", help=f"Folder of PokerNow exports. Default: {LOG_DIR}"
@@ -136,10 +133,10 @@ _COLUMNS = [
     ("vpip", "VPIP", 6),
     ("pfr", "PFR", 6),
     ("3bet", "3Bet", 6),
-    ("fold_to_3bet", "F3Bet", 6),
-    ("cbet_flop", "CBetF", 6),
-    ("fold_to_cbet_flop", "FCBetF", 7),
-    ("af_flop", "AFf", 6),
+    ("fold_to_3bet", "F3B", 6),
+    ("cbet_flop", "CBet", 6),
+    ("fold_to_cbet_flop", "FCB", 6),
+    ("af_flop", "AFq", 6),
     ("wtsd", "WTSD", 6),
     ("wsd", "W$SD", 6),
     ("bb_per_100", "bb/100", 7),
@@ -195,11 +192,8 @@ def _announce_sample(folder: Path) -> None:
 
 
 def _apply_bundled_aliases(conn) -> None:
-    """Merge the sample's players the way the original table's were: one person on
-    several devices is one `player N`, not one per PokerNow ID."""
-    with BUNDLED_ALIASES.open(newline="", encoding="utf-8") as fh:
-        pairs = [(r["pn_id"], r["alias"]) for r in csv.DictReader(fh)]
-    moved, _ = apply_aliases(conn, pairs)
+    """`sample.apply_bundled_aliases`, said aloud."""
+    moved = samplemod.apply_bundled_aliases(conn)
     typer.echo(f"merged {moved} sample identity row(s) per {BUNDLED_ALIASES.name}")
 
 

@@ -2822,7 +2822,7 @@ that finds exactly them: `<spot>,<term>` reproduces the cell on any page.
 
 Each cell carries `hands`, `shown` (hole cards known), `net_bb`, `bb_per_100`,
 `bb_per_100_ci`, `bb_per_100_vs_fold`, a few `rates` with their `_opp` (vpip,
-pfr, 3bet, and cbet, fold to c-bet and Agg on the request's street, wtsd, wsd),
+pfr, 3bet, and cbet, fold to c-bet and AFq on the request's street, wtsd, wsd),
 and `mix`: the shown hands' made hand on that street, coarsened to five groups
 for a bar -- **two_pair+** (two pair or better), **top_pair+** (overpair, top
 pair), **weak_pair** (underpair, middle, bottom, board pair), **draw**, **air**
@@ -3220,3 +3220,13 @@ archaeology.
     before the check-raise also had it come over the top of them, but their
     raise was already an answer to a bet, and "we bet, they check-raised" is
     the spot the term names. The raiser's view is in their `seq`: `xbR*r`.
+35. **Two accounts at one table count as two seats.** A player merged from two
+    PokerNow IDs who is dealt in on both at once has one row per seat in
+    `hand_players`, and every stat sums over rows: a hand both seats played
+    counts twice, and each seat is an opponent of the other (a fold to their own
+    3-bet is a fold to a 3-bet). Head-to-head alone folds them into one person
+    (rule 4 under "Money"). It is rare -- four hands in the author's 65 games --
+    so it is pinned by `test_two_merged_accounts_at_one_table` rather than
+    corrected. The HUD shows both cards with the same stats, marks each `= #N`
+    for the other seat, and keeps the live data, the chart's spot and `tilt?`
+    per seat.
