@@ -198,3 +198,89 @@ def test_leaks_cli(db, tmp_path):
     assert hero_of(db) in res.output
     res = runner.invoke(app, ["leaks", "--db", str(path), "--json"])
     assert json.loads(res.output)["hero"] == hero_of(db)
+
+
+def test_a_picked_hero_wins_over_the_guess(db):
+    """Logs travel between friends, so whose seat downloaded the most is only a guess:
+    a picked player is the hero for the leaks and tendencies, whoever owns the logs."""
+    from pnt.db.userdata import delete_setting, set_setting
+    from pnt.stats.leaks import HERO_SETTING, chosen_hero, guessed_hero
+    from pnt.stats.tendencies import tendencies
+
+    guess = hero_of(db)
+    other = next(r["player"] for r in report(db) if r["player"] != guess)
+    pid = db.execute("SELECT player_id FROM players WHERE alias = ?", (other,)).fetchone()[0]
+    set_setting(db, HERO_SETTING, pid)
+    assert chosen_hero(db) == hero_of(db) == other and guessed_hero(db) == guess
+    assert leaks(db)["hero"] == other
+    t = tendencies(db)
+    assert t["hero"] == other
+    assert all(p["player"] != other for x in t["pool"] for p in x["players"])
+
+    # A rename keeps the pick: it is a player_id, not a name.
+    db.execute("UPDATE players SET alias = ? WHERE player_id = ?", (other + " (renamed)", pid))
+    assert hero_of(db) == other + " (renamed)"
+    # A game they were not dealt in has no hero, not the guess.
+    games = {r[0] for r in db.execute("SELECT game_id FROM games")}
+    played = {
+        r[0] for r in db.execute(
+            "SELECT DISTINCT h.game_id FROM hands h JOIN hand_players hp ON hp.hand_id = h.hand_id"
+            " JOIN player_identities pi ON pi.pn_id = hp.pn_id WHERE pi.player_id = ?", (pid,)
+        )
+    }
+    for g in games:
+        assert hero_of(db, g) == (other + " (renamed)" if g in played else None)
+    # A player merged away drops the pick back to the guess.
+    db.execute("DELETE FROM player_identities WHERE player_id = ?", (pid,))
+    db.execute("DELETE FROM players WHERE player_id = ?", (pid,))
+    db.commit()
+    assert chosen_hero(db) is None and hero_of(db) == guess
+    assert delete_setting(db, HERO_SETTING)
+
+
+def test_hero_settings_endpoint(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
+    import importlib
+
+    monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
+    from pnt.server import app as app_module
+
+    importlib.reload(app_module)
+    conn = connect(tmp_path / "api.sqlite")
+    for path in ALL_LOGS:
+        import_csv(conn, path)
+    guess = hero_of(conn)
+    other = next(r["player"] for r in report(conn) if r["player"] != guess)
+    conn.close()
+    client = local_client(app_module.app)
+
+    got = client.get("/settings/hero").json()
+    assert got["hero"] == got["guess"] == guess and got["chosen"] is None
+    assert set(got["players"]) >= {guess, other}
+    put = client.put("/settings/hero", json={"player": other}).json()
+    assert put["hero"] == put["chosen"] == other and put["guess"] == guess
+    assert client.get("/tendencies").json()["hero"] == other
+    assert client.get("/leaks").json()["hero"] == other
+    assert client.put("/settings/hero", json={"player": "nobody by this name"}).status_code == 404
+    assert client.get("/settings/hero").json()["chosen"] == other
+    back = client.put("/settings/hero", json={"player": None}).json()
+    assert back["hero"] == guess and back["chosen"] is None
+
+
+def test_hero_cli(db, tmp_path):
+    from typer.testing import CliRunner
+
+    from pnt.cli import app
+
+    path = str(tmp_path / "t.sqlite")
+    runner = CliRunner()
+    guess = hero_of(db)
+    other = next(r["player"] for r in report(db) if r["player"] != guess)
+    res = runner.invoke(app, ["hero", "--db", path])
+    assert res.exit_code == 0 and f"hero: {guess} (guessed" in res.output
+    res = runner.invoke(app, ["hero", other, "--db", path])
+    assert res.exit_code == 0 and f"hero: {other} (picked" in res.output
+    assert hero_of(db) == other
+    assert runner.invoke(app, ["hero", "nobody by this name", "--db", path]).exit_code != 0
+    res = runner.invoke(app, ["hero", "--clear", "--db", path])
+    assert res.exit_code == 0 and hero_of(db) == guess

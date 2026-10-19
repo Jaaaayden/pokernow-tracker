@@ -1209,6 +1209,57 @@ def write_hud_settings(req: Annotated[HudColumnsRequest, Body()]) -> dict:
     return _hud_settings(set_setting(db(), HUD_SETTING, req.columns))
 
 
+# ---- who you are -------------------------------------------------------------
+# The hero the leaks, tendencies and stats pages are about. Guessed from whose logs
+# these are, which goes wrong once a friend's downloads are imported here; picked on
+# the front page or with `pnt hero`, it is kept in the database like the HUD columns.
+
+
+def _hero_settings(conn: sqlite3.Connection) -> dict:
+    from pnt.stats.leaks import chosen_hero, guessed_hero, hero_of
+
+    players = [
+        r["alias"]
+        for r in conn.execute(
+            "SELECT p.alias, COUNT(*) AS n FROM players p"
+            " JOIN player_identities pi ON pi.player_id = p.player_id"
+            " JOIN hand_players hp ON hp.pn_id = pi.pn_id"
+            " GROUP BY p.player_id ORDER BY n DESC, p.alias"
+        )
+    ]
+    return {"hero": hero_of(conn), "chosen": chosen_hero(conn), "guess": guessed_hero(conn), "players": players}
+
+
+class HeroRequest(BaseModel):
+    #: An alias, or null to go back to the guess.
+    player: str | None = None
+
+
+@app.get("/settings/hero")
+def read_hero_settings() -> dict:
+    """Who the hero is (`hero`), the one picked (`chosen`, null when none is), the
+    guess from whose logs these are (`guess`), and every player, most hands first."""
+    return _hero_settings(db())
+
+
+@app.put("/settings/hero")
+def write_hero_settings(req: Annotated[HeroRequest, Body()]) -> dict:
+    """Pick the hero by alias, or null to go back to the guess. 404 on an alias
+    with no player."""
+    from pnt.db.userdata import delete_setting, set_setting
+    from pnt.stats.leaks import HERO_SETTING
+
+    conn = db()
+    if req.player is None:
+        delete_setting(conn, HERO_SETTING)
+    else:
+        row = conn.execute("SELECT player_id FROM players WHERE alias = ?", (req.player,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"no player {req.player!r}")
+        set_setting(conn, HERO_SETTING, row["player_id"])
+    return _hero_settings(conn)
+
+
 # ---- where the files are --------------------------------------------------------
 # The database and the log folder, chosen on the front page. Applied at once, with no
 # restart, and recorded in the machine config (pnt/local_config.py) so the next start

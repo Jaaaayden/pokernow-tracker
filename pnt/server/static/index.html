@@ -104,6 +104,10 @@
                  border: 1px solid var(--ring); border-radius: 6px; padding: 4px 8px; min-width: 0; }
   .files input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
   .files input:disabled { color: var(--muted); }
+  .files select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--page);
+                  border: 1px solid var(--ring); border-radius: 6px; padding: 3px 6px; min-width: 0;
+                  grid-column: 2 / -1; justify-self: start; max-width: 100%; }
+  .files select:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
   .files button { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--page);
                   border: 1px solid var(--ring); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
   .files button:hover:not(:disabled) { border-color: var(--accent); }
@@ -114,7 +118,7 @@
   .files .status.bad { color: var(--down); }
   @media (max-width: 560px) {
     .files .row { grid-template-columns: 1fr 1fr; }
-    .files label, .files input, .files .note { grid-column: 1 / -1; }
+    .files label, .files input, .files select, .files .note { grid-column: 1 / -1; }
   }
   @media (max-width: 480px) { dl { grid-template-columns: 1fr; gap: 2px 0; } dd { margin-bottom: 8px; } }
 </style>
@@ -215,6 +219,11 @@
 
   <h3 id="files-h">Files</h3>
   <section class="panel files hidden" id="files" aria-labelledby="files-h">
+    <div class="row">
+      <label for="f-hero">You</label>
+      <select id="f-hero"></select>
+      <p class="note" id="f-hero-note">Whose leaks and tendencies the pages show.</p>
+    </div>
     <div class="row">
       <label for="f-db">Database</label>
       <input id="f-db" type="text" spellcheck="false" autocomplete="off">
@@ -542,6 +551,36 @@
   for (const [kind, input] of Object.entries(box)) {
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") filesUse(kind); });
   }
+
+  // You: "auto" follows whoever downloaded the most logs, which a friend's imported
+  // logs can tip; picking a name fixes it for this database.
+  const heroBox = $("f-hero");
+
+  function heroPaint(h) {
+    const auto = new Option(h.guess ? `auto: ${h.guess}` : "auto: nobody yet", "");
+    heroBox.replaceChildren(auto, ...h.players.map((p) => new Option(p, p)));
+    heroBox.value = h.chosen || "";
+    $("f-hero-note").textContent = h.chosen
+      ? "Whose leaks and tendencies the pages show. Picked by you."
+      : "Whose leaks and tendencies the pages show. Auto = whoever downloaded the most logs; pick yourself if that is wrong.";
+  }
+
+  heroBox.addEventListener("change", async () => {
+    filesStatus("saving…");
+    try {
+      heroPaint(await filesCall("/settings/hero", "PUT", { player: heroBox.value || null }));
+      filesStatus("you are " + (heroBox.value || "auto") + " ✓");
+    } catch (e) {
+      filesStatus("not saved: " + (e.message || e), true);
+    }
+  });
+
+  (async () => {
+    try {
+      const r = await fetch("/settings/hero");
+      if (r.ok) heroPaint(await r.json());
+    } catch { /* the row stays empty; the paths below still load */ }
+  })();
 
   (async () => {
     try {

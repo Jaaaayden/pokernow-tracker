@@ -2068,9 +2068,13 @@ overstates. Until the band reads the pool's own bluff share at each size, the
 finder has no page: the Tendencies page shows the tags on the hero and the
 tags shared across the regulars instead (`tendencies.py`).
 
-**The hero** is the player whose identity owns the most logs
-(`games.hero_pn_id`), ties to the alias first in case-folded order; with `game`,
-that game's owner. No log naming an owner is an empty result, not an error.
+**The hero** is the player picked with `pnt hero` or on the front page (the
+`hero` setting, a `player_id`, so a rename keeps it; with `game`, that player if
+dealt in there, else none). With no pick, or the picked player merged away, it is
+the player whose identity owns the most logs (`games.hero_pn_id`), ties to the
+alias first in case-folded order; with `game`, that game's owner. The pick exists
+because logs travel: a friend's downloads imported here would make the friend the
+hero. No hero is an empty result, not an error.
 Every hand the hero was dealt into counts, in their own logs or anyone's.
 
 **Rate leaks.** Each stat is a count over its opportunity filter, so `n` is that

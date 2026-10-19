@@ -101,8 +101,13 @@
 
   function renderYou(d) {
     const body = $("you-body");
-    $("you-sub").textContent = d.hero || "";
-    if (!d.hero) { body.textContent = "No log names its owner yet: download one from your own seat."; return; }
+    const who = $("you-sub");
+    who.textContent = d.hero ? d.hero + " · " : "";
+    const pick = node("a", d.hero ? "not you?" : "pick yourself");
+    pick.href = "/#files-h";
+    pick.title = "Choose who you are on the front page, under Files";
+    who.append(pick);
+    if (!d.hero) { body.textContent = "No log names its owner yet: download one from your own seat, or pick yourself."; return; }
     if (!d.you.length) { body.textContent = "No tag fires on you."; return; }
     const t = node("table");
     for (const x of d.you) {

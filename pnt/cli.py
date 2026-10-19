@@ -506,6 +506,7 @@ def setup(
     typer.echo("Next: load the extension in Chrome -- open chrome://extensions,")
     typer.echo("turn on Developer mode, choose 'Load unpacked', and pick this folder:")
     typer.echo(f"    {EXTENSION_DIR}")
+    typer.echo("Already loaded? Click its reload arrow there, so it runs the files just installed.")
     typer.echo("")
     typer.echo(f"Then open a PokerNow game. Charts: http://{host}:{port}/chart  ({hands} hands)")
 
@@ -2190,6 +2191,38 @@ def winnings(
 
 
 @app.command()
+def hero(
+    player: str = typer.Argument(None, help="Your player name, as `pnt alias list` prints it."),
+    clear: bool = typer.Option(False, "--clear", help="Forget the pick and go back to the guess."),
+    db: Path = DbOpt,
+) -> None:
+    """Who "you" are on the leaks, tendencies and stats pages.
+
+    Guessed from whose seat the logs were downloaded from, so importing a friend's
+    logs can make them "you". Pick yourself once and the guess is ignored:
+    `pnt hero Sam`. With no name, says who it is now.
+    """
+    from .db.userdata import delete_setting, set_setting
+    from .stats.leaks import HERO_SETTING, chosen_hero, guessed_hero
+
+    conn = connect(db)
+    if clear:
+        delete_setting(conn, HERO_SETTING)
+    elif player is not None:
+        row = conn.execute("SELECT player_id FROM players WHERE alias = ?", (player,)).fetchone()
+        if row is None:
+            raise typer.BadParameter(f"no player {player!r}; `pnt alias list` shows every name")
+        set_setting(conn, HERO_SETTING, row["player_id"])
+    picked, guess = chosen_hero(conn), guessed_hero(conn)
+    if picked:
+        typer.echo(f"hero: {picked} (picked; the guess would be {guess or 'nobody'})")
+    elif guess:
+        typer.echo(f"hero: {guess} (guessed: owns the most logs). Not you? pnt hero <your name>")
+    else:
+        typer.echo("hero: nobody. No log names its owner; pick yourself with pnt hero <your name>.")
+
+
+@app.command()
 def leaks(
     db: Path = DbOpt,
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
@@ -2198,10 +2231,10 @@ def leaks(
 ) -> None:
     """Your leaks: the stats of your own game furthest outside their bands, and what they cost.
 
-    The hero is the owner of the downloaded logs. Each stat is held against a band
-    of ordinary values; the ones outside it rank by cost (bb per 100 of your hands)
-    times confidence (how much of the 95% range is outside the band). Each row's
-    filter opens its hands on your chart.
+    The hero is the one `pnt hero` picked, else the owner of the most downloaded
+    logs. Each stat is held against a band of ordinary values; the ones outside it
+    rank by cost (bb per 100 of your hands) times confidence (how much of the 95%
+    range is outside the band). Each row's filter opens its hands on your chart.
     """
     from .stats.leaks import leaks as hero_leaks
 
@@ -2211,7 +2244,7 @@ def leaks(
         typer.echo(json.dumps(out, indent=2))
         return
     if out["hero"] is None:
-        typer.echo("No hero: no log names its owner. Import a log you downloaded yourself.")
+        typer.echo("No hero: no log names its owner. Import a log you downloaded yourself, or pnt hero <your name>.")
         return
     typer.echo(f"{out['hero']}  {out['hands']} hands ({out['bb_hands']} with a known result)"
                f"   {_fmt(out['bb_per_100'])} bb/100 +/- {_fmt(out['bb_per_100_ci'])}\n")

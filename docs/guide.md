@@ -793,7 +793,9 @@ The **Tendencies** page (linked from the front page, or `GET /tendencies`) puts
 the tags to two uses:
 
 - **You:** the tags an opponent's HUD would show on you, and how they would play
-  you. It needs a log that names its owner, which the logs you download yourself do.
+  you. "You" is whoever downloaded the most logs, so importing a friend's logs can
+  make it them: pick yourself under **Files → You** on the front page, or
+  `pnt hero <your name>`.
 - **Your opponents:** every tag that fires on your regulars (200+ hands), most
   common first, with who it fires on. Click a name for those hands on their chart.
 
@@ -805,7 +807,7 @@ pnt leaks --all          # every stat judged, inside its band or not
 ```
 
 The same rules turned on yourself, in the terminal and at `GET /leaks` only.
-It needs a log that names its owner. Twelve of your
+It needs a log that names its owner, or a pick with `pnt hero`. Twelve of your
 stats (VPIP, PFR, 3-bet, ATS, fold to steal, flop c-bet, fold to flop c-bet, WTSD,
 W$SD, WWSF, turn probe and flop float) are held against a band of ordinary values,
 and your fold share against each size of bet is held against that size's

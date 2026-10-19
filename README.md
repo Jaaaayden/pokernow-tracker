@@ -401,6 +401,7 @@ pnt h2h henry                                # money between henry and each oppo
 pnt shows henry                              # what they showed without being asked
 pnt bounties                                 # the 7-2 leaderboard
 pnt leaks                                    # your own leaks (experimental)
+pnt hero Sam                                 # who "you" are, if the guess is wrong
 pnt alias list                               # the player names you can query
 pnt alias merge onlybluffs genericpoker      # one person, two devices
 pnt redact --out pnt/logs                    # copies you can publish

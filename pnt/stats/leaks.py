@@ -20,7 +20,8 @@ Every candidate carries:
   the band's edge, which is the fold-equity table's own measure.
 
 The leaks rank by cost × confidence, and the top three are what the stats page
-shows. The hero is `games.hero_pn_id`, the owner of the downloaded logs.
+shows. The hero is the player picked with `pnt hero`, else `games.hero_pn_id`,
+the owner of the most downloaded logs.
 
 The bands are judgement values, the same kind `tags.THRESHOLDS` holds, and reuse
 its cutoffs where a tag already draws the line. The other way, measuring against
@@ -35,6 +36,7 @@ import sqlite3
 from collections import Counter
 from collections.abc import Iterable
 
+from ..db.userdata import get_setting
 from .derive import Facts
 from .filters import parse_filter
 from .fold_equity import MIN_SAMPLE, break_even, fold_equity
@@ -118,10 +120,25 @@ def _round(x: float | None, nd: int = 2) -> float | None:
     return round(x, nd) if x is not None else None
 
 
-def hero_of(conn: sqlite3.Connection, game: str | None = None) -> str | None:
-    """The hero's alias: the player whose identity owns the most logs
-    (`games.hero_pn_id`), in one game when `game` is given. None when no log
-    names a hero, or the hero has no alias yet."""
+#: The settings key (`db.userdata`) naming the hero by `player_id`, chosen with
+#: `pnt hero` or on the front page. A player_id, not an alias, so a rename keeps it.
+HERO_SETTING = "hero"
+
+
+def chosen_hero(conn: sqlite3.Connection) -> str | None:
+    """The alias picked as the hero, or None when none is picked or that player is
+    gone (merged into someone else)."""
+    pid = get_setting(conn, HERO_SETTING)
+    if not isinstance(pid, int):
+        return None
+    row = conn.execute("SELECT alias FROM players WHERE player_id = ?", (pid,)).fetchone()
+    return row["alias"] if row else None
+
+
+def guessed_hero(conn: sqlite3.Connection, game: str | None = None) -> str | None:
+    """The player whose identity owns the most logs (`games.hero_pn_id`), in one
+    game when `game` is given. None when no log names a hero, or the hero has no
+    alias yet."""
     where, params = "WHERE hero_pn_id IS NOT NULL", ()
     if game:
         where, params = where + " AND game_id = ?", (game,)
@@ -135,6 +152,25 @@ def hero_of(conn: sqlite3.Connection, game: str | None = None) -> str | None:
         return None
     # Most logs, then the alias, so a tie always names the same person.
     return min(logs, key=lambda a: (-logs[a], a.casefold()))
+
+
+def hero_of(conn: sqlite3.Connection, game: str | None = None) -> str | None:
+    """The hero's alias: the one picked (`chosen_hero`), else the guess
+    (`guessed_hero`). A picked hero wins because logs travel: a friend's downloads
+    imported here would otherwise make the friend "you". With `game`, a picked
+    hero who was not dealt in there is no hero, not the guess."""
+    picked = chosen_hero(conn)
+    if picked is None:
+        return guessed_hero(conn, game)
+    if game is None:
+        return picked
+    played = conn.execute(
+        "SELECT 1 FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
+        " JOIN player_identities pi ON pi.pn_id = hp.pn_id JOIN players p ON p.player_id = pi.player_id"
+        " WHERE h.game_id = ? AND p.alias = ? LIMIT 1",
+        (game, picked),
+    ).fetchone()
+    return picked if played else None
 
 
 def _band(key: str, lo: float, hi: float, facts: list[Facts]) -> tuple[float, float] | None:
