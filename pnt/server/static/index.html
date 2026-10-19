@@ -544,6 +544,10 @@
       body: JSON.stringify(body),
     });
     const out = await r.json().catch(() => ({}));
+    // No such route: the page is newer than the server still running.
+    if (r.status === 404 && out.detail === "Not Found") {
+      throw new Error("the running server is older than this page: run `pnt service restart`");
+    }
     if (!r.ok) throw new Error(out.detail || `HTTP ${r.status}`);
     return out;
   }
