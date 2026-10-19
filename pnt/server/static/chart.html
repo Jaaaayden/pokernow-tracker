@@ -64,7 +64,7 @@
   .pnote:empty { display: none; }
   .pnote + .controls.narrow { margin-top: 0; }
   .pnote .text { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--accent); padding: 1px 0 1px 8px; }
-  .pnote .pen { padding: 0 6px; font-size: 12px; color: var(--muted); }
+  .pnote .pen { flex: none; padding: 0 6px; font-size: 12px; color: var(--muted); }
   .pnote .pen:hover { color: var(--ink); border-color: var(--accent); }
   .pnote.editing { flex-direction: column; align-items: stretch; gap: 4px; }
   .pnote textarea { width: 100%; max-width: 72ch; min-height: 3.4em; resize: vertical; font: inherit; font-size: 13px;
@@ -129,8 +129,10 @@
   /* --- chart card --- */
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; }
   .card.loading { opacity: .45; transition: opacity .15s; }
-  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-  .card-head h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  /* Title left, every control together on the right. Spread with space-between,
+     a middle control (Estimate, the sizing selects) floated alone mid-card. */
+  .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .card-head h2 { font-size: 14px; font-weight: 600; margin: 0 auto 0 0; padding-right: 4px; }
   .card-head .ctl { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
   .grid-wrap { overflow-x: auto; }
@@ -1564,18 +1566,20 @@
     line.classList.remove("editing");
     line.replaceChildren();
     if (!state.player) return;
+    // The ✎ leads, as on the review rows: after the text it hung off the widest
+    // line, wherever that fell.
     const text = playerNotes.get(state.player);
-    if (text) {
-      const t = document.createElement("span");
-      t.className = "text"; t.textContent = text;
-      line.appendChild(t);
-    }
     const pen = document.createElement("button");
     pen.type = "button"; pen.className = "pen";
     pen.textContent = text ? "✎" : "✎ note";
     pen.title = text ? `edit your note on ${state.player}` : `write down what you know about ${state.player}`;
     pen.addEventListener("click", editPlayerNote);
     line.appendChild(pen);
+    if (text) {
+      const t = document.createElement("span");
+      t.className = "text"; t.textContent = text;
+      line.appendChild(t);
+    }
   }
 
   function editPlayerNote() {
@@ -2842,9 +2846,10 @@
         + ` · total ${fmtBb(p.total)} = red ${fmtBb(p.red)} + blue ${fmtBb(p.blue)}`
         + (adj ? ` · adjusted ${fmtBb(p.adjusted)}${p.allin ? " (all-in)" : ""}` : "");
     };
+    // Through the screen transform, not the box: past max-height the drawing
+    // shrinks and centres inside a box still the full width.
     const locate = (ev) => {
-      const rect = svg.getBoundingClientRect();
-      const px = (ev.clientX - rect.left) * W / rect.width;
+      const px = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(svg.getScreenCTM().inverse()).x;
       return Math.max(1, Math.min(n, Math.round((px - L) * n / (W - L - R))));
     };
     hit.addEventListener("mousemove", (ev) => point(locate(ev)));
