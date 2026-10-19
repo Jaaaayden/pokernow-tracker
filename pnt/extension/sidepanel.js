@@ -575,7 +575,12 @@
     const hasSession = seats.some((s) => s.session);
     // The compact table carries the legend in its own header.
     $("legend").hidden = !hasSession || state.compact;
-    if (!seats.length) {
+    if (!seats.length && pending()) {
+      // Between hands there is no roster to draw cards from, but the stats are on
+      // their way: placeholder cards say so, rather than "no one dealt in yet".
+      for (let i = 0; i < 4; i++) body.appendChild(skeletonCard());
+      body.append(el("div", "empty dots", "loading stats"));
+    } else if (!seats.length) {
       body.append(state.hud || state.live ? el("div", "empty", "no one dealt in yet")
         : el("div", "empty dots", "waiting for the first hand"));
     } else if (state.compact) {
@@ -734,6 +739,23 @@
       selectPlayer(s.alias, "", { by: "tilt" }, s.pn_id);
     });
     return chip;
+  }
+
+  // A card's shape with nothing in it yet: a bar for the name, one per stat.
+  function skeletonCard() {
+    const c = el("div", "card skeleton");
+    const who = el("div", "who");
+    const name = el("span", "skel");
+    name.style.width = "70px";
+    who.appendChild(name);
+    const stats = el("div", "stats");
+    for (const col of cols()) {
+      const cell = el("span", "stat");
+      cell.append(el("span", "k", col.label), el("span", "skel"));
+      stats.appendChild(cell);
+    }
+    c.append(who, stats);
+    return c;
   }
 
   function card(s, lv) {

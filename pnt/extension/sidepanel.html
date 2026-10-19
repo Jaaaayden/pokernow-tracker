@@ -43,6 +43,8 @@
      panel can be dragged narrow and still fit a stats row of four. */
   .card { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.07); cursor: pointer; }
   .card:hover { background: rgba(255,255,255,.03); }
+  .card.skeleton { cursor: default; }
+  .card.skeleton:hover { background: none; }
   .card.sel { background: rgba(57,135,229,.18); }
   .card.out > * { opacity: .45; }
   .who { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
