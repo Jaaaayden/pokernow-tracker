@@ -78,6 +78,7 @@ from pnt.stats.review import (
     set_note,
 )
 from pnt.stats.tags import tags_for
+from pnt import update
 from pnt.update import EXTENSION_DIR, extension_build
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
@@ -98,6 +99,25 @@ log = logging.getLogger(__name__)
 #: Seconds between log-folder syncs while the server runs; 0 turns them off. Each
 #: pass is a stat per file, so a short interval costs nothing between changes.
 SYNC_SECONDS = float(os.environ.get("PNT_SYNC_SECONDS", "5"))
+
+#: Whether to ask GitHub if this install is behind; PNT_UPDATE_CHECK=0 stops it.
+UPDATE_CHECK = os.environ.get("PNT_UPDATE_CHECK", "1") != "0"
+UPDATE_CHECK_SECONDS = 6 * 3600
+#: Commits this install lacks (see update.py), None until GitHub has said.
+UPDATE_BEHIND: int | None = None
+
+
+def _update_loop(stop: threading.Event, sha: str) -> None:
+    """Keep UPDATE_BEHIND current until `stop` is set. A failed check keeps the
+    last answer: offline for an afternoon is no reason to drop the banner."""
+    global UPDATE_BEHIND
+    branch = update.source_branch(update.installed_source())
+    while True:
+        behind = update.commits_behind(sha, branch)
+        if behind is not None:
+            UPDATE_BEHIND = behind
+        if stop.wait(UPDATE_CHECK_SECONDS):
+            return
 
 
 def _sync_loop(stop: threading.Event) -> None:
@@ -199,6 +219,9 @@ async def _lifespan(_app: FastAPI):
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
         worker.start()
+    sha = update.installed_commit() if UPDATE_CHECK else None
+    if sha is not None:
+        threading.Thread(target=_update_loop, args=(stop, sha), name="update-check", daemon=True).start()
     try:
         yield
     finally:
@@ -470,6 +493,8 @@ def health() -> dict:
         # one that outlived it on the same port.
         "pid": os.getpid(),
         "extension_build": EXTENSION_BUILD,
+        # More than 0: `pnt update` would bring this many commits.
+        "update_behind": UPDATE_BEHIND,
     }
 
 

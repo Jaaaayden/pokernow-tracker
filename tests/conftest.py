@@ -13,6 +13,8 @@ sys.path.insert(0, str(ROOT))
 # Before anything imports pnt: the CLI's --db default and the log folder are read
 # from the machine config at import, and the real one names the real database.
 os.environ["PNT_CONFIG"] = str(Path(tempfile.mkdtemp(prefix="pnt-config-")) / "config.json")
+# And no server started here asks GitHub whether it is out of date.
+os.environ["PNT_UPDATE_CHECK"] = "0"
 
 FIXTURES = ROOT / "tests" / "fixtures"
 

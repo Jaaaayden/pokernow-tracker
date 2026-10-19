@@ -27,6 +27,9 @@
   /* On the game page (float mode) the header is what the box is dragged by. */
   body.embed .head { cursor: move; user-select: none; }
   body.embed .head button { cursor: pointer; }
+  .update { padding: 5px 8px; background: rgba(57,135,229,.18); border-bottom: 1px solid rgba(57,135,229,.5); }
+  .update b { color: #7fb2ef; }
+  .update code { font: 10.5px ui-monospace, Consolas, monospace; background: rgba(255,255,255,.1); padding: 0 4px; border-radius: 3px; }
 
   .settings { border-bottom: 1px solid rgba(255,255,255,.1); }
   .settings iframe { display: block; width: 100%; height: 360px; border: 0; background: #1a1a19; }
@@ -131,6 +134,7 @@
     <button id="hide" title="hide the HUD — the toolbar icon brings it back" hidden>✕</button>
     <span class="live" id="live"></span>
   </div>
+  <div class="update" id="update" hidden></div>
   <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
   <div class="empty" id="nogame">Nothing from this tab yet. If this is a PokerNow game, reload the page — a game opened before the extension was (re)loaded is not being tracked.</div>
   <main id="main" hidden>

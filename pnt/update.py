@@ -16,6 +16,10 @@ Windows will not delete -- and a restart without the reinstall keeps the old cod
   files in `/health` (`extension_build`); a loaded extension that sees the hash
   change under it reloads (background.js), and Chrome reads the new files from
   the same folder, which a reinstall does not move.
+* **The server says when there is one.** An archive install knows its commit
+  (`installed_commit`); the server asks GitHub every few hours how far behind its
+  branch that is and reports it in `/health` (`update_behind`), which the front
+  page and the side panel show as a banner.
 """
 
 from __future__ import annotations
@@ -24,16 +28,22 @@ import hashlib
 import importlib
 import importlib.metadata
 import json
+import re
 import subprocess
 import sys
+import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
 DIST = "pokernow-tracker"
+REPO = "Jaaaayden/pokernow-tracker"
 #: Where friends install from: an archive needs no git on their machine.
-DEFAULT_SOURCE = "https://github.com/Jaaaayden/pokernow-tracker/archive/refs/heads/main.zip"
+DEFAULT_SOURCE = f"https://github.com/{REPO}/archive/refs/heads/main.zip"
 PACKAGE_DIR = Path(__file__).parent
 EXTENSION_DIR = PACKAGE_DIR / "extension"
+#: Holds `$Format:%H$`, which GitHub's archives replace with the commit
+#: (.gitattributes: export-subst). A checkout keeps the placeholder.
+COMMIT_FILE = PACKAGE_DIR / "_commit.txt"
 
 
 class UpdateError(RuntimeError):
@@ -90,6 +100,48 @@ def installed_source(dist: str = DIST) -> str | None:
         ref = vcs.get("requested_revision")
         return f"{vcs['vcs']}+{url}" + (f"@{ref}" if ref else "")
     return url
+
+
+def installed_commit(path: Path = COMMIT_FILE) -> str | None:
+    """The commit this copy was installed from, or None when it cannot know.
+
+    Only an install from a GitHub archive knows: a checkout, or pip building from
+    one (`git+`), keeps the placeholder.
+    """
+    try:
+        sha = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
+def source_branch(source: str | None) -> str:
+    """The branch an archive URL names, so a copy installed from v1 follows v1."""
+    m = re.search(r"/archive/refs/heads/(.+)\.zip$", source or "")
+    return m.group(1) if m else "main"
+
+
+def _get_json(url: str) -> dict:
+    req = urllib.request.Request(url, headers={"User-Agent": "pnt", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.load(r)
+
+
+def commits_behind(sha: str, branch: str, *, fetch: Callable[[str], dict] = _get_json) -> int | None:
+    """How many commits on `branch` this install lacks: 0 when it has them all,
+    None when GitHub cannot say (offline, rate-limited, a commit it never saw).
+
+    Unauthenticated, the API allows 60 calls an hour; the server makes one every
+    few hours.
+    """
+    try:
+        body = fetch(f"https://api.github.com/repos/{REPO}/compare/{sha}...{branch}")
+        # base...head: "ahead" means the branch has commits this install lacks.
+        if body["status"] in ("ahead", "diverged"):
+            return int(body["ahead_by"])
+        return 0
+    except Exception:
+        return None
 
 
 def requirements(dist: str = DIST) -> list[str]:

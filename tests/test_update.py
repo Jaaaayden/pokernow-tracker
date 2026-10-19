@@ -246,3 +246,78 @@ def test_a_checkout_on_linux_is_told_to_restart_pnt_serve(updating, monkeypatch,
     result = CliRunner().invoke(app, ["update"])
     assert result.exit_code == 1
     assert "restart `pnt serve`" in result.output
+
+
+# ------------------------------------------------------------ update banner ---
+
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def test_an_archive_install_knows_its_commit(tmp_path):
+    f = tmp_path / "_commit.txt"
+    f.write_text(SHA + "\n", encoding="utf-8")
+    assert upd.installed_commit(f) == SHA
+
+
+def test_a_checkout_or_a_missing_file_knows_no_commit(tmp_path):
+    f = tmp_path / "_commit.txt"
+    assert upd.installed_commit(f) is None
+    f.write_text("$Format:%H$\n", encoding="utf-8")
+    assert upd.installed_commit(f) is None
+
+
+def test_github_archives_fill_in_the_commit():
+    """The .gitattributes line that makes main.zip carry its commit."""
+    if shutil.which("git") is None:
+        pytest.skip("no git here")
+    root = upd.PACKAGE_DIR.parent
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+    if head.returncode != 0:
+        pytest.skip("not a git checkout")
+    if subprocess.run(["git", "-C", str(root), "cat-file", "-e", "HEAD:pnt/_commit.txt"]).returncode:
+        pytest.skip("pnt/_commit.txt is not committed yet")
+    # The working tree's attributes, so an uncommitted change to them counts.
+    out = subprocess.run(
+        ["git", "-C", str(root), "archive", "--worktree-attributes", "--format=tar", "HEAD", "pnt/_commit.txt"],
+        capture_output=True, check=True,
+    ).stdout
+    import io
+    import tarfile
+
+    with tarfile.open(fileobj=io.BytesIO(out)) as tar:
+        text = tar.extractfile("pnt/_commit.txt").read().decode().strip()
+    assert text == head.stdout.strip()
+
+
+@pytest.mark.parametrize(
+    ("source", "branch"),
+    [
+        (upd.DEFAULT_SOURCE, "main"),
+        ("https://github.com/Jaaaayden/pokernow-tracker/archive/refs/heads/v1.zip", "v1"),
+        ("C:/somewhere/else", "main"),
+        (None, "main"),
+    ],
+)
+def test_the_check_follows_the_branch_installed_from(source, branch):
+    assert upd.source_branch(source) == branch
+
+
+def test_commits_behind_reads_githubs_compare():
+    asked = []
+
+    def fetch(url):
+        asked.append(url)
+        return {"status": "ahead", "ahead_by": 4, "behind_by": 0}
+
+    assert upd.commits_behind(SHA, "main", fetch=fetch) == 4
+    assert asked == [f"https://api.github.com/repos/{upd.REPO}/compare/{SHA}...main"]
+    assert upd.commits_behind(SHA, "main", fetch=lambda url: {"status": "identical", "ahead_by": 0}) == 0
+    # The install ahead of the branch (a developer's own build) is no update.
+    assert upd.commits_behind(SHA, "main", fetch=lambda url: {"status": "behind", "ahead_by": 0}) == 0
+
+
+def test_commits_behind_is_none_when_github_cannot_say():
+    def offline(url):
+        raise OSError("offline")
+
+    assert upd.commits_behind(SHA, "main", fetch=offline) is None

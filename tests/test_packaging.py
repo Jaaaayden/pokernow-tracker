@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 #: Read at runtime by conn.py, server/app.py and cli.py respectively.
 REQUIRED = [
+    "pnt/_commit.txt",
     "pnt/db/schema.sql",
     "pnt/server/static/chart.html",
     "pnt/server/static/stats.html",

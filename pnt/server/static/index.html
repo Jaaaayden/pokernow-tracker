@@ -57,6 +57,9 @@
           word-break: break-all; margin-top: 22px; }
   .err { color: var(--down); margin: 12px 0; }
   .hidden { display: none !important; }
+  .update { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px;
+            padding: 9px 14px; margin-bottom: 18px; }
+  .update b { color: var(--accent); }
 
   /* HUD stats: chips to pick from, by street, beside the order they print in. */
   .hud { padding: 12px 16px 14px; }
@@ -125,6 +128,7 @@
 </head>
 <body>
 <main>
+  <div class="update hidden" id="update"></div>
   <h1>PokerNow Tracker</h1>
   <p class="sub">A queryable database of every hand, keyed to stable player identity. The
     stats are derived when you ask for them, never stored — so a definition can change
@@ -275,6 +279,12 @@
         // when it is boring; anything else is worth showing in red.
         fact(n(health.parse_misses), "parse misses", health.parse_misses > 0),
       );
+      if (health.update_behind > 0) {
+        const k = health.update_behind;
+        $("update").innerHTML = `<b>Update available</b> — ${k} new change${k === 1 ? "" : "s"}.`
+          + " Run <code>pnt update</code> in a terminal.";
+        $("update").classList.remove("hidden");
+      }
     } catch (e) {
       $("err").textContent = "could not reach the server: " + (e.message || e);
       $("err").classList.remove("hidden");

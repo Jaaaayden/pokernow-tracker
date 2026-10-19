@@ -7,3 +7,9 @@
 # The parser is correct; the checked-out file was not. Keep these byte-identical
 # to what PokerNow serves.
 *.csv -text
+
+# GitHub's archive downloads (the main.zip friends install from) write the commit
+# into this file, so an installed copy knows which commit it is and the server can
+# tell when it is behind (update.py's installed_commit). A checkout keeps the
+# placeholder.
+pnt/_commit.txt export-subst

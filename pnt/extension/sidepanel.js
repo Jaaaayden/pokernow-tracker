@@ -749,6 +749,21 @@
     return line;
   }
 
+  // ---------------------------------------------------------------- update --
+  // The server asks GitHub every few hours whether this install is behind
+  // (update.py); asking it twice an hour is plenty to pass that on.
+  async function checkUpdate() {
+    const h = await send({ type: "health" });
+    const k = h.ok ? h.data.update_behind : 0;
+    $("update").hidden = !(k > 0);
+    if (k > 0) {
+      $("update").innerHTML = `<b>Update available</b> — ${k} new change${k === 1 ? "" : "s"}.`
+        + " Run <code>pnt update</code> in a terminal.";
+    }
+  }
+  checkUpdate();
+  setInterval(checkUpdate, 30 * 60_000);
+
   // ----------------------------------------------------------------- start --
   (async () => {
     try { state.follow = localStorage.getItem("pnt-follow") !== "0"; } catch {}

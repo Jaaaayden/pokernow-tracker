@@ -86,6 +86,15 @@ def test_health_reports_a_total_parse(client):
     assert body["extension_build"] == extension_build()
 
 
+def test_health_reports_how_far_behind_the_install_is(client, monkeypatch):
+    """The front page and the side panel show an update banner off this."""
+    from pnt.server import app as app_module
+
+    assert client.get("/health").json()["update_behind"] is None  # no check in tests
+    monkeypatch.setattr(app_module, "UPDATE_BEHIND", 3)
+    assert client.get("/health").json()["update_behind"] == 3
+
+
 def test_stats_endpoint(client):
     rows = client.get("/stats", params={"min_hands": 100}).json()
     assert rows
