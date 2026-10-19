@@ -84,10 +84,6 @@ from pnt.update import EXTENSION_DIR, extension_build
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 STATIC = Path(__file__).parent / "static"
 ICONS = EXTENSION_DIR / "icons"
-#: The extension files this server shipped with, read once: `pnt update` replaces
-#: them only while the server is stopped. A loaded extension that sees this change
-#: reloads itself to match (see pnt/update.py).
-EXTENSION_BUILD = extension_build()
 
 #: Live capture also keeps each game's CSV in the log folder, so the folder stays a
 #: running record: every game in the database, as a file `pnt import` could rebuild
@@ -476,6 +472,14 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _extension_build() -> str | None:
+    # Unreadable (the folder mid-update): none, which the extension skips.
+    try:
+        return extension_build()
+    except OSError:
+        return None
+
+
 @app.get("/health")
 def health() -> dict:
     conn = db()
@@ -492,7 +496,11 @@ def health() -> dict:
         # Which process answered: `pnt service restart` tells the new server from
         # one that outlived it on the same port.
         "pid": os.getpid(),
-        "extension_build": EXTENSION_BUILD,
+        # The extension files as they are now, not as they were at startup: a
+        # checkout edited under a running server once reported the old hash, and
+        # the extension, hashing the new files, reloaded itself over and over. A
+        # loaded extension that sees this change reloads to match (pnt/update.py).
+        "extension_build": _extension_build(),
         # More than 0: `pnt update` would bring this many commits.
         "update_behind": UPDATE_BEHIND,
     }

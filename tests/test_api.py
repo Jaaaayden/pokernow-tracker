@@ -86,6 +86,18 @@ def test_health_reports_a_total_parse(client):
     assert body["extension_build"] == extension_build()
 
 
+def test_health_hashes_the_extension_as_it_is_now(client, monkeypatch):
+    """Files edited under a running server change the build it reports.
+
+    It used to hash them once at startup, so an extension loaded from the edited
+    files never matched it and reloaded itself until Chrome disabled it.
+    """
+    from pnt.server import app as app_module
+
+    monkeypatch.setattr(app_module, "extension_build", lambda: "edited")
+    assert client.get("/health").json()["extension_build"] == "edited"
+
+
 def test_health_reports_how_far_behind_the_install_is(client, monkeypatch):
     """The front page and the side panel show an update banner off this."""
     from pnt.server import app as app_module

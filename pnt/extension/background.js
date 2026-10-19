@@ -125,7 +125,11 @@ async function hudMode() {
   const { hudMode } = await chrome.storage.sync.get({ hudMode: DEFAULTS.hudMode });
   return modeOf(hudMode);
 }
+// Off a game tab the icon opens the settings instead, with the tracker a click
+// away. The popup is set per tab, never in the manifest: there it would take the
+// click on game tabs too, and the panel would never open.
 async function applyTab(tabId, game, mode) {
+  await chrome.action.setPopup({ tabId, popup: game ? "" : "popup.html" }).catch(() => {});
   if (!sidePanel) return;
   const enabled = game && (mode ?? (await hudMode())) === "panel";
   await sidePanel.setOptions(enabled ? { tabId, path: "sidepanel.html", enabled } : { tabId, enabled }).catch(() => {});
@@ -136,16 +140,23 @@ async function applyTab(tabId, game, mode) {
 async function applyMode() {
   const mode = await hudMode();
   await sidePanel?.setPanelBehavior({ openPanelOnActionClick: mode === "panel" }).catch(() => {});
-  const tabs = await chrome.tabs.query({ url: GAME_URLS }).catch(() => []);
-  for (const t of tabs) await applyTab(t.id, true, mode);
+  // Every tab, for the popup: a tab's URL is hidden off these sites, which is
+  // enough to know it is no game.
+  const tabs = await chrome.tabs.query({}).catch(() => []);
+  for (const t of tabs) await applyTab(t.id, isGame(t.url), mode);
 }
 sidePanel?.setOptions({ enabled: false }).catch(() => {});
 applyMode();
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "sync" && changes.hudMode) applyMode();
 });
-chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id != null) chrome.tabs.sendMessage(tab.id, { type: "toggle-hud" }).catch(() => {});
+// A tab whose popup was lost (Chrome drops a tab's action settings when it loads
+// a new page) still gets the settings rather than a click that does nothing.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab?.id == null) return;
+  if (isGame(tab.url)) return chrome.tabs.sendMessage(tab.id, { type: "toggle-hud" }).catch(() => {});
+  await chrome.action.setPopup({ tabId: tab.id, popup: "popup.html" }).catch(() => {});
+  chrome.action.openPopup?.({ windowId: tab.windowId }).catch(() => {});
 });
 
 // A closed tab's report would otherwise sit in session storage until the browser closes.
@@ -153,9 +164,10 @@ chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove(`stat
 // Nor may it outlive a reload or a move off the game: the side panel would go on
 // showing a table that is no longer there. A game page reports again as it loads.
 // Its panel follows its URL: a reload keeps it, and a move off the game drops it.
+// Again once loaded: the popup setting can be dropped after "loading" is heard.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status === "loading") chrome.storage.session.remove(`status:${tabId}`);
-  if (info.status === "loading" || info.url) applyTab(tabId, isGame(tab.url));
+  if (info.status || info.url) applyTab(tabId, isGame(tab.url));
 });
 
 // ---------------------------------------------------------- self-update --
@@ -201,8 +213,16 @@ async function checkBuild(health) {
   if (!build) return; // a server older than the check
   await hashing;
   const { build: mine } = await chrome.storage.session.get("build");
-  if (!mine) await chrome.storage.session.set({ build });
-  else if (mine !== build) chrome.runtime.reload();
+  if (!mine) return chrome.storage.session.set({ build });
+  // Once per server build: if the files read after a reload still differ from
+  // it, another reload reads them again and differs again -- Chrome stops that
+  // loop only by disabling the extension. Local storage outlives the reload.
+  const { reloadedFor } = await chrome.storage.local.get("reloadedFor");
+  if (mine === build) { if (reloadedFor) chrome.storage.local.remove("reloadedFor"); }
+  else if (reloadedFor !== build) {
+    await chrome.storage.local.set({ reloadedFor: build });
+    chrome.runtime.reload();
+  }
 }
 // On any message, at most once a minute: a table being played messages every few
 // seconds, and an idle extension has nothing to update for.

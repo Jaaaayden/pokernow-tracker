@@ -21,11 +21,13 @@
   .kv span:nth-child(odd) { color: #898781; }
   .ok { color: #0ca30c; } .bad { color: #d03b3b; }
   a { color: #2a78d6; }
+  a.open { display: block; text-align: center; text-decoration: none; padding: 7px 10px; border-radius: 6px; background: #2a78d6; color: #fff; font-weight: 600; margin-bottom: 4px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Tracker for PokerNow</h1>
+  <a id="tracker" class="open" target="_blank" rel="noopener" href="#">Open tracker ↗</a>
   <label for="hudmode" title="Side panel: beside the page, on game tabs only. Floating: a box on the game page you can drag and resize; the toolbar icon shows and hides it.">HUD</label>
   <select id="hudmode">
     <option value="panel">Side panel (split screen)</option>
@@ -39,7 +41,7 @@
   <input id="livemin" type="number" min="1" max="1000">
   <label for="liveknown" title="A live spot is narrowed to boards like this one (highest card, paired or not) only while at least this many shown hands survive it. 0 always narrows.">Min shown hands to narrow by board</label>
   <input id="liveknown" type="number" min="0" max="1000">
-  <div class="row"><button id="save">Save</button><span id="health"></span><a id="tracker" target="_blank" rel="noopener" href="#">tracker ↗</a></div>
+  <div class="row"><button id="save">Save</button><span id="health"></span></div>
   <div class="kv" id="status"></div>
 </main>
 <script src="popup.js"></script>

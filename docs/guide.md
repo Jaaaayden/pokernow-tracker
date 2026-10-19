@@ -672,7 +672,8 @@ Open a PokerNow game and click the extension's toolbar icon (pin it first) to op
 Chrome's side panel. It sits beside the game, so nothing covers the table. It only
 opens on PokerNow game tabs, and it hides when you switch to another tab and comes
 back when you return. Its ⏸ pauses capture, and its ⚙ holds the server URL, poll
-interval and capture status.
+interval and capture status. Off a game tab, the icon opens those settings, with
+**Open tracker ↗** to the tracker site.
 
 **Floating instead.** Set ⚙ → HUD to *Floating on the page* to get the same HUD as a
 box on the game page. Drag it by its header and resize it from its bottom-right
