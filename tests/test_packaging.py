@@ -37,6 +37,7 @@ REQUIRED = [
     "pnt/server/static/allin.html",
     "pnt/server/static/filter-help.js",
     "pnt/server/static/replay.js",
+    "pnt/server/static/loading.js",
     "pnt/extension/manifest.json",
     "pnt/extension/content.js",
     "pnt/extension/background.js",

@@ -445,6 +445,13 @@ def filter_help_script() -> Response:
     return _script("filter-help.js")
 
 
+@app.get("/loading.js", include_in_schema=False)
+def loading_script() -> Response:
+    """Every page's loading bar, seconds counter and what-to-try box when a request
+    is slow or the server cannot be reached; loaded first, in each page's <head>."""
+    return _script("loading.js")
+
+
 @app.get("/replay.js", include_in_schema=False)
 def replay_script() -> Response:
     """The hand replay renderer, shared by the chart and all-in pages."""

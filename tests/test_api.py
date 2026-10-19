@@ -527,6 +527,17 @@ def test_the_replay_renderer_is_one_script_shared_by_both_pages(client):
     assert "function renderReplay" not in client.get("/chart").text
 
 
+def test_every_page_loads_the_loading_signal_first(client):
+    """It wraps fetch, so it must run before any page script asks for data."""
+    script = client.get("/loading.js")
+    assert script.status_code == 200 and script.headers["content-type"].startswith("text/javascript")
+    for page in ("/", "/stats.html", "/chart", "/allin.html", "/pots.html", "/tendencies.html", "/players.html"):
+        html = client.get(page, headers={"accept": "text/html"}).text
+        head = html[: html.index("</head>")]
+        assert '<script src="/loading.js"></script>' in head, page
+        assert head.index("/loading.js") < min((i for i in (head.find("<script>"), len(head)) if i >= 0)), page
+
+
 def test_the_front_door_links_every_page(client):
     text = client.get("/").text
     for href in ("/stats.html", "/chart", "/players.html", "/allin.html", "/chart?by=review", "/tendencies.html"):
