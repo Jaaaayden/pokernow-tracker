@@ -46,14 +46,20 @@ def extension_build(folder: Path = EXTENSION_DIR) -> str:
     The manifest version is no use here: nobody bumps it. The tests beside the
     scripts are left out, since Chrome never loads them and a change to one
     should not reload anybody's extension.
+
+    background.js hashes its own copy the same way, so the order is the plain
+    string order of the paths, which JavaScript's sort() also gives.
     """
     h = hashlib.sha256()
-    for path in sorted(p for p in folder.rglob("*") if p.is_file()):
-        rel = path.relative_to(folder).as_posix()
-        if rel.endswith(".test.mjs"):
-            continue
-        h.update(rel.encode() + b"\0" + path.read_bytes() + b"\0")
+    for rel in sorted(extension_files(folder)):
+        h.update(rel.encode() + b"\0" + (folder / rel).read_bytes() + b"\0")
     return h.hexdigest()[:12]
+
+
+def extension_files(folder: Path = EXTENSION_DIR) -> list[str]:
+    """The files the build covers, as paths relative to the folder."""
+    rels = (p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
+    return [rel for rel in rels if not rel.endswith(".test.mjs")]
 
 
 def checkout_root(package_dir: Path = PACKAGE_DIR) -> Path | None:

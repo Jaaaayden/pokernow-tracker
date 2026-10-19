@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -50,6 +52,33 @@ def test_the_build_ignores_the_tests_beside_the_scripts(tmp_path):
 
 def test_the_build_covers_the_shipped_extension():
     assert len(upd.extension_build()) == 12
+
+
+def _background() -> str:
+    return (upd.EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
+
+
+def test_the_extension_hashes_every_file_the_server_does():
+    """background.js lists its files by hand: it cannot read its own folder."""
+    src = _background()
+    listed = src[src.index("const FILES = [") : src.index("];", src.index("const FILES = ["))]
+    assert sorted(re.findall(r'"([^"]+)"', listed)) == sorted(upd.extension_files())
+
+
+def test_the_extension_hashes_its_files_as_the_server_does():
+    """Else every extension would see a stranger's hash and reload once a minute."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    src = _background()
+    body = src[src.index("const FILES = [") : src.index("let hashing")]
+    folder = json.dumps(str(upd.EXTENSION_DIR))
+    script = (
+        f"{body}\nconst fs = require('fs'), path = require('path');"
+        f"buildOf(FILES, async (rel) => fs.readFileSync(path.join({folder}, rel))).then(console.log);"
+    )
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == upd.extension_build()
 
 
 # ------------------------------------------------------------------- source ---

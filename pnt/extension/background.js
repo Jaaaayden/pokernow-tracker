@@ -159,18 +159,47 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 });
 
 // ---------------------------------------------------------- self-update --
-// `pnt update` replaces these files in place, and Chrome goes on running the copy
-// it loaded until the extension is reloaded. The server reports a hash of the
-// files it shipped with, and the first one this instance hears is taken as its
-// own: session storage is emptied by a reload and by a browser restart, the two
-// times Chrome reads the files afresh. A different hash after that means the
-// files changed underneath, so it reloads, and takes the new hash as its own.
+// `pnt update` (or a reinstall) replaces these files in place, and Chrome goes on
+// running the copy it loaded until the extension is reloaded. The server reports
+// a hash of the files it shipped with; one that differs from this instance's own
+// means the files changed underneath, so it reloads.
+//
+// Its own is hashed from the folder the way the server hashes it (update.py's
+// extension_build), when Chrome has just read the files: on install, on a reload
+// and at browser start. It used to be the first hash heard from the server, which
+// was the new one whenever the server first answered after the reinstall -- the
+// browser left open, no game opened since, or the server down until then -- so
+// the old copy took the new hash as its own and never reloaded.
+//
+// Every file in the folder bar the tests: test_update.py holds the two lists equal.
+const FILES = [
+  "background.js", "content.js", "icons/icon128.png", "icons/icon16.png", "icons/icon32.png",
+  "icons/icon48.png", "manifest.json", "normalize.js", "pager.js", "popup.html", "popup.js",
+  "sidepanel.html", "sidepanel.js", "spot.js", "watch.js",
+];
+async function buildOf(files, read) {
+  const enc = new TextEncoder(), zero = new Uint8Array([0]), parts = [];
+  for (const rel of [...files].sort()) parts.push(enc.encode(rel), zero, new Uint8Array(await read(rel)), zero);
+  const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  parts.reduce((at, p) => (all.set(p, at), at + p.length), 0);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", all));
+  return [...digest].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
+let hashing = null;
+function hashOwnFiles() {
+  const read = (rel) => fetch(chrome.runtime.getURL(rel)).then((r) => r.arrayBuffer());
+  // Unreadable (the folder mid-reinstall): the first hash heard stands in, as before.
+  hashing = buildOf(FILES, read).then((build) => chrome.storage.session.set({ build }), () => {});
+}
+chrome.runtime.onStartup.addListener(hashOwnFiles);
+
 const BUILD_CHECK_MS = 60_000;
 let buildCheckedAt = 0;
 async function checkBuild(health) {
   buildCheckedAt = Date.now();
   const build = health?.extension_build;
   if (!build) return; // a server older than the check
+  await hashing;
   const { build: mine } = await chrome.storage.session.get("build");
   if (!mine) await chrome.storage.session.set({ build });
   else if (mine !== build) chrome.runtime.reload();
@@ -189,6 +218,7 @@ checkBuildSoon();
 // table would go uncaptured until the page was reloaded by hand.
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason !== "install" && reason !== "update") return;
+  hashOwnFiles();
   const files = chrome.runtime.getManifest().content_scripts.flatMap((c) => c.js);
   const tabs = await chrome.tabs.query({ url: GAME_URLS }).catch(() => []);
   for (const t of tabs) chrome.scripting.executeScript({ target: { tabId: t.id }, files }).catch(() => {});
