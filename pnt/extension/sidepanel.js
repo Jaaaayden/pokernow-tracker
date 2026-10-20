@@ -248,13 +248,14 @@
   const STUCK_MS = { tab: 15_000, down: 10_000, loading: 30_000 };
   const stuckSince = {};
   let stuckShut = null, stuckOn = null;
-  const DOWN = /failed to fetch|not reachable|networkerror|load failed/i;
-  // A stats figure still on its way: /live has come, /hud has not, and the table
-  // has hands for it (a new game's first hand has none to wait for).
-  const pending = () => !!state.live && !state.hud && !state.snap?.hudEmpty;
+  // A stats figure still on its way: /live has come, /hud has not, the table has
+  // hands for it (a new game's first hand has none to wait for), and /hud has not
+  // failed -- a failure is in the status line, and its figures read "–".
+  const pending = () => !!state.live && !state.hud && !state.snap?.hudEmpty && !state.snap?.hudError;
   function stuckCase() {
     const s = state.snap;
-    const down = !!s && DOWN.test(`${s.lastError || ""} ${s.text || ""}`);
+    // The tracker's own requests failing to connect (content.js), not PokerNow's.
+    const down = !!s?.trackerDown;
     const now = { tab: !s, down, loading: !!s && !down && pending() };
     const t = Date.now();
     for (const k of Object.keys(now)) stuckSince[k] = now[k] ? stuckSince[k] ?? t : null;
@@ -407,7 +408,7 @@
     if (!pinned && heldAt === moment()) return;
     heldAt = null;
     const s = PNT.nextSpot(state.live, pinned, state.sentSpots[0], state.acting);
-    if (s) selectPlayer(s.player, s.filter, undefined, PNT.pickRow(state.live, pinned, state.acting)?.pn_id ?? null);
+    if (s) selectPlayer(s.player, s.filter, undefined, s.pn_id);
   }
   function closeChart() {
     $("chart").hidden = true;

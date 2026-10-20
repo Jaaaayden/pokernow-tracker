@@ -92,6 +92,36 @@ def test_the_pages_show_the_sample_while_capture_and_the_hud_stay_yours(server, 
     assert client.get("/health").json()["dataset"] == "own"
 
 
+def test_the_huds_writes_go_to_your_database_while_the_pages_show_the_sample(server, tmp_path):
+    """The 🚩 and a card's ✎ say `capture=1`: the table and its players are yours."""
+    client = local_client(server.app)
+    own_hands = client.get("/health").json()["hands"]
+    client.put("/settings/dataset", json={"which": "sample"})
+    _wait_for_sample(client)
+    assert client.get("/health").json()["capture_hands"] == own_hands, "the HUD's count, not the sample's"
+
+    def flags():
+        conn = connect(tmp_path / "own.sqlite")
+        try:
+            return conn.execute("SELECT COUNT(*) FROM hand_flags WHERE game_id = ?", (HU_GAME,)).fetchone()[0]
+        finally:
+            conn.close()
+
+    flag = f"/games/{HU_GAME}/hands/3/flag?capture=1"
+    assert client.post(flag, json={"flagged": True}).json()["flagged"] is True
+    assert flags() == 1
+    # Clearing used to land on the sample, report success and leave yours flagged.
+    assert client.post(flag, json={"flagged": False}).json()["flagged"] is False
+    assert flags() == 0
+
+    seat = client.get(f"/hud/{HU_GAME}").json()["seats"][0]["alias"]
+    note = client.post(f"/players/{seat}/note?capture=1", json={"note": "jams light"})
+    assert note.status_code == 200
+    assert client.get(f"/hud/{HU_GAME}").json()["seats"][0]["note"] == "jams light"
+    # Without it, the same write is about what the pages show: the sample has no such player.
+    assert client.post(f"/players/{seat}/note", json={"note": "x"}).status_code == 404
+
+
 def test_a_built_sample_is_reused_and_an_updated_one_rebuilt(server, monkeypatch):
     client = local_client(server.app)
     client.put("/settings/dataset", json={"which": "sample"})

@@ -195,14 +195,10 @@ def wilson(num: int, den: int, z: float = 1.96) -> tuple[float, float] | None:
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
-def _bb_ci(t: Tally) -> float | None:
-    """Half-width of bb/100's 95% interval: 1.96 · sd / √n · 100, from the sample
-    standard deviation of each hand's net in big blinds. None under two hands."""
-    return _ci(t.bb_n, t.bb_sum, t.bb_sq)
-
-
 def _ci(n: int, total: Fraction, sq: Fraction) -> float | None:
-    """`_bb_ci` from its three sums: n, Σx and Σx², x in big blinds."""
+    """Half-width of a bb/100's 95% interval: 1.96 · sd / √n · 100, from the sample
+    standard deviation of each hand's x in big blinds, given n, Σx and Σx². None
+    under two hands."""
     if n < 2:
         return None
     var = (sq - total * total / n) / (n - 1)
@@ -392,6 +388,8 @@ def rates(t: Tally) -> dict:
     c = t.counts
     # A limper facing the open: the three answers are every way out of it.
     limp_faced = c["limp_raise"] + c["limp_call"] + c["limp_fold"]
+    # Each sum read once: they are summed over the blind sizes on every read.
+    bb_sum, vs_fold = t.bb_sum, _vs_fold(t)
     out = {
         "hands": t.hands,
         "vpip": _rate(c["vpip"], c["vpip_opp"]),
@@ -401,14 +399,14 @@ def rates(t: Tally) -> dict:
         "wtsd": _rate(c["wtsd"], c["wtsd_opp"]),
         "wsd": _rate(c["wsd"], c["wtsd"]),
         "net": t.net,
-        "bb_per_100": round(float(100 * t.bb_sum / t.bb_n), 2) if t.bb_n else None,
+        "bb_per_100": round(float(100 * bb_sum / t.bb_n), 2) if t.bb_n else None,
         # The total behind bb/100: each complete hand's net in its own big blinds.
-        "net_bb": round(float(t.bb_sum), 2) if t.bb_n else None,
-        "bb_per_100_ci": _bb_ci(t),
+        "net_bb": round(float(bb_sum), 2) if t.bb_n else None,
+        "bb_per_100_ci": _ci(t.bb_n, bb_sum, t.bb_sq),
         # Against folding every hand: 0 is no better than folding. SPEC.md,
         # "bb/100 against folding".
-        "bb_per_100_vs_fold": round(float(100 * _vs_fold(t) / t.bb_n), 2) if t.bb_n else None,
-        "bb_per_100_vs_fold_ci": _ci(t.bb_n, _vs_fold(t), t.vf_sq),
+        "bb_per_100_vs_fold": round(float(100 * vs_fold / t.bb_n), 2) if t.bb_n else None,
+        "bb_per_100_vs_fold_ci": _ci(t.bb_n, vs_fold, t.vf_sq),
         # Won when saw flop, and the part of it won without a showdown.
         "wwsf": _rate(c["wwsf"], c["wtsd_opp"]),
         "wwsf_nsd": _rate(c["wwsf_nsd"], c["wtsd_opp"]),

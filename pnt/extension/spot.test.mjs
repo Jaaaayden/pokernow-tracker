@@ -82,12 +82,12 @@ test("the pinned player wins while seated, else the player to act", () => {
 
 test("a spot is sent once; a player with no data is still followed, on all their hands", () => {
   const first = nextSpot(live(), null, null);
-  assert.deepEqual(first, { player: "genericpoker", filter: "position=BB,faced_open", exact: true, label: "facing open" });
+  assert.deepEqual(first, { player: "genericpoker", pn_id: "gp", filter: "position=BB,faced_open", exact: true, label: "facing open" });
   assert.equal(nextSpot(live(), null, { player: first.player, filter: first.filter }), null, "same spot again");
   assert.equal(nextSpot(live({ to_act: "new" }), null, null), null, "no identity yet: nothing to chart");
   const gone = live();
   gone.players[1].resolved = null;
-  assert.deepEqual(nextSpot(gone, null, first), { player: "genericpoker", filter: "", exact: false, label: "all hands" },
+  assert.deepEqual(nextSpot(gone, null, first), { player: "genericpoker", pn_id: "gp", filter: "", exact: false, label: "all hands" },
     "no data: the chart still moves to them");
   assert.equal(nextSpot(gone, null, { player: "genericpoker", filter: "" }), null, "and is not sent twice");
   assert.equal(nextSpot(live(), "Chris", first).player, "Chris", "pinning changes who is sent");
@@ -119,11 +119,11 @@ test("the table's player to act leads the log's", () => {
 
 test("ahead of the log, the chart shows all their hands; the spot follows once /live agrees", () => {
   const ahead = nextSpot(named(), null, null, "chris");
-  assert.deepEqual(ahead, { player: "Chris", filter: "", exact: false, label: "all hands" },
+  assert.deepEqual(ahead, { player: "Chris", pn_id: "chris", filter: "", exact: false, label: "all hands" },
     "their resolved spot is from before the action came round");
   assert.equal(nextSpot(named(), null, ahead, "chris"), null, "and is not sent twice");
   const caught = nextSpot(named({ to_act: "chris" }), null, ahead, "chris");
-  assert.deepEqual(caught, { player: "Chris", filter: "position=BTN/SB,unopened", exact: true, label: "unopened" });
+  assert.deepEqual(caught, { player: "Chris", pn_id: "chris", filter: "position=BTN/SB,unopened", exact: true, label: "unopened" });
   assert.deepEqual(nextSpot(named(), null, null, "gp"), nextSpot(named(), null, null),
     "when the table and the log agree, nothing changes");
   assert.equal(nextSpot(named(), "Chris", null, "gp").filter, "position=BTN/SB,unopened",
@@ -138,6 +138,7 @@ test("one player on two seats: the chart follows the seat, not the first with th
     return l;
   };
   assert.equal(nextSpot(two({ to_act: "chris2" }), null, null).filter, "position=BB,3bet", "the seat to act");
+  assert.equal(nextSpot(two({ to_act: "chris2" }), null, null).pn_id, "chris2", "and says which seat");
   assert.equal(nextSpot(two({ to_act: "chris2" }), "Chris", null).filter, "position=BB,3bet",
     "a pin on them takes the seat to act");
   assert.equal(nextSpot(two(), "Chris", null).filter, "position=BTN/SB,unopened", "else the first seat still in");

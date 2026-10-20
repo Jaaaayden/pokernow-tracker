@@ -20,6 +20,7 @@ import logging
 import os
 import sqlite3
 import threading
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -31,6 +32,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from pnt import update
 from pnt.db.conn import connect, generation, path_of
 from pnt.db.userdata import FLAGGED_TAG, tag_resolver
 from pnt.ingest import log_folder, sync
@@ -80,7 +82,6 @@ from pnt.stats.review import (
     set_note,
 )
 from pnt.stats.tags import tags_for
-from pnt import update
 from pnt.update import EXTENSION_DIR, extension_build
 
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
@@ -88,6 +89,8 @@ DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 #: a database of its own (pnt/ingest/sample.py); DB_PATH stays yours, and capture
 #: keeps writing there. Never saved: every start is back on your own data.
 SAMPLE_ON = False
+#: The sample's database while SAMPLE_ON (`sample.database()`, read on the switch).
+SAMPLE_PATH: Path | None = None
 STATIC = Path(__file__).parent / "static"
 ICONS = EXTENSION_DIR / "icons"
 
@@ -181,33 +184,48 @@ class _Switched(Exception):
 _switches = 0
 
 
-#: The databases a warm-up is running on now; `/health` reports whether yours is one.
+#: The databases whose lifetime report a warm-up is deriving right now: what a cold
+#: `/hud` waits on, and what `/health`'s `warming` says. Not the rest of the
+#: warm-up, which can run for minutes after the HUD has its stats.
 _warming: set[Path] = set()
+#: (database, switch count) of each warm-up running, so one is never started twice
+#: on a file -- the switch count, so A -> B -> A starts a fresh one on A.
+_warm_running: set[tuple[Path, int]] = set()
+_warm_lock = threading.Lock()
 
 
-def _warm_strength(path: Path | None = None) -> None:
+def _warm_strength(path: Path | None = None, wanted: Callable[[], bool] | None = None) -> None:
     """Derive the lifetime report, measure every shown holding's hand strength the
     database does not have yet (a no-op once it is complete, a minute or two the
     first time; stats/strength.py), then count the pool the tags are judged
     against, so the first HUD after a start pays for none of them. The report
     goes first: it needs no strengths, and it is most of a cold `/hud`.
 
-    Stops at the next pause once the front page switches the database: left
-    running, it would burn CPU on a database nobody reads, and its flush would take
-    values the new warm-up computed into the old file."""
+    Stops at the next pause once the front page switches the database, or once
+    `wanted` says no (the sample, once the pages leave it): left running, it would
+    burn CPU on a database nobody reads, and its flush would take values the new
+    warm-up computed into the old file. A database already being warmed is left to
+    the warm-up on it."""
     path, started = path or DB_PATH, _switches
+    with _warm_lock:
+        if (path, started) in _warm_running:
+            return
+        _warm_running.add((path, started))
 
     def between() -> None:
         _wait_idle()
-        if _switches != started:
+        if _switches != started or (wanted is not None and not wanted()):
             raise _Switched
 
     conn = None
-    _warming.add(path)
     try:
         conn = connect(path)
         between()
-        report(conn)
+        _warming.add(path)
+        try:
+            report(conn)
+        finally:
+            _warming.discard(path)
         added = strength.warm(conn, between=between)
         if added:
             log.info("hand strength: %d stored", added)
@@ -218,7 +236,8 @@ def _warm_strength(path: Path | None = None) -> None:
     except Exception:
         log.exception("warm-up failed")
     finally:
-        _warming.discard(path)
+        with _warm_lock:
+            _warm_running.discard((path, started))
         if conn is not None:
             conn.close()
 
@@ -342,13 +361,23 @@ GameId = Annotated[str, FastApiPath(pattern=GAME_ID_PATTERN)]
 
 def db():
     """The database the pages read: the bundled sample's while it is switched on."""
-    return connect(SAMPLE_PATH if SAMPLE_ON and SAMPLE_PATH else DB_PATH)
+    return connect(SAMPLE_PATH if SAMPLE_ON and SAMPLE_PATH is not None else DB_PATH)
 
 
 def capture_db():
     """Your own database, whatever the pages show: live capture, the log-folder
     sync and the HUD never read or write the sample."""
     return connect(DB_PATH)
+
+
+#: `?capture=1` on a write the HUD makes (its 🚩, a card's ✎): its table and its
+#: players are in your own database even while the pages show the sample, where
+#: the same write from a page is about what the page is showing.
+CaptureOpt = Annotated[bool, Query(description="The HUD's write: always to your own database.")]
+
+
+def _db_for(capture: bool):
+    return capture_db() if capture else db()
 
 
 class Entry(BaseModel):
@@ -566,7 +595,17 @@ def health() -> dict:
         "warming": DB_PATH in _warming,
         # What the pages show (the counts above are its); capture is always yours.
         "dataset": "sample" if SAMPLE_ON else "own",
+        # The hands the HUD reads from, which the sample never is.
+        "capture_hands": _capture_hands() if SAMPLE_ON else row["h"],
     }
+
+
+def _capture_hands() -> int:
+    conn = capture_db()
+    try:
+        return conn.execute("SELECT COUNT(*) FROM hands").fetchone()[0]
+    finally:
+        conn.close()
 
 
 @app.post("/ingest")
@@ -651,20 +690,21 @@ def stats(
     if split:
         from pnt.stats.queries import split_report
 
-        groups = [_predicate(conn, term) for term in split]
-        pred = _predicate(conn, filter)
+        # The tags read once for every term that names them; the filters compiled
+        # only when the answer is not already kept.
+        tags = _tag_print(conn) if any(t and "tag" in t for t in (filter, *split)) else None
 
         def answer() -> dict:
-            rows, parts = split_report(conn, game, min_hands, pred, groups)
+            groups = [_predicate(conn, term) for term in split]
+            rows, parts = split_report(conn, game, min_hands, _predicate(conn, filter), groups)
             return {"rows": rows, "splits": [{"term": t, "rows": p} for t, p in zip(split, parts)]}
 
-        return remembered(conn, ("stats", game, _spot_key(conn, filter), min_hands,
-                                  tuple(_spot_key(conn, t) for t in split)), answer)
-    pred = _predicate(conn, filter)
-    if pred is None:
+        return remembered(conn, ("stats", game, _spot_key(conn, filter, tags), min_hands,
+                                  tuple(_spot_key(conn, t, tags) for t in split)), answer)
+    if not filter:
         return report(conn, game_id=game, min_hands=min_hands)  # cached in queries.py already
     return remembered(conn, ("stats", game, _spot_key(conn, filter), min_hands, ()),
-                       lambda: report(conn, game_id=game, min_hands=min_hands, predicate=pred))
+                      lambda: report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter)))
 
 
 def _predicate(conn: sqlite3.Connection, filter: str | None):
@@ -675,16 +715,22 @@ def _predicate(conn: sqlite3.Connection, filter: str | None):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _spot_key(conn: sqlite3.Connection, filter: str | None) -> str | None:
+def _spot_key(conn: sqlite3.Connection, filter: str | None, tags: int | None = None) -> str | None:
     """`filter` as a cache key. A `tag=` term reads tags no generation counts, so
-    a filter that may hold one carries every tag and flag along with it."""
+    a filter that may hold one carries every tag and flag along with it: `tags`,
+    when the caller has already read them (`_tag_print`)."""
     if not filter or "tag" not in filter:
         return filter
+    return f"{filter}\x00{_tag_print(conn) if tags is None else tags}"
+
+
+def _tag_print(conn: sqlite3.Connection) -> int:
+    """Every tag and flag, as one number that changes when any of them does."""
     rows = conn.execute(
         "SELECT game_id, hand_number, tag FROM hand_tags UNION ALL"
         " SELECT game_id, hand_number, '' FROM hand_flags ORDER BY 1, 2, 3"
     ).fetchall()
-    return f"{filter}\x00{hash(tuple(tuple(r) for r in rows))}"
+    return hash(tuple(tuple(r) for r in rows))
 
 
 @app.get("/allin", response_model=None)
@@ -840,7 +886,7 @@ class PlayerNoteRequest(BaseModel):
 
 
 @app.post("/players/{alias:path}/note")
-def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()]) -> dict:
+def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()], capture: CaptureOpt = False) -> dict:
     """Write down what you know about a player, or clear the note.
 
     One note per person, not per PokerNow ID: it is kept on the canonical player,
@@ -850,7 +896,7 @@ def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()]) -> 
     their HUD card.
     """
     try:
-        note = set_player_note(db(), alias, req.note)
+        note = set_player_note(_db_for(capture), alias, req.note)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
@@ -1133,22 +1179,18 @@ class FlagRequest(BaseModel):
 
 
 @app.post("/games/{game_id}/hands/{hand_number}/flag")
-def write_flag(game_id: GameId, hand_number: int, req: Annotated[FlagRequest, Body()]) -> dict:
+def write_flag(
+    game_id: GameId, hand_number: int, req: Annotated[FlagRequest, Body()], capture: CaptureOpt = False,
+) -> dict:
     """Flag one hand for manual review, or clear the flag.
 
     Addressed by the log's own (game_id, hand_number) rather than a hand_id: the
     HUD flags the hand that just ended, which the rebuild may not have derived yet.
-    While the pages show the sample, a hand not in it is the HUD's, in yours.
     """
     try:
-        at = set_flag(db(), game_id, hand_number, req.flagged)
+        at = set_flag(_db_for(capture), game_id, hand_number, req.flagged)
     except ValueError as exc:
-        if not SAMPLE_ON:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        try:
-            at = set_flag(capture_db(), game_id, hand_number, req.flagged)
-        except ValueError as again:
-            raise HTTPException(status_code=404, detail=str(again)) from again
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"game_id": game_id, "hand_number": hand_number, "flagged": at is not None, "flagged_at": at}
 
 
@@ -1547,7 +1589,12 @@ def _enter_sample(path: Path) -> None:
     SAMPLE_PATH, SAMPLE_ON = path, True
     # Not counted as a switch: your own database's warm-up has the HUD to serve,
     # and strength values are the cards' alone, so two at once share them safely.
-    threading.Thread(target=_warm_strength, args=(path,), name="sample-warm", daemon=True).start()
+    # It stops once the pages leave this sample; a toggle back while it still runs
+    # leaves it be rather than starting a second on the same file.
+    threading.Thread(
+        target=_warm_strength, args=(path, lambda: SAMPLE_ON and SAMPLE_PATH == path),
+        name="sample-warm", daemon=True,
+    ).start()
     log.info("pages show the sample: %s", path)
 
 

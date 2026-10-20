@@ -77,8 +77,10 @@ const handlers = {
     call(`/live/${encodeURIComponent(game_id)}?min=${count(min, 1, 1)}&known=${count(known, DEFAULTS.liveKnown, 0)}`),
 
   // The HUD's 🚩: flag a hand for the chart's Tagged tab, or clear the flag.
+  // `capture=1` on both of these writes: the HUD's table is in your own database
+  // even while the server's pages show the sample.
   flag: ({ game_id, hand_number, flagged }) =>
-    call(`/games/${encodeURIComponent(game_id)}/hands/${count(hand_number, 0, 0)}/flag`, {
+    call(`/games/${encodeURIComponent(game_id)}/hands/${count(hand_number, 0, 0)}/flag?capture=1`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ flagged: !!flagged }),
@@ -86,7 +88,7 @@ const handlers = {
 
   // A card's ✎: what you know about a player, written at the table. Empty clears it.
   playerNote: ({ alias, note }) =>
-    call(`/players/${encodeURIComponent(alias)}/note`, {
+    call(`/players/${encodeURIComponent(alias)}/note?capture=1`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ note: String(note ?? "") }),

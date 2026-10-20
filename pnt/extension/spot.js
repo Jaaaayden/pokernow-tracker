@@ -56,7 +56,8 @@
     return pickRow(live, pinned, acting)?.alias ?? null;
   }
 
-  /** The next spot to put in the chart, or null when there is nothing new to
+  /** The next spot to put in the chart -- with the seat it is read from, `pn_id`,
+   * since one player can hold two -- or null when there is nothing new to
    * show: no player to follow, or the same player and filter as last time.
    *
    * A player with no data behind their spot is still followed, on all their
@@ -74,8 +75,8 @@
     const resolved = ahead ? null : p.resolved;
     const filter = resolved?.filter || "";
     if (lastSent && lastSent.player === player && lastSent.filter === filter) return null;
-    if (!resolved) return { player, filter, exact: false, label: "all hands" };
-    return { player, filter, exact: !!resolved.exact, label: resolved.label || "" };
+    if (!resolved) return { player, pn_id: p.pn_id, filter, exact: false, label: "all hands" };
+    return { player, pn_id: p.pn_id, filter, exact: !!resolved.exact, label: resolved.label || "" };
   }
 
   function paramOf(url, key) {
@@ -234,7 +235,7 @@
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  const api = { handEnded, actingId, pickRow, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
+  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);

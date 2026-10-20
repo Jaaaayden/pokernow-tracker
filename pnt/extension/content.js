@@ -47,7 +47,7 @@
     sync: { cursor: 0, walk: null }, // see pager.js
     offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
     lastError: null, lastPoll: null, shape: null, envelopeOk: null,
-    hud: null, hudAt: 0, hudEmpty: false, paused: false,
+    hud: null, hudAt: 0, hudEmpty: false, hudError: null, trackerDown: false, paused: false,
     live: null, liveInserted: -1,
     statusText: "starting…",
     rev: 0,             // bumped whenever hud or live changes, so the panel redraws only then
@@ -71,6 +71,17 @@
     } catch (e) { resolve({ ok: false, error: String(e) }); }
   });
 
+  // A request to the tracker server, through the background worker. Whether the
+  // last one could not reach it at all is `trackerDown`, which the panel's "not
+  // answering" box reads: `lastError` holds PokerNow's fetch failures too (Wi-Fi,
+  // an outage), and those are no reason to restart the tracker.
+  const NO_SERVER = /failed to fetch|networkerror|load failed/i;
+  async function tracker(msg) {
+    const r = await send(msg);
+    state.trackerDown = !r.ok && NO_SERVER.test(r.error || "");
+    return r;
+  }
+
   const report = () => send({
     type: "status",
     status: {
@@ -81,6 +92,7 @@
       seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
       live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
       text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live, hudEmpty: state.hudEmpty,
+      hudError: state.hudError, trackerDown: state.trackerDown,
       tableActing: state.tableActing, tableActingAt: state.tableActingAt,
     },
   });
@@ -131,7 +143,7 @@
     ingest: async (entries) => {
       // No rebuild per page: a rebuild re-derives the whole game, and a history walk
       // can run to a hundred pages. `rebuildIfDue` runs at checkpoints instead.
-      const res = await send({ type: "ingest", game_id: GAME, entries, rebuild: false });
+      const res = await tracker({ type: "ingest", game_id: GAME, entries, rebuild: false });
       if (!res.ok) throw new Error(res.error);
       state.offered += res.data.offered;
       state.inserted += res.data.new;
@@ -149,7 +161,7 @@
     if (state.inserted === state.rebuiltAt) return false;
     const stale = Date.now() - state.rebuiltTime > REBUILD_STALE_MS;
     if (!force && !state.endedSince && !stale) return false;
-    const r = await send({ type: "rebuild", game_id: GAME });
+    const r = await tracker({ type: "rebuild", game_id: GAME });
     if (!r.ok) throw new Error(r.error);
     state.rebuiltAt = state.inserted;
     state.rebuiltTime = Date.now();
@@ -274,12 +286,18 @@
   }
 
   async function refreshHud() {
-    const r = await send({ type: "hud", game_id: GAME });
+    const r = await tracker({ type: "hud", game_id: GAME });
     state.hudAt = Date.now();
-    // A table with no complete hand yet has no stats to wait for: the panel tells
-    // that apart from a first /hud still on its way (`hudEmpty`).
+    // A table with no complete hand yet has no stats to wait for, and a /hud that
+    // failed has none coming: the panel tells both apart from a first /hud still
+    // on its way (`hudEmpty`, `hudError`), so neither shimmers for ever.
     const empty = !r.ok && r.error.includes("no hands");
-    if (empty !== state.hudEmpty) { state.hudEmpty = empty; changed(); }
+    const error = r.ok || empty ? null : r.error;
+    if (empty !== state.hudEmpty || error !== state.hudError) {
+      state.hudEmpty = empty;
+      state.hudError = error;
+      changed();
+    }
     if (!r.ok) { setStatus(empty ? "waiting for the first hand" : r.error); return; }
     state.hud = r.data;
     changed();
@@ -292,7 +310,7 @@
   }
 
   async function refreshLive() {
-    const r = await send({ type: "live", game_id: GAME, min: state.liveMin, known: state.liveKnown });
+    const r = await tracker({ type: "live", game_id: GAME, min: state.liveMin, known: state.liveKnown });
     if (!r.ok) { setStatus(r.error); return; }
     state.live = r.data;
     state.liveInserted = state.inserted;
@@ -450,8 +468,8 @@
       state.hudMode = s.data.hudMode === "float" ? "float" : "panel";
     }
     float.apply();
-    const h = await send({ type: "health" });
-    setStatus(h.ok ? `connected · ${h.data.hands} hands in db${h.data.warming ? " · warming up" : ""}`
+    const h = await tracker({ type: "health" });
+    setStatus(h.ok ? `connected · ${h.data.capture_hands ?? h.data.hands} hands in db${h.data.warming ? " · warming up" : ""}`
       : `tracker not reachable at ${state.server}: ${h.error}`);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
