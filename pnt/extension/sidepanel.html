@@ -137,10 +137,12 @@
   .stuck code { font: 10px ui-monospace, Consolas, monospace; background: #262624; padding: 0 3px; border-radius: 3px; }
   .stuck button { padding: 0 5px; border: 1px solid #383835; font-size: 10px; }
   .stuck .shut { float: right; border: 0; }
+  /* The "nothing from this tab" box says it with steps: the plain line would repeat it. */
+  .stuck:not([hidden]) + #nogame { display: none; }
 
   /* The key: every label on show spelled out, and what the chip styles mean. */
   .key { margin: 0; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.1); color: #c3c2b7;
-    max-height: 50vh; overflow-y: auto; }
+    max-height: 75vh; overflow-y: auto; }
   .key h4 { margin: 6px 0 2px; font-size: 10px; font-weight: 600; color: #898781; text-transform: uppercase; letter-spacing: .04em; }
   .key h4:first-child { margin-top: 0; }
   .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 1px 8px; margin: 0; }
@@ -174,6 +176,7 @@
     <span class="live" id="live"></span>
   </div>
   <div class="update" id="update" hidden></div>
+  <div class="update" id="sample" hidden>Chart shows the <b>sample</b>; these stats are your hands. Switch under Files on the front page.</div>
   <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
   <div class="key" id="key" hidden></div>
   <div class="stuck" id="stuck" role="status" hidden></div>

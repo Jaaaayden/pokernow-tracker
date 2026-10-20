@@ -112,6 +112,7 @@
     $("pause").hidden = !snap;
     if (!snap) {
       $("flag").hidden = true;
+      $("sample").hidden = true;
       $("live").textContent = "";
       setStatus("");
       return;
@@ -125,7 +126,10 @@
     }
     // While the server's pages show the sample (the front page's Data switch), the
     // cards are still your own database's, but the chart below them is the sample's.
-    setStatus((snap.text || "") + (snap.hudData?.dataset === "sample" ? " · chart shows the sample" : ""));
+    // A line of its own: at the end of the status it was cut off at panel width.
+    const sample = snap.hudData?.dataset === "sample";
+    if ($("sample").hidden === sample) { $("sample").hidden = !sample; fit(); }
+    setStatus(snap.text || "");
     $("pause").textContent = snap.paused ? "▶" : "⏸";
     $("pause").title = snap.paused ? "resume capture" : "pause capture";
     // Only new data redraws the cards: a redraw on every status tick would throw
@@ -137,6 +141,7 @@
       state.rev = snap.rev;
       state.acting = acting;
       state.hud = snap.hudData ?? null;
+      keepCols(state.hud?.columns);
       state.live = snap.liveData ?? null;
       // A note written here stands in until /hud reports the same, as the 🚩 does.
       for (const s of state.hud?.seats ?? []) {
@@ -288,7 +293,8 @@
     const steps = el("ol");
     if (kind === "tab") {
       box.append(shut, el("b", null, "Nothing from this tab."));
-      steps.append(li("Reload the PokerNow tab."), li("Still nothing: ", reloadButton(), ", then reload the tab."));
+      steps.append(li("Reload the PokerNow tab: one opened before the extension (re)loaded is not tracked."),
+        li("Still nothing: ", reloadButton(), ", then reload the tab."));
     } else if (kind === "down") {
       box.append(shut, el("b", null, `Tracker not answering at ${state.server}.`));
       steps.append(li("In a terminal: ", cmd("pnt service status")), li("Stopped or stuck: ", cmd("pnt service restart")),
@@ -498,7 +504,21 @@
     { key: "af_flop", label: "AFq", opp: "af_flop", tip: "Aggression frequency (AFq; a percentage, not the AF ratio) on the flop: of everything they did bar checking, how often "
       + "it was a bet or a raise rather than a call or a fold." },
   ];
-  const cols = () => [HANDS_COL, ...(Array.isArray(state.hud?.columns) ? state.hud.columns : FALLBACK_COLS)];
+  // Before the first /hud the placeholders take the columns the last one sent,
+  // kept in this browser, so the cards keep their shape when the figures land.
+  const COLS_KEY = "pnt-cols";
+  let keptCols = null;
+  try {
+    const c = JSON.parse(localStorage.getItem(COLS_KEY) || "null");
+    if (Array.isArray(c) && c.every((x) => x?.key && x?.label)) keptCols = c;
+  } catch {}
+  function keepCols(columns) {
+    if (!Array.isArray(columns) || JSON.stringify(columns) === JSON.stringify(keptCols)) return;
+    keptCols = columns;
+    try { localStorage.setItem(COLS_KEY, JSON.stringify(columns)); } catch {}
+  }
+  const cols = () => [HANDS_COL, ...(Array.isArray(state.hud?.columns) ? state.hud.columns
+    : !state.hud && keptCols ? keptCols : FALLBACK_COLS)];
   // A session figure is flagged as drifting when it has some sample behind it
   // and sits well away from the lifetime one. Neither direction is "good" for
   // a VPIP, so it is one colour, not red and green.
