@@ -65,6 +65,7 @@ from pnt.stats.queries import (
     hand_list,
     player_games,
     positional_report,
+    remembered,
     report,
     sat_out_list,
 )
@@ -211,6 +212,7 @@ def _warm_strength(path: Path | None = None) -> None:
         if added:
             log.info("hand strength: %d stored", added)
         pool_for(conn, between=between)
+        _warm_hero(conn, between)
     except _Switched:
         log.info("warm-up of %s stopped: database switched", path)
     except Exception:
@@ -219,6 +221,34 @@ def _warm_strength(path: Path | None = None) -> None:
         _warming.discard(path)
         if conn is not None:
             conn.close()
+
+
+def _warm_hero(conn: sqlite3.Connection, between) -> None:
+    """The hero's slow first opens, asked the way the pages ask them: the Hand
+    review (seconds to flag every hand), the spot tree at the chart's depth 4 and
+    5-hand floor (TREE_DEPTH, TREE_MIN in chart.html), Results, Tilt and the
+    Tendencies page. Each lands in the cache its endpoint reads."""
+    from pnt.stats.leaks import hero_of
+    from pnt.stats.results import results_breakdown
+    from pnt.stats.review import _review_base
+    from pnt.stats.tendencies import tendencies
+    from pnt.stats.tilt import tilt_report
+    from pnt.stats.tree import tree_for
+
+    hero = hero_of(conn)
+    if hero is None:
+        return
+    between()
+    _review_base(conn, hero, None)
+    between()
+    tree_for(conn, hero, max_depth=4, min_hands=5)
+    facts = facts_cached(conn, hero)
+    between()
+    remembered(conn, ("results", hero, None, None), lambda: results_breakdown(facts))
+    between()
+    remembered(conn, ("tilt", hero, None, None), lambda: tilt_report(facts))
+    between()
+    remembered(conn, ("tendencies", None, hero), lambda: tendencies(conn, None))
 
 
 @asynccontextmanager
@@ -622,9 +652,19 @@ def stats(
         from pnt.stats.queries import split_report
 
         groups = [_predicate(conn, term) for term in split]
-        rows, parts = split_report(conn, game, min_hands, _predicate(conn, filter), groups)
-        return {"rows": rows, "splits": [{"term": t, "rows": p} for t, p in zip(split, parts)]}
-    return report(conn, game_id=game, min_hands=min_hands, predicate=_predicate(conn, filter))
+        pred = _predicate(conn, filter)
+
+        def answer() -> dict:
+            rows, parts = split_report(conn, game, min_hands, pred, groups)
+            return {"rows": rows, "splits": [{"term": t, "rows": p} for t, p in zip(split, parts)]}
+
+        return remembered(conn, ("stats", game, _spot_key(conn, filter), min_hands,
+                                  tuple(_spot_key(conn, t) for t in split)), answer)
+    pred = _predicate(conn, filter)
+    if pred is None:
+        return report(conn, game_id=game, min_hands=min_hands)  # cached in queries.py already
+    return remembered(conn, ("stats", game, _spot_key(conn, filter), min_hands, ()),
+                       lambda: report(conn, game_id=game, min_hands=min_hands, predicate=pred))
 
 
 def _predicate(conn: sqlite3.Connection, filter: str | None):
@@ -1755,7 +1795,10 @@ def player_results(
     # module, read by this endpoint alone.
     from pnt.stats.results import results_breakdown
 
-    return {"player": alias, "filter": filter, **results_breakdown(_spot_facts(alias, filter, game))}
+    conn = db()
+    out = remembered(conn, ("results", alias, game, _spot_key(conn, filter)),
+                      lambda: results_breakdown(_spot_facts(alias, filter, game, conn)))
+    return {"player": alias, "filter": filter, **out}
 
 
 # ---- the action-line explorer -------------------------------------------------
@@ -2076,7 +2119,10 @@ def player_tilt(
     finds its hands; `clock` is how many hands have a timestamp to band by."""
     from pnt.stats.tilt import tilt_report
 
-    return {"player": alias, "filter": filter, **tilt_report(_spot_facts(alias, filter, game))}
+    conn = db()
+    out = remembered(conn, ("tilt", alias, game, _spot_key(conn, filter)),
+                      lambda: tilt_report(_spot_facts(alias, filter, game, conn)))
+    return {"player": alias, "filter": filter, **out}
 
 
 def _post_loss(conn: sqlite3.Connection, alias: str | None, pn_id: str, game_id: str) -> dict:
@@ -2118,9 +2164,12 @@ def tendencies_report(game: Annotated[str | None, Query(description="Restrict to
     """The tags on the hero (`you`), and per tag the regular opponents it fires on
     (`pool`), most first. A regular has `min_hands` hands or more. Fun tags are left
     out. Each player's entry carries the filter that opens the tag's hands."""
+    from pnt.stats.leaks import hero_of
     from pnt.stats.tendencies import tendencies
 
-    return tendencies(db(), game)
+    conn = db()
+    # The hero is a setting, not a derived fact: picking another moves no generation.
+    return remembered(conn, ("tendencies", game, hero_of(conn, game)), lambda: tendencies(conn, game))
 
 
 # ---- timing tells --------------------------------------------------------------

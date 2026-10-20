@@ -132,6 +132,27 @@ def test_players_counts_hands_without_deriving_them(client, stats):
             assert p["hands"] == derived[p["alias"]]["hands"]
 
 
+def test_remembered_answers_follow_a_merge_and_its_undo(client):
+    """A filtered /stats, Results and Tilt are kept until the generation moves; a
+    merge moves it, so none of them can answer for the players as they were."""
+    asks = {
+        "stats": lambda: client.get("/stats", params={"filter": "srp"}).json(),
+        "results": lambda: client.get("/players/genericpoker/results").json(),
+        "tilt": lambda: client.get("/players/genericpoker/tilt").json(),
+    }
+    before = {k: ask() for k, ask in asks.items()}
+    assert {k: ask() for k, ask in asks.items()} == before, "asked again: the same answer"
+
+    undo = client.post("/aliases/merge", json={"source": "onlybluffs", "target": "genericpoker"}).json()["undo"]
+    merged = {k: ask() for k, ask in asks.items()}
+    for k in asks:
+        assert merged[k] != before[k], k
+    assert "onlybluffs" not in {r["player"] for r in merged["stats"]}
+
+    assert client.post("/aliases/split", json=undo).status_code == 200
+    assert {k: ask() for k, ask in asks.items()} == before
+
+
 def test_two_merged_accounts_at_one_table(api):
     """One person on two accounts, both dealt in: pinned as the code has it, not as
     it might be. Each seat keeps its own live data and its own tilt run, but every

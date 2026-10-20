@@ -20,6 +20,7 @@ from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
+from operator import attrgetter
 from typing import Self
 
 from ..db.conn import generation, path_of, reading
@@ -236,61 +237,101 @@ _LATE_STREETS = ("turn", "river")
 _STREET_COUNTS = ("aggressive", "agg_denom")
 
 
+#: The per-hand flags and per-street dicts, read off a `Facts` in one call each:
+#: `Tally.add` runs once per player per hand, and one `getattr` per name was a
+#: third of its time.
+_flags_of = attrgetter(*_FLAGS)
+_street_flags_of = attrgetter(*_STREET_FLAGS)
+_street_counts_of = attrgetter(*_STREET_COUNTS)
+
+#: The slots of `Tally.by_bb`: per big-blind size, integer sums in chips.
+_NET, _NET_SQ, _POSTED, _VF_SQ, _IDLE = range(5)
+
+
 class Tally:
     """Everything `aggregate` reports, kept as sums, so tallies add.
 
     A tally of two sets of hands is the sum of their tallies, which is what lets a
     lifetime report be assembled from per-game pieces: a rebuild then re-derives
     one game instead of every hand in the database. `rates` turns one into the
-    stat row. bb/100 is summed as an exact fraction, so the order the pieces are
-    added in cannot move a figure by so much as a rounding step.
+    stat row. bb/100 is exact, so the order the pieces are added in cannot move a
+    figure by so much as a rounding step: chips are summed as integers per big
+    blind size (`by_bb`), and only turned into big blinds -- as fractions -- when a
+    figure is read. A database has a handful of blind sizes; it has many thousands
+    of hands, and a Fraction added per hand was most of a report's time.
     """
 
-    __slots__ = ("bb_n", "bb_sq", "bb_sum", "counts", "hands", "idle", "net", "posted", "vf_sq")
+    __slots__ = ("bb_n", "by_bb", "counts", "hands", "net")
 
     def __init__(self) -> None:
         self.hands = 0
         self.counts: Counter = Counter()
         self.net = 0
-        self.bb_sum = Fraction(0)
-        #: Σ (net / bb)² over the same hands as `bb_sum`, exact: the spread behind
-        #: bb/100's confidence interval. See SPEC.md, "Confidence intervals".
-        self.bb_sq = Fraction(0)
         self.bb_n = 0
-        # bb/100 against folding (SPEC.md, "bb/100 against folding"), over the
-        # same hands as `bb_sum`: Σ posted_bb where they had a preflop decision,
-        # Σ net_bb where they had none (a walk, which folding could not change),
-        # and Σx² of each hand's net_bb + posted_bb, 0 on a hand with no decision.
-        self.posted = Fraction(0)
-        self.idle = Fraction(0)
-        self.vf_sq = Fraction(0)
+        #: bb size -> [Σnet, Σnet², Σposted, Σ(net + posted)², Σidle net], in chips,
+        #: over the complete hands with a known big blind. See the properties below.
+        self.by_bb: dict[int, list[int]] = {}
+
+    def _in_bb(self, slot: int, squared: bool = False) -> Fraction:
+        return sum((Fraction(s[slot], bb * bb if squared else bb) for bb, s in self.by_bb.items()), Fraction(0))
+
+    @property
+    def bb_sum(self) -> Fraction:
+        """Σ net / bb: each hand normalized by *its own* big blind. Blind levels
+        move within a game, so dividing a whole session's net by one bb would
+        silently rescale history."""
+        return self._in_bb(_NET)
+
+    @property
+    def bb_sq(self) -> Fraction:
+        """Σ (net / bb)² over the same hands as `bb_sum`: the spread behind bb/100's
+        confidence interval. See SPEC.md, "Confidence intervals"."""
+        return self._in_bb(_NET_SQ, squared=True)
+
+    # bb/100 against folding (SPEC.md, "bb/100 against folding"), over the same
+    # hands as `bb_sum`: Σ posted_bb where they had a preflop decision, Σ net_bb
+    # where they had none (a walk, which folding could not change), and Σx² of each
+    # hand's net_bb + posted_bb, 0 on a hand with no decision.
+    @property
+    def posted(self) -> Fraction:
+        return self._in_bb(_POSTED)
+
+    @property
+    def idle(self) -> Fraction:
+        return self._in_bb(_IDLE)
+
+    @property
+    def vf_sq(self) -> Fraction:
+        return self._in_bb(_VF_SQ, squared=True)
 
     def add(self, x: Facts) -> None:
         c = self.counts
         self.hands += 1
-        for attr in _FLAGS:
-            if getattr(x, attr):
+        for attr, on in zip(_FLAGS, _flags_of(x)):
+            if on:
                 c[attr] += 1
-        self.net += x.net
-        # Normalize each hand by *its own* big blind. Blind levels move within a
-        # game, so dividing a whole session's net by one bb silently rescales history.
-        if x.bb_size and x.complete:
-            in_bb = Fraction(x.net, x.bb_size)
-            self.bb_sum += in_bb
-            self.bb_sq += in_bb * in_bb
+        net = x.net
+        self.net += net
+        bb = x.bb_size
+        if bb and x.complete:
+            s = self.by_bb.get(bb)
+            if s is None:
+                s = self.by_bb[bb] = [0, 0, 0, 0, 0]
+            s[_NET] += net
+            s[_NET_SQ] += net * net
             self.bb_n += 1
             if x.vpip_opp:
-                posted = Fraction(x.posted, x.bb_size)
-                self.posted += posted
-                self.vf_sq += (in_bb + posted) ** 2
+                s[_POSTED] += x.posted
+                s[_VF_SQ] += (net + x.posted) ** 2
             else:
-                self.idle += in_bb
+                s[_IDLE] += net
+        flags, counts = _street_flags_of(x), _street_counts_of(x)
         for street in _STREETS:
-            for attr in _STREET_FLAGS:
-                if getattr(x, attr).get(street):
+            for attr, by_street in zip(_STREET_FLAGS, flags):
+                if by_street.get(street):
                     c[attr, street] += 1
-            for attr in _STREET_COUNTS:
-                c[attr, street] += getattr(x, attr).get(street, 0)
+            for attr, by_street in zip(_STREET_COUNTS, counts):
+                c[attr, street] += by_street.get(street, 0)
             # How big their c-bets are, and how they answer each size of c-bet.
             if x.cbet.get(street):
                 c["cbet_size", street, x.bet_size.get(street)] += 1
@@ -316,12 +357,14 @@ class Tally:
         self.hands += other.hands
         self.counts.update(other.counts)
         self.net += other.net
-        self.bb_sum += other.bb_sum
-        self.bb_sq += other.bb_sq
         self.bb_n += other.bb_n
-        self.posted += other.posted
-        self.idle += other.idle
-        self.vf_sq += other.vf_sq
+        for bb, theirs in other.by_bb.items():
+            mine = self.by_bb.get(bb)
+            if mine is None:
+                self.by_bb[bb] = list(theirs)
+            else:
+                for i, v in enumerate(theirs):
+                    mine[i] += v
         return self
 
 
@@ -519,6 +562,32 @@ class _PlayerFacts:
 _FACTS_CACHE_MAX = 32
 _FACTS_CACHE: LRU[tuple[str, str, str | None], _PlayerFacts] = LRU(_FACTS_CACHE_MAX)
 
+#: Whole answers of the read-only questions that take a second or more and are
+#: asked again unchanged -- a filtered /stats, Results, Tilt, Tendencies -- per
+#: database, generation and arguments (`remembered`). Small dicts and lists, so a
+#: few dozen cost little; older generations' entries just age out.
+_ANSWERS: LRU[tuple, object] = LRU(32)
+
+
+def remembered(conn: sqlite3.Connection, key: tuple, compute):
+    """`compute()`, or the answer it gave for `key` at this generation.
+
+    The generation moves inside every write that changes a derived fact -- a
+    rebuild, merge, split or rename -- so a hit is exactly current. Whatever else
+    the answer depends on -- a `tag=` filter's tags, the hero picked -- belongs in
+    `key`. The caller must not change what it gets back: it is shared.
+    """
+    gen = generation(conn)
+    path = path_of(conn)
+    if gen is None or not path:
+        return compute()
+    full = (path, gen, *key)
+    hit = _ANSWERS.get(full)
+    if hit is None:
+        hit = compute()
+        _ANSWERS[full] = hit
+    return hit
+
 
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
@@ -532,6 +601,7 @@ def clear_caches() -> None:
     _GAME_TALLIES.clear()
     _FACTS_CACHE.clear()
     _REVIEW_CACHE.clear()
+    _ANSWERS.clear()
 
 
 def _game_stamps(conn: sqlite3.Connection, game_id: str | None = None) -> dict[str, int] | None:
