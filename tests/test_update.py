@@ -272,10 +272,10 @@ def test_github_archives_fill_in_the_commit():
     if shutil.which("git") is None:
         pytest.skip("no git here")
     root = upd.PACKAGE_DIR.parent
-    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
     if head.returncode != 0:
         pytest.skip("not a git checkout")
-    if subprocess.run(["git", "-C", str(root), "cat-file", "-e", "HEAD:pnt/_commit.txt"]).returncode:
+    if subprocess.run(["git", "-C", str(root), "cat-file", "-e", "HEAD:pnt/_commit.txt"], check=False).returncode:
         pytest.skip("pnt/_commit.txt is not committed yet")
     # The working tree's attributes, so an uncommitted change to them counts.
     out = subprocess.run(

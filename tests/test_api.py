@@ -535,7 +535,7 @@ def test_every_page_loads_the_loading_signal_first(client):
         html = client.get(page, headers={"accept": "text/html"}).text
         head = html[: html.index("</head>")]
         assert '<script src="/loading.js"></script>' in head, page
-        assert head.index("/loading.js") < min((i for i in (head.find("<script>"), len(head)) if i >= 0)), page
+        assert head.index("/loading.js") < min(i for i in (head.find("<script>"), len(head)) if i >= 0), page
 
 
 def test_the_front_door_links_every_page(client):

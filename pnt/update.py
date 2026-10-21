@@ -140,7 +140,9 @@ def commits_behind(sha: str, branch: str, *, fetch: Callable[[str], dict] = _get
         if body["status"] in ("ahead", "diverged"):
             return int(body["ahead_by"])
         return 0
-    except Exception:
+    # Offline or timed out (OSError), not JSON (ValueError), or not the shape
+    # GitHub sends (KeyError, TypeError): GitHub cannot say, so neither can we.
+    except (OSError, ValueError, KeyError, TypeError):
         return None
 
 

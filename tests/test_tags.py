@@ -396,7 +396,7 @@ def test_cli_one_player_with_no_hands_here_is_skipped_not_unknown(tmp_path):
         " WHERE pi.player_id = p.player_id AND h.game_id = g.game_id) LIMIT 1"
     ).fetchone()
     conn.close()
-    run = lambda *args: CliRunner().invoke(cli.app, ["tags", alias, *args, "--db", str(path)])  # noqa: E731
+    run = lambda *args: CliRunner().invoke(cli.app, ["tags", alias, *args, "--db", str(path)])
 
     result = run("--game", game)
     assert result.exit_code == 0, result.output
