@@ -426,7 +426,7 @@ def _page(name: str) -> HTMLResponse:
     """
     html = (STATIC / name).read_text(encoding="utf-8")
     # The note overlay rides on every page from here rather than a tag in each
-    # file; it does nothing until switched on (Alt+Shift+N, or ?annotate).
+    # file; it does nothing until switched on (the ` key, or ?annotate).
     html = html.replace("</body>", '<script src="/annotate.js" defer></script>\n</body>', 1)
     return HTMLResponse(
         html,
