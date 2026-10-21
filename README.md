@@ -468,3 +468,5 @@ pytest -q
 ```
 
 See [architecture.md](docs/architecture.md#testing) for what the suite guarantees.
+For parallel work in worktrees (Orca reads `orca.yaml`), see [AGENTS.md](AGENTS.md):
+`python scripts/orca_worktree.py check` runs everything CI runs.

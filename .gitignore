@@ -9,6 +9,8 @@ __pycache__/
 build/
 dist/
 .venv/
+# An Orca worktree's database copy, config and port (scripts/orca_worktree.py)
+.pnt-dev/
 
 # Personal list of game links
 links.txt

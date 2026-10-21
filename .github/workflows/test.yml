@@ -1,0 +1,26 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    # Windows: the user and most friends run the tracker there, and service.py and
+    # the packaging test take Windows-specific paths.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest -q
+      # Quoted: node expands the glob itself, so a new *.test.mjs needs no edit here.
+      - run: node --test "pnt/extension/*.test.mjs"
+      - run: python -m ruff check pnt tests

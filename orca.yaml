@@ -1,0 +1,12 @@
+# Orca (parallel agent worktrees). The scripts run under cmd.exe on Windows, so each
+# is one line handing off to scripts/orca_worktree.py; see its docstring for why a
+# worktree gets its own venv, database copy and port.
+scripts:
+  setup: python scripts/orca_worktree.py setup
+  archive: python scripts/orca_worktree.py archive
+setupAgentStartupPolicy: wait-for-setup
+issueCommand: >-
+  Work on {{artifact_url}}. Read it with `gh issue view` or `gh pr view`, then
+  follow AGENTS.md: implement it in this worktree with tests, run
+  `python scripts/orca_worktree.py check`, commit, rebase on origin/main, push the
+  branch and open a PR with `gh pr create` whose body says "Closes #N".
