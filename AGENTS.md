@@ -17,19 +17,24 @@ the user's side; docs/architecture.md has the design.
 
 ## Worktree rules (Orca)
 
+**Only in a linked git worktree** (Orca's, or one made with `git worktree add`). Check with
+`git rev-parse --git-dir`: a path containing `/worktrees/` means you are in one. In the main
+checkout none of this applies; the live tracker, its database and `pnt service` are
+used there as usual.
+
 Each worktree gets its own `.venv`, `.pnt-dev/` and port from `python scripts/orca_worktree.py setup`.
 
-- Use this worktree's `.venv`, never the root checkout's. The root's runs the root's code.
-- Never run `pnt service ...`, never bind port 52000, and never open the root
+- Use this worktree's `.venv`, never the main checkout's. That one runs the main checkout's code.
+- Never run `pnt service ...`, never bind port 52000, and never open the main checkout's
   `pokernow.sqlite` or edit `~/.pnt/config.json`. All three belong to the user's live tracker.
 - To run a server, use `python scripts/orca_worktree.py serve`. It serves a copy of
   the database on this worktree's port.
-- After a merge, the user runs `pnt service restart` in the root checkout. You don't.
+- After a merge, the user runs `pnt service restart` in the main checkout. You don't.
 
 ## Testing
 
-- `python scripts/orca_worktree.py check` runs pytest, the node tests and ruff:
-  the gate before every commit you push. CI runs the same three.
+- `python scripts/orca_worktree.py check` runs pytest, the node tests and ruff (in
+  whichever checkout you are in): the gate before every commit you push. CI runs the same three.
 - For a focused loop: `.venv/Scripts/python -m pytest -q -x tests/test_<area>.py`.
 - `tests/conftest.py` already points the config and log folder at temp dirs, so no test
   can touch real data.
