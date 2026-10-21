@@ -10,6 +10,10 @@ jobs:
     # Windows: the user and most friends run the tracker there, and service.py and
     # the packaging test take Windows-specific paths.
     runs-on: windows-latest
+    env:
+      # Typer forces a colour terminal when GITHUB_ACTIONS is set, so CLI output
+      # arrives wrapped in ANSI codes and the tests that read it fail here only.
+      _TYPER_FORCE_DISABLE_TERMINAL: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
