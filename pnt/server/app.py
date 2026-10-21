@@ -47,6 +47,7 @@ from pnt.ingest.importer import (
     set_player_note,
     split_identities,
 )
+from pnt.server import annotations
 from pnt.stats import strength
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.bluffs import CATEGORY, bluff_value, members
@@ -423,8 +424,12 @@ def _page(name: str) -> HTMLResponse:
     old copy -- but the Python behind it is loaded once, so after changing stat
     code, restart the server (`pnt service restart`).
     """
+    html = (STATIC / name).read_text(encoding="utf-8")
+    # The note overlay rides on every page from here rather than a tag in each
+    # file; it does nothing until switched on (Alt+Shift+N, or ?annotate).
+    html = html.replace("</body>", '<script src="/annotate.js" defer></script>\n</body>', 1)
     return HTMLResponse(
-        (STATIC / name).read_text(encoding="utf-8"),
+        html,
         headers={"Cache-Control": "no-store", "Content-Security-Policy": FRAME_ANCESTORS},
     )
 
@@ -497,9 +502,9 @@ def pots_page() -> HTMLResponse:
     return _page("pots.html")
 
 
-def _script(name: str) -> Response:
+def _script(name: str, folder: Path = STATIC) -> Response:
     return Response(
-        (STATIC / name).read_text(encoding="utf-8"),
+        (folder / name).read_text(encoding="utf-8"),
         media_type="text/javascript",
         headers={"Cache-Control": "no-store"},
     )
@@ -522,6 +527,13 @@ def loading_script() -> Response:
 def replay_script() -> Response:
     """The hand replay renderer, shared by the chart and all-in pages."""
     return _script("replay.js")
+
+
+@app.get("/annotate.js", include_in_schema=False)
+def annotate_script() -> Response:
+    """The note overlay. One file in the extension's folder, which the side panel
+    loads as its own (an extension page may not run a script from a server)."""
+    return _script("annotate.js", EXTENSION_DIR)
 
 
 @app.get("/filters")
@@ -1260,6 +1272,60 @@ def notes(game: str = Query(None, description="Restrict to one game_id.")) -> li
         {"game_id": g, "hand_number": n, **v}
         for (g, n), v in sorted(rows.items(), key=lambda kv: (kv[1]["noted_at"], kv[0]), reverse=True)
     ]
+
+
+class AnnotationRequest(BaseModel):
+    #: What is wrong with the element, in your words.
+    note: str = Field(min_length=1, max_length=4000)
+    #: Where: the page's path ("/chart", or "sidepanel" for the HUD) and its query.
+    page: str = Field(max_length=200)
+    query: str = Field("", max_length=2000)
+    #: Which element, as the overlay saw it. A selector may not survive a redesign,
+    #: so the tag, classes and text come along to find it again by.
+    selector: str = Field("", max_length=1000)
+    tag: str = Field("", max_length=40)
+    classes: str = Field("", max_length=300)
+    text: str = Field("", max_length=300)
+    #: The nearest heading or labelled container above it: the spot as a person names it.
+    context: str = Field("", max_length=300)
+    rect: dict[str, float] = Field(default_factory=dict)
+    viewport: dict[str, float] = Field(default_factory=dict)
+
+
+class AnnotationChange(BaseModel):
+    status: Literal["open", "resolved", "closed"] | None = None
+    #: The answer: what was changed, or why not.
+    reply: str | None = Field(None, max_length=4000)
+    note: str | None = Field(None, min_length=1, max_length=4000)
+
+
+@app.get("/annotations")
+def list_annotations(
+    status: Literal["open", "resolved", "closed"] | None = Query(None),
+    page: str | None = Query(None, description='A path such as "/chart", or "sidepanel".'),
+) -> list[dict]:
+    """Notes left on the pages with the overlay, oldest first (pnt/server/annotations.py)."""
+    return annotations.listing(status, page)
+
+
+@app.post("/annotations")
+def add_annotation(req: Annotated[AnnotationRequest, Body()]) -> dict:
+    return annotations.add(req.model_dump())
+
+
+@app.post("/annotations/{note_id}")
+def change_annotation(note_id: str, req: Annotated[AnnotationChange, Body()]) -> dict:
+    note = annotations.change(note_id, req.model_dump(exclude_none=True))
+    if note is None:
+        raise HTTPException(status_code=404, detail="no such note")
+    return note
+
+
+@app.delete("/annotations/{note_id}")
+def delete_annotation(note_id: str) -> dict:
+    if not annotations.remove(note_id):
+        raise HTTPException(status_code=404, detail="no such note")
+    return {"deleted": note_id}
 
 
 @app.get("/hud/{game_id}")

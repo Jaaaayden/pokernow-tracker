@@ -187,7 +187,7 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 //
 // Every file in the folder bar the tests: test_update.py holds the two lists equal.
 const FILES = [
-  "background.js", "content.js", "icons/icon128.png", "icons/icon16.png", "icons/icon32.png",
+  "annotate.js", "background.js", "content.js", "icons/icon128.png", "icons/icon16.png", "icons/icon32.png",
   "icons/icon48.png", "manifest.json", "normalize.js", "pager.js", "popup.html", "popup.js",
   "sidepanel.html", "sidepanel.js", "spot.js", "watch.js",
 ];
