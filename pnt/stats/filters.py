@@ -839,8 +839,8 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("double_board", "double_board", "Double Board was dealt: hand lists and Results only"),
     )),
     ("Opponent", (
-        ("vs=NAME", "vs=henry", "played against that player"),
-        ("vs!=NAME", "vs!=henry", "not against that player"),
+        ("vs=NAME", "vs=player 3", "played against that player"),
+        ("vs!=NAME", "vs!=player 3", "not against that player"),
     )),
     ("Your tags", (
         ("tag=TAG", "tag=river-bluff", "hands you tagged, e.g. tag=cooler|study · tag=flagged the 🚩 ones"),
