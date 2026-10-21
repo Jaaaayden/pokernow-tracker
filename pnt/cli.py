@@ -559,13 +559,15 @@ def update_cmd(
         typer.echo(
             "The extension reloads itself within a minute; reopen the side panel if it closes."
             " If the HUD still runs the old version, reload it once at chrome://extensions."
-            " If the restart above asked for `pnt rebuild`, run it once."
         )
         return
 
-    # No service to restart (Linux, or never `pnt service install`ed): a server
-    # started by hand keeps the old code, and the extension only reloads once a new
-    # one reports the new files, so say which of the two this is.
+    # No service to restart (Linux, or never `pnt service install`ed), so no restart
+    # to rebuild stale hands in: the new code does it here, in a fresh interpreter.
+    subprocess.run([sys.executable, "-m", "pnt.cli", "rebuild", "--if-stale"], check=False)
+
+    # A server started by hand keeps the old code, and the extension only reloads
+    # once a new one reports the new files, so say which of the two this is.
     body = svc.health(host, port)
     if body is None:
         typer.echo("updated. Start the server with `pnt serve`.")
@@ -698,12 +700,41 @@ def sync(
 
 
 @app.command()
-def rebuild(db: Path = DbOpt) -> None:
+def rebuild(
+    db: Path = DbOpt,
+    if_stale: bool = typer.Option(
+        False, "--if-stale",
+        help="Only when this version would store the hands differently, with one summary line."
+        " What `pnt update` runs.",
+    ),
+) -> None:
     """Re-derive every hand from stored raw entries. Run this after a parser change."""
+    if if_stale:
+        _rebuild_if_stale(db)
+        return
     conn = connect(db)
     for (gid,) in conn.execute("SELECT game_id FROM raw_entries GROUP BY game_id").fetchall():
         s = rebuild_game(conn, gid)
         typer.echo(f"{gid}: {s['hands']} hands, {s['parse_misses']} parse misses")
+
+
+def _rebuild_if_stale(db: Path) -> None:
+    """Rebuild every game when this code would store the hands differently
+    (`_rebuild_reasons`), with one line before and one after; else nothing.
+    What `pnt service restart` runs while the server is stopped."""
+    reasons = _rebuild_reasons(str(db))
+    if not reasons:
+        return
+    typer.echo(f"rebuilding the stored hands, so this version can {' and '.join(reasons)}")
+    conn = connect(db)
+    try:
+        games = hands = 0
+        for (gid,) in conn.execute("SELECT game_id FROM raw_entries GROUP BY game_id").fetchall():
+            hands += rebuild_game(conn, gid)["hands"]
+            games += 1
+    finally:
+        conn.close()
+    typer.echo(f"rebuilt {hands:,} hands in {games} games")
 
 
 @app.command()
@@ -1468,30 +1499,33 @@ def service_stop() -> None:
 
 @service_app.command("restart")
 def service_restart(host: str = svc.DEFAULT_HOST, port: int = svc.DEFAULT_PORT) -> None:
-    """Restart it. Needed after pulling code changes: a running server keeps the old code."""
-    body = _svc(svc.restart, host=host, port=port)
+    """Restart it. Needed after pulling code changes: a running server keeps the old code.
+
+    Stored hands this code would store differently are rebuilt while the server is
+    down (`pnt rebuild --if-stale`), so after a `git pull` or a `pnt update` there is
+    nothing else to run.
+    """
+    # The database the service serves: the one chosen on the front page wins.
+    db = local_config.database(DEFAULT_DB)
+    body = _svc(svc.restart, host=host, port=port, while_stopped=lambda: _rebuild_if_stale(db))
     typer.echo(f"restarted: pid {body['pid']}, {body['hands']} hands, db {body['db']}")
     _rebuild_hint(body.get("db"))
 
 
-def _rebuild_hint(path: str | None) -> None:
-    """Say so when the database holds hands this code would store differently.
-
-    `pnt update` restarts the service through here, in the new code, so this is
-    where an update that needs a rebuild gets to say it. Each reason is one line;
-    one `pnt rebuild` covers them all.
-    """
+def _rebuild_reasons(path: str | None) -> list[str]:
+    """What this code would store differently in the database at `path`, one
+    phrase each; empty when nothing. One `pnt rebuild` covers them all."""
     import sqlite3
 
     from .ingest.importer import needs_game_modes_rebuild
     from .stats.timing import needs_rebuild
 
     if not path or not Path(path).exists():
-        return
+        return []
     try:
         conn = connect(path, init=False)
         try:
-            reasons = [
+            return [
                 why
                 for stale, why in (
                     # SPEC.md, "Timing tells".
@@ -1504,7 +1538,17 @@ def _rebuild_hint(path: str | None) -> None:
         finally:
             conn.close()
     except sqlite3.Error:
-        return
+        return []
+
+
+def _rebuild_hint(path: str | None) -> None:
+    """Say so when the database holds hands this code would store differently.
+
+    `pnt update` rebuilds them itself (`pnt rebuild --if-stale`); this is for a
+    restart or a `pnt serve` after a `git pull`, or an update whose rebuild did
+    not finish.
+    """
+    reasons = _rebuild_reasons(path)
     if reasons:
         typer.echo(
             f"This version can {' and '.join(reasons)}. Run `pnt rebuild` once to apply it to the"

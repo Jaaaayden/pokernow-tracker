@@ -472,8 +472,12 @@ def restart(
     port: int = DEFAULT_PORT,
     timeout: float = 15.0,
     answer_timeout: float = 30.0,
+    while_stopped: Callable[[], None] | None = None,
 ) -> dict:
     """Stop, wait for the old instance to exit, start, and check the new one answers.
+
+    `while_stopped` runs between the two, with nothing serving the database: what
+    `pnt service restart` rebuilds stale hands in, so the new server starts on them.
 
     Waiting matters: the task ignores a start request while an instance is still
     running, so starting straight away would silently keep the old code.
@@ -487,6 +491,12 @@ def restart(
     before = (health(host, port) or {}).get("pid")
     stop(name)
     _await_stopped(name, timeout)
+    if while_stopped is not None:
+        try:
+            while_stopped()
+        except Exception:
+            start(name)  # whatever it hit, the tracker comes back up
+            raise
     start(name)
     deadline = time.monotonic() + answer_timeout
     while True:

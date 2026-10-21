@@ -334,11 +334,11 @@ check whether a loss has ever changed how they play.
 ### Timing tells
 
 **Needs a rebuild once.** Think times come from when each action was logged,
-which older versions did not store. After updating, run `pnt rebuild` once:
-it re-reads every stored log and times every hand. Until then, hands stored
-before the update show as untimed (never as instant), and the Timing view says
-so. `pnt service restart` (which `pnt update` runs) and `pnt serve` also print a
-reminder while any hand is untimed.
+which older versions did not store. `pnt update`, or `pnt service restart` after
+a pull, re-reads every stored log and times every hand for you. Until then (a
+`pnt serve` in a terminal, say), hands stored before the update show as untimed
+(never as instant), and the Timing view says so; `pnt serve` prints a reminder
+to run `pnt rebuild` while any hand is untimed.
 
 The chart's **Timing** view (also `GET /players/{alias}/timing`, `GET /timing`
 for the pool, and `pnt timing [alias]`) answers "does a snap call mean a draw,

@@ -350,7 +350,10 @@ pnt update
 ```
 
 This stops the background server, reinstalls from wherever you installed from, and
-starts the server again on the new code. Without the background server (Linux, or
+starts the server again on the new code. When the new version reads hands
+differently, the restart re-reads your stored logs while the server is down
+(`pnt rebuild --if-stale`), so nothing is left to run by hand. Without the
+background server (Linux, or
 a `pnt serve` in a terminal) it only reinstalls, then tells you to restart
 `pnt serve`. The extension notices the new files and reloads itself within a minute
 of the new server starting. If you use the side panel, Chrome closes it when the
@@ -417,7 +420,7 @@ every command uses too, from any folder; `--db` still overrides it.
 | Background server (Windows, macOS) | |
 |---|---|
 | `pnt service status` | Whether it's up, and which database it has open |
-| `pnt service restart` | Run after `git pull` in a checkout (`pnt update` restarts it for you). If an old server still holds the port, it names the process to end |
+| `pnt service restart` | Run after `git pull` in a checkout (`pnt update` restarts it for you). Rebuilds stored hands first when the new code reads them differently. If an old server still holds the port, it names the process to end |
 | `pnt service log` | The last lines of `~\.pnt\server.log` |
 | `pnt service stop` / `start` | Stop until the next login, or start again |
 | `pnt service uninstall` | Remove it; the database is untouched |

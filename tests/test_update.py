@@ -178,6 +178,7 @@ def test_update_stops_installs_then_restarts_on_the_new_code(updating):
     assert updating == [
         "stop",
         ("install", "from.zip"),
+        # The restart, on the new code, rebuilds any stale hands while the server is down.
         ("-m", "pnt.cli", "service", "restart", "--host", "127.0.0.1", "--port", "52000"),
     ]
 
@@ -218,7 +219,7 @@ def test_update_without_a_service_installs_only_and_names_the_old_server(updatin
     monkeypatch.setattr(svc, "health", lambda host, port: {"pid": 4242})
     result = CliRunner().invoke(app, ["update"])
     assert result.exit_code == 0, result.output
-    assert updating_unmanaged == [("install", "from.zip")]
+    assert updating_unmanaged == [("install", "from.zip"), ("-m", "pnt.cli", "rebuild", "--if-stale")]
     assert "pid 4242" in result.output
     assert "still runs the old code" in result.output
     assert "restart above" not in result.output
@@ -237,7 +238,7 @@ def test_update_on_linux_never_asks_for_a_service(updating, monkeypatch):
     monkeypatch.setattr(svc, "health", lambda host, port: None)
     result = CliRunner().invoke(app, ["update"])
     assert result.exit_code == 0, result.output
-    assert updating == [("install", "from.zip")]
+    assert updating == [("install", "from.zip"), ("-m", "pnt.cli", "rebuild", "--if-stale")]
 
 
 def test_a_checkout_on_linux_is_told_to_restart_pnt_serve(updating, monkeypatch, tmp_path):
@@ -321,3 +322,64 @@ def test_commits_behind_is_none_when_github_cannot_say():
         raise OSError("offline")
 
     assert upd.commits_behind(SHA, "main", fetch=offline) is None
+
+
+def test_rebuild_if_stale_rebuilds_only_what_needs_it(tmp_path):
+    """What `pnt update` runs: nothing on a current database, one summary line and
+    every hand re-read on one stored before the game modes were."""
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import import_csv
+    from tests.conftest import ALL_LOGS
+
+    db = tmp_path / "t.sqlite"
+    conn = connect(db)
+    import_csv(conn, ALL_LOGS[0])
+    conn.close()
+    current = CliRunner().invoke(app, ["rebuild", "--if-stale", "--db", str(db)])
+    assert current.exit_code == 0 and current.output == "", current.output
+
+    conn = connect(db)
+    conn.execute("UPDATE hands SET variant = NULL")  # as stored before the column existed
+    conn.commit()
+    conn.close()
+    stale = CliRunner().invoke(app, ["rebuild", "--if-stale", "--db", str(db)])
+    assert stale.exit_code == 0, stale.output
+    lines = stale.output.strip().splitlines()
+    assert lines[0].startswith("rebuilding the stored hands") and "PLO" in lines[0]
+    assert lines[-1].startswith("rebuilt ") and len(lines) == 2
+    conn = connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM hands WHERE variant IS NULL").fetchone()[0] == 0
+    conn.close()
+
+
+def test_service_restart_rebuilds_stale_hands_while_the_server_is_down(tmp_path, monkeypatch):
+    """`pnt update` runs the restart on the new code, so a first update to a version
+    that reads hands differently needs nothing more than the update itself."""
+    from pnt import local_config
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import import_csv
+    from tests.conftest import ALL_LOGS
+
+    db = tmp_path / "t.sqlite"
+    conn = connect(db)
+    import_csv(conn, ALL_LOGS[0])
+    conn.execute("UPDATE hands SET variant = NULL")  # as stored before the column existed
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(local_config, "database", lambda default: db)
+    order = []
+
+    def restart(*, host, port, while_stopped):
+        order.append("stopped")
+        while_stopped()
+        order.append("started")
+        return {"pid": 1, "hands": 0, "db": str(db)}
+
+    monkeypatch.setattr(svc, "restart", restart)
+    result = CliRunner().invoke(app, ["service", "restart"])
+    assert result.exit_code == 0, result.output
+    assert order == ["stopped", "started"]
+    assert "rebuilt " in result.output and "Run `pnt rebuild`" not in result.output
+    conn = connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM hands WHERE variant IS NULL").fetchone()[0] == 0
+    conn.close()
