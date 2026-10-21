@@ -736,6 +736,16 @@ def test_writes_need_the_header(client):
     assert client.post("/ingest", json=json.loads(body)).status_code == 200
 
 
+def test_an_extension_from_before_the_header_is_told_to_reload(client):
+    """Chrome runs an unpacked extension's old worker until it is reloaded, and
+    one from before the header cannot reload itself: say so, not why."""
+    bare = local_client(client.app)
+    bare.headers.pop("x-pnt")
+    r = bare.post("/rebuild/stale-probe", headers={"origin": "chrome-extension://abcdefghijklmnop"})
+    assert r.status_code == 403
+    assert r.json()["detail"].startswith("Old extension: reload it")
+
+
 @pytest.mark.parametrize(
     "origin, status",
     [

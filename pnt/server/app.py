@@ -346,10 +346,16 @@ async def _writes_from_here_only(request: Request, call_next):
     if request.method not in _READS:
         origin = request.headers.get("origin")
         if WRITE_HEADER not in request.headers or (origin is not None and not _trusted_origin(origin)):
-            return JSONResponse(
-                {"detail": f"writes need the {WRITE_HEADER} header and a local origin"},
-                status_code=403,
+            # Only an extension from before the header writes from chrome-extension://
+            # without it: Chrome keeps running that old worker after an update until
+            # it is reloaded by hand. Short and front-loaded: the HUD bar cuts it off.
+            stale = origin is not None and urlsplit(origin).scheme == "chrome-extension"
+            detail = (
+                "Old extension: reload it at chrome://extensions"
+                if stale and WRITE_HEADER not in request.headers
+                else f"writes need the {WRITE_HEADER} header and a local origin"
             )
+            return JSONResponse({"detail": detail}, status_code=403)
     return await call_next(request)
 
 
