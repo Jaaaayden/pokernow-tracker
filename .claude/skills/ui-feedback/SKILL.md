@@ -1,6 +1,6 @@
 ---
 name: ui-feedback
-description: Work through the notes the user left on the tracker's pages or HUD with the note overlay (the backtick key) - read the open ones, find each element's code, fix it, check it with a screenshot, and reply on the note. Use when the user says they left notes, comments or annotations on the UI, or asks to fix UI feedback.
+description: Work through the notes the user left on the tracker's pages or HUD with the note overlay (the backslash key) - read the open ones, find each element's code, fix it, check it with a screenshot, and reply on the note. Use when the user says they left notes, comments or annotations on the UI, or asks to fix UI feedback.
 ---
 
 # UI feedback from the note overlay

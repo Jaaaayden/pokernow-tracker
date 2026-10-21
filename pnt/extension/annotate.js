@@ -8,7 +8,7 @@
  * One file for both places it runs: every server page (app.py's _page adds the
  * tag) and the HUD side panel, which loads it as its own -- an extension page may
  * not run a script fetched from a server. Off until switched on, so it costs a
- * page nothing: the ` key toggles it, `?annotate` in a URL turns it on, and it
+ * page nothing: the \ key toggles it, `?annotate` in a URL turns it on, and it
  * stays on per origin (localStorage) until toggled off.
  *
  * Everything it draws sits in a shadow root on top of the page, so the page's
@@ -145,7 +145,7 @@
   <div class="bar">
     <button class="pick" title="Pick an element to leave a note on (Esc stops)">✎ note</button>
     <button class="list" title="Every note on this page">0 open</button>
-    <button class="off" title="Hide the note overlay (the backtick key brings it back)">✕</button>
+    <button class="off" title="Hide the note overlay (the backslash key brings it back)">✕</button>
   </div>`;
   const $ = (s) => root.querySelector(s);
   const hl = $(".hl"), pins = $(".pins"), pop = $(".pop"), pickBtn = $(".pick"), listBtn = $(".list");
@@ -338,13 +338,13 @@
   addEventListener("resize", () => state.on && drawPins());
   document.addEventListener("visibilitychange", () => { if (state.on && !document.hidden) refresh(); });
   // A key of its own rather than a chord: Chrome keeps taking the chords (Alt+Shift+N
-  // became its split view). Not while typing, so a ` in the spot box stays a `.
+  // became its split view). Not while typing, so a \ in the spot box stays a \.
   const typing = (e) => {
     const t = e.composedPath()[0];
     return t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
   };
   document.addEventListener("keydown", (e) => {
-    if (e.code === "Backquote" && !e.ctrlKey && !e.altKey && !e.metaKey && !typing(e)) {
+    if (e.code === "Backslash" && !e.ctrlKey && !e.altKey && !e.metaKey && !typing(e)) {
       e.preventDefault();
       setOn(!state.on);
       if (state.on) pick(true);
