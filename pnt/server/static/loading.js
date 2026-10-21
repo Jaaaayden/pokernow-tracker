@@ -10,8 +10,9 @@
 (() => {
   "use strict";
   const PILL_MS = 2000, SLOW_MS = 20000;
-  // Requests that wait on a person, not the server: the native file picker.
-  const SKIP = [/\/settings\/paths\/browse/];
+  // Requests nobody is waiting on: the native file picker, which waits on a
+  // person, and the chart's chip counts, badges that fill in behind the page.
+  const SKIP = [/\/settings\/paths\/browse/, /\/counts(\?|$)/];
   const EMBED = window.parent !== window; // the chart inside the HUD's side panel
 
   const out = new Map(); // request id -> started at

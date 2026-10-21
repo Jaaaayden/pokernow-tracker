@@ -49,7 +49,16 @@ from .cards import (
     top_kicker,
     top_two_pair,
 )
-from .derive import AGGRESSIVE, POSTFLOP_STREETS, Facts, HandPlayerRow, HandRow, derive, size_bucket
+from .derive import (
+    AGGRESSIVE,
+    POSTFLOP_STREETS,
+    Facts,
+    HandPlayerRow,
+    HandRow,
+    derive,
+    is_analysed,
+    size_bucket,
+)
 from .equity import best_of
 from .lru import LRU
 from .queries import (
@@ -303,7 +312,7 @@ def _showdown_known(hand: HandRow, pid: str) -> bool:
 
 
 def _net(p: HandPlayerRow) -> int:
-    return p.collected - p.contributed + p.bounty
+    return p.collected - p.contributed + p.bounty + p.nit
 
 
 def _bb(chips: float | None, bb: int | None, nd: int = 1) -> float | None:
@@ -599,7 +608,8 @@ BEAT_RULES = (suckout, cooler_pre, cooler_post)
 
 
 def review_hand(hand: HandRow, facts: Mapping[str, Facts], pid: str, ctx: Context) -> list[ReviewRow]:
-    """Every flag one hand earns for one player."""
+    """Every flag one hand earns for one player. Analysed hands only: `review_rows`
+    passes no other."""
     rows = [r for rule in MISTAKE_RULES if (r := rule(hand, facts, pid, ctx)) is not None]
     for rule in BEAT_RULES:
         r = rule(hand, facts, pid, ctx)
@@ -864,7 +874,8 @@ def review_rows(
     alias.
     """
     ids = set(identities_of(conn, alias))
-    hands = load_hands(conn, game_id, ids) if ids else []
+    # Analysed hands only, the counts included: no flag reads PLO or a second board.
+    hands = [h for h in load_hands(conn, game_id, ids) if is_analysed(h)] if ids else []
     facts_by_hand = {h.hand_id: {f.pn_id: f for f in derive(h)} for h in hands}
     allin_ids = [
         h.hand_id for h in hands

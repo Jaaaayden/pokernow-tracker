@@ -78,7 +78,7 @@ def load_hands(
         f"""SELECT h.hand_id, h.game_id, h.hand_number, h.n_dealt_in, h.dead_button,
                    h.blinds_irregular, h.went_to_showdown, h.board_json, h.ts,
                    h.complete, h.run_count, COALESCE(h.bb, g.bb) AS bb,
-                   h.board_ords, h.clock_ms
+                   h.board_ords, h.clock_ms, h.variant, h.double_board
             FROM hands h LEFT JOIN games g ON g.game_id = h.game_id
             {where} ORDER BY h.ord""",
         params,
@@ -104,6 +104,9 @@ def load_hands(
             run_count=r["run_count"] or 1,
             board_ords=json.loads(r["board_ords"]) if r["board_ords"] else {},
             clock_ms=r["clock_ms"],
+            variant=r["variant"],
+            double_board=bool(r["double_board"]),
+            board2=tuple(runs[1]) if r["double_board"] and len(runs) > 1 else (),
         )
 
     for r in conn.execute(
@@ -119,6 +122,7 @@ def load_hands(
                 contributed=r["contributed"],
                 collected=r["collected"],
                 bounty=r["bounty"],
+                nit=r["nit"],
                 folded=bool(r["folded"]),
                 hole_cards=r["hole_cards"],
                 starting_stack=r["starting_stack"],
@@ -505,7 +509,8 @@ def facts_by_player(
     game_id: str | None = None,
     pn_ids: Collection[str] | None = None,
 ) -> tuple[dict[int, list[Facts]], dict[int, str], list[HandRow]]:
-    """Derive every hand and group the resulting facts by canonical player."""
+    """Derive every hand and group the resulting facts by canonical player.
+    The `play` scope, like `facts_cached`'s default: every caller reads play."""
     hands = load_hands(conn, game_id, pn_ids)
     ident = identity_map(conn)
     grouped: dict[int, list[Facts]] = defaultdict(list)
@@ -515,9 +520,12 @@ def facts_by_player(
             pid, alias = ident.get(fact.pn_id, (-1, fact.pn_id))
             grouped[pid].append(fact)
             aliases[pid] = alias
-    for facts in grouped.values():
-        annotate(facts)  # the session facts: see tilt.py
-    return grouped, aliases, hands
+    # The session facts (see tilt.py) are numbered over every hand, as a player's
+    # own are in `facts_cached`, and only then are the hands not analysed left out.
+    # A player with no analysed hand is left out altogether, as before.
+    kept = {pid: [f for f in annotate(facts) if f.analysed] for pid, facts in grouped.items()}
+    kept = {pid: facts for pid, facts in kept.items() if facts}
+    return kept, {pid: a for pid, a in aliases.items() if pid in kept}, hands
 
 
 #: The last unfiltered `report()` per (database, game), with the generation it was
@@ -543,9 +551,55 @@ _GAME_TALLIES: LRU[tuple[str, str], tuple[int, dict[str, Tally]]] = LRU()
 class _PlayerFacts:
     gen: int
     ids: frozenset[str]
+    #: Every hand, PLO's as money only: the `money` scope.
     facts: list[Facts]
     #: game_id -> (that game's derived_gen, this player's Facts in it)
     pieces: dict[str, tuple[int, list[Facts]]]
+    #: The other two scopes, each made from `facts` the first time it is asked for.
+    play: list[Facts] | None = None
+    every: list[Facts] | None = None
+
+
+#: Which of a player's hands a reader takes. `play`: every rate, range, tag and
+#: tree, over the hands `derive.is_analysed` reads -- no PLO, no Double Board.
+#: `money`: Results and the winnings graph, those hands' net included. `every`:
+#: the hand lists, those hands derived in full to be listed like any other. See
+#: SPEC.md, "Money".
+SCOPES = ("play", "money", "every")
+
+
+def play_facts(hands: Iterable[HandRow]) -> list[Facts]:
+    """The `play` scope of `hands`, for the readers that derive many players' hands
+    themselves: every hand derived, its session facts (tilt.py) numbered over all
+    of them, then the hands not analysed left out -- what `facts_cached` gives
+    for one player."""
+    return [f for f in annotate([f for h in hands for f in derive(h)]) if f.analysed]
+
+
+def _scoped(conn: sqlite3.Connection, entry: _PlayerFacts, games: str) -> list[Facts]:
+    """`entry` in the scope `games` asks for. Only the hands not analysed are
+    derived again for `every`: on most tables there are none, and the analysed
+    rows are the same objects as in the other scopes."""
+    if games == "money":
+        return entry.facts
+    if games == "play":
+        if entry.play is None:
+            entry.play = [f for f in entry.facts if f.analysed]
+        return entry.play
+    if games != "every":
+        raise ValueError(f"unknown scope: {games!r}")
+    if entry.every is None:
+        other = {f.hand_id for f in entry.facts if not f.analysed}
+        if not other:
+            entry.every = entry.facts
+        else:
+            full = {
+                (f.hand_id, f.pn_id): f
+                for hand in load_hands(conn, hand_ids=other)
+                for f in derive(hand, every_game=True)
+            }
+            entry.every = annotate([full.get((f.hand_id, f.pn_id), f) for f in entry.facts])
+    return entry.every
 
 
 #: One player's `Facts`, per (database, alias, game). This one *is* a cache of
@@ -627,6 +681,8 @@ def _tally_by_id(hands: Iterable[HandRow]) -> dict[str, Tally]:
     out: dict[str, Tally] = {}
     for hand in hands:
         for fact in derive(hand):
+            if not fact.analysed:  # PLO and Double Board count in Results and the hand lists only
+                continue
             t = out.get(fact.pn_id)
             if t is None:
                 t = out[fact.pn_id] = Tally()
@@ -652,9 +708,11 @@ def _tallies(conn: sqlite3.Connection, game_id: str | None) -> list[dict[str, Ta
 
 
 def facts_cached(
-    conn: sqlite3.Connection, alias: str, game_id: str | None = None
+    conn: sqlite3.Connection, alias: str, game_id: str | None = None, games: str = "play"
 ) -> list[Facts]:
     """`facts_for`, remembered until the derivation generation moves.
+
+    `games` is the scope (`SCOPES`): `play` unless a caller asks otherwise.
 
     The same contract as `report()`'s cache: keyed on the generation counter,
     which every write that changes a derived fact bumps inside its own
@@ -669,19 +727,19 @@ def facts_cached(
     not match the hand order read after it.
     """
     with reading(conn):
-        return _facts_cached(conn, alias, game_id)
+        return _scoped(conn, _facts_cached(conn, alias, game_id), games)
 
 
-def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> list[Facts]:
+def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _PlayerFacts:
     gen = generation(conn)
     path = path_of(conn)
     stamps = _game_stamps(conn, game_id) if gen is not None and path else None
     if stamps is None:
-        return facts_for(conn, alias, game_id)
+        return _PlayerFacts(0, frozenset(), facts_for(conn, alias, game_id, "money"), {})
     key = (path, alias, game_id)
     hit = _FACTS_CACHE.get(key)
     if hit is not None and hit.gen == gen:
-        return hit.facts
+        return hit
 
     ids = identities_of(conn, alias)
     wanted = frozenset(ids)
@@ -713,8 +771,8 @@ def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> 
     # The session facts, per game: a reused piece is filled again, to the same values.
     annotate(facts)
 
-    _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
-    return facts
+    entry = _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
+    return entry
 
 
 def report(
@@ -822,7 +880,7 @@ def identities_of(conn: sqlite3.Connection, alias: str) -> list[str]:
 
 
 def facts_for(
-    conn: sqlite3.Connection, alias: str, game_id: str | None = None
+    conn: sqlite3.Connection, alias: str, game_id: str | None = None, games: str = "play"
 ) -> list[Facts]:
     """Every Facts row for one canonical player, across all merged identities.
 
@@ -836,9 +894,8 @@ def facts_for(
     if not ids:
         return []
     wanted = set(ids)
-    return annotate(
-        [f for hand in load_hands(conn, game_id, ids) for f in derive(hand) if f.pn_id in wanted]
-    )
+    facts = annotate([f for hand in load_hands(conn, game_id, ids) for f in derive(hand) if f.pn_id in wanted])
+    return _scoped(conn, _PlayerFacts(0, frozenset(wanted), facts, {}), games)
 
 
 def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) -> list[dict]:
@@ -870,8 +927,10 @@ def hand_list(facts: Iterable[Facts], names: Mapping[str, str] | None = None) ->
                 "ts": f.ts,
                 "position": position_name(f.seats_from_button, f.n_dealt_in) if labelled else None,
                 "players": f.n_dealt_in,
-                "hole_cards": f.hole_cards,
+                "hole_cards": f.cards,
                 "board": list(f.board),
+                # Double Board's second board, listed under the first.
+                "board2": list(f.board2),
                 "net_bb": round(f.net / f.bb_size, 1) if f.bb_size else None,
                 # Chips, plus this hand's blind so a row can print the pot in bb too.
                 "pot": f.pot,
@@ -930,6 +989,7 @@ def sat_out_list(
                 "players": h.n_dealt_in,
                 "hole_cards": None,
                 "board": list(h.board),
+                "board2": list(h.board2),
                 "net_bb": None,
                 "pot": sum(p.contributed for p in h.players.values()),
                 "bb": h.bb,

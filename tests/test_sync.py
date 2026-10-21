@@ -298,7 +298,7 @@ def test_the_server_sync_survives_a_failed_open(tmp_path, monkeypatch):
         stop.set()  # the second open got through: one pass, then stop
         return connect(tmp_path / "t.sqlite")
 
-    monkeypatch.setattr(server, "db", flaky_db)
+    monkeypatch.setattr(server, "capture_db", flaky_db)
     monkeypatch.setattr(server, "SYNC_SECONDS", 0.01)
     monkeypatch.setattr(server.log_folder, "LOG_DIR", tmp_path / "logs")
     server._sync_loop(stop)

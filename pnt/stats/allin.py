@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from ..db.conn import writing
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from .cards import board_at
-from .derive import Facts, HandRow, derive
+from .derive import ANALYSED_SQL, Facts, HandRow, derive
 from .equity import cache_key, expected_collected, side_pots
 from .queries import display_names, identities_of, identity_map, load_hands
 
@@ -101,7 +101,8 @@ def allin_hand_ids(
         out.extend(
             r[0]
             for r in conn.execute(
-                "SELECT h.hand_id FROM hands h WHERE h.complete = 1 AND h.went_to_showdown = 1"
+                # Hold'em on one board only: the equity engine reads two cards and one board.
+                f"SELECT h.hand_id FROM hands h WHERE h.complete = 1 AND h.went_to_showdown = 1 AND {ANALYSED_SQL}"
                 " AND EXISTS (SELECT 1 FROM actions a WHERE a.hand_id = h.hand_id AND a.all_in = 1)"
                 f"{clause} ORDER BY h.ord",
                 params,
@@ -195,8 +196,8 @@ def allin_rows(
         board = list(decision_board(hand))
         for i, pid in enumerate(live_ids):
             p = hand.players[pid]
-            actual = p.collected - p.contributed + p.bounty
-            adjusted = expected[i] - p.contributed + p.bounty
+            actual = p.collected - p.contributed + p.bounty + p.nit
+            adjusted = expected[i] - p.contributed + p.bounty + p.nit
             rows.append(
                 AllInRow(
                     hand_id=hand.hand_id,

@@ -326,8 +326,10 @@
       `${s.player} ${s.net > 0 ? "+" : ""}${s.net.toLocaleString()}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
     ).join("\n");
 
-    span("board", h.board.length ? cardsEl(h.board) : "no flop",
-      h.run_count > 1 ? "ran twice; run one shown" : "");
+    const board = span("board", h.board.length ? cardsEl(h.board) : "no flop",
+      h.run_count > 1 && !h.double_board ? "ran twice; run one shown" : "");
+    // Double Board: the second board under the first, both bet on every street.
+    if (h.board2?.length) board.append(document.createElement("br"), cardsEl(h.board2));
 
     const tags = document.createElement("span");
     tags.className = "tags";
@@ -342,7 +344,9 @@
     tag(h.went_to_showdown ? "showdown" : h.street, null,
       h.went_to_showdown ? "shown down" : `no showdown; ended on the ${h.street}`);
     tag(`${h.players}-handed`);
-    if (h.run_count > 1) tag("ran twice");
+    if (h.double_board) tag("double board");
+    else if (h.run_count > 1) tag("ran twice");
+    if (h.plo) tag("PLO");
     // The chips of an unfinished hand are not all on record, so its pot is short.
     if (!h.complete) tag("log cut short", "short", "the log stops mid-hand: this pot is short");
     b.appendChild(tags);

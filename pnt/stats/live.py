@@ -11,10 +11,20 @@ from __future__ import annotations
 
 import sqlite3
 
+from ..db.conn import path_of
 from ..ingest.csv_source import RawEntry
 from ..logfmt import events as E
-from ..logfmt.parser import DEAD_POSTS, ParsedHand, parse, position_name
+from ..logfmt.grammar import classify
+from ..logfmt.parser import (
+    DEAD_POSTS,
+    ParsedHand,
+    bomb_bbs_setting,
+    bomb_pot_bb,
+    parse,
+    position_name,
+)
 from .derive import HandAction, HandPlayerRow, HandRow
+from .lru import LRU
 from .nodes import nodes_for, resolve, street_of_board
 from .queries import facts_cached, identity_map
 from .review import is_flagged, last_ended_hand
@@ -49,7 +59,50 @@ def live_hand(conn: sqlite3.Connection, game_id: str) -> ParsedHand | None:
     hand = result.hands[-1]
     if hand.complete or not hand.players:
         return None
+    if hand.bb is None and any(a.post_kind == E.POST_BOMB for a in hand.actions):
+        key = (path_of(conn), game_id, hand.ord)
+        state = _TABLE_STATE.get(key)
+        if state is None:
+            state = _TABLE_STATE[key] = _table_state(conn, game_id, hand.ord)
+        hand.bb = bomb_pot_bb(hand, *state)
     return hand
+
+
+#: (database, game, hand-start ord) -> what `_table_state` read for that hand. A
+#: live hand is polled every few seconds; the log before it does not change.
+_TABLE_STATE: LRU[tuple[str, str, int], tuple[int | None, int | None]] = LRU(16)
+
+
+def _table_state(conn: sqlite3.Connection, game_id: str, before: int) -> tuple[int | None, int | None]:
+    """What `parse` carries into a hand from the log before it: the table's
+    `Bomb Pot BB Quantity` and its big blind. The live parse starts at the hand's
+    own start line, so it sees neither. The big blind is the later of the last
+    stored hand's and the last chip-denominated blind change, as `parse` keeps it."""
+    bomb_bbs = None
+    for (raw,) in conn.execute(
+        "SELECT entry FROM raw_entries WHERE game_id = ? AND ord < ?"
+        " AND entry LIKE 'Game Config Changes%Bomb Pot BB Quantity%' ORDER BY ord DESC",
+        (game_id, before),
+    ):
+        sets, bomb_bbs = bomb_bbs_setting(raw)
+        if sets:
+            break
+    table_bb, at = None, None
+    row = conn.execute(
+        "SELECT bb, ord FROM hands WHERE game_id = ? AND bb IS NOT NULL AND ord < ? ORDER BY ord DESC LIMIT 1",
+        (game_id, before),
+    ).fetchone()
+    if row is not None:
+        table_bb, at = row["bb"], row["ord"]
+    for r in conn.execute(
+        "SELECT ord, entry FROM raw_entries WHERE game_id = ? AND ord < ? AND ord > ?"
+        " AND entry LIKE 'The game''s big blind was changed%' ORDER BY ord DESC LIMIT 1",
+        (game_id, before, at if at is not None else -1),
+    ):
+        ev = classify(r["entry"], r["ord"])
+        if isinstance(ev, E.BlindChange) and isinstance(ev.to_amount, int):
+            table_bb = ev.to_amount
+    return bomb_bbs, table_bb
 
 
 def hand_row(parsed: ParsedHand, hand_id: int = 0) -> HandRow:
@@ -78,6 +131,7 @@ def hand_row(parsed: ParsedHand, hand_id: int = 0) -> HandRow:
                 folded=p.folded,
                 hole_cards="".join(p.hole_cards) or None,
                 bounty=p.bounty,
+                nit=p.nit,
                 starting_stack=p.starting_stack,
             )
             for pid, p in parsed.players.items()
@@ -101,6 +155,9 @@ def hand_row(parsed: ParsedHand, hand_id: int = 0) -> HandRow:
         run_count=parsed.run_count,
         board_ords=dict(parsed.board_ords),
         clock_ms=parsed.clock_ms,
+        variant=parsed.variant,
+        double_board=parsed.double_board,
+        board2=tuple(parsed.board_runs[1]) if parsed.double_board and len(parsed.board_runs) > 1 else (),
     )
 
 
@@ -139,6 +196,8 @@ def to_act(parsed: ParsedHand) -> str | None:
         return None
 
     street = current_street(parsed)
+    if street == E.PREFLOP and any(a.post_kind == E.POST_BOMB for a in parsed.actions):
+        return None  # a bomb pot has no preflop decision: everyone posted, the flop is next
     slots = max(
         [parsed.n_dealt_in, *((p.seats_from_button or 0) + 1 for p in players.values())]
     )

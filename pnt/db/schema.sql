@@ -229,7 +229,9 @@ CREATE TABLE IF NOT EXISTS hand_players (
     -- Signed 7-2 side-bet result. Kept OUT of collected/contributed so those two
     -- continue to describe the pot alone and keep balancing against each other.
     bounty            INTEGER NOT NULL DEFAULT 0,
-    folded            INTEGER NOT NULL DEFAULT 0,
+    -- Signed Nit Game penalty, the same way: in net, never in the pot.
+    nit               INTEGER NOT NULL DEFAULT 0,
+    folded           INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (hand_id, pn_id)
 ) WITHOUT ROWID;
 
@@ -245,7 +247,7 @@ CREATE TABLE IF NOT EXISTS actions (
     amount_to   INTEGER,              -- raw cumulative figure from the log, for audit
     is_forced   INTEGER NOT NULL DEFAULT 0,
     all_in      INTEGER NOT NULL DEFAULT 0,
-    post_kind   TEXT,                 -- sb | bb | ante | missed_bb | missing_sb | straddle
+    post_kind   TEXT,                 -- sb | bb | ante | missed_bb | missing_sb | straddle | bomb_pot
     PRIMARY KEY (hand_id, seq)
 ) WITHOUT ROWID;
 

@@ -26,7 +26,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 
 from .cards import street_of_board
-from .derive import Facts, HandPlayerRow, derive
+from .derive import Facts, HandPlayerRow, derive, is_holdem
 from .queries import display_names, identities_of, load_hands
 
 #: The window and the bar the pages and the CLI start from.
@@ -96,6 +96,7 @@ def _seat(f: Facts, p: HandPlayerRow, name: str) -> dict:
         "contributed": p.contributed,
         "collected": p.collected,
         "bounty": p.bounty,
+        "nit": p.nit,
     }
 
 
@@ -165,6 +166,11 @@ def big_pots(
                 "players": hand.n_dealt_in,
                 "board": list(hand.board),
                 "run_count": hand.run_count,
+                # Double Board deals its second board every street, bet on with the
+                # first: not a run-it-twice, which `run_count` alone would say.
+                "double_board": hand.double_board,
+                "board2": list(hand.board2),
+                "plo": not is_holdem(hand),
                 "street": street_of_board(hand.board),
                 "went_to_showdown": hand.went_to_showdown,
                 # A log that stopped mid-hand has only some of its chips on

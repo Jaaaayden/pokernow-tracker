@@ -133,6 +133,22 @@ RULES: list[Rule] = [
             all_in=bool(m.group("allin")),
         ),
     ),
+    (
+        # A bomb pot's buy-in: the first player "posts a bet", the rest "call" it,
+        # all of it forced. Matched before the plain `calls N` rule below.
+        re.compile(
+            rf"^{_P} (?:posts a bet of|calls) (?P<amt>\d+)(?P<allin> and go all in)? "
+            r"\(bomb pot bet\)$"
+        ),
+        lambda m, o, r: E.Post(
+            ord=o,
+            raw=r,
+            player=_player(m),
+            kind=E.POST_BOMB,
+            amount=int(m.group("amt")),
+            all_in=bool(m.group("allin")),
+        ),
+    ),
     # -- voluntary actions
     (
         re.compile(rf"^{_P} (?P<kind>folds|checks)$"),
@@ -172,7 +188,7 @@ RULES: list[Rule] = [
     # -- on every street, betting in between). Both are run 1 of the same pot.
     (
         re.compile(
-            r"^(?P<street>Flop|Turn|River)(?P<run> \(second (?:run|board)\))?:\s*(?P<rest>.+)$"
+            r"^(?P<street>Flop|Turn|River)(?P<run> \(second (?P<what>run|board)\))?:\s*(?P<rest>.+)$"
         ),
         lambda m, o, r: E.StreetDealt(
             ord=o,
@@ -180,6 +196,7 @@ RULES: list[Rule] = [
             street=_STREETS[m.group("street")],
             run=1 if m.group("run") else 0,
             board=tuple(parse_cards(m.group("rest"))),
+            double_board=m.group("what") == "board",
         ),
     ),
     # -- pot resolution
@@ -221,6 +238,50 @@ RULES: list[Rule] = [
     (
         re.compile(rf"^{_P} collected (?P<amt>\d+) from the (?P<kind>.+?) bounty$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="bounty_summary"),
+    ),
+    # -- Nit Game: each player escrows the prize per opponent from their stack;
+    # -- the last to win a pot pays it to everyone else. Only the penalty moves
+    # -- chips between players (see `E.NitPenalty`); the rest is bookkeeping.
+    (
+        re.compile(
+            rf"^{_P} paid (?P<amt>\d+) each to (?P<to>\"[^\"]*\"(?:, \"[^\"]*\")*) "
+            r"as the Nit penalty\.$"
+        ),
+        lambda m, o, r: E.NitPenalty(
+            ord=o,
+            raw=r,
+            payer=_player(m),
+            payees=tuple(split_player_token(t) for t in re.findall(r'"([^"]*)"', m.group("to"))),
+            amount=int(m.group("amt")),
+        ),
+    ),
+    (
+        re.compile(rf"^{_P} cleared the Nit\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_cleared"),
+    ),
+    (
+        re.compile(r"^Asking (?:interested|seated) players .*Nit Game.*\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_prompt"),
+    ),
+    (
+        re.compile(r"^Nit Game activated with \d+ players\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_activated"),
+    ),
+    (
+        re.compile(rf"^The player {_P} confirmed the Nit Game using their stack\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_buy_in"),
+    ),
+    (
+        re.compile(
+            r"^\"[^\"]*\"(?:, \"[^\"]*\")* confirmed the Nit Game using their existing Nit Escrow\.$"
+        ),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_escrow_kept"),
+    ),
+    (
+        re.compile(
+            rf"^The player {_P} received \d+ chips of returned Nit escrow when leaving the table\.$"
+        ),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_escrow_returned"),
     ),
     (
         re.compile(rf"^{_P} shows a (?P<cards>.+)\.$"),
@@ -280,7 +341,7 @@ RULES: list[Rule] = [
     ),
     # -- recognized noise (no effect on stats, but explicitly accounted for)
     (
-        re.compile(r"^Undealt cards:.*$"),
+        re.compile(r"^Undealt cards(?: \(second (?:run|board)\))?:.*$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="rabbit_hunt"),
     ),
     (

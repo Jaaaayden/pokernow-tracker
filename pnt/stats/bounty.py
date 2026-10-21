@@ -46,20 +46,23 @@ PLAYED_FILTER = "hand=72,vpip"
 #: The terms that find a leaderboard row's bounty hands, one each way.
 WON_FILTER = "bounty_won"
 PAID_FILTER = "bounty_paid"
+#: The side bets this board ranks: the `hand_players` column, and its filter pair.
+SIDE_BETS = {"bounty": (WON_FILTER, PAID_FILTER), "nit": ("nit_won", "nit_paid")}
 
 
 def _bb(chips: float, n_known: int) -> float | None:
     return round(chips, 2) if n_known else None
 
 
-def _bounty_rows(conn: sqlite3.Connection, game: str | None) -> list[sqlite3.Row]:
-    """One row per (identity, hand) with a non-zero bounty."""
-    where, params = "hp.bounty != 0", []
+def _bounty_rows(conn: sqlite3.Connection, game: str | None, column: str = "bounty") -> list[sqlite3.Row]:
+    """One row per (identity, hand) with a non-zero side bet in `column`."""
+    assert column in SIDE_BETS
+    where, params = f"hp.{column} != 0", []
     if game:
         where += " AND h.game_id = ?"
         params.append(game)
     return conn.execute(
-        "SELECT hp.pn_id, hp.bounty, COALESCE(h.bb, g.bb) AS bb, pi.player_id, p.alias"
+        f"SELECT hp.pn_id, hp.{column} AS bounty, COALESCE(h.bb, g.bb) AS bb, pi.player_id, p.alias"
         " FROM hand_players hp"
         " JOIN hands h ON h.hand_id = hp.hand_id"
         " LEFT JOIN games g ON g.game_id = h.game_id"
@@ -92,11 +95,12 @@ def _who(row: sqlite3.Row) -> str:
     return str(row["player_id"]) if row["player_id"] is not None else "pn:" + row["pn_id"]
 
 
-def _players(conn: sqlite3.Connection, game: str | None) -> list[dict]:
+def _players(conn: sqlite3.Connection, game: str | None, column: str = "bounty") -> list[dict]:
+    won_filter, paid_filter = SIDE_BETS[column]
     names = display_names(conn)
     dealt = _hands_dealt(conn, game)
     acc: dict[str, dict] = {}
-    for r in _bounty_rows(conn, game):
+    for r in _bounty_rows(conn, game, column):
         key = _who(r)
         a = acc.setdefault(key, {
             "player": r["alias"] or names.get(r["pn_id"], r["pn_id"]),
@@ -127,8 +131,8 @@ def _players(conn: sqlite3.Connection, game: str | None) -> list[dict]:
             # A hand with no big blind on record adds its chips but no bb figure.
             "bb_known": known,
             "bounty_hands": a["bounty_hands"],
-            "won_filter": WON_FILTER if a["linked"] else None,
-            "paid_filter": PAID_FILTER if a["linked"] else None,
+            "won_filter": won_filter if a["linked"] else None,
+            "paid_filter": paid_filter if a["linked"] else None,
         })
     rows.sort(key=lambda r: (-r["net"]["chips"], -r["won"]["count"], r["player"].casefold()))
     return rows
@@ -221,4 +225,21 @@ def ledger(conn: sqlite3.Connection, game: str | None = None) -> dict:
         # Zero unless a payment named someone the log did not deal in.
         "balance": balance,
         "hero": _hero(conn, game),
+    }
+
+
+def nit_ledger(conn: sqlite3.Connection, game: str | None = None) -> dict:
+    """The Nit Game's board, the same shape as `ledger` without the 72 half: `won`
+    counts the rounds that paid them, `paid` the times they were the Nit -- last
+    to win a pot, paying everyone else. See SPEC.md, "Nit ledger"."""
+    players = _players(conn, game, "nit")
+    return {
+        "game": game,
+        "players": players,
+        "total": {
+            "won": sum(r["won"]["chips"] for r in players),
+            "paid": sum(r["paid"]["chips"] for r in players),
+            "penalties": sum(r["paid"]["count"] for r in players),
+        },
+        "balance": sum(r["net"]["chips"] for r in players),
     }

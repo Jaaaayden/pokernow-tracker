@@ -64,7 +64,10 @@ def _counts_by_id(facts: Iterable[Facts], own: Collection[tuple[str, str]]) -> d
     by: dict[str, list[Facts]] = defaultdict(list)
     for f in facts:
         by[f.pn_id].append(f)
-    return {pn: counts(annotate(fs), own) for pn, fs in by.items()}
+    # Sessions numbered over every hand, as a player's own are (`play_facts`); the
+    # baseline counts the analysed ones only.
+    played = {pn: [f for f in annotate(fs) if f.analysed] for pn, fs in by.items()}
+    return {pn: counts(fs, own) for pn, fs in played.items() if fs}
 
 
 def _game_counts(

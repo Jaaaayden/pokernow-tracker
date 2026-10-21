@@ -31,9 +31,8 @@ import sqlite3
 from collections.abc import Callable, Iterable
 from statistics import mean, median
 
-from .derive import ANSWERS, POSTFLOP_STREETS, SIZE_BUCKETS, Facts, derive
-from .queries import load_hands
-from .tilt import annotate
+from .derive import ANSWERS, POSTFLOP_STREETS, SIZE_BUCKETS, Facts
+from .queries import load_hands, play_facts
 
 #: Below this many bets (or bets faced) a row is still reported, but not judged:
 #: a 100% fold rate off two bets says nothing about the next one. The views only
@@ -235,5 +234,5 @@ def pool_facts(
     predicate cannot key a cache, and this is asked by a person, not on a timer.
     """
     # The session facts first, so a spot like `post_loss` reads whole sessions.
-    facts = annotate([f for hand in load_hands(conn, game_id) for f in derive(hand)])
+    facts = play_facts(load_hands(conn, game_id))
     return [f for f in facts if predicate(f)] if predicate is not None else facts

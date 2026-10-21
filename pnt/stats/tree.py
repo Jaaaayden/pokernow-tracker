@@ -53,8 +53,8 @@ _SPOT = {
 _KIND_ORDER = {k: i for i, k in enumerate(_SPOT)}
 _STREET_ORDER = {PREFLOP: 0, FLOP: 1, TURN: 2, RIVER: 3}
 
-_POT_TERM = {1: "limped", 2: "srp", 3: "3bet_pot"}
-_POT_WORDS = {"limped": "limped", "srp": "SRP", "3bet_pot": "3-bet pot", "4bet_pot": "4-bet pot"}
+_POT_TERM = {0: "bomb_pot", 1: "limped", 2: "srp", 3: "3bet_pot"}
+_POT_WORDS = {"limped": "limped", "srp": "SRP", "3bet_pot": "3-bet pot", "4bet_pot": "4-bet pot", "bomb_pot": "bomb pot"}
 _RAISE_WORDS = {2: "raise", 3: "3-bet", 4: "4-bet", 5: "5-bet"}
 _HIGH_WORDS = {
     "ace_high": "A-high", "king_high": "K-high", "queen_high": "Q-high",

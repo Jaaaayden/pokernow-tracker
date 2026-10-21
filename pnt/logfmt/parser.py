@@ -61,6 +61,9 @@ class HandPlayer:
     #: this parser has. Mixing side-bet chips into it would break that check for
     #: every bounty hand and cost more than the stat is worth.
     bounty: int = 0
+    #: Signed Nit Game penalty settled after this hand, kept apart from `bounty`
+    #: for the same reason and so the 7-2 ledger stays the 7-2 ledger.
+    nit: int = 0
     folded: bool = False
 
     @property
@@ -71,7 +74,7 @@ class HandPlayer:
     @property
     def net(self) -> int:
         """Everything this player won or lost on the hand, side bets included."""
-        return self.collected - self.contributed + self.bounty
+        return self.collected - self.contributed + self.bounty + self.nit
 
 
 @dataclass(slots=True)
@@ -116,6 +119,9 @@ class ParsedHand:
     board_runs: list[list[str]] = field(default_factory=list)
     hero_cards: tuple[str, ...] = ()
     run_count: int = 1
+    #: True when the table dealt Double Board: a ``(second board)`` line, not a
+    #: run-it-twice ``(second run)``. Both land in `board_runs[1]`.
+    double_board: bool = False
     #: Cards shown after ``-- ending hand #N --``, keyed by pn_id. Deliberately
     #: separate from `HandPlayer.hole_cards` -- see `_apply_voluntary_show`.
     voluntary_shows: dict[str, VoluntaryShow] = field(default_factory=dict)
@@ -350,6 +356,7 @@ class _HandBuilder:
             self.hand.board_runs.append([])
         self.hand.board_runs[ev.run] = list(ev.board)
         self.hand.run_count = len(self.hand.board_runs)
+        self.hand.double_board |= ev.double_board
         if ev.run == 0:
             # Only the first board advances the betting street. A run-it-twice second
             # run is dealt after all action is complete, and a Double Board second
@@ -372,11 +379,16 @@ class _HandBuilder:
 
     def shows(self, ev: E.Shows) -> None:
         p = self.hand.players.get(ev.player.pn_id)
-        if p is not None and len(ev.cards) == 2:
+        # Two cards in Hold'em, four or five in PLO; a single card is a partial show.
+        if p is not None and len(ev.cards) >= 2:
             p.hole_cards = ev.cards
 
-    def finish(self, *, complete: bool = True) -> ParsedHand:
+    def finish(
+        self, *, complete: bool = True, table_bb: int | None = None, bomb_bbs: int | None = None
+    ) -> ParsedHand:
         self.hand.complete = complete
+        if self.hand.bb is None:
+            self.hand.bb = bomb_pot_bb(self.hand, bomb_bbs, table_bb)
         positions, irregular = assign_positions(
             [p.seat for p in self.hand.players.values()],
             self.hand.dealer_seat,
@@ -406,6 +418,21 @@ def _apply_bounty(hand: ParsedHand, ev: E.BountyPaid) -> None:
         payee = hand.players.get(ref.pn_id)
         if payee is not None:
             payee.bounty += share + (odd if i == 0 else 0)
+
+
+def _apply_nit(hand: ParsedHand, ev: E.NitPenalty) -> None:
+    """Book a Nit Game penalty against the hand whose winner cleared the last
+    other Nit: the payer pays `amount` to each payee. Players not dealt into the
+    hand are skipped, the payer included, as `_apply_bounty` skips them -- the
+    money each player present moved is still theirs, and the Nit board's
+    `balance` shows what the absent side would have been."""
+    payer = hand.players.get(ev.payer.pn_id)
+    if payer is not None:
+        payer.nit -= ev.amount * len(ev.payees)
+    for ref in ev.payees:
+        p = hand.players.get(ref.pn_id)
+        if p is not None:
+            p.nit += ev.amount
 
 
 @dataclass(slots=True)
@@ -447,6 +474,31 @@ _CLOCK_SETTINGS = {
 }
 
 
+BOMB_BBS = re.compile(r"^\* Bomb Pot BB Quantity: .*» (\S+)\s*$", re.MULTILINE)
+
+
+def bomb_bbs_setting(raw: str) -> tuple[bool, int | None]:
+    """A ``Game Config Changes`` line's `Bomb Pot BB Quantity`: (whether the line
+    sets it, the new value). A value that is not a number (``off``) is None."""
+    m = BOMB_BBS.search(raw)
+    if m is None:
+        return False, None
+    return True, int(m.group(1)) if m.group(1).isdigit() and int(m.group(1)) else None
+
+
+def bomb_pot_bb(hand: ParsedHand, bomb_bbs: int | None, table_bb: int | None) -> int | None:
+    """A bomb pot's big blind, None on any other hand. It posts no big blind but
+    is played at the table's current one, and every bb figure needs it: the bomb
+    is `bomb_bbs` of them by the table's settings; failing that, `table_bb`, the
+    last big blind seen."""
+    bomb = max((a.amount for a in hand.actions if a.post_kind == E.POST_BOMB), default=0)
+    if not bomb:
+        return None
+    if bomb_bbs and bomb % bomb_bbs == 0:
+        return bomb // bomb_bbs
+    return table_bb
+
+
 def _apply_clock(clock: dict[str, int | None], raw: str) -> None:
     """Read a ``Game Config Changes`` line's clock settings into `clock`.
 
@@ -475,6 +527,11 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     last: ParsedHand | None = None
     #: The table's decision clock as configured so far, in seconds.
     clock: dict[str, int | None] = {"limit": DEFAULT_DECISION_S, "bank": DEFAULT_TIME_BANK_S}
+    #: The table's big blind as of now: the last hand's BB post, or a later
+    #: chip-denominated blind change. What a hand with no BB post is played at.
+    table_bb: int | None = None
+    #: How many big blinds a bomb pot costs, from the table's settings.
+    bomb_bbs: int | None = None
 
     for raw in entries:
         ev = classify(raw.entry, raw.ord)
@@ -485,7 +542,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
 
         if isinstance(ev, E.HandStart):
             if builder is not None:  # log truncated mid-hand; keep what we have
-                last = builder.finish(complete=False)
+                last = builder.finish(complete=False, table_bb=table_bb, bomb_bbs=bomb_bbs)
+                table_bb = last.bb or table_bb
                 result.hands.append(last)
             builder = _HandBuilder(game_id, ev, raw.at)
             if clock["limit"] is not None:
@@ -495,10 +553,15 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
         if isinstance(ev, E.Noise) and ev.kind == "config_change":
             # Takes effect from the next hand: a hand under way keeps its clock.
             _apply_clock(clock, ev.raw)
+            sets, value = bomb_bbs_setting(ev.raw)
+            if sets:
+                bomb_bbs = value
             continue
 
         if isinstance(ev, E.BlindChange):
             result.blinds[ev.which] = ev.to_amount
+            if ev.which == "bb" and isinstance(ev.to_amount, int):
+                table_bb = ev.to_amount
             continue
 
         if isinstance(ev, E.BountyPaid):
@@ -507,6 +570,12 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             target = builder.hand if builder is not None else last
             if target is not None:
                 _apply_bounty(target, ev)
+            continue
+
+        if isinstance(ev, E.NitPenalty):
+            target = builder.hand if builder is not None else last
+            if target is not None:
+                _apply_nit(target, ev)
             continue
 
         if isinstance(ev, E.Shows) and builder is None:
@@ -521,7 +590,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             continue
 
         if isinstance(ev, E.HandEnd):
-            last = builder.finish()
+            last = builder.finish(table_bb=table_bb, bomb_bbs=bomb_bbs)
+            table_bb = last.bb or table_bb
             result.hands.append(last)
             builder = None
         elif isinstance(ev, E.PlayerStacks):
@@ -544,7 +614,7 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
         # SeatChange / AdminStackChange / Noise: recognized, no effect on hand math.
 
     if builder is not None:  # the export was taken while this hand was still live
-        result.hands.append(builder.finish(complete=False))
+        result.hands.append(builder.finish(complete=False, table_bb=table_bb, bomb_bbs=bomb_bbs))
 
     return result
 

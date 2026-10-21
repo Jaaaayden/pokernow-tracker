@@ -388,8 +388,8 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
     cur = conn.execute(
         "INSERT INTO hands (game_id, hand_number, table_hand_id, ts, ord, dealer_seat,"
         " dead_button, blinds_irregular, n_dealt_in, bb, board_json, run_count,"
-        " went_to_showdown, complete, board_ords, clock_ms)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " went_to_showdown, complete, board_ords, clock_ms, variant, double_board)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             hand.game_id,
             hand.hand_number,
@@ -407,14 +407,16 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
             int(hand.complete),
             json.dumps(hand.board_ords) if hand.board_ords else None,
             hand.clock_ms,
+            hand.variant,
+            int(hand.double_board),
         ),
     )
     hand_id = int(cur.lastrowid)
 
     conn.executemany(
         "INSERT INTO hand_players (hand_id, pn_id, seat, seats_from_button,"
-        " starting_stack, hole_cards, contributed, collected, bounty, folded)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " starting_stack, hole_cards, contributed, collected, bounty, nit, folded)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 hand_id,
@@ -426,6 +428,7 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
                 p.contributed,
                 p.collected,
                 p.bounty,
+                p.nit,
                 int(p.folded),
             )
             for p in hand.players.values()
@@ -459,6 +462,18 @@ def _insert_hand(conn: sqlite3.Connection, hand: ParsedHand) -> None:
             for s in hand.voluntary_shows.values()
         ],
     )
+
+
+def needs_game_modes_rebuild(conn: sqlite3.Connection) -> bool:
+    """Whether any stored hand predates reading the game it was dealt in: no
+    `hands.variant`, which every hand parsed since has. Such a database may also
+    hold bomb pots without their buy-ins and Nit penalties nobody was booked, so
+    only `pnt rebuild` puts it right (SPEC.md, "Money")."""
+    try:
+        row = conn.execute("SELECT 1 FROM hands WHERE variant IS NULL LIMIT 1").fetchone()
+    except sqlite3.OperationalError:  # older still: the column itself is missing
+        return conn.execute("SELECT 1 FROM hands LIMIT 1").fetchone() is not None
+    return row is not None
 
 
 def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:

@@ -16,7 +16,16 @@ import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-from ..logfmt.events import FLOP, POST_ANTE, POST_MISSING_SB, POST_STRADDLE, PREFLOP, RIVER, TURN
+from ..logfmt.events import (
+    FLOP,
+    POST_ANTE,
+    POST_BOMB,
+    POST_MISSING_SB,
+    POST_STRADDLE,
+    PREFLOP,
+    RIVER,
+    TURN,
+)
 from ..logfmt.parser import position_name
 from .cards import board_at
 
@@ -102,6 +111,8 @@ class HandPlayerRow:
     hole_cards: str | None = None
     #: Signed 7-2 side-bet result. Part of `net`, but never of the pot.
     bounty: int = 0
+    #: Signed Nit Game penalty. Part of `net`, but never of the pot.
+    nit: int = 0
     #: Chips in front of them when the hand started, from the `Player stacks:`
     #: line. None on rows imported before the column was filled: unknown, not 0.
     starting_stack: int | None = None
@@ -134,6 +145,36 @@ class HandRow:
     #: Decision limit plus a full time bank, in ms, when the hand began. None when
     #: unknown or the clock was off.
     clock_ms: int | None = None
+    #: The game as the hand-start line names it. None on hands imported before it
+    #: was stored, which were all Hold'em. See `is_holdem`.
+    variant: str | None = None
+    #: Double Board: two boards dealt on every street, not a run-it-twice.
+    double_board: bool = False
+    #: Double Board's second board, as dealt; empty on every other hand.
+    board2: tuple[str, ...] = ()
+
+
+def is_holdem(hand: HandRow) -> bool:
+    """Whether the hand's play can be read: every rate, range, node and review
+    rule here assumes two hole cards. Any other game (PLO) counts for money only,
+    except in the hand lists (`derive(every_game=True)`)."""
+    return hand.variant is None or "hold" in hand.variant.lower()
+
+
+def is_analysed(hand: HandRow) -> bool:
+    """Whether the hand's play is read at all: Hold'em on one board. PLO's cards
+    and a Double Board's second board are past what any rate, range or review
+    rule here understands, so those hands count for money and are listed, no more."""
+    return is_holdem(hand) and not hand.double_board
+
+
+#: `is_analysed` in SQL, over `hands` aliased `h`, for readers that skip `derive`.
+ANALYSED_SQL = "((h.variant IS NULL OR h.variant LIKE '%hold%') AND NOT h.double_board)"
+
+
+def is_bomb_pot(hand: HandRow) -> bool:
+    """Everyone bought in with a bomb-pot bet: no blinds, no preflop decision."""
+    return any(a.is_forced and a.post_kind == POST_BOMB for a in hand.actions)
 
 
 @dataclass(slots=True)
@@ -224,6 +265,7 @@ class Facts:
     pfa: bool = False
     #: Highest preflop bet level the hand reached: 1 limped/walk, 2 single-raised,
     #: 3 three-bet pot, 4+ four-bet pot. Same value for everyone in the hand.
+    #: 0 when there was no preflop betting to read: a bomb pot, or PLO's money-only facts.
     pot_level: int = 1
     #: Size of the hand's open raise in big blinds, for everyone in the hand.
     open_bb: float | None = None
@@ -296,7 +338,11 @@ class Facts:
     #: `pos_order == pos_players - 1`; stored so filters and tests read one flag.
     in_position: bool | None = None
 
+    #: Two Hold'em hole cards, or None: unknown, or not Hold'em. Every card reader
+    #: here (hand classes, ranges, strength) knows two, so PLO's never reach it.
     hole_cards: str | None = None
+    #: The cards to *show*, any game: what the hand lists print. Nothing reads them.
+    cards: str | None = None
     board: tuple[str, ...] = ()
 
     # --- foundation facts (SPEC.md: "Steals and blind defense", "Squeeze and
@@ -335,6 +381,18 @@ class Facts:
     #: The signed 7-2 side-bet result, from `HandPlayerRow.bounty`: positive when
     #: paid to them, negative when they paid, 0 when none. Already part of `net`.
     bounty: int = 0
+    #: The signed Nit Game penalty, from `HandPlayerRow.nit`. Already part of `net`.
+    nit: int = 0
+    #: Hold'em, by the hand-start line: the `holdem` / `plo` filters.
+    holdem: bool = True
+    #: Hold'em on one board (`is_analysed`). False on PLO and Double Board, whose
+    #: facts carry money only unless derived with `every_game` (see `derive`).
+    analysed: bool = True
+    #: A bomb pot: everyone posted the bomb, nobody had a preflop decision.
+    bomb_pot: bool = False
+    #: Double Board was dealt (`HandRow.double_board`), and its second board.
+    double_board: bool = False
+    board2: tuple[str, ...] = ()
     #: As the preflop aggressor, after every earlier postflop street checked
     #: through: first to bet on this street (turn and river).
     delayed_cbet_opp: dict[str, bool] = field(default_factory=dict)
@@ -523,7 +581,7 @@ def _preflop(hand: HandRow, facts: dict[str, Facts]) -> str | None:
     o = facts.get(opener) if opener is not None else None
     steal_open = o is not None and o.first_in and o.position_label in STEAL_SEATS
     for f in facts.values():
-        f.pot_level = level
+        f.pot_level = 0 if f.bomb_pot or not f.analysed else level
         f.open_bb = open_bb
         f.steal_open = steal_open
     if aggressor is not None and aggressor in facts:
@@ -933,8 +991,18 @@ def pot_at(hand: HandRow, pot: int) -> dict[str, int]:
     return out
 
 
-def derive(hand: HandRow) -> list[Facts]:
-    """Produce one Facts row per dealt-in player."""
+def derive(hand: HandRow, every_game: bool = False) -> list[Facts]:
+    """Produce one Facts row per dealt-in player.
+
+    A hand not `is_analysed` -- PLO, or Double Board -- gets money only, no
+    opportunity and no cards, so no rate, range or tag counts it. `every_game`
+    derives its lines in full, for the hand lists (Session), which show it like
+    any other. Either way `hole_cards` stays None on it and `pot_level` 0: only
+    `cards` shows them.
+    """
+    holdem = is_holdem(hand)
+    analysed = holdem and not hand.double_board
+    bomb = is_bomb_pot(hand)
     pot = sum(p.contributed for p in hand.players.values())
     streets_pot = pot_at(hand, pot)
     facts = {
@@ -948,23 +1016,32 @@ def derive(hand: HandRow) -> list[Facts]:
             game_id=hand.game_id,
             hand_number=hand.hand_number,
             ts=hand.ts,
-            net=p.collected - p.contributed + p.bounty,
+            net=p.collected - p.contributed + p.bounty + p.nit,
             bounty=p.bounty,
+            nit=p.nit,
+            holdem=holdem,
+            analysed=analysed,
+            bomb_pot=bomb,
+            double_board=hand.double_board,
+            board2=hand.board2,
             pot=pot,
             bb_size=hand.bb,
             complete=hand.complete,
-            hole_cards=p.hole_cards,
+            hole_cards=p.hole_cards if analysed else None,
+            cards=p.hole_cards,
             board=hand.board,
             pot_at=dict(streets_pot),
+            # No preflop betting: neither a walk nor a limped pot. `_preflop` keeps it.
+            pot_level=0 if bomb or not analysed else 1,
         )
         for pid, p in hand.players.items()
     }
-
-    aggressor = _preflop(hand, facts)
-    _postflop(hand, facts, aggressor)
-    _sequences(hand, facts)
-    _jams(hand, facts)
-    _table(hand, facts)
+    if analysed or every_game:
+        aggressor = _preflop(hand, facts)
+        _postflop(hand, facts, aggressor)
+        _sequences(hand, facts)
+        _jams(hand, facts)
+        _table(hand, facts)
 
     folded_preflop = {
         a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"
@@ -982,6 +1059,10 @@ def derive(hand: HandRow) -> list[Facts]:
         f.wtsd = f.saw_flop and hand.went_to_showdown and not p.folded
         f.wsd = f.wtsd and p.collected > 0
         f.won_pot = p.collected > 0
+    if not analysed and not every_game:
+        # Money only: who got to the flop and the showdown, which Results' lines
+        # split the money by, and no opportunity, so no rate counts the hand.
+        return list(facts.values())
 
     _foundation(hand, facts)
     _timing(hand, facts)

@@ -79,7 +79,7 @@ def _seat(f: Facts, _: Context) -> Key:
 
 
 #: Results' pot types, under the names the pot-type flags have.
-_POT_NAMES = ("walk", "limped", "srp", "3bet_pot", "4bet_pot")
+_POT_NAMES = ("walk", "limped", "srp", "3bet_pot", "4bet_pot", "bomb_pot", "double_board", "plo")
 _POT_TERMS = {name: term for name, (_, _, term, _) in zip(_POT_NAMES, POT_TYPES, strict=True)}
 _POT_TESTS = tuple(zip(_POT_NAMES, (test for *_, test in POT_TYPES), strict=True))
 

@@ -81,7 +81,7 @@ FLAGS: dict[str, Predicate] = {
     # --- line terms
     "opener": lambda f: f.opener,
     "pfa": lambda f: f.pfa,
-    "limped": lambda f: f.pot_level == 1,
+    "limped": lambda f: f.pot_level == 1,  # never a bomb pot, PLO or Double Board: those are 0
     "srp": lambda f: f.pot_level == 2,
     "3bet_pot": lambda f: f.pot_level == 3,
     "4bet_pot": lambda f: f.pot_level >= 4,
@@ -120,6 +120,15 @@ FLAGS: dict[str, Predicate] = {
     # The 7-2 side bet, settled outside the pot.
     "bounty_won": lambda f: f.bounty > 0,
     "bounty_paid": lambda f: f.bounty < 0,
+    # The Nit Game penalty, the same way.
+    "nit_won": lambda f: f.nit > 0,
+    "nit_paid": lambda f: f.nit < 0,
+    # The game. PLO and Double Board are counted in the hand lists and Results
+    # only (SPEC.md, "Money"), so `plo` and `double_board` find nothing elsewhere.
+    "holdem": lambda f: f.holdem,
+    "plo": lambda f: not f.holdem,
+    "bomb_pot": lambda f: f.bomb_pot,
+    "double_board": lambda f: f.double_board,
 }
 
 # Responses to a c-bet, and leads into the previous street's aggressor, per street.
@@ -815,11 +824,19 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("fold_street=STREET", "fold_street=turn", "the street they folded on: preflop, flop, turn or river"),
         ("bounty_won", "bounty_won", "was paid the 7-2 bounty"),
         ("bounty_paid", "bounty_paid", "paid the 7-2 bounty"),
+        ("nit_won", "nit_won", "was paid the Nit penalty"),
+        ("nit_paid", "nit_paid", "paid the Nit penalty: last to win a pot"),
         ("won", "won", "won chips"),
         ("lost", "lost", "lost chips"),
         ("cards_known", "cards_known", "hole cards were shown"),
         ("pot>=N", "pot>=500", "the final pot, in chips"),
         ("pot_bb>=N", "pot_bb>=50", "the final pot, in bb"),
+    )),
+    ("Game", (
+        ("holdem", "holdem", "Hold'em"),
+        ("plo", "plo", "PLO: hand lists and Results only"),
+        ("bomb_pot", "bomb_pot", "a bomb pot: no blinds, everyone posted"),
+        ("double_board", "double_board", "Double Board was dealt: hand lists and Results only"),
     )),
     ("Opponent", (
         ("vs=NAME", "vs=henry", "played against that player"),
@@ -862,6 +879,8 @@ EXCLUSIVE: tuple[tuple[str, ...], ...] = (
     ("fold_to_steal", "3bet_vs_steal"),
     ("squeeze", "cold_call"),
     ("bounty_won", "bounty_paid"),
+    ("nit_won", "nit_paid"),
+    ("holdem", "plo"),
 )
 
 #: Texture tags no one board carries two of. The rest overlap on purpose (see

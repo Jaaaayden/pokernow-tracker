@@ -112,6 +112,7 @@
   .presets button[aria-pressed=true] .cnt { color: inherit; opacity: .75; }
   .presets button .cnt.stale { opacity: .4; }
   .presets button.zero { opacity: .45; }
+  .presets button:disabled { opacity: .45; cursor: default; }
   .tile .k small { color: var(--muted); }
 
   /* --- stat tiles --- */
@@ -814,6 +815,7 @@
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
       <button data-view="session" aria-pressed="false" title="every hand of one session, flagged or not">Session</button>
       <button data-view="bounties" aria-pressed="false" title="the 7-2 side bet: who won and paid bounties, every player">7-2</button>
+      <button data-view="nit" aria-pressed="false" title="the Nit Game: who was paid the penalty and who paid it, every player">Nit</button>
     </span>
   </div>
   <div class="pnote" id="pnote"></div>
@@ -1085,6 +1087,14 @@
     ["100–200bb", "eff_bb>=100,eff_bb<200"], ["200bb+", "eff_bb>=200"],
   ];
   const SPR_LOW = ["SPR ≤3", "spr_flop<=3", "stack-to-pot ratio of 3 or less on the flop: one bet or two gets it in"];
+  // The game: Hold'em or PLO, one at a time, and the table's extras as toggles.
+  // PLO and Double Board are in the hand lists and Results only.
+  const GAMES = [
+    { text: "Hold'em", term: "holdem", what: "Hold'em hands" },
+    { text: "PLO", term: "plo", what: "PLO hands: Session, flagged, tagged and Results only" },
+    { text: "bomb pot", term: "bomb_pot", toggle: true, what: "no blinds, everyone posted the bomb" },
+    { text: "double board", term: "double_board", toggle: true, what: "two boards every street: Session, flagged, tagged and Results only" },
+  ];
   const EFF_TERM = /^eff_bb(>=|<=|=|>|<)/;
   // What they did after the flop, as toggles that compose with everything
   // above. These are the spots the player tags open, so a tag sent from the
@@ -1247,6 +1257,13 @@
     const current = $("filter").value.trim();
     document.querySelectorAll("button[data-preset]").forEach(b => b.setAttribute("aria-pressed", b.dataset.preset === current));
     $("clear").disabled = !current;
+    // PLO and Double Board hands are only in the hand lists and Results: on any
+    // other tab their chips could only empty the spot, so they are off there --
+    // unless already on, so they can still be taken off.
+    const play = scopeOf(state.by) === "play";
+    for (const b of document.querySelectorAll('#pottype [data-term="plo"], #pottype [data-term="double_board"]')) {
+      b.disabled = play && !hasTerm(b.dataset.term);
+    }
     const pot = terms().map(t => t.match(POT_TERM)).find(Boolean);
     $("pot").value = pot ? pot[2] : "";
     const vs = terms().map(t => t.match(VS_TERM)).find(Boolean);
@@ -1260,7 +1277,7 @@
 
   // ---- chip counts ------------------------------------------------------
   // Each chip carries the player's hands the spot would hold if it were clicked
-  // now, so a pressed chip shows what taking it off leaves. One POST /counts per
+  // now; a pressed chip, the hands the spot holds as it is. One POST /counts per
   // batch, at most COUNTS_MAX terms: the Common row first, then the More filters
   // chips, only while that is open. Every resync ends up here (syncMore): typing
   // waits for a 300ms pause, an applied spot asks at once, and a newer ask aborts
@@ -1274,17 +1291,23 @@
     b.addEventListener("click", () => { $("filter").value = next(); apply(); });
   }
   const compact = (n) => (n > 999 ? `${(n / 1000).toFixed(n < 9950 ? 1 : 0).replace(/\.0$/, "")}k` : String(n));
-  // `cache`: spot -> count for `cacheFor`, kept a minute, so opening More filters
-  // or taking a chip back off asks nothing twice.
-  const counts = { ctl: null, timer: 0, key: null, cache: new Map(), cacheFor: null, cacheAt: 0 };
+  // `caches`: per player and scope, spot -> count, each kept a minute, so opening
+  // More filters, taking a chip back off or flipping between tabs asks nothing
+  // twice. Entries past their minute are dropped, so the HUD's long-lived panel
+  // holds no more than the last minute's players.
+  const COUNTS_TTL = 60000;
+  const counts = { ctl: null, timer: 0, key: null, caches: new Map() };
   // The chips on show, each with the spot its click leaves. A chip with a
   // `data-filter` (a saved spot) counts that filter.
   function shownChips() {
     const open = !$("filters").classList.contains("hidden");
     const bs = [...$("common").querySelectorAll("button"), ...(open ? $("filters").querySelectorAll("button") : [])];
+    // A pressed chip counts the spot as it is, the hands it holds now; any other,
+    // the spot its click would leave.
+    const now = terms().join(",");
     return bs.flatMap((b) => {
       const next = chipNext.get(b);
-      const f = next ? next() : b.dataset.filter;
+      const f = b.getAttribute("aria-pressed") === "true" ? now : next ? next() : b.dataset.filter;
       return f == null ? [] : [[b, f.split(",").map(t => t.trim()).filter(Boolean).join(",")]];
     });
   }
@@ -1301,27 +1324,36 @@
     badge.textContent = compact(n);
     badge.classList.remove("stale");
     b.classList.toggle("zero", n === 0);
-    b.title = `${b.dataset.title0 ? b.dataset.title0 + " · " : ""}${n.toLocaleString()} hands if you click`;
+    const pressed = b.getAttribute("aria-pressed") === "true";
+    b.title = `${b.dataset.title0 ? b.dataset.title0 + " · " : ""}${n.toLocaleString()} hands ${pressed ? "now" : "if you click"}`;
   }
-  function countChips() {
+  // `delay` overrides the wait: a tab switch waits for the clicking to stop, since
+  // the server finishes a count it was asked for even after the page drops it.
+  function countChips(delay) {
     clearTimeout(counts.timer);
     const typing = $("filter").value.trim() !== state.filter;
-    counts.timer = setTimeout(fetchCounts, typing ? 300 : 0);
+    counts.timer = setTimeout(fetchCounts, delay ?? (typing ? 300 : 0));
   }
+  // Which hands a tab reads (queries.SCOPES): the hand lists list PLO and Double
+  // Board too, Results counts their money, every other tab reads play only. A chip
+  // counts what its click lists.
+  const scopeOf = (view) => view === SESSION_VIEW || view === TAGGED_VIEW ? "every" : view === "results" ? "money" : "play";
   async function fetchCounts() {
     const player = state.player;
     if (!player) return;
     const chips = shownChips();
-    const key = JSON.stringify([player, chips.map(([, f]) => f)]);
+    const games = scopeOf(state.by);
+    const key = JSON.stringify([player, games, chips.map(([, f]) => f)]);
     if (key === counts.key) return; // the same chips on the same spot: as painted
     counts.key = key;
     counts.ctl?.abort();
     const ctl = counts.ctl = new AbortController();
     for (const b of document.querySelectorAll(".presets button > .cnt")) b.classList.add("stale");
-    if (counts.cacheFor !== player || Date.now() - counts.cacheAt > 60000) {
-      counts.cache = new Map(); counts.cacheFor = player; counts.cacheAt = Date.now();
-    }
-    const got = counts.cache;
+    const ck = player + "|" + games;
+    for (const [k, e] of counts.caches) if (Date.now() - e.at > COUNTS_TTL) counts.caches.delete(k);
+    let entry = counts.caches.get(ck);
+    if (!entry) counts.caches.set(ck, entry = { map: new Map(), at: Date.now() });
+    const got = entry.map;
     for (const [b, f] of chips) if (got.has(f)) paintCount(b, got.get(f));
     // A chip that only adds terms is asked as those terms on top of the spot, so
     // only the spot's own hands are read; any other is asked whole. Those on top
@@ -1351,7 +1383,7 @@
     try {
       for (const [filter, pairs] of batches) {
         if (!pairs.length) continue;
-        const out = await postJson("/counts", { player, filter, game: null, terms: pairs.map(([, t]) => t) }, ctl.signal);
+        const out = await postJson("/counts", { player, filter, game: null, games, terms: pairs.map(([, t]) => t) }, ctl.signal);
         if (ctl.signal.aborted) return;
         for (const [f, t] of pairs) got.set(f, out.counts[t]);
         for (const [b, f] of chips) if (got.has(f)) paintCount(b, got.get(f));
@@ -1368,7 +1400,7 @@
     }
   }
   const state = { player: null, filter: "", by: "preflop", color: "net", street: "flop", kind: "cbet", floor: "set",
-                  table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null,
+                  table: false, data: null, dataView: null, handRows: null, handSort: "newest", handIds: null, handTerm: null, handScope: null,
                   order: null, hide: new Set(), hideSeen: false, review: null,
                   game: null, games: null, played: true, satOut: false, session: null, split: true };
 
@@ -1390,7 +1422,7 @@
   const SESSION_VIEW = "session";
   const TAGGED_VIEW = "tagged";
   const isListView = (view) => isReview(view) || view === SESSION_VIEW || view === TAGGED_VIEW;
-  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, "tilt", "timing", "shows", "bounties", "results"];
+  const VIEWS = ["preflop", "made", "sizing", "lines", "bluffs", "strength", ...REVIEW_VIEWS, SESSION_VIEW, "tilt", "timing", "shows", "bounties", "nit", "results"];
   // The spot tree: one player's decision points, seat first. See "spot tree" below.
   const TREE_VIEW = "tree";
   VIEWS.push(TREE_VIEW);
@@ -1712,8 +1744,8 @@
       } else if (view === "shows") {
         // Shows are not hands in a spot: the spot box does not narrow them.
         data = await getJson(`/players/${player}/shows`);
-      } else if (view === "bounties") {
-        data = await getJson("/bounties");
+      } else if (view === "bounties" || view === "nit") {
+        data = await getJson(view === "nit" ? "/nit" : "/bounties");
         data.player = state.player;
       } else if (view === "results") {
         // The red and blue lines ride along: same player and spot. A server too
@@ -1881,6 +1913,7 @@
     timing: "How long they took, and what they had",
     shows: "Shown without being asked",
     bounties: "7-2 bounties",
+    nit: "Nit Game",
   };
 
   // ---- lines ---------------------------------------------------------------
@@ -4146,7 +4179,7 @@
     $("tilt").classList.toggle("hidden", view !== "tilt");
     $("timing").classList.toggle("hidden", view !== "timing");
     $("shows").classList.toggle("hidden", view !== "shows");
-    $("bounty").classList.toggle("hidden", view !== "bounties");
+    $("bounty").classList.toggle("hidden", view !== "bounties" && view !== "nit");
     // The spot tree and the made view's Streets tab draw into boxes of their own,
     // with no grid or table to switch to.
     const madeStreets = view === "made" && state.made === "streets";
@@ -4169,7 +4202,7 @@
     if (view === "tilt") { renderTilt(d); return; }
     if (view === "timing") { renderTiming(d); return; }
     if (view === "shows") { renderShows(d); return; }
-    if (view === "bounties") { renderBounties(d); return; }
+    if (view === "bounties" || view === "nit") { renderBounties(d, SIDE_BETS[view]); return; }
     if (view === LINES_VIEW) { renderLines(d, table); return; }
     if (view === TREE_VIEW) { renderTree(d); return; }
     if (madeStreets) { renderStreets(d); return; }
@@ -4251,7 +4284,21 @@
   // GET /bounties: the side bet's board, every player, the one on show marked. A
   // count opens that player's bounty hands; a row switches the chart to them.
   const signed = (n) => (n > 0 ? "+" : "") + n.toLocaleString();
-  function renderBounties(d) {
+  // The two side-bet boards share one table; this is what each says. GET /nit is
+  // /bounties' shape without the 72 half (`hero`).
+  const SIDE_BETS = {
+    bounties: {
+      count: (t) => t.bounties, tiles: ["bounties collected", "chips changed hands", "players"],
+      none: "no bounty yet", empty: "no bounty has been paid yet", noun: "a bounty", hands: "bounty hand",
+      note: "**Win a pot with 7-2** and everyone at the table pays you.",
+    },
+    nit: {
+      count: (t) => t.penalties, tiles: ["penalties paid", "chips changed hands", "players"],
+      none: "no penalty yet", empty: "no Nit penalty has been paid yet", noun: "the Nit penalty", hands: "Nit hand",
+      note: "**Last to win a pot** pays everyone else in the Nit.",
+    },
+  };
+  function renderBounties(d, copy = SIDE_BETS.bounties) {
     const wrap = $("bounty");
     wrap.replaceChildren();
     // To a player; with a filter, to their hands in it on the starting-hands grid.
@@ -4264,21 +4311,29 @@
       }
       apply();
     };
-    setTileKeys("bounties collected", "chips changed hands", "players");
-    $("t-hands").textContent = d.total.bounties.toLocaleString();
+    // A count's hands, listed under the board. The board counts every hand -- PLO
+    // and Double Board too -- which the starting-hands grid leaves out.
+    const list = (player, filter, title) => {
+      $("player").value = player;
+      $("filter").value = filter;
+      apply();
+      openHands(title, null, null, "every");
+    };
+    setTileKeys(...copy.tiles);
+    $("t-hands").textContent = copy.count(d.total).toLocaleString();
     $("t-known").textContent = d.total.won.toLocaleString();
     $("t-cov").textContent = d.players.length;
     const me = d.players.find(r => r.player === d.player);
     $("t-raise").textContent = me ? signed(me.net.chips) : "–";
-    setRaiseKey(me ? `${d.player}'s net` : "net", me ? `${me.won.count} won · ${me.paid.count} paid` : "no bounty yet");
+    setRaiseKey(me ? `${d.player}'s net` : "net", me ? `${me.won.count} won · ${me.paid.count} paid` : copy.none);
     $("subtitle").textContent = "every player · all hands";
-    setNote("**Win a pot with 7-2** and everyone at the table pays you.",
+    setNote(copy.note,
       "A side bet: chips only move between players, so **net** sums to zero."
         + (d.balance ? ` (It is ${signed(d.balance)} off: a payment named someone not dealt in.)` : ""),
       "Click a count for those hands; a row switches the chart to that player.");
     $("tabletoggle").classList.add("hidden");
     $("table").classList.add("hidden");
-    if (!d.players.length) wrap.appendChild(message("no bounty has been paid yet"));
+    if (!d.players.length) wrap.appendChild(message(copy.empty));
     else {
       const t = document.createElement("table");
       const head = document.createElement("tr");
@@ -4294,8 +4349,8 @@
           const n = r[side].count;
           if (!n || !filter) { td.textContent = n; return; }
           const a = document.createElement("a"); a.href = "#"; a.textContent = n; a.className = "link";
-          a.title = `${r.player}'s ${n} hand${n === 1 ? "" : "s"} ${side === "won" ? "won" : "paid"} a bounty in`;
-          a.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); go(r.player, filter); });
+          a.title = `${r.player}'s ${n} hand${n === 1 ? "" : "s"} ${side === "won" ? "won" : "paid"} ${copy.noun} in`;
+          a.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); list(r.player, filter, a.title); });
           td.appendChild(a);
         };
         cell(r.player);
@@ -4306,7 +4361,7 @@
         cell(signed(r.net.chips), r.net.chips > 0 ? "up" : r.net.chips < 0 ? "down" : "");
         cell(r.net.bb == null ? "—" : signed(r.net.bb));
         const of = cell(r.hands.toLocaleString(), "dim");
-        of.title = `${r.bounty_hands} bounty hand${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
+        of.title = `${r.bounty_hands} ${copy.hands}${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
         tr.title = `Switch the chart to ${r.player}`;
         tr.addEventListener("click", () => go(r.player, null));
         body.appendChild(tr);
@@ -4315,7 +4370,7 @@
       wrap.appendChild(t);
     }
     // The logs' owners only: anyone else's 72 is seen only when shown.
-    for (const h of d.hero) {
+    for (const h of d.hero || []) {
       const p = document.createElement("p"); p.className = "hero72";
       const link = (text, filter) => {
         if (!filter) return document.createTextNode(text);
@@ -4779,11 +4834,13 @@
   const HAND_LIMIT = 300;
 
   // The hands in the spot, or in the spot narrowed by one more `term`.
-  async function handRows(term = null) {
+  async function handRows(term = null, scope = null) {
     const filter = [state.filter, term].filter(Boolean).join(",");
-    const key = `${state.player}|${filter}`;
+    // The hands the tab counted, so the list agrees with the tile it opened from.
+    const games = scope || scopeOf(state.by);
+    const key = `${state.player}|${filter}|${games}`;
     if (state.handRows?.key === key) return state.handRows.rows;
-    const q = new URLSearchParams();
+    const q = new URLSearchParams({ games });
     if (filter) q.set("filter", filter);
     const asked = loadSeq;
     const body = await getJson(`/players/${encodeURIComponent(state.player)}/hands?` + q);
@@ -4802,7 +4859,7 @@
   let handsSeq = 0;
   // `ids` picks rows out of the spot's hands; `term` instead lists the spot
   // narrowed by that filter term, so the list is what the term finds.
-  async function openHands(title, ids, term = null) {
+  async function openHands(title, ids, term = null, scope = null) {
     const seq = ++handsSeq;
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
@@ -4813,8 +4870,9 @@
     list.replaceChildren(message("loading…"));
     state.handIds = ids; // remembered so a change of order re-lists the same set
     state.handTerm = term;
+    state.handScope = scope;
     try {
-      const rows = await handRows(term);
+      const rows = await handRows(term, scope);
       if (seq !== handsSeq) return;
       const want = ids ? new Set(ids) : null;
       renderHandRows(want ? rows.filter(r => want.has(r.hand_id)) : rows);
@@ -4891,7 +4949,9 @@
     }
     span("hole", h.hole_cards ? cardsEl(h.hole_cards) : h.sat_out ? "sat out" : "?? ??");
     if (h.sat_out) b.dataset.satOut = "";
-    span("board", h.board.length ? cardsEl(h.board) : "no flop");
+    const boardEl = span("board", h.board.length ? cardsEl(h.board) : "no flop");
+    // Double Board: the second board under the first.
+    if (h.board2?.length) boardEl.append(document.createElement("br"), cardsEl(h.board2));
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
     span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
     span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
@@ -5498,7 +5558,8 @@
   $("player").addEventListener("change", () => apply());
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x === b));
-    state.by = b.dataset.view; writeUrl(); load();
+    // The chips and their counts follow the tab's hands (scopeOf).
+    state.by = b.dataset.view; writeUrl(); syncChips(); countChips(700); load();
   }));
   document.querySelectorAll("[data-color]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x === b));
@@ -5516,7 +5577,7 @@
     // The session view is already the list of its hands.
     // The pool's tile counts everyone's hands, which no one player's list holds.
     if (state.by === "bluffs" && state.bluffScope === "pool") return;
-    if (state.by === "bounties") return;
+    if (state.by === "bounties" || state.by === "nit") return;
     if (state.by === "shows" && state.dataView === "shows" && state.data) {
       openHands("Shown without being asked", state.data.rows.map(r => r.hand_id));
       return;
@@ -5577,7 +5638,7 @@
     if ($("hands").classList.contains("hidden")) return;
     // In the pool's value:bluff table every list is the pool's; see openPoolHands.
     if (state.by === "bluffs" && state.bluffScope === "pool" && state.poolHands) openPoolHands(...state.poolHands);
-    else openHands($("hands-title").textContent, state.handIds, state.handTerm);
+    else openHands($("hands-title").textContent, state.handIds, state.handTerm, state.handScope);
   });
   $("pot").addEventListener("change", () => { setPotTerm($("pot").value); apply(); });
   $("pot").addEventListener("keydown", (e) => { if (e.key === "Enter") { setPotTerm($("pot").value); apply(); } });
@@ -5666,6 +5727,23 @@
     b.dataset.term = term;
     chipClick(b, () => nextToggle(term));
     row.appendChild(b);
+    $("pottype").appendChild(row);
+  }
+  {
+    const row = document.createElement("div"); row.className = "presets";
+    const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "Game";
+    lbl.title = "the game dealt, and whether it was a bomb pot or Double Board";
+    row.appendChild(lbl);
+    const group = GAMES.filter(g => !g.toggle).map(g => g.term);
+    for (const { text, term, toggle, what } of GAMES) {
+      // The toggles go with either game, so they sit apart, as straddled does.
+      if (toggle && term === GAMES.find(g => g.toggle).term) { const s = document.createElement("span"); s.className = "sep"; row.appendChild(s); }
+      const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+      b.title = `${term}: ${what}`;
+      b.dataset.term = term;
+      chipClick(b, () => (toggle ? nextToggle(term) : nextOneOf(group, term)));
+      row.appendChild(b);
+    }
     $("pottype").appendChild(row);
   }
   for (const [name, what, chips] of ACTION_ROWS) {

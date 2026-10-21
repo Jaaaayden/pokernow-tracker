@@ -2166,10 +2166,50 @@ Judgement calls:
 
 ```
 contributed = Σ(incremental chips committed, including forced posts) − uncalled returns
-net         = collected − contributed + bounty
+net         = collected − contributed + bounty + nit
 bb/100      = (Σ net / big_blind) / hands × 100
               over complete hands with a known big blind only
 ```
+
+`nit` is the Nit Game penalty, booked on the hand after which it was paid: the
+payer −(each × payees dealt in), each payee +each. Like the bounty it is never
+part of the pot. The escrow behind it -- bought in from the stack, carried over,
+refunded on leaving -- is the player's own money and moves no `net`, so a
+starting stack can sit below the last hand's end by the escrow.
+
+**Bomb pots** have no blinds and no preflop betting: every buy-in is a forced
+post of kind `bomb_pot`, so nobody has a preflop decision and no preflop rate
+counts the hand. Its big blind is the bomb over the table's `Bomb Pot BB
+Quantity`, or failing that the last big blind seen.
+
+**Only Hold'em on one board is analysed** (`derive.is_analysed`). PLO's four or
+five cards and a Double Board's second board are past every rate, range and
+review rule here, so both count for money and are listed, no more. Every reader
+takes a scope (`queries.SCOPES`): `play` -- every rate, range, tag, tree, the HUD
+and the pool baseline -- leaves them out altogether, hand counts included;
+`money` -- Results (rows `PLO` and `double board`) and the winnings graph -- adds
+their money-only facts; `every` -- Session, flagged and tagged -- derives them
+in full, so they are listed with their seat and lines like any other hand. h2h
+reads hands, not facts, and counts their money. Whatever the scope, such a
+fact's `hole_cards` is None and its `pot_level` 0: no card reader sees it, and
+no pot-type term describes it. Its cards are in `cards`, which only the hand
+lists print. No all-in equity and no voluntary-show class either
+(`ANALYSED_SQL`). A bomb pot on one board is analysed: no preflop decision, so
+no preflop rate counts it, `pot_level` 0 (neither a walk nor a limp), and its
+postflop play counts like any other. Results gives it a row.
+
+Two readings cross the scopes. The session facts -- a hand's place in the
+session and how long since a big loss (`tilt.annotate`) -- are numbered over
+every hand, PLO and Double Board included, in every scope and in the pool:
+chips lost at either are still lost, so the HUD's post-loss read takes the
+`money` scope. And a hand list opened from a count lists that count's scope:
+from an analysis tab, `play`; from Session, `every`; from the 7-2 and Nit
+boards, which count every hand, `every`. Hands stored before this rule have no
+`hands.variant`, and `pnt` asks for a `pnt rebuild` while any remain.
+
+Game filters: `holdem`, `plo`, `bomb_pot`, `double_board` (the table dealt Double
+Board, told apart from run-it-twice by its `(second board)` lines). `plo` and
+`double_board` find hands only in the hand lists and Results.
 
 `contributed` subtracts uncalled bets because chips returned to you were never at
 risk. Verified against hand #187 of the sample log: Chris posts SB 5, raises to 30,
@@ -2291,8 +2331,8 @@ the equities and `allin.py` turns them into rows; the page and `pnt allin` read 
 
 ```
 expected  = Σ over pots of  pot × P(this player wins the pot among its eligible players)
-adjusted  = expected  − contributed + bounty
-actual    = collected − contributed + bounty        (the `net` above, unchanged)
+adjusted  = expected  − contributed + bounty + nit
+actual    = collected − contributed + bounty + nit  (the `net` above, unchanged)
 diff      = actual − adjusted                        positive ran above expectation
 equity    = expected / pot                           share of the whole pot
 ```
@@ -2321,7 +2361,9 @@ this section; `GET /players/{alias}/h2h` (one row per opponent), `GET /h2h` (the
 pool's matrix), `pnt h2h` and the players page read it.
 
 Each hand is settled into transfers, **payer → payee**, on two ledgers kept apart:
-the pot (`collected − contributed`) and the 7-2 bounty (`bounty`).
+the pot (`collected − contributed`) and the 7-2 bounty (`bounty`). A Nit
+penalty (`nit`) is settled on its own, then counted with the pot: it has one
+payer, so it settles exactly and goes to the players it was paid to.
 
 ```
 winners  = players whose ledger is positive; won_w = their gain
@@ -2491,6 +2533,13 @@ Judgement calls:
    counts to the chart on them; the rest of the row still opens the player's
    card. A bounty paid to or by a PokerNow ID with no player row has no alias to
    open, so its filters are null.
+
+### Nit ledger
+
+The 7-2 ledger's board over `hand_players.nit` (`bounty.nit_ledger`, `GET /nit`,
+the chart's Nit tab): **won** counts the penalties paid to the player, **paid**
+the times they were the Nit -- last to win a pot, paying everyone else. Filters
+`nit_won` and `nit_paid`. No hero half. Net sums to zero; `balance` says if not.
 
 ### Red and blue lines
 

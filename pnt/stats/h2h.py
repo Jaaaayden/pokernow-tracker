@@ -35,7 +35,7 @@ from fractions import Fraction
 from itertools import combinations
 
 from ..logfmt.events import PREFLOP
-from .derive import AGGRESSIVE, HandRow, derive
+from .derive import AGGRESSIVE, HandRow, derive, is_analysed
 from .queries import display_names, facts_cached, identities_of, identity_map, load_hands
 from .review import THRESHOLDS as REVIEW_THRESHOLDS
 from .review import Context, failed_bluff
@@ -75,7 +75,8 @@ def _ledgers(hand: HandRow) -> tuple[Flows, Flows, bool] | None:
         return None
     pot = {pid: p.collected - p.contributed for pid, p in hand.players.items()}
     bounty = {pid: p.bounty for pid, p in hand.players.items() if p.bounty}
-    if sum(pot.values()) or sum(bounty.values()):
+    nit = {pid: p.nit for pid, p in hand.players.items() if p.nit}
+    if sum(pot.values()) or sum(bounty.values()) or sum(nit.values()):
         return None
     pot_flows: Flows = {}
     bounty_flows: Flows = {}
@@ -83,6 +84,12 @@ def _ledgers(hand: HandRow) -> tuple[Flows, Flows, bool] | None:
     # A bounty is its own ledger: settled with the pot, it would be spread over
     # the pot's winners instead of going to the player it was paid to.
     split |= _settle(bounty, bounty_flows)
+    # So is a Nit penalty, though it is not a bounty: settled apart, then counted
+    # with the pot. It has one payer, so the proportional rule is exact, not a split.
+    nit_flows: Flows = {}
+    _settle(nit, nit_flows)
+    for k, chips in nit_flows.items():
+        pot_flows[k] = pot_flows.get(k, Fraction(0)) + chips
     return pot_flows, bounty_flows, split
 
 
@@ -92,7 +99,7 @@ def hand_flows(hand: HandRow) -> tuple[Flows, bool] | None:
 
     None when the money is not all there: the log stopped mid-hand, or the pot or
     the bounties do not net to zero. Each player's payments in, less their
-    payments out, is exactly their net (`collected - contributed + bounty`).
+    payments out, is exactly their net (`collected - contributed + bounty + nit`).
     """
     settled = _ledgers(hand)
     if settled is None:
@@ -130,14 +137,14 @@ def _bluffs(hand: HandRow) -> list[tuple[str, set[str], set[str]]]:
     for each player who lost a big enough pot after a postflop bet or raise that
     was answered. The third set is empty unless the cards show it was air."""
     bb = hand.bb
-    if not hand.complete or not bb:
+    if not hand.complete or not bb or not is_analysed(hand):
         return []
     if sum(p.contributed for p in hand.players.values()) / bb < REVIEW_THRESHOLDS["failed_bluff_pot_bb"]:
         return []
     out = []
     facts = None
     for pid, p in hand.players.items():
-        if p.collected - p.contributed + p.bounty >= 0:
+        if p.collected - p.contributed + p.bounty + p.nit >= 0:
             continue
         answered = answered_by(hand, pid)
         if not answered:

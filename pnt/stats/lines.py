@@ -27,10 +27,9 @@ import sqlite3
 from collections import defaultdict
 from fractions import Fraction
 
-from .derive import POSTFLOP_STREETS, Facts, derive
-from .queries import load_hands
+from .derive import POSTFLOP_STREETS, Facts
+from .queries import load_hands, play_facts
 from .strength import TIERS, tier_at
-from .tilt import annotate
 
 #: How hands are grouped: by their own line, or by the whole street's sequence.
 MODES = ("own", "action")
@@ -291,4 +290,4 @@ def pool_facts(conn: sqlite3.Connection, game_id: str | None = None) -> list[Fac
     two rows, one from each seat -- the pool's ``xB`` and ``Xb`` are the same
     streets read from opposite chairs.
     """
-    return annotate([f for hand in load_hands(conn, game_id) for f in derive(hand)])
+    return play_facts(load_hands(conn, game_id))

@@ -54,6 +54,7 @@ from .cards import (
     parse_cards,
     street_of_board,
 )
+from .derive import ANALYSED_SQL
 from .equity import rank7
 from .queries import display_names, identities_of
 from .tags import strength_at
@@ -191,15 +192,16 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
     game_args = [game] if game else []
     out["hands"] = conn.execute(
         f"SELECT count(*) FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
-        f" WHERE hp.pn_id IN ({q}){' AND h.game_id = ?' if game else ''}",
+        f" WHERE hp.pn_id IN ({q}) AND {ANALYSED_SQL}{' AND h.game_id = ?' if game else ''}",
         [*ids, *game_args],
     ).fetchone()[0]
     rows = conn.execute(
         f"SELECT v.*,"
         f" (SELECT a.street FROM actions a WHERE a.hand_id = v.hand_id AND a.pn_id = v.pn_id"
         f"  AND a.action_type = 'fold' ORDER BY a.seq LIMIT 1) AS fold_street"
-        f" FROM v_voluntary_shows v"
-        f" WHERE v.pn_id IN ({q}){' AND v.game_id = ?' if game else ''}"
+        # Analysed hands only: a PLO show is four or five cards, a Double Board two boards.
+        f" FROM v_voluntary_shows v JOIN hands h ON h.hand_id = v.hand_id"
+        f" WHERE v.pn_id IN ({q}) AND {ANALYSED_SQL}{' AND v.game_id = ?' if game else ''}"
         f" ORDER BY v.ts DESC, v.hand_number DESC",
         [*ids, *game_args],
     ).fetchall()

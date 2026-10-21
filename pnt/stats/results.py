@@ -29,13 +29,17 @@ WORST_MIN_HANDS = 100
 #: The pot types, in order of how many times the pot was raised preflop:
 #: (key, label, filter terms, test). `limped` and `walk` divide `pot_level` 1
 #: between them on whether the player ever had a preflop decision -- the big blind
-#: everyone folded to never does. See SPEC.md.
+#: everyone folded to never does. A bomb pot, a PLO hand and a Double Board hand
+#: have `pot_level` 0: no preflop betting read. See SPEC.md.
 POT_TYPES: tuple[tuple[str, str, str, Callable[[Facts], bool]], ...] = (
     ("walk", "walk", "limped,!acted_preflop", lambda f: f.pot_level == 1 and not f.vpip_opp),
     ("limped", "limped", "limped,acted_preflop", lambda f: f.pot_level == 1 and f.vpip_opp),
     ("srp", "single-raised", "srp", lambda f: f.pot_level == 2),
     ("3bet", "3-bet pot", "3bet_pot", lambda f: f.pot_level == 3),
     ("4bet", "4-bet pot+", "4bet_pot", lambda f: f.pot_level >= 4),
+    ("bomb", "bomb pot", "holdem,!double_board,bomb_pot", lambda f: f.analysed and f.bomb_pot),
+    ("double", "double board", "holdem,double_board", lambda f: f.holdem and f.double_board),
+    ("plo", "PLO", "plo", lambda f: not f.holdem),
 )
 
 #: Who made the last preflop raise. Only a raised pot has one, so only the raised
@@ -91,8 +95,10 @@ def _pot_table(facts: list[Facts]) -> list[dict]:
     rows = []
     for key, label, filt, test in POT_TYPES:
         mine = [f for f in facts if test(f)]
+        if not mine and key in ("bomb", "double", "plo"):  # most tables never deal one
+            continue
         row = _row(key, label, filt, mine)
-        if key not in ("walk", "limped"):
+        if key in ("srp", "3bet", "4bet"):  # only a raised pot has a preflop aggressor
             row["roles"] = [
                 _row(f"{key}:{rkey}", rlabel, f"{filt},{rfilt}", [f for f in mine if rtest(f)])
                 for rkey, rlabel, rfilt, rtest in ROLES

@@ -23,7 +23,7 @@ import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -261,11 +261,12 @@ def _warm_hero(conn: sqlite3.Connection, between) -> None:
     _review_base(conn, hero, None)
     between()
     tree_for(conn, hero, max_depth=4, min_hands=5)
-    facts = facts_cached(conn, hero)
+    # Each in the scope its endpoint reads, or the warmed answer would not be the
+    # one the endpoint gives cold: Results counts PLO's money, Tilt reads play only.
     between()
-    remembered(conn, ("results", hero, None, None), lambda: results_breakdown(facts))
+    remembered(conn, ("results", hero, None, None), lambda: results_breakdown(facts_cached(conn, hero, games="money")))
     between()
-    remembered(conn, ("tilt", hero, None, None), lambda: tilt_report(facts))
+    remembered(conn, ("tilt", hero, None, None), lambda: tilt_report(facts_cached(conn, hero)))
     between()
     remembered(conn, ("tendencies", None, hero), lambda: tendencies(conn, None))
 
@@ -534,6 +535,8 @@ class CountsRequest(BaseModel):
     filter: str = ""
     game: str | None = None
     terms: list[str] = Field(default_factory=list, max_length=200)
+    #: The tab's scope (`queries.SCOPES`), so a chip counts what its click would list.
+    games: Literal["play", "money", "every"] = "play"
 
 
 @app.post("/counts")
@@ -550,7 +553,7 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
         facts = [f for rows in grouped.values() for f in rows]
     else:
         try:
-            facts = facts_cached(conn, req.player, req.game)
+            facts = facts_cached(conn, req.player, req.game, req.games)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
@@ -915,9 +918,14 @@ def positions(alias: str, split_by_size: bool = False) -> list[dict]:
 
 
 def _spot_facts(
-    alias: str, filter: str | None, game: str | None, conn: sqlite3.Connection | None = None
+    alias: str, filter: str | None, game: str | None, conn: sqlite3.Connection | None = None,
+    games: str = "play",
 ) -> list[Facts]:
-    """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias."""
+    """One player's hands in a spot: 400 on a bad filter, 404 on an unknown alias.
+
+    `games` is the scope (`queries.SCOPES`): `play` for every analysis tab,
+    `money` for Results and the winnings graph, `every` for the hand lists.
+    """
     if conn is None:
         conn = db()
     # The name map is what lets `vs=henry` name a person rather than an ID.
@@ -925,7 +933,7 @@ def _spot_facts(
     try:
         # Cached: every tab of the chart asks for the same player's hands, and
         # deriving them afresh cost seconds per click on a 10,000-hand player.
-        facts = facts_cached(conn, alias, game)
+        facts = facts_cached(conn, alias, game, games)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return [f for f in facts if pred(f)] if pred is not None else facts
@@ -976,11 +984,19 @@ def player_hands(
     alias: str,
     filter: Annotated[str | None, Query(description="e.g. 'cbet_flop=overbet'")] = None,
     game: str | None = None,
+    games: Annotated[
+        Literal["play", "money", "every"],
+        Query(description="The scope (queries.SCOPES): the tab the list is opened from."),
+    ] = "every",
 ) -> dict:
-    """Every hand in a spot as a compact row, newest first. Replay one with /hands/{id}."""
+    """Every hand in a spot as a compact row, newest first. Replay one with /hands/{id}.
+
+    Session lists `every` hand; a list opened from another tab's count lists the
+    hands that count came from, so the two agree.
+    """
     # One connection for both halves: db() opens a fresh one per call.
     conn = db()
-    facts = _spot_facts(alias, filter, game, conn)
+    facts = _spot_facts(alias, filter, game, conn, games=games)
     rows = hand_list(facts, display_names(conn))
     return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
 
@@ -1019,7 +1035,7 @@ def player_flagged(
     """
     conn = db()
     flags = flagged_hands(conn, game)
-    facts = _spot_facts(alias, filter, game, conn)
+    facts = _spot_facts(alias, filter, game, conn, games="every")
     facts = [f for f in facts if (f.game_id, f.hand_number) in flags]
     rows = hand_list(facts, display_names(conn))
     return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
@@ -1844,7 +1860,7 @@ def player_results(
 
     conn = db()
     out = remembered(conn, ("results", alias, game, _spot_key(conn, filter)),
-                      lambda: results_breakdown(_spot_facts(alias, filter, game, conn)))
+                      lambda: results_breakdown(_spot_facts(alias, filter, game, conn, games="money")))
     return {"player": alias, "filter": filter, **out}
 
 
@@ -2060,6 +2076,15 @@ def bounties(game: Annotated[str | None, Query(description="Restrict to one game
     return ledger(db(), game)
 
 
+@app.get("/nit")
+def nit(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+    """Who has been paid and who has paid the Nit Game penalty, ranked by net.
+    The net sums to zero across players; `balance` says if it does not."""
+    from pnt.stats.bounty import nit_ledger
+
+    return nit_ledger(db(), game)
+
+
 # --- voluntary shows -------------------------------------------------------------
 
 
@@ -2125,7 +2150,7 @@ def player_winnings(
     from pnt.stats.winnings import allin_adjusted, winnings_series
 
     conn = db()
-    facts = _spot_facts(alias, filter, game, conn)
+    facts = _spot_facts(alias, filter, game, conn, games="money")
     adj = allin_adjusted(conn, facts) if adjusted else None
     return {"player": alias, "filter": filter, **winnings_series(facts, adj)}
 
@@ -2181,7 +2206,9 @@ def _post_loss(conn: sqlite3.Connection, alias: str | None, pn_id: str, game_id:
     runs of hands, and each card shows its own."""
     from pnt.stats.tilt import next_hand
 
-    facts = facts_cached(conn, alias) if alias else []
+    # Every hand of the session, PLO and Double Board too: a big pot lost at either
+    # is still a big loss, and still a hand since one.
+    facts = facts_cached(conn, alias, games="money") if alias else []
     out = next_hand([f for f in facts if f.pn_id == pn_id], game_id)
     return {"post_loss": out["post_loss"], "post_loss_since": out["since"], "post_loss_bb": out["loss_bb"]}
 
@@ -2520,7 +2547,7 @@ def _owner_seats(conn: sqlite3.Connection, keys: set[tuple[str, int]], game: str
     own = owners(conn)
     out = []
     for h in load_hands(conn, game, hand_ids=ids):
-        seats = derive(h)
+        seats = derive(h, every_game=True)
         if seats:
             out.append(min(seats, key=lambda f: (
                 (f.game_id, f.pn_id) not in own,
@@ -2554,7 +2581,8 @@ def tagged(
     tagged_ = tags_for_hands(conn, game)
     marked = set(tagged_) | set(flags)
     if player is not None:
-        facts = [f for f in _spot_facts(player, filter, game, conn) if (f.game_id, f.hand_number) in marked]
+        facts = [f for f in _spot_facts(player, filter, game, conn, games="every")
+                 if (f.game_id, f.hand_number) in marked]
     else:
         pred = _predicate(conn, filter)
         facts = [f for f in _owner_seats(conn, marked, game) if pred is None or pred(f)]

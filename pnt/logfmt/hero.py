@@ -41,11 +41,13 @@ def infer_hero(hands: list[ParsedHand]) -> HeroGuess:
     eliminated: Counter[str] = Counter()
 
     for hand in hands:
-        if len(hand.hero_cards) != 2:
+        # Two cards in Hold'em, four or five in PLO: a show is compared with hero's
+        # cards only when it is a whole hand of the same game.
+        if len(hand.hero_cards) < 2:
             continue
         hero_set = frozenset(hand.hero_cards)
         for p in hand.players.values():
-            if len(p.hole_cards) != 2:
+            if len(p.hole_cards) != len(hand.hero_cards):
                 continue
             if frozenset(p.hole_cards) == hero_set:
                 votes[p.pn_id] += 1
@@ -69,7 +71,7 @@ def apply_hero_cards(hands: list[ParsedHand], hero_pn_id: str) -> int:
     filled = 0
     for hand in hands:
         p = hand.players.get(hero_pn_id)
-        if p is not None and len(hand.hero_cards) == 2 and not p.hole_cards:
+        if p is not None and len(hand.hero_cards) >= 2 and not p.hole_cards:
             p.hole_cards = hand.hero_cards
             filled += 1
     return filled

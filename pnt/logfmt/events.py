@@ -20,9 +20,12 @@ POST_ANTE = "ante"
 POST_MISSED_BB = "missed_bb"
 POST_MISSING_SB = "missing_sb"
 POST_STRADDLE = "straddle"
+#: Everyone's share of a bomb pot: no blinds, no preflop betting, straight to the
+#: flop. Nobody acts voluntarily preflop, so no preflop rate counts the hand.
+POST_BOMB = "bomb_pot"
 
 FORCED_POST_KINDS = frozenset(
-    {POST_SB, POST_BB, POST_ANTE, POST_MISSED_BB, POST_MISSING_SB, POST_STRADDLE}
+    {POST_SB, POST_BB, POST_ANTE, POST_MISSED_BB, POST_MISSING_SB, POST_STRADDLE, POST_BOMB}
 )
 
 # --- Streets ----------------------------------------------------------------
@@ -100,6 +103,7 @@ class StreetDealt(Event):
     street: str
     run: int  # 0 = first board; 1 = second run (run-it-twice) or second board (Double Board)
     board: tuple[str, ...]  # full board for this street on this run
+    double_board: bool = False  # the second board was Double Board's, not a second run
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +135,21 @@ class BountyPaid(Event):
     #: More winners after `payee`, when two chopped the pot: ``to "A @ x", "B @ y"``.
     #: The amount is split between them all, as their ``collected`` lines show.
     others: tuple[PlayerRef, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class NitPenalty(Event):
+    """The Nit Game's payout: the last player not to win a pot pays each other one.
+
+    `amount` is paid to *each* payee, unlike `BountyPaid`'s total. It comes out
+    of the payer's escrow, which their stack funded when they bought in -- the
+    buy-in, the escrow carried over and the refund on leaving all move the
+    player's own chips, so this line is the only one that changes anyone's net.
+    """
+
+    payer: PlayerRef
+    payees: tuple[PlayerRef, ...]
+    amount: int
 
 
 @dataclass(frozen=True, slots=True)

@@ -1478,11 +1478,12 @@ def _rebuild_hint(path: str | None) -> None:
     """Say so when the database holds hands this code would store differently.
 
     `pnt update` restarts the service through here, in the new code, so this is
-    where an update that needs a rebuild gets to say it. Today: hands stored
-    before think times were (SPEC.md, "Timing tells").
+    where an update that needs a rebuild gets to say it. Each reason is one line;
+    one `pnt rebuild` covers them all.
     """
     import sqlite3
 
+    from .ingest.importer import needs_game_modes_rebuild
     from .stats.timing import needs_rebuild
 
     if not path or not Path(path).exists():
@@ -1490,15 +1491,24 @@ def _rebuild_hint(path: str | None) -> None:
     try:
         conn = connect(path, init=False)
         try:
-            stale = needs_rebuild(conn)
+            reasons = [
+                why
+                for stale, why in (
+                    # SPEC.md, "Timing tells".
+                    (needs_rebuild, "time every decision (the chart's Timing view)"),
+                    # SPEC.md, "Money": PLO, Double Board, bomb pots and the Nit Game.
+                    (needs_game_modes_rebuild, "read PLO, Double Board, bomb pots and the Nit Game"),
+                )
+                if stale(conn)
+            ]
         finally:
             conn.close()
     except sqlite3.Error:
         return
-    if stale:
+    if reasons:
         typer.echo(
-            "This version times every decision (the chart's Timing view). Run `pnt rebuild` once"
-            " to time the hands already stored; it re-reads them from the stored logs."
+            f"This version can {' and '.join(reasons)}. Run `pnt rebuild` once to apply it to the"
+            " hands already stored; it re-reads them from the stored logs."
         )
 
 
@@ -1661,7 +1671,7 @@ def results(
 
     conn = connect(db)
     try:
-        facts = facts_for(conn, alias, game)
+        facts = facts_for(conn, alias, game, "money")  # Results counts PLO's money
         if filter_:
             pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]
@@ -2148,7 +2158,7 @@ def winnings(
 
     conn = connect(db)
     try:
-        facts = facts_for(conn, alias, game)
+        facts = facts_for(conn, alias, game, "money")  # as /winnings does
         if filter_:
             pred = parse_filter(filter_, display_names(conn), tag_resolver(conn))
             facts = [f for f in facts if pred(f)]

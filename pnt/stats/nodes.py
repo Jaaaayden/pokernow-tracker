@@ -19,7 +19,16 @@ from dataclasses import dataclass, field
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from ..logfmt.parser import position_name
 from .cards import board_at, board_texture, street_of_board
-from .derive import POSTFLOP_STREETS, PREV_STREET, VOLUNTARY_COMMIT, Facts, HandRow, size_bucket
+from .derive import (
+    POSTFLOP_STREETS,
+    PREV_STREET,
+    VOLUNTARY_COMMIT,
+    Facts,
+    HandRow,
+    is_analysed,
+    is_bomb_pot,
+    size_bucket,
+)
 from .filters import DECISIONS, parse_filter
 from .tags import strength_at
 
@@ -267,8 +276,11 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
 
     With `pending_for`, that player also gets a trailing node with no decision:
     the spot they are in right now, on the street the board says the hand is on.
+    Not Hold'em: no decisions, so no spot counts it.
     """
     paths: dict[str, list[Node]] = {pid: [] for pid in hand.players}
+    if not is_analysed(hand):
+        return paths
     labelled = not hand.dead_button and not hand.blinds_irregular
     position = {
         pid: (
@@ -305,7 +317,7 @@ def nodes_for(hand: HandRow, pending_for: str | None = None) -> dict[str, list[N
         paths[pending_for].append(
             _preflop_node(pending_for, level, opener, position[pending_for], pf_history[pending_for])
         )
-    pot = _POT_TERM.get(level, "4bet_pot")
+    pot = "bomb_pot" if is_bomb_pot(hand) else _POT_TERM.get(level, "4bet_pot")
     # derive's `players_flop`: everyone who did not fold preflop, once a flop is out.
     folded_pf = {a.pn_id for a in hand.actions if a.street == PREFLOP and a.kind == "fold"}
     players_flop = sum(1 for pid in hand.players if pid not in folded_pf)

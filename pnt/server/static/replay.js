@@ -96,7 +96,7 @@
 
     const who = document.createElement("p"); who.className = "who";
     d.players.forEach((p, i) => {
-      const net = p.collected - p.contributed + (p.bounty || 0);
+      const net = p.collected - p.contributed + (p.bounty || 0) + (p.nit || 0);
       if (i) who.append("  ·  ");
       who.append(name(p.pn_id) + " ");
       if (p.hole_cards) who.append(cardsEl(p.hole_cards), " ");
@@ -112,8 +112,12 @@
       const sec = document.createElement("div"); sec.className = "street";
       const b = document.createElement("b"); b.textContent = street;
       const info = document.createElement("span");
-      const dealt = street === "flop" ? board.slice(0, 3) : street === "turn" ? board.slice(3, 4) : street === "river" ? board.slice(4, 5) : [];
+      const deal = (b) => street === "flop" ? b.slice(0, 3) : street === "turn" ? b.slice(3, 4) : street === "river" ? b.slice(4, 5) : [];
+      const dealt = deal(board);
       if (dealt.length) info.append(cardsEl(dealt));
+      // Double Board deals both boards every street, bet on together: show them side by side.
+      const second = h.double_board && runs[1] ? deal(runs[1]) : [];
+      if (second.length) info.append(" / ", cardsEl(second));
       if (street !== "preflop") info.append(`${dealt.length ? " · " : ""}pot ${amt(pot)}`);
       sec.append(b, info);
       const ol = document.createElement("ol");
@@ -127,7 +131,7 @@
       if (acts.length) sec.appendChild(ol);
       box.appendChild(sec);
     }
-    if (runs.length > 1) {
+    if (runs.length > 1 && !h.double_board) {
       const p = message("second run: ");
       p.append(cardsEl(runs[1]));
       box.appendChild(p);
