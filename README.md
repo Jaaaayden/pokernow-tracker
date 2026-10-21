@@ -473,3 +473,8 @@ pytest -q
 See [architecture.md](docs/architecture.md#testing) for what the suite guarantees.
 For parallel work in worktrees (Orca reads `orca.yaml`), see [AGENTS.md](AGENTS.md):
 `python scripts/orca_worktree.py check` runs everything CI runs.
+
+UI feedback without screenshots: press **Alt+Shift+N** on any page or in the HUD
+(or add `?annotate` to a URL), click the element, type what's wrong. Notes land in
+`~/.pnt/annotations.json` with the element's selector and text; the `ui-feedback`
+skill in `.claude/skills/` works through them and replies on each one.
