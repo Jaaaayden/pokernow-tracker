@@ -14,6 +14,8 @@ the user's side; docs/architecture.md has the design.
 - `pnt/server/`: `app.py` (API) and `static/` (the pages: chart, replay, ...).
 - `pnt/extension/`: the HUD side panel and content scripts, with `*.test.mjs` beside them.
 - `pnt/cli.py`: the `pnt` command. `pnt/service.py`: the background server task.
+- `.claude/skills/`: `check` (the test gate), `hud-screenshot`, `ui-feedback` (the
+  note overlay's notes), `blast-radius` (who reads a shared change), `orchestrate`.
 
 ## Worktree rules (Orca)
 
@@ -40,9 +42,9 @@ Each worktree gets its own `.venv`, `.pnt-dev/` and port from `python scripts/or
   can touch real data.
 - `ALL_LOGS` in conftest is pinned to hand-counted totals. Never add a log to it.
   New cases go in their own fixture (see `tests/fixtures/README.md`).
-- HUD visuals: render `sidepanel.html` in headless Chrome with a stubbed `chrome.*`.
-  The claude-in-chrome screenshots time out on the side panel. Server pages
-  screenshot headless directly (`/chart`, not `/chart.html`).
+- HUD visuals: the `hud-screenshot` skill renders `sidepanel.html` in headless Chrome
+  with a stubbed `chrome.*`. The claude-in-chrome screenshots time out on the side
+  panel. Server pages screenshot headless directly (`/chart`, not `/chart.html`).
 
 ## Merge hotspots
 
