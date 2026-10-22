@@ -477,7 +477,8 @@ For parallel work in worktrees (Orca reads `orca.yaml`), see [AGENTS.md](AGENTS.
 UI feedback without screenshots: press the **backslash** key (`\`) on any page or in the HUD
 (or add `?annotate` to a URL), click the element, type what's wrong. Notes land in
 `~/.pnt/annotations.json` with the element's selector and text; the `ui-feedback`
-skill works through them and replies on each one.
+skill works through them and replies on each one. Source checkouts only (`pip install -e`):
+an install from the archive has no overlay.
 
 Claude Code skills in `.claude/skills/`: `check` (the CI gate), `hud-screenshot`,
 `ui-feedback`, `blast-radius` and `orchestrate`. AGENTS.md says when to use each.

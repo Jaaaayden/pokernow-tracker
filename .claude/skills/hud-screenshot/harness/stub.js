@@ -5,7 +5,7 @@
   let snap = null;
   const conf = JSON.parse(document.getElementById("harness-conf").textContent);
   const behind = Number((location.hash.match(/update=(\d+)/) || [])[1] || 0);
-  window.__health = { ok: true, data: { hands: conf.hands, update_behind: behind } };
+  window.__health = { ok: true, data: { hands: conf.hands, update_behind: behind, dev: true } };
   window.chrome = {
     runtime: {
       lastError: undefined,

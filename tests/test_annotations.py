@@ -79,3 +79,19 @@ def test_every_page_carries_the_overlay_and_the_side_panel_loads_it(client):
     assert script.headers["content-type"].startswith("text/javascript") and "__pntAnnotate" in script.text
     panel = (EXTENSION_DIR / "sidepanel.html").read_text(encoding="utf-8")
     assert panel.index('src="sidepanel.js"') < panel.index('src="annotate.js"')
+
+
+def test_an_archive_install_has_no_overlay(client, monkeypatch):
+    """Friends install from the archive: a stray backslash key must not reach them."""
+    from pnt.server import app as app_module
+
+    assert client.get("/health").json()["dev"] is True  # the suite runs from a checkout
+    monkeypatch.setattr(app_module, "DEV", False)
+    assert client.get("/health").json()["dev"] is False
+    assert "annotate.js" not in client.get("/chart").text
+    assert client.get("/annotate.js").status_code == 404
+    assert client.get("/annotations").status_code == 404
+    assert client.post("/annotations", json=NOTE).status_code == 404
+    assert client.delete("/annotations/x").status_code == 404
+    script = (EXTENSION_DIR / "annotate.js").read_text(encoding="utf-8")
+    assert 'type: "health"' in script and "r.data?.dev" in script

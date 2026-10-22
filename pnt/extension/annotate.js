@@ -11,6 +11,9 @@
  * page nothing: the \ key toggles it, `?annotate` in a URL turns it on, and it
  * stays on per origin (localStorage) until toggled off.
  *
+ * Only on a source checkout (app.py's DEV): a server page gets the tag only then,
+ * and the side panel, which loads the file on every install, asks /health first.
+ *
  * Everything it draws sits in a shadow root on top of the page, so the page's
  * styles cannot reach it and its own cannot leak out.
  */
@@ -28,7 +31,15 @@
   const remember = (on) => {
     try { if (on) localStorage.setItem(KEY, "1"); else localStorage.removeItem(KEY); } catch { /* private window */ }
   };
-  if (new URLSearchParams(location.search).has("annotate")) remember(true);
+  // A server page carries this file only on a checkout; the side panel asks.
+  const dev = !EXT ? Promise.resolve(true) : new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: "health" }, (r) => {
+        void chrome.runtime.lastError; // tracker down: stays off until the panel reopens
+        resolve(Boolean(r?.ok && r.data?.dev));
+      });
+    } catch { resolve(false); }
+  });
 
   let server = EXT ? "http://127.0.0.1:52000" : "";
   const ready = EXT && globalThis.chrome?.storage?.sync
@@ -343,16 +354,19 @@
     const t = e.composedPath()[0];
     return t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
   };
-  document.addEventListener("keydown", (e) => {
-    if (e.code === "Backslash" && !e.ctrlKey && !e.altKey && !e.metaKey && !typing(e)) {
-      e.preventDefault();
-      setOn(!state.on);
-      if (state.on) pick(true);
-    } else if (e.key === "Escape" && state.on) {
-      if (pop.style.display === "block") closePop();
-      else if (state.picking) pick(false);
-    }
+  dev.then((ok) => {
+    if (!ok) return;
+    if (new URLSearchParams(location.search).has("annotate")) remember(true);
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Backslash" && !e.ctrlKey && !e.altKey && !e.metaKey && !typing(e)) {
+        e.preventDefault();
+        setOn(!state.on);
+        if (state.on) pick(true);
+      } else if (e.key === "Escape" && state.on) {
+        if (pop.style.display === "block") closePop();
+        else if (state.picking) pick(false);
+      }
+    });
+    if (remembered()) setOn(true);
   });
-
-  if (remembered()) setOn(true);
 })();

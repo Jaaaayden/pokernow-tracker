@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi import Path as FastApiPath
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -111,6 +111,11 @@ UPDATE_CHECK = os.environ.get("PNT_UPDATE_CHECK", "1") != "0"
 UPDATE_CHECK_SECONDS = 6 * 3600
 #: Commits this install lacks (see update.py), None until GitHub has said.
 UPDATE_BEHIND: int | None = None
+
+#: Running from a source checkout (`pip install -e .`), not an archive install.
+#: The note overlay and its /annotations routes exist only here: they are for
+#: whoever works on the code, and a stray \ key should not reach anyone else.
+DEV = update.checkout_root() is not None
 
 
 def _update_loop(stop: threading.Event, sha: str) -> None:
@@ -426,8 +431,9 @@ def _page(name: str) -> HTMLResponse:
     """
     html = (STATIC / name).read_text(encoding="utf-8")
     # The note overlay rides on every page from here rather than a tag in each
-    # file; it does nothing until switched on (the \ key, or ?annotate).
-    html = html.replace("</body>", '<script src="/annotate.js" defer></script>\n</body>', 1)
+    # file, on a source checkout only (DEV); off until the \ key or ?annotate.
+    if DEV:
+        html = html.replace("</body>", '<script src="/annotate.js" defer></script>\n</body>', 1)
     return HTMLResponse(
         html,
         headers={"Cache-Control": "no-store", "Content-Security-Policy": FRAME_ANCESTORS},
@@ -529,7 +535,13 @@ def replay_script() -> Response:
     return _script("replay.js")
 
 
-@app.get("/annotate.js", include_in_schema=False)
+def _dev_only() -> None:
+    """The note overlay's routes: a 404 outside a source checkout (DEV)."""
+    if not DEV:
+        raise HTTPException(status_code=404, detail="the note overlay is for source checkouts")
+
+
+@app.get("/annotate.js", include_in_schema=False, dependencies=[Depends(_dev_only)])
 def annotate_script() -> Response:
     """The note overlay. One file in the extension's folder, which the side panel
     loads as its own (an extension page may not run a script from a server)."""
@@ -616,6 +628,8 @@ def health() -> dict:
         "warming": DB_PATH in _warming,
         # What the pages show (the counts above are its); capture is always yours.
         "dataset": "sample" if SAMPLE_ON else "own",
+        # A source checkout: the HUD switches its note overlay on only then.
+        "dev": DEV,
         # The hands the HUD reads from, which the sample never is.
         "capture_hands": _capture_hands() if SAMPLE_ON else row["h"],
     }
@@ -1299,7 +1313,7 @@ class AnnotationChange(BaseModel):
     note: str | None = Field(None, min_length=1, max_length=4000)
 
 
-@app.get("/annotations")
+@app.get("/annotations", dependencies=[Depends(_dev_only)])
 def list_annotations(
     status: Literal["open", "resolved", "closed"] | None = Query(None),
     page: str | None = Query(None, description='A path such as "/chart", or "sidepanel".'),
@@ -1308,12 +1322,12 @@ def list_annotations(
     return annotations.listing(status, page)
 
 
-@app.post("/annotations")
+@app.post("/annotations", dependencies=[Depends(_dev_only)])
 def add_annotation(req: Annotated[AnnotationRequest, Body()]) -> dict:
     return annotations.add(req.model_dump())
 
 
-@app.post("/annotations/{note_id}")
+@app.post("/annotations/{note_id}", dependencies=[Depends(_dev_only)])
 def change_annotation(note_id: str, req: Annotated[AnnotationChange, Body()]) -> dict:
     note = annotations.change(note_id, req.model_dump(exclude_none=True))
     if note is None:
@@ -1321,7 +1335,7 @@ def change_annotation(note_id: str, req: Annotated[AnnotationChange, Body()]) ->
     return note
 
 
-@app.delete("/annotations/{note_id}")
+@app.delete("/annotations/{note_id}", dependencies=[Depends(_dev_only)])
 def delete_annotation(note_id: str) -> dict:
     if not annotations.remove(note_id):
         raise HTTPException(status_code=404, detail="no such note")
