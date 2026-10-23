@@ -589,7 +589,14 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             # Pre-game config, or between-hand chatter. Nothing to attach it to.
             continue
 
-        if isinstance(ev, E.HandEnd):
+        if isinstance(ev, E.HandEnd) and ev.hand_number != builder.hand.hand_number:
+            # Another hand's end: the lines between are missing, so this is one hand's
+            # start sewn to a later one's finish. Neither hand is on record; drop it,
+            # and whatever is settled after this end line with it.
+            result.hero_cards_by_hand.pop(builder.hand.hand_number, None)
+            builder = None
+            last = None
+        elif isinstance(ev, E.HandEnd):
             last = builder.finish(table_bb=table_bb, bomb_bbs=bomb_bbs)
             table_bb = last.bb or table_bb
             result.hands.append(last)

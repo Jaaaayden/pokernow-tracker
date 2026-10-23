@@ -57,6 +57,42 @@ def test_the_truncated_hand_is_the_only_unbalanced_one(parsed_every):
     )
 
 
+def test_a_hand_ended_by_another_hand_s_end_is_dropped():
+    """A history walk cut short loses the lines between two hands, sewing one
+    hand's start to a later one's finish (pglpIOhO2kW27ESA8RzzJ7KQM, #45 to #48).
+    Neither hand is on record, so nothing is stored, and what is settled after the
+    sewn end is not pinned on the hand before it."""
+    from pnt.ingest.csv_source import RawEntry
+    from pnt.logfmt.parser import parse
+
+    lines = [
+        '-- starting hand #44 (id: cccc)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"B @ BBB" posts a small blind of 5',
+        '"A @ AAA" posts a big blind of 10',
+        '"B @ BBB" folds',
+        'Uncalled bet of 5 returned to "A @ AAA"',
+        '"A @ AAA" collected 10 from pot',
+        "-- ending hand #44 --",
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"A @ AAA" posts a small blind of 5',
+        '"B @ BBB" posts a big blind of 10',
+        '"B @ BBB" posts a small blind of 5',
+        '"A @ AAA" posts a big blind of 10',
+        '"B @ BBB" raises to 30',
+        '"A @ AAA" folds',
+        'Uncalled bet of 20 returned to "B @ BBB"',
+        '"B @ BBB" collected 25 from pot',
+        "-- ending hand #48 --",
+        '"B @ BBB" shows a 7♠, 2♦.',  # #48's, not #44's
+    ]
+    res = parse([RawEntry(ord=i, at="2026-01-01T00:00:00Z", entry=t) for i, t in enumerate(lines)], "pgltest")
+    assert res.misses == []
+    assert [(h.hand_number, h.complete) for h in res.hands] == [(44, True)]
+    assert res.hands[0].voluntary_shows == {}
+
+
 def test_hand_counts_and_no_gaps(parsed_all):
     for gid, expected in EXPECTED_HANDS.items():
         nums = sorted(h.hand_number for h in parsed_all[gid].hands)

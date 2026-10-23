@@ -2230,6 +2230,12 @@ and WTSD all include it. Only the ledger is short.
 `hands` therefore counts every hand, while the bb/100 denominator may be smaller.
 Re-importing the finished export repairs the hand and it rejoins.
 
+A hand whose `-- ending hand #M --` names another hand is not stored at all: the
+log lost the lines between, so it is one hand's start sewn to a later one's
+finish, and neither its actions nor its ledger belong to any real hand. Captured
+logs had four, from a history walk cut short; `pnt backfill --refresh --import`
+fills the gap while PokerNow still serves the game, and the hands come back.
+
 `net_bb` in a stat row is the numerator of that same fraction: Σ net / big blind
 over the same complete hands. It is the figure a "bb won" column prints, and it
 moves only where bb/100 does.
