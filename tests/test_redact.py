@@ -73,6 +73,23 @@ def test_showdown_holdings_are_kept(pair):
     assert expected > 0, "a log with no showdowns would make this test vacuous"
 
 
+def test_a_gap_between_two_holdings_drops_the_first_too():
+    """A log that lost the lines between hand #45's holding and #48's has two
+    holdings before the next start. Neither may overwrite the other."""
+    from pnt.ingest.csv_source import RawEntry
+
+    lines = [
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        "Your hand is 9♠, 2♣",
+        "Your hand is A♠, K♠",
+        '"A @ AAA" shows a A♠, K♠.',
+        "-- ending hand #48 --",
+    ]
+    p = rd.plan(RawEntry(ord=i, at="t", entry=t) for i, t in enumerate(lines))
+    assert set(p.drop_ords) == {1}, "the unshown #45 holding goes; the shown one stays"
+    assert (p.hero_hands, p.kept) == (2, 1)
+
+
 def test_only_hero_entries_are_touched(pair):
     """Every surviving line is byte-identical and in the original order; every
     removed one is a hero-cards entry. Nothing is re-serialised."""

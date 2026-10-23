@@ -94,6 +94,11 @@ def plan(entries: Iterable[RawEntry]) -> Plan:
             close_hand()
             hand_number = ev.hand_number
         elif isinstance(ev, E.HeroCards):
+            # A second holding before the next start: the log lost the lines between
+            # two hands. The first is judged on the shows before the gap, so neither
+            # line can be overwritten and kept unredacted.
+            if hero_ord is not None:
+                close_hand()
             hero_ord, hero_cards = raw.ord, frozenset(ev.cards)
         elif isinstance(ev, E.Shows):
             shown.append(frozenset(ev.cards))

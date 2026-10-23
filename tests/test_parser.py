@@ -91,6 +91,74 @@ def test_a_hand_ended_by_another_hand_s_end_is_dropped():
     assert res.misses == []
     assert [(h.hand_number, h.complete) for h in res.hands] == [(44, True)]
     assert res.hands[0].voluntary_shows == {}
+    assert res.sewn == [45]
+
+
+_HAND_44 = [
+    '-- starting hand #44 (id: cccc)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+    'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+    '"B @ BBB" posts a small blind of 5',
+    '"A @ AAA" posts a big blind of 10',
+    '"B @ BBB" folds',
+    'Uncalled bet of 5 returned to "A @ AAA"',
+    '"A @ AAA" collected 10 from pot',
+    "-- ending hand #44 --",
+]
+
+
+def _parse_lines(lines):
+    from pnt.ingest.csv_source import RawEntry
+    from pnt.logfmt.parser import parse
+
+    return parse([RawEntry(ord=i, at="2026-01-01T00:00:00Z", entry=t) for i, t in enumerate(lines)], "pgltest")
+
+
+def test_a_gap_that_starts_between_hands_pins_nothing_on_the_last_one():
+    """The lines lost run from after #44's end to inside #48: #48's end arrives with
+    no hand open, and what is settled after it is #48's, never #44's."""
+    lines = [
+        *_HAND_44,
+        '"B @ BBB" collected 25 from pot',
+        "-- ending hand #48 --",
+        '"A @ AAA" shows a 9♠, 9♦.',
+        '"A @ AAA" paid 20 for the 7-2 bounty to "B @ BBB"',
+    ]
+    res = _parse_lines(lines)
+    assert res.misses == [] and res.sewn == []
+    (h,) = res.hands
+    assert h.hand_number == 44 and h.voluntary_shows == {}
+    assert all(p.bounty == 0 for p in h.players.values())
+
+
+def test_the_hand_after_a_sewn_one_is_stored_and_keeps_the_new_blind():
+    """The sewn hand carries the later hand's big blind post: a bomb pot after it,
+    with no quantity on record, is played at that blind, not the one before the gap."""
+    lines = [
+        *_HAND_44,
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"A @ AAA" posts a small blind of 5',
+        '"B @ BBB" posts a big blind of 10',
+        '"B @ BBB" posts a small blind of 10',
+        '"A @ AAA" posts a big blind of 20',
+        '"B @ BBB" folds',
+        'Uncalled bet of 10 returned to "A @ AAA"',
+        '"A @ AAA" collected 20 from pot',
+        "-- ending hand #48 --",
+        '-- starting hand #49 (id: bbbb)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"B @ BBB" posts a bet of 60 (bomb pot bet)',
+        '"A @ AAA" calls 60 (bomb pot bet)',
+        "Flop:  [A♥, 5♥, 3♦]",
+        '"A @ AAA" checks',
+        '"B @ BBB" checks',
+        '"A @ AAA" collected 120 from pot',
+        "-- ending hand #49 --",
+    ]
+    res = _parse_lines(lines)
+    assert [(h.hand_number, h.complete) for h in res.hands] == [(44, True), (49, True)]
+    assert res.sewn == [45]
+    assert res.hands[1].bb == 20
 
 
 def test_hand_counts_and_no_gaps(parsed_all):

@@ -164,7 +164,9 @@ class ParseResult:
     hands: list[ParsedHand] = field(default_factory=list)
     misses: list[tuple[int, str, str]] = field(default_factory=list)  # (ord, entry, reason)
     blinds: dict[str, int] = field(default_factory=dict)  # latest sb/bb/ante seen
-    hero_cards_by_hand: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    #: Hands dropped for ending on another hand's end line: the log lost the lines
+    #: between (see SPEC.md, "Money"). Each is the number the dropped hand started as.
+    sewn: list[int] = field(default_factory=list)
 
 
 def assign_positions(
@@ -586,14 +588,20 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             continue
 
         if builder is None:
+            if isinstance(ev, E.HandEnd):
+                # An end with no hand open: the log lost this hand's start, and what
+                # is settled after it is this hand's, not the last stored one's.
+                last = None
             # Pre-game config, or between-hand chatter. Nothing to attach it to.
             continue
 
         if isinstance(ev, E.HandEnd) and ev.hand_number != builder.hand.hand_number:
             # Another hand's end: the lines between are missing, so this is one hand's
             # start sewn to a later one's finish. Neither hand is on record; drop it,
-            # and whatever is settled after this end line with it.
-            result.hero_cards_by_hand.pop(builder.hand.hand_number, None)
+            # and whatever is settled after this end line with it. Its largest big
+            # blind post is still the best word on the table's blind.
+            result.sewn.append(builder.hand.hand_number)
+            table_bb = builder.hand.bb or table_bb
             builder = None
             last = None
         elif isinstance(ev, E.HandEnd):
@@ -605,7 +613,6 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             builder.roster(ev)
         elif isinstance(ev, E.HeroCards):
             builder.hand.hero_cards = ev.cards
-            result.hero_cards_by_hand[builder.hand.hand_number] = ev.cards
         elif isinstance(ev, E.Post):
             builder.post(ev)
         elif isinstance(ev, E.Action):

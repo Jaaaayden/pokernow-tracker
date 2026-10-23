@@ -536,6 +536,7 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
         "hands": len(result.hands),
         "entries": len(entries),
         "parse_misses": len(result.misses),
+        "sewn": result.sewn,
         "hero_pn_id": hero_pn_id,
         "hero_votes": guess.votes,
     }

@@ -275,6 +275,7 @@ def import_cmd(
         )
         if s["hero_pn_id"]:
             typer.echo(f"    hero: {s['hero_pn_id']} ({s['hero_votes']} showdown matches)")
+        _echo_sewn(s["game_id"], s["sewn"])
     if bundled:
         _apply_bundled_aliases(conn)
 
@@ -716,6 +717,17 @@ def rebuild(
     for (gid,) in conn.execute("SELECT game_id FROM raw_entries GROUP BY game_id").fetchall():
         s = rebuild_game(conn, gid)
         typer.echo(f"{gid}: {s['hands']} hands, {s['parse_misses']} parse misses")
+        _echo_sewn(gid, s["sewn"])
+
+
+def _echo_sewn(gid: str, sewn: list[int]) -> None:
+    """Name a game's hands dropped for a gap in its log, and how to fill it."""
+    if sewn:
+        nums = ", ".join(f"#{n}" for n in sewn)
+        typer.echo(
+            f"    {gid}: lines missing after hand {nums}, dropped;"
+            f" `pnt backfill {gid} --refresh --import` fills the gap while PokerNow still has the game"
+        )
 
 
 def _rebuild_if_stale(db: Path) -> None:
@@ -730,8 +742,10 @@ def _rebuild_if_stale(db: Path) -> None:
     try:
         games = hands = 0
         for (gid,) in conn.execute("SELECT game_id FROM raw_entries GROUP BY game_id").fetchall():
-            hands += rebuild_game(conn, gid)["hands"]
+            s = rebuild_game(conn, gid)
+            hands += s["hands"]
             games += 1
+            _echo_sewn(gid, s["sewn"])
     finally:
         conn.close()
     typer.echo(f"rebuilt {hands:,} hands in {games} games")
