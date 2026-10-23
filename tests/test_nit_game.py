@@ -47,6 +47,9 @@ NOISE = [
     "Asking seated players if they want to join the Nit Game.",
     '"Win @ AAA", "Two @ BBB" confirmed the Nit Game using their existing Nit Escrow.',
     'The player "Two @ BBB" received 80 chips of returned Nit escrow when leaving the table.',
+    # pgl-4BCPln1rscQ70WViLUY8D: an escrow funded by an add-on rather than the stack.
+    'The player "Pay @ CCC" made an add-on of 90 to their Nit Escrow.',
+    'The player "Pay @ CCC" confirmed the Nit Game using an add-on.',
 ]
 
 

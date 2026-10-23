@@ -135,9 +135,10 @@ RULES: list[Rule] = [
     ),
     (
         # A bomb pot's buy-in: the first player "posts a bet", the rest "call" it,
-        # all of it forced. Matched before the plain `calls N` rule below.
+        # all of it forced. Matched before the plain `calls N` rule below. A short
+        # stack's "and go all in" can come with two spaces before the label.
         re.compile(
-            rf"^{_P} (?:posts a bet of|calls) (?P<amt>\d+)(?P<allin> and go all in)? "
+            rf"^{_P} (?:posts a bet of|calls) (?P<amt>\d+)(?P<allin> and go all in)?\s+"
             r"\(bomb pot bet\)$"
         ),
         lambda m, o, r: E.Post(
@@ -268,8 +269,14 @@ RULES: list[Rule] = [
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_activated"),
     ),
     (
-        re.compile(rf"^The player {_P} confirmed the Nit Game using their stack\.$"),
+        re.compile(rf"^The player {_P} confirmed the Nit Game using (?:their stack|an add-on)\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_buy_in"),
+    ),
+    (
+        # An escrow bought from off the table, not the stack: still the player's own
+        # money, so like the buy-in it moves no net.
+        re.compile(rf"^The player {_P} made an add-on of \d+ to their Nit Escrow\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_add_on"),
     ),
     (
         re.compile(

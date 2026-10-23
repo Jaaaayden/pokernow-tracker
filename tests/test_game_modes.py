@@ -49,6 +49,9 @@ def test_bomb_pot_bets_are_forced_posts():
         assert isinstance(ev, E.Post) and ev.kind == E.POST_BOMB and ev.amount == 30
     short = classify('"A @ AAA" calls 12 and go all in (bomb pot bet)', 0)
     assert isinstance(short, E.Post) and short.all_in and short.amount == 12
+    # pglTZnz_2SBvWvOokUiP_uLi2: a one-chip stack's post, two spaces before the label.
+    short = classify('"B @ BBB" posts a bet of 1 and go all in  (bomb pot bet)', 0)
+    assert isinstance(short, E.Post) and short.kind == E.POST_BOMB and short.all_in and short.amount == 1
 
 
 def test_a_second_board_rabbit_hunt_is_noise():
