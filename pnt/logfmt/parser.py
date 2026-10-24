@@ -42,6 +42,14 @@ DEAD_POSTS = frozenset({E.POST_ANTE, E.POST_MISSING_SB})
 #: when the player never acts again, which is why it hid in fold-around hands.
 CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 
+#: Bumped whenever this module would store an existing log's hands differently.
+#: Each game records the version that parsed it (`games.parsed_with`), and
+#: `pnt rebuild --if-stale` re-parses any game parsed by an older one.
+#: 1: hands a gap in the log joined together are dropped (SPEC.md, "Money").
+PARSE_VERSION = 1
+#: What the latest bump changed, for the line `pnt update` prints as it rebuilds.
+PARSE_CHANGE = "drop hands that a gap in the log joined together"
+
 
 @dataclass(slots=True)
 class HandPlayer:
@@ -164,8 +172,9 @@ class ParseResult:
     hands: list[ParsedHand] = field(default_factory=list)
     misses: list[tuple[int, str, str]] = field(default_factory=list)  # (ord, entry, reason)
     blinds: dict[str, int] = field(default_factory=dict)  # latest sb/bb/ante seen
-    #: Hands dropped for ending on another hand's end line: the log lost the lines
-    #: between (see SPEC.md, "Money"). Each is the number the dropped hand started as.
+    #: Hands dropped because the log lost lines between them and the next boundary:
+    #: another hand's end line, or a start other than the next hand's (see SPEC.md,
+    #: "Money"). Each is the number the dropped hand started as.
     sewn: list[int] = field(default_factory=list)
 
 
@@ -534,6 +543,9 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     table_bb: int | None = None
     #: How many big blinds a bomb pot costs, from the table's settings.
     bomb_bbs: int | None = None
+    #: The open hand's latest big blind post, whoever posted it. A dropped hand's
+    #: posts may straddle a gap, and the later one is the table's blind now.
+    bb_posted: int | None = None
 
     for raw in entries:
         ev = classify(raw.entry, raw.ord)
@@ -543,11 +555,20 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             continue
 
         if isinstance(ev, E.HandStart):
-            if builder is not None:  # log truncated mid-hand; keep what we have
+            if builder is not None and ev.hand_number == builder.hand.hand_number + 1:
+                # Only this hand's end line is missing: everything since its start is
+                # still its own, so keep what we have.
                 last = builder.finish(complete=False, table_bb=table_bb, bomb_bbs=bomb_bbs)
                 table_bb = last.bb or table_bb
                 result.hands.append(last)
+            elif builder is not None:
+                # Whole hands are missing before this start, so the shows, bounty or
+                # Nit penalty logged since may be a later hand's: drop it, as below.
+                result.sewn.append(builder.hand.hand_number)
+                table_bb = bb_posted or table_bb
+                last = None
             builder = _HandBuilder(game_id, ev, raw.at)
+            bb_posted = None
             if clock["limit"] is not None:
                 builder.hand.clock_ms = 1000 * (clock["limit"] + (clock["bank"] or 0))
             continue
@@ -598,10 +619,10 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
         if isinstance(ev, E.HandEnd) and ev.hand_number != builder.hand.hand_number:
             # Another hand's end: the lines between are missing, so this is one hand's
             # start sewn to a later one's finish. Neither hand is on record; drop it,
-            # and whatever is settled after this end line with it. Its largest big
+            # and whatever is settled after this end line with it. Its latest big
             # blind post is still the best word on the table's blind.
             result.sewn.append(builder.hand.hand_number)
-            table_bb = builder.hand.bb or table_bb
+            table_bb = bb_posted or table_bb
             builder = None
             last = None
         elif isinstance(ev, E.HandEnd):
@@ -614,6 +635,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
         elif isinstance(ev, E.HeroCards):
             builder.hand.hero_cards = ev.cards
         elif isinstance(ev, E.Post):
+            if ev.kind == E.POST_BB:
+                bb_posted = ev.amount
             builder.post(ev)
         elif isinstance(ev, E.Action):
             builder.action(ev)
