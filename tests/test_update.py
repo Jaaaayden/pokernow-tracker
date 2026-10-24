@@ -352,6 +352,30 @@ def test_rebuild_if_stale_rebuilds_only_what_needs_it(tmp_path):
     conn.close()
 
 
+def test_rebuild_if_stale_reparses_games_an_older_parser_stored(tmp_path):
+    """A parser change leaves no trace in the data's shape, so each game carries
+    the parser version that stored it, and an older one is re-parsed."""
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import import_csv, needs_parse_rebuild
+    from pnt.logfmt.parser import PARSE_CHANGE, PARSE_VERSION
+    from tests.conftest import ALL_LOGS
+
+    db = tmp_path / "t.sqlite"
+    conn = connect(db)
+    assert not needs_parse_rebuild(conn), "an empty database has nothing to rebuild"
+    import_csv(conn, ALL_LOGS[0])
+    assert not needs_parse_rebuild(conn)
+    conn.execute("UPDATE games SET parsed_with = 0")  # as stored before the column existed
+    conn.commit()
+    conn.close()
+    stale = CliRunner().invoke(app, ["rebuild", "--if-stale", "--db", str(db)])
+    assert stale.exit_code == 0, stale.output
+    assert PARSE_CHANGE in stale.output.splitlines()[0]
+    conn = connect(db)
+    assert {r[0] for r in conn.execute("SELECT parsed_with FROM games")} == {PARSE_VERSION}
+    conn.close()
+
+
 def test_service_restart_rebuilds_stale_hands_while_the_server_is_down(tmp_path, monkeypatch):
     """`pnt update` runs the restart on the new code, so a first update to a version
     that reads hands differently needs nothing more than the update itself."""

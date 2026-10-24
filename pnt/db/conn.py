@@ -61,6 +61,9 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("hands", "clock_ms", "INTEGER"),  # decision limit plus a full time bank, in ms
     # Signed Nit Game penalty. Zero on existing rows until `pnt rebuild` re-parses.
     ("hand_players", "nit", "INTEGER NOT NULL DEFAULT 0"),
+    # The parser version that stored the game (parser.PARSE_VERSION). Zero on
+    # existing games, so `pnt rebuild --if-stale` re-parses each once.
+    ("games", "parsed_with", "INTEGER NOT NULL DEFAULT 0"),
     # The game per hand: a table can switch to PLO mid-session, and only Hold'em
     # hands are analysed. NULL until `pnt rebuild`, read as Hold'em.
     ("hands", "variant", "TEXT"),

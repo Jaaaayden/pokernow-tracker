@@ -70,39 +70,53 @@ def plan(entries: Iterable[RawEntry]) -> Plan:
     """
     drop: dict[int, int | None] = {}
     hero_hands = kept = 0
+    #: The hand the lines now being read belong to; None once a gap leaves it unknown.
     hand_number: int | None = None
     hero_ord: int | None = None
     hero_cards: frozenset[str] = frozenset()
+    #: Shows before the hand's own end line (its showdown), and after it.
     shown: list[frozenset[str]] = []
+    shown_late: list[frozenset[str]] = []
+    ended = False
 
-    def close_hand() -> None:
-        nonlocal hero_ord, hero_cards, shown, hero_hands, kept
+    def close_hand(gap: bool) -> None:
+        """Judge the open holding. After a gap, a show past the hand's own end line
+        may be a later hand's, as may any show at all if that end line is lost."""
+        nonlocal hero_ord, hero_cards, shown, shown_late, ended, hero_hands, kept
         if hero_ord is not None:
             hero_hands += 1
-            if hero_cards and hero_cards in shown:
+            trusted = (shown if ended else []) if gap else shown + shown_late
+            if hero_cards and hero_cards in trusted:
                 kept += 1
             else:
                 drop[hero_ord] = hand_number
-        hero_ord, hero_cards, shown = None, frozenset(), []
+        hero_ord, hero_cards, shown, shown_late, ended = None, frozenset(), [], [], False
 
     for raw in entries:
         ev = classify(raw.entry, raw.ord)
         if isinstance(ev, E.HandStart):
             # A show logged after `-- ending hand #N --` but before the next hand
-            # starts belongs to the hand that ended, so the boundary is the start
-            # marker, never the end marker.
-            close_hand()
+            # starts belongs to the hand that ended, so the boundary is the next
+            # start -- unless it skips a number, or a gap left the hand unknown.
+            close_hand(gap=hand_number is None or ev.hand_number != hand_number + 1)
             hand_number = ev.hand_number
+        elif isinstance(ev, E.HandEnd):
+            if hand_number is None:
+                hand_number = ev.hand_number  # the lines since the gap are this hand's
+            elif ev.hand_number != hand_number:
+                close_hand(gap=True)
+                hand_number = ev.hand_number
+            ended = True
         elif isinstance(ev, E.HeroCards):
             # A second holding before the next start: the log lost the lines between
-            # two hands. The first is judged on the shows before the gap, so neither
-            # line can be overwritten and kept unredacted.
+            # two hands, this one's start among them, so its number is not known yet.
             if hero_ord is not None:
-                close_hand()
+                close_hand(gap=True)
+                hand_number = None
             hero_ord, hero_cards = raw.ord, frozenset(ev.cards)
         elif isinstance(ev, E.Shows):
-            shown.append(frozenset(ev.cards))
-    close_hand()
+            (shown_late if ended else shown).append(frozenset(ev.cards))
+    close_hand(gap=False)
 
     return Plan(drop, hero_hands, kept)
 

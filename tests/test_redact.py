@@ -90,6 +90,61 @@ def test_a_gap_between_two_holdings_drops_the_first_too():
     assert (p.hero_hands, p.kept) == (2, 1)
 
 
+def _plan(lines):
+    from pnt.ingest.csv_source import RawEntry
+
+    return rd.plan(RawEntry(ord=i, at="t", entry=t) for i, t in enumerate(lines))
+
+
+_START_44 = '-- starting hand #44 (id: cccc)  No Limit Texas Hold\'em (dealer: "B @ BBB") --'
+
+
+def test_a_later_hands_show_after_a_gap_keeps_no_holding():
+    """Hero folded #44; the lines lost run to inside #48, whose showdown shows the
+    same two cards. That show is #48's, so #44's holding still goes."""
+    p = _plan([
+        _START_44,
+        "Your hand is A♠, K♠",
+        '"A @ AAA" folds',
+        "-- ending hand #44 --",
+        '"B @ BBB" shows a A♠, K♠.',
+        "-- ending hand #48 --",
+    ])  # fmt: skip
+    assert p.drop_ords == {1: 44} and p.kept == 0
+
+
+def test_a_holding_shown_before_its_own_end_survives_a_gap_after_it():
+    p = _plan([
+        _START_44,
+        "Your hand is A♠, K♠",
+        '"A @ AAA" shows a A♠, K♠.',
+        "-- ending hand #44 --",
+        '"B @ BBB" shows a 9♠, 9♦.',
+        "-- ending hand #48 --",
+    ])  # fmt: skip
+    assert p.drop_ords == {} and p.kept == 1
+
+
+def test_a_start_that_skips_numbers_trusts_no_show_since_the_gap():
+    p = _plan([
+        _START_44,
+        "Your hand is A♠, K♠",
+        '"B @ BBB" shows a A♠, K♠.',
+        '-- starting hand #48 (id: dddd)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+    ])  # fmt: skip
+    assert p.drop_ords == {1: 44}
+
+
+def test_a_holding_after_a_gap_is_named_by_the_end_line_that_follows():
+    p = _plan([
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        "Your hand is 9♠, 2♣",
+        "Your hand is A♠, K♠",
+        "-- ending hand #48 --",
+    ])  # fmt: skip
+    assert p.drop_ords == {1: 45, 2: 48}
+
+
 def test_only_hero_entries_are_touched(pair):
     """Every surviving line is byte-identical and in the original order; every
     removed one is a hero-cards entry. Nothing is re-serialised."""

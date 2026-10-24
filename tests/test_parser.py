@@ -161,6 +161,78 @@ def test_the_hand_after_a_sewn_one_is_stored_and_keeps_the_new_blind():
     assert res.hands[1].bb == 20
 
 
+_HAND_45_OPEN = [
+    '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+    'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+    '"A @ AAA" posts a small blind of 5',
+    '"B @ BBB" posts a big blind of 10',
+]
+
+
+def test_a_gap_ending_between_hands_drops_the_hand_it_cut():
+    """The lines lost run from inside #45 to after #47's end: #47's show and bounty
+    arrive with #45 still open, and the next start skips to #48. None of it is
+    #45's, so #45 is not stored and nothing is booked."""
+    lines = [
+        *_HAND_45_OPEN,
+        '"B @ BBB" shows a 7♠, 2♦.',
+        '"A @ AAA" paid 20 for the 7-2 bounty to "B @ BBB"',
+        '-- starting hand #48 (id: bbbb)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"B @ BBB" posts a small blind of 5',
+        '"A @ AAA" posts a big blind of 10',
+        '"B @ BBB" folds',
+        'Uncalled bet of 5 returned to "A @ AAA"',
+        '"A @ AAA" collected 10 from pot',
+        "-- ending hand #48 --",
+    ]
+    res = _parse_lines(lines)
+    assert res.misses == [] and res.sewn == [45]
+    (h,) = res.hands
+    assert (h.hand_number, h.complete) == (48, True)
+    assert all(p.bounty == 0 for p in h.players.values()) and h.voluntary_shows == {}
+
+
+def test_a_hand_that_lost_only_its_end_line_is_kept_incomplete():
+    """The next start is #46: no whole hand is missing, so what came after #45's
+    start is still #45's."""
+    lines = [
+        *_HAND_45_OPEN,
+        '"A @ AAA" calls 10',
+        '-- starting hand #46 (id: bbbb)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+    ]
+    res = _parse_lines(lines)
+    assert res.sewn == []
+    assert [(h.hand_number, h.complete) for h in res.hands] == [(45, False), (46, False)]
+
+
+def test_a_sewn_hand_leaves_the_blind_after_the_gap():
+    """The gap swallowed a blind change to 5/10 and #48's start line, so the sewn
+    hand holds a 20 big blind post before the gap and a 10 one, from a player not
+    in #45's roster, after it. The table's blind is the later one."""
+    lines = [
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"A @ AAA" posts a small blind of 10',
+        '"B @ BBB" posts a big blind of 20',
+        '"C @ CCC" posts a big blind of 10',
+        '"C @ CCC" collected 15 from pot',
+        "-- ending hand #48 --",
+        '-- starting hand #49 (id: bbbb)  No Limit Texas Hold\'em (dealer: "B @ BBB") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',
+        '"B @ BBB" posts a bet of 60 (bomb pot bet)',
+        '"A @ AAA" calls 60 (bomb pot bet)',
+        "Flop:  [A♥, 5♥, 3♦]",
+        '"A @ AAA" checks',
+        '"B @ BBB" checks',
+        '"A @ AAA" collected 120 from pot',
+        "-- ending hand #49 --",
+    ]
+    res = _parse_lines(lines)
+    assert res.sewn == [45]
+    assert [h.bb for h in res.hands] == [10]
+
+
 def test_hand_counts_and_no_gaps(parsed_all):
     for gid, expected in EXPECTED_HANDS.items():
         nums = sorted(h.hand_number for h in parsed_all[gid].hands)

@@ -190,7 +190,10 @@ CREATE TABLE IF NOT EXISTS games (
     -- conn.generation). The global counter says *that* something changed; this says
     -- which game, so a cache can re-derive that game alone. hand_id cannot serve:
     -- a rebuild may hand the same ids back out.
-    derived_gen INTEGER NOT NULL DEFAULT 0
+    derived_gen INTEGER NOT NULL DEFAULT 0,
+    -- The parser.PARSE_VERSION that stored this game's hands. Older than the
+    -- running one: `pnt rebuild --if-stale` re-parses it.
+    parsed_with INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS hands (
