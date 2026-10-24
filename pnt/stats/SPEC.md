@@ -2236,6 +2236,22 @@ finish, and neither its actions nor its ledger belong to any real hand. Captured
 logs had four, from a history walk cut short; `pnt backfill --refresh --import`
 fills the gap while PokerNow still serves the game, and the hands come back.
 
+The same goes for a hand with no end line whose next start skips numbers
+(`#45`, then `#48`): whole hands are missing, and the shows, bounty or Nit
+penalty logged before that start may be one of theirs. A hand followed straight
+by the next number (`#45`, then `#46`) lost only its end line, so everything
+logged since its start is its own; it is kept as incomplete, above.
+
+Nothing logged after a gap is pinned on the hand before it. A 7-2 bounty, a Nit
+penalty or a voluntary show after a dropped hand, or after an end line with no
+hand open (the log lost that hand's start), belongs to no stored hand and is not
+booked. A dropped hand's latest big blind post still sets the table's blind, which
+values a later bomb pot with no amount on record.
+
+Games remember the parser version that stored them (`games.parsed_with`), so a
+change to these rules re-parses every older game on the next `pnt update` or
+`pnt service restart`.
+
 `net_bb` in a stat row is the numerator of that same fraction: Σ net / big blind
 over the same complete hands. It is the figure a "bb won" column prints, and it
 moves only where bb/100 does.

@@ -397,6 +397,9 @@ def backfill(
         if conn is not None:
             s = _import(conn, str(path), folder)
             typer.echo(f"    imported: {s['entries_new']} new entries, {s['parse_misses']} parse misses")
+            if s["sewn"]:
+                nums = ", ".join(f"#{n}" for n in s["sewn"])
+                typer.echo(f"    still missing lines after hand {nums}: PokerNow no longer has them")
     if failed:
         raise typer.Exit(1)
     if not import_:
@@ -1531,7 +1534,8 @@ def _rebuild_reasons(path: str | None) -> list[str]:
     phrase each; empty when nothing. One `pnt rebuild` covers them all."""
     import sqlite3
 
-    from .ingest.importer import needs_game_modes_rebuild
+    from .ingest.importer import needs_game_modes_rebuild, needs_parse_rebuild
+    from .logfmt.parser import PARSE_CHANGE
     from .stats.timing import needs_rebuild
 
     if not path or not Path(path).exists():
@@ -1546,6 +1550,8 @@ def _rebuild_reasons(path: str | None) -> list[str]:
                     (needs_rebuild, "time every decision (the chart's Timing view)"),
                     # SPEC.md, "Money": PLO, Double Board, bomb pots and the Nit Game.
                     (needs_game_modes_rebuild, "read PLO, Double Board, bomb pots and the Nit Game"),
+                    # parser.PARSE_VERSION: a parser change the data's shape cannot show.
+                    (needs_parse_rebuild, PARSE_CHANGE),
                 )
                 if stale(conn)
             ]

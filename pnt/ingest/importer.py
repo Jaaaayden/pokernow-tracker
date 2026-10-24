@@ -21,7 +21,7 @@ from pathlib import Path
 
 from ..db.conn import GENERATION_KEY, bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
-from ..logfmt.parser import ParsedHand, parse
+from ..logfmt.parser import PARSE_VERSION, ParsedHand, parse
 from ..stats import strength
 from .csv_source import RawEntry, game_id_from_filename, read_csv
 
@@ -476,6 +476,15 @@ def needs_game_modes_rebuild(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def needs_parse_rebuild(conn: sqlite3.Connection) -> bool:
+    """Whether any game was stored by an older parser (`parser.PARSE_VERSION`)."""
+    try:
+        row = conn.execute("SELECT 1 FROM games WHERE parsed_with < ? LIMIT 1", (PARSE_VERSION,)).fetchone()
+    except sqlite3.OperationalError:  # older still: the column itself is missing
+        return conn.execute("SELECT 1 FROM games LIMIT 1").fetchone() is not None
+    return row is not None
+
+
 def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
     """Re-derive every hand of a game from its stored raw entries.
 
@@ -496,10 +505,11 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
         conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
         conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
         conn.execute(
-            "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id, parsed_with)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(game_id) DO UPDATE SET started_at=excluded.started_at,"
-            " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, hero_pn_id=excluded.hero_pn_id",
+            " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, hero_pn_id=excluded.hero_pn_id,"
+            " parsed_with=excluded.parsed_with",
             (
                 game_id,
                 started_at,
@@ -508,6 +518,7 @@ def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
                 result.blinds.get("ante", 0),
                 result.hands[0].variant if result.hands else "nlhe",
                 hero_pn_id,
+                PARSE_VERSION,
             ),
         )
         for hand in result.hands:
