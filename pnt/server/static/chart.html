@@ -65,8 +65,8 @@
   .pnote:empty { display: none; }
   .pnote + .controls.narrow { margin-top: 0; }
   .pnote .text { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--accent); padding: 1px 0 1px 8px; }
-  .pnote .pen { flex: none; padding: 0 6px; font-size: 12px; color: var(--muted); }
-  .pnote .pen:hover { color: var(--ink); border-color: var(--accent); }
+  .pnote .pen, .pnote .fold { flex: none; padding: 0 6px; font-size: 12px; color: var(--muted); }
+  .pnote .pen:hover, .pnote .fold:hover { color: var(--ink); border-color: var(--accent); }
   .pnote.editing { flex-direction: column; align-items: stretch; gap: 4px; }
   .pnote textarea { width: 100%; max-width: 72ch; min-height: 3.4em; resize: vertical; font: inherit; font-size: 13px;
     color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 6px; padding: 6px 8px; }
@@ -76,12 +76,17 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  .views { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; }
-  /* A group wraps inside its box when the panel is narrow. The dividers are shadows
-     up and left of each button: the box clips them on its first row and column, so
-     wrapped rows get a rule between them and no stray edges. */
-  .views .seg { flex-wrap: wrap; min-width: 0; }
-  .views .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; line-height: 1.35; box-shadow: -1px -1px 0 var(--axis); }
+  /* A top bar of tabs over a rule: bold labels with room between them, the open
+     one in the accent and underlined. The second group sits at the right edge;
+     a group wraps inside itself when the panel is narrow. */
+  .views { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 24px; margin: -4px 0 14px;
+    border-bottom: 1px solid var(--grid); }
+  .views .seg { flex-wrap: wrap; min-width: 0; gap: 0 2px; border: 0; border-radius: 0; overflow: visible; }
+  .views .seg + .seg { margin-left: auto; }
+  .views .seg button { font-size: 13px; font-weight: 600; letter-spacing: .015em; padding: 7px 11px 6px; white-space: nowrap;
+    line-height: 1.3; color: var(--ink-2); border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+  .views .seg button:hover { color: var(--ink); background: var(--mid); }
+  .views .seg button[aria-pressed=true] { color: var(--accent); background: transparent; border-bottom-color: var(--accent); }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .presets button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .presets button:hover { border-color: var(--muted); }
@@ -213,7 +218,7 @@
      Segments sit 2px apart on the surface, so neighbours never merge; the bar is
      always the whole width, since its parts are shares of the known hands. */
   .lineview { display: flex; flex-direction: column; gap: 10px; }
-  .lineview .presets { margin-bottom: 0; }
+  .lineview .presets, .lineview > p { margin: 0; } /* the gap alone spaces the rows */
   .lineview .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
   .lineview .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .lrows { display: grid; grid-template-columns: max-content max-content minmax(120px, 1fr) max-content; gap: 6px 12px; align-items: center; }
@@ -508,7 +513,8 @@
     input[type=number] { width: 5em; }
     .seg { border-radius: 5px; }
     .seg button { padding: 2px 7px; }
-    .views .seg button { font-size: 11px; padding: 2px 7px; }
+    .views { column-gap: 12px; margin-bottom: 10px; }
+    .views .seg button { font-size: 11px; padding: 4px 7px 3px; }
     .presets { gap: 3px; margin-bottom: 8px; }
     .presets button { font-size: 10px; padding: 1px 6px; }
     .presets .lbl { font-size: 10px; }
@@ -658,6 +664,7 @@
   /* --- the give-up funnel, at the end of Results ---
      One bar per row from zero to 100%: of the flops seen for the steps, of the
      hands that reached the street for the folds. One colour; the figures say the rest. */
+  #funnel { display: flex; flex-direction: column; gap: 18px; } /* its two tables, spaced as #results spaces its own */
   #funnel td.share { width: 28%; min-width: 120px; }
   #funnel .fill { position: relative; height: 14px; background: var(--mid); border-radius: 4px; }
   #funnel .fill i { position: absolute; left: 0; top: 0; height: 100%; min-width: 1px; background: var(--accent); border-radius: 4px; }
@@ -791,15 +798,13 @@
     <input id="filter" type="text" placeholder="srp,pot>=500,vs=player 3" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
-    <button id="back" title="undo the last change to the spot (Alt+←)" disabled>← Back</button>
+    <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
   </div>
-  <!-- The views, on a row of their own: what they play, then the hands to look at
-       again. Two groups rather than one long bar, so neither wraps a label. -->
+  <!-- The views, on a row of their own: how they play on the left, then over on
+       the right the results and the hands to look at again. -->
   <div class="views">
     <span class="seg" role="group" aria-label="Analysis views">
       <button data-view="preflop" aria-pressed="true" title="the 169 starting hands, coloured by result">Preflop</button>
-      <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
-      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
       <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="tree" aria-pressed="false" title="every spot they reached, seat first, and what they chose there">Tree</button>
@@ -807,9 +812,11 @@
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
       <button data-view="timing" aria-pressed="false" title="how long they took to act, and what the hands were: snap, normal or tank">Timing</button>
-      <button data-view="shows" aria-pressed="false" title="the hands they turned over when nobody asked: how often air, how often strong">Shows</button>
     </span>
-    <span class="seg" role="group" aria-label="Review views">
+    <span class="seg" role="group" aria-label="Results and review views">
+      <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
+      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
+      <button data-view="shows" aria-pressed="false" title="the hands they turned over when nobody asked: how often air, how often strong">Shows</button>
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
       <button data-view="tagged" aria-pressed="false" title="hands you tagged on a row or in a replay, by tag">Tagged</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
@@ -1612,6 +1619,11 @@
   // since one may have been written on a card there in the meantime.
   let playerNotes = new Map();
   let noteBox = null; // the open editor, which no repaint may throw away
+  // Hide folds the note away for every player, remembered in this browser; the
+  // Players page still lists them all.
+  const NOTE_HIDE_KEY = "pnt.hidePlayerNote";
+  let noteHidden = false;
+  try { noteHidden = localStorage.getItem(NOTE_HIDE_KEY) === "1"; } catch { /* shown */ }
   const setNotes = (rows) => { playerNotes = new Map(rows.filter(p => p.notes).map(p => [p.alias, p.notes])); };
   async function refreshNotes() {
     try { setNotes(await getJson("/players")); paintPlayerNote(); } catch { /* the notes as they were */ }
@@ -1633,6 +1645,20 @@
     pen.addEventListener("click", editPlayerNote);
     line.appendChild(pen);
     if (text) {
+      const fold = document.createElement("button");
+      fold.type = "button"; fold.className = "fold";
+      fold.textContent = noteHidden ? "show note" : "hide";
+      fold.title = noteHidden ? "show your note on every player (also on the Players page)"
+        : "hide notes on every player (still on the Players page)";
+      fold.setAttribute("aria-expanded", !noteHidden);
+      fold.addEventListener("click", () => {
+        noteHidden = !noteHidden;
+        try { localStorage.setItem(NOTE_HIDE_KEY, noteHidden ? "1" : "0"); } catch { /* this visit only */ }
+        paintPlayerNote();
+      });
+      line.appendChild(fold);
+    }
+    if (text && !noteHidden) {
       const t = document.createElement("span");
       t.className = "text"; t.textContent = text;
       line.appendChild(t);
@@ -2195,7 +2221,8 @@
         + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`));
     }
     const hint = message("click a line, or one part of its bar, to add it to the spot and list its hands");
-    hint.classList.add("note"); hint.style.margin = "4px 0 0";
+    hint.classList.add("note");
+    if (table) hint.style.margin = "4px 0 0";
     host.appendChild(hint);
   }
 
@@ -5535,7 +5562,7 @@
       spotHistory.push(state.filter);
       if (spotHistory.length > 50) spotHistory.shift();
     }
-    $("back").disabled = !spotHistory.length;
+    $("back").classList.toggle("hidden", !spotHistory.length); // shown only with somewhere to go back to
     state.filter = next;
     dropCaches(); // Apply always asks the server again
     syncChips();
