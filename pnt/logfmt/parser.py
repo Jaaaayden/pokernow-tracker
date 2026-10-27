@@ -46,9 +46,10 @@ CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 #: Each game records the version that parsed it (`games.parsed_with`), and
 #: `pnt rebuild --if-stale` re-parses any game parsed by an older one.
 #: 1: hands a gap in the log joined together are dropped (SPEC.md, "Money").
-PARSE_VERSION = 1
+#: 2: a Nit Game that did not start is recognized, not a parse miss.
+PARSE_VERSION = 2
 #: What the latest bump changed, for the line `pnt update` prints as it rebuilds.
-PARSE_CHANGE = "drop hands that a gap in the log joined together"
+PARSE_CHANGE = "recognize a Nit Game that did not start"
 
 
 @dataclass(slots=True)

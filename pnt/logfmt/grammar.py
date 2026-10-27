@@ -269,6 +269,11 @@ RULES: list[Rule] = [
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_activated"),
     ),
     (
+        # Too few confirmed: the round is called off, and its buy-ins moved nothing.
+        re.compile(r"^Nit Game did not start because there were not enough confirmed players\.$"),
+        lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_not_started"),
+    ),
+    (
         re.compile(rf"^The player {_P} confirmed the Nit Game using (?:their stack|an add-on)\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_buy_in"),
     ),
