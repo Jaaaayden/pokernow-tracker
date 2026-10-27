@@ -477,9 +477,17 @@ def needs_game_modes_rebuild(conn: sqlite3.Connection) -> bool:
 
 
 def needs_parse_rebuild(conn: sqlite3.Connection) -> bool:
-    """Whether any game was stored by an older parser (`parser.PARSE_VERSION`)."""
+    """Whether any game was stored by an older parser (`parser.PARSE_VERSION`).
+
+    Only games with raw lines count: `rebuild` walks those, so a games row with
+    none (a probe, a log emptied out) would never be stamped and would ask for a
+    rebuild on every update."""
     try:
-        row = conn.execute("SELECT 1 FROM games WHERE parsed_with < ? LIMIT 1", (PARSE_VERSION,)).fetchone()
+        row = conn.execute(
+            "SELECT 1 FROM games WHERE parsed_with < ?"
+            " AND game_id IN (SELECT game_id FROM raw_entries) LIMIT 1",
+            (PARSE_VERSION,),
+        ).fetchone()
     except sqlite3.OperationalError:  # older still: the column itself is missing
         return conn.execute("SELECT 1 FROM games LIMIT 1").fetchone() is not None
     return row is not None
