@@ -602,8 +602,29 @@
   #shows tr.total td { font-weight: 600; }
   #shows tbody tr, #bounty tbody tr { cursor: pointer; }
   #shows tbody tr:hover td, #bounty tbody tr:hover td { background: var(--mid); }
-  #shows .cls-strong, #shows .ahead { color: var(--up); }
-  #shows .cls-air, #shows .cls-draw, #shows .behind { color: var(--down); }
+  /* Strong in the profit colour, draws and air in the loss colour, marginal in
+     amber. A class cell is tinted by its share of the row's two-card shows; a
+     list row's read is a pill of the same colour. */
+  #shows { --up: #1f7a4d; --down: #b93a39; --amber: #a86b00; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #shows { --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a; } }
+  :root[data-theme="dark"] #shows { --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a; }
+  #shows .cls-strong, #shows .ahead { --c: var(--up); }
+  #shows .cls-marginal { --c: var(--amber); }
+  #shows .cls-air, #shows .cls-draw, #shows .behind { --c: var(--down); }
+  #shows .ahead, #shows .behind { color: var(--c); }
+  #shows td.share small { color: var(--muted); font-size: 11px; margin-left: 5px; }
+  #shows .read { display: inline-block; padding: 0 8px; border-radius: 999px; white-space: nowrap; font-size: 12.5px;
+    color: var(--c, var(--muted)); background: color-mix(in srgb, var(--c, var(--muted)) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c, var(--muted)) 35%, transparent); }
+  #shows .street { color: var(--muted); margin-right: 5px; }
+  #shows .vs .pc-row { margin-left: 5px; }
+  #shows .showfilters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  #shows .showfilters > span { display: inline-flex; align-items: center; gap: 6px; }
+  #shows .showfilters .seg { flex-wrap: wrap; }
+  #shows .showfilters .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; }
+  #shows tbody td { white-space: nowrap; }
+  #shows .showfilters .seg small { margin-left: 4px; opacity: .7; }
+  #shows .showfilters + table { margin-top: 0; }
   #shows td.dim, #bounty td.dim { color: var(--muted); }
   #bounty td.up { color: var(--up); font-weight: 600; }
   #bounty td.down { color: var(--down); font-weight: 600; }
@@ -4246,7 +4267,11 @@
   // its one hand. See "Voluntary shows" in SPEC.md.
   const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
   const SHOW_WORDS = { ahead: "ahead of", chop: "chopping with", behind: "behind" };
-  const cardText = (c) => pretty(c);
+  // The pot types the rows carry (`pot`, from Facts.pot_level), and the list's
+  // two filters. Kept across renders; a value with no rows falls back to all.
+  const SHOW_POTS = { limped: "limped", srp: "SRP", "3bet": "3-bet", "4bet": "4-bet+", other: "bomb pot" };
+  const SHOW_KINDS = { strong: "strong", marginal: "marginal", draw: "draw", air: "air", one: "one card" };
+  const showsPick = { pot: "all", kind: "all" };
   function renderShows(d) {
     const wrap = $("shows");
     wrap.replaceChildren();
@@ -4265,6 +4290,7 @@
     $("table").classList.add("hidden");
     if (!d.shows) { wrap.appendChild(message("never showed a hand unasked")); return; }
 
+    // Each class cell is tinted by its share of the row's two-card shows.
     const t = document.createElement("table");
     const head = document.createElement("tr");
     for (const h of ["how the hand ended", "shows", "1 card", ...SHOW_CLASSES]) head.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
@@ -4274,37 +4300,91 @@
       if (!c.shows && c !== total) continue;
       const tr = document.createElement("tr");
       if (c === total) tr.className = "total";
-      const cells = [c.label, c.shows, c.one_card || "·", ...SHOW_CLASSES.map(k => c.classes[k] || "·")];
-      cells.forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i === 2) td.className = "dim"; tr.appendChild(td); });
+      const cell = (v, cls) => { const td = document.createElement("td"); td.textContent = v; if (cls) td.className = cls; tr.appendChild(td); return td; };
+      cell(c.label); cell(c.shows); cell(c.one_card || "·", "dim");
+      const two = c.shows - c.one_card;
+      for (const k of SHOW_CLASSES) {
+        const n = c.classes[k];
+        if (!n) { cell("·", "dim"); continue; }
+        const pct = 100 * n / two;
+        const td = cell(n, `share cls-${k}`);
+        td.appendChild(Object.assign(document.createElement("small"), { textContent: `${Math.round(pct)}%` }));
+        td.style.background = `color-mix(in srgb, var(--c) ${Math.round(pct * 0.6)}%, transparent)`;
+        td.title = `${n} of ${two} two-card shows`;
+      }
       t.appendChild(tr);
     }
     wrap.appendChild(t);
 
-    const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
+    const kindOf = (r) => r.class || "one";
+    const filters = document.createElement("div");
+    filters.className = "showfilters";
     const list = document.createElement("table");
     const lh = document.createElement("tr");
-    for (const h of ["hand", "shown", "how it ended", "board as it stood", "read as", "against the winner"]) lh.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
+    for (const h of ["hand", "pot", "shown", "how it ended", "board as it stood", "read as", "against the winner"]) lh.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
     const thead = document.createElement("thead"); thead.appendChild(lh); list.appendChild(thead);
     const body = document.createElement("tbody");
-    for (const r of d.rows) {
+    list.appendChild(body);
+    wrap.append(filters, list);
+
+    const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
+    const potsSeen = new Set(d.rows.map(r => r.pot));
+    if (showsPick.pot !== "all" && !potsSeen.has(showsPick.pot)) showsPick.pot = "all";
+    // A button counts the rows it would show with the other filter as it is.
+    const seg = (label, key, labels, of, other) => {
+      const box = document.createElement("span");
+      box.className = "seg"; box.setAttribute("role", "group"); box.setAttribute("aria-label", label);
+      for (const v of ["all", ...Object.keys(labels)]) {
+        if (key === "pot" && v !== "all" && !potsSeen.has(v)) continue;
+        const n = d.rows.filter(r => other(r) && (v === "all" || of(r) === v)).length;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-pressed", showsPick[key] === v);
+        b.append(v === "all" ? "all" : labels[v], Object.assign(document.createElement("small"), { textContent: n }));
+        b.addEventListener("click", () => { showsPick[key] = v; draw(); });
+        box.appendChild(b);
+      }
+      return box;
+    };
+    const potOk = (r) => showsPick.pot === "all" || r.pot === showsPick.pot;
+    const kindOk = (r) => showsPick.kind === "all" || kindOf(r) === showsPick.kind;
+    const row = (r) => {
       const tr = document.createElement("tr");
       tr.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}: click to replay`;
-      const cell = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
+      const cell = (content, cls) => { const td = document.createElement("td"); td.append(content); if (cls) td.className = cls; tr.appendChild(td); return td; };
       cell(`#${r.hand_number}`);
-      cell(cardText(r.cards));
+      cell(SHOW_POTS[r.pot] || "", "dim");
+      cell(cardsEl(r.cards));
       cell(words[r.context] || r.context, "dim");
-      cell(r.board.length ? `${r.street}: ${cardText(r.board.join(""))}` : "preflop");
+      const board = cell(r.board.length ? cardsEl(r.board) : "preflop", r.board.length ? "" : "dim");
+      if (r.board.length) board.prepend(Object.assign(document.createElement("span"), { className: "street", textContent: r.street }));
       const made = r.made ? (r.missed ? "missed " : "") + r.made.replace(/_/g, " ") : "";
-      cell(r.class ? `${r.class} · ${made}` : "one card", r.class ? `cls-${r.class}` : "dim");
-      cell(r.vs ? `${SHOW_WORDS[r.vs.result]} ${r.vs.you ? "you" : r.vs.player} (${cardText(r.vs.cards)})` : "", r.vs ? r.vs.result : "");
+      cell(Object.assign(document.createElement("span"), {
+        className: r.class ? `read cls-${r.class}` : "read",
+        textContent: r.class ? `${r.class} · ${made}` : "one card",
+      }));
+      const vs = cell("", r.vs ? `vs ${r.vs.result}` : "vs");
+      if (r.vs) vs.append(`${SHOW_WORDS[r.vs.result]} ${r.vs.you ? "you" : r.vs.player}`, cardsEl(r.vs.cards));
       tr.addEventListener("click", () => {
         openHands(`${d.player}: hand #${r.hand_number}, shown unasked`, [r.hand_id]);
         pntReplay.show($("replay"), r.hand_id);
       });
-      body.appendChild(tr);
-    }
-    list.appendChild(body);
-    wrap.appendChild(list);
+      return tr;
+    };
+    const draw = () => {
+      const group = (label, box) => { const g = document.createElement("span"); g.append(label, box); return g; };
+      filters.replaceChildren(
+        group("pot", seg("Pot type", "pot", SHOW_POTS, r => r.pot, kindOk)),
+        group("shown", seg("Shown class", "kind", SHOW_KINDS, kindOf, potOk)),
+      );
+      const rows = d.rows.filter(r => potOk(r) && kindOk(r));
+      body.replaceChildren(...rows.map(row));
+      if (!rows.length) {
+        const td = Object.assign(document.createElement("td"), { colSpan: 7, className: "dim", textContent: "no shows match both filters" });
+        const tr = document.createElement("tr"); tr.appendChild(td); body.appendChild(tr);
+      }
+    };
+    draw();
   }
 
   // ---- 7-2 bounties ----------------------------------------------------------

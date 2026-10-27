@@ -35,7 +35,9 @@ or the winner's own show): was the folded hand ahead on the board as it stood
 (`vs`, and `folded_vs` for the count)? Preflop folds are not compared.
 
 Shows are not `Facts`, so no spot filter reproduces a row. Each row is one hand,
-and carries its `hand_id`, so it opens on its own.
+and carries its `hand_id`, so it opens on its own. It also carries the hand's pot
+type (`pot_level`, and `pot` as a word), read off the player's facts for that
+hand: the same level the ``limped``/``srp``/``3bet_pot``/``4bet_pot`` terms read.
 """
 
 from __future__ import annotations
@@ -56,7 +58,7 @@ from .cards import (
 )
 from .derive import ANALYSED_SQL
 from .equity import rank7
-from .queries import display_names, identities_of
+from .queries import display_names, facts_cached, identities_of
 from .tags import strength_at
 
 #: Strongest first: the order the table prints them in.
@@ -71,6 +73,16 @@ CONTEXT_LABELS = {
 }
 
 _STREET_ORDER = (PREFLOP, FLOP, TURN, RIVER)
+
+#: `Facts.pot_level` as a word, as the filter terms read it: 0 is a bomb pot.
+POT_TYPES = ("limped", "srp", "3bet", "4bet", "other")
+
+
+def pot_type(level: int | None) -> str:
+    """``limped``, ``srp``, ``3bet``, ``4bet`` (and above) or ``other``."""
+    if not level:
+        return "other"
+    return POT_TYPES[min(level, 4) - 1]
 
 #: One bullet each. **text** is bold on the page.
 NOTE = (
@@ -209,6 +221,8 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
     winners = _winners(conn, [r["hand_id"] for r in rows if r["folded"] and r["n_cards"] == 2])
     owners = {g: h for g, h in conn.execute("SELECT game_id, hero_pn_id FROM games WHERE hero_pn_id IS NOT NULL")}
     names = display_names(conn)
+    # Every show is from an analysed hand they were in, so each has its facts.
+    levels = {f.hand_id: f.pot_level for f in facts_cached(conn, alias, game)}
     fv = out["folded_vs"]
     for r in rows:
         board = _first_run(r["board_json"])
@@ -249,6 +263,8 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
             "n_dealt_in": r["n_dealt_in"],
             "contributed": r["contributed"],
             "collected": r["collected"],
+            "pot_level": levels.get(r["hand_id"]),
+            "pot": pot_type(levels.get(r["hand_id"])),
         })
     out["coverage"] = round(100.0 * out["two_card"] / out["shows"], 1) if out["shows"] else None
     out["air_pct"] = _pct(out["classes"]["air"], out["two_card"])

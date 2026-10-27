@@ -8,6 +8,7 @@ must still never see them.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -16,9 +17,19 @@ from typer.testing import CliRunner
 from pnt import cli
 from pnt.db.conn import connect
 from pnt.ingest.importer import import_csv
+from pnt.stats.filters import FLAGS
 from pnt.stats.queries import facts_for, identities_of
 from pnt.stats.ranges import range_grid
-from pnt.stats.shows import CLASSES, CONTEXTS, classify, context_of, versus, voluntary_shows
+from pnt.stats.shows import (
+    CLASSES,
+    CONTEXTS,
+    POT_TYPES,
+    classify,
+    context_of,
+    pot_type,
+    versus,
+    voluntary_shows,
+)
 from tests.conftest import ALL_LOGS, MULTIWAY_GAME, local_client
 
 
@@ -70,6 +81,22 @@ def test_class_counts_sum_to_the_two_card_total(db):
         assert all((r["class"] is not None) == (r["n_cards"] == 2) for r in s["rows"])
         seen += s["two_card"]
     assert seen > 0, "the fixtures must exercise two-card shows"
+
+
+def test_every_row_carries_the_pot_type_the_filter_terms_read(db):
+    terms = {"limped": "limped", "srp": "srp", "3bet": "3bet_pot", "4bet": "4bet_pot"}
+    seen = Counter()
+    for alias in _aliases(db):
+        facts = {f.hand_id: f for f in facts_for(db, alias)}
+        for r in voluntary_shows(db, alias)["rows"]:
+            f = facts[r["hand_id"]]
+            assert r["pot_level"] == f.pot_level
+            assert r["pot"] == pot_type(f.pot_level) in POT_TYPES
+            for word, term in terms.items():
+                assert FLAGS[term](f) == (r["pot"] == word)
+            seen[r["pot"]] += 1
+    assert seen["srp"] and seen["3bet"], "the fixtures show from more than one pot type"
+    assert (pot_type(0), pot_type(1), pot_type(2), pot_type(5)) == ("other", "limped", "srp", "4bet")
 
 
 def test_fixture_counts_match_the_view(db):
