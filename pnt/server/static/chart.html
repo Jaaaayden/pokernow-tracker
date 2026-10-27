@@ -406,21 +406,36 @@
 
   /* --- side by side: the list on the left, the replay on the right ---
      The replay pane sticks to the top of the window and scrolls on its own, so
-     clicking down a list never moves the page. Narrow (the extension side panel,
-     a small window) it stacks again. The review views and the drill-down list
-     under the charts share the one switch. */
-  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; align-items: start; }
+     clicking down a list never moves the page. The list is the narrower side at
+     every width, a phone and the extension side panel included, and its rows go
+     compact when it is narrow (below). On a phone the list has the whole width
+     until a hand is picked, rather than give most of it to the placeholder. The
+     review views and the drill-down list under the charts share the one switch;
+     allin.html and pots.html read it too (pnt.reviewLayout). */
+  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+  @media (max-width: 600px) {
+    #review.split:has(> .replay[data-empty]), #hands.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
+    .split > .replay[data-empty] { display: none; }
+  }
   #review.split #review-count, #hands.split .card-head { grid-column: 1 / -1; }
-  #review.split .hand-rows.tall, #hands.split .hand-rows { max-height: calc(100vh - 140px); }
-  #review.split .replay, #hands.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 16px; border-top: 0;
-    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); overflow-y: auto; }
+  #review.split .hand-rows.tall, #hands.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
+  #review.split .replay, #hands.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
+    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
   #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
-  @media (max-width: 900px) {
-    #review.split, #hands.split { display: block; }
-    #review.split .hand-rows.tall { max-height: 560px; }
-    #hands.split .hand-rows { max-height: 360px; }
-    #review.split .replay, #hands.split .replay { position: static; margin-top: 12px; padding: 12px 0 0; border-left: 0;
-      border-top: 1px solid var(--grid); max-height: none; }
+  /* A narrow list keeps what tells its hands apart -- number, cards, net, and a
+     review row's flag -- and leaves position, pot and sizes to the tooltip and
+     the replay. Sized by the list, not the window, so the rows fit whether the
+     list is narrow from the pane beside it or from the screen. */
+  .hand-rows { container-type: inline-size; }
+  @container (max-width: 420px) {
+    .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
+    .hand-row .pos, .hand-row .pot, .hand-row .sizes, .hand-row .vs .vn { display: none; }
+    .hand-row .vs:not(:has(.pc-row)) { display: none; }
+    .hand-row .num, .hand-row .hole, .hand-row .board, .hand-row .vs { min-width: 0; }
+    .hand-row .board { order: 1; flex-basis: 100%; }
+    .hand-row .why { order: 2; }
+    .hand-row .kind, .hand-row .why { font-size: 10px; }
+    .rev-row .marks.three { display: flex; }
   }
 
   /* --- postflop strip --- */
@@ -545,10 +560,9 @@
     th, td { padding: 3px 5px; }
     th { font-size: 10px; }
     .hand-row { gap: 1px 8px; padding: 4px 2px; font-size: 11px; }
-    /* The card columns give up their alignment rather than crush the size
-       note into a column a word wide; it wraps to a line of its own instead. */
+    /* The card columns give up their alignment; a list this narrow drops the
+       rest (the @container rules above). */
     .hand-row .hole, .hand-row .board { min-width: 0; }
-    .hand-row .sizes { min-width: 12em; }
     .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
     .kinds button { padding: 1px 6px; }
     .replay { font-size: 11px; }
@@ -5380,6 +5394,7 @@
     pntReplay.cancel(box); // the rows are new: a replay still loading is for one of the old
     if (state.split && shown) {
       box.classList.remove("hidden");
+      box.dataset.empty = ""; // pntReplay.show clears it
       box.replaceChildren(message("click a hand to replay it · ↑ ↓ to step through"));
     } else {
       box.classList.add("hidden");

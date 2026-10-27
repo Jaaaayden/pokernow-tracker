@@ -126,6 +126,28 @@
   .replay .street > span { color: var(--muted); margin-left: 8px; }
   .replay ol { margin: 4px 0 0; padding-left: 22px; }
   .replay li.forced { color: var(--muted); }
+  /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
+     list on the left, the replay sticking beside it. A narrow list drops the
+     street, equity and pot, which the tooltip and the replay still give. */
+  #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+  #hand-pair.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
+  #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
+    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 620px) {
+    #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
+    #hand-pair.split > .replay[data-empty] { display: none; }
+    .replay { font-size: 11px; }
+  }
+  .hand-rows { container-type: inline-size; }
+  @container (max-width: 420px) {
+    .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
+    .hand-row .street, .hand-row .eq, .hand-row .pot, .hand-row .money small { display: none; }
+    .hand-row .num, .hand-row .vs, .hand-row .board, .hand-row .money { min-width: 0; }
+    .hand-row .vs, .hand-row .board { flex-basis: 100%; }
+    .hand-row .vs { order: 1; }
+    .hand-row .board { order: 2; }
+  }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -172,6 +194,7 @@
           <option value="pot">biggest pot first</option>
           <option value="swing">biggest swing first</option>
         </select>
+        <button id="hands-split" aria-pressed="false" title="list on the left, replay on the right">Side by side</button>
         <button id="detail-close">Close</button>
       </span>
     </div>
@@ -180,8 +203,10 @@
       <span class="cap" id="graph-caption"></span>
     </div>
     <div class="graph" id="graph"></div>
-    <div class="hand-rows" id="hand-rows"></div>
-    <div class="replay hidden" id="replay"></div>
+    <div id="hand-pair">
+      <div class="hand-rows" id="hand-rows"></div>
+      <div class="replay hidden" id="replay"></div>
+    </div>
   </section>
 
   <details class="key" id="key">
@@ -416,7 +441,7 @@
     box.classList.remove("hidden");
     $("detail-title").textContent = name;
     $("detail-count").textContent = "";
-    $("replay").classList.add("hidden");
+    resetReplay();
     $("graph").replaceChildren();
     $("graph-caption").textContent = "";
     $("hand-rows").replaceChildren(message("loading…"));
@@ -576,6 +601,36 @@
       list.appendChild(b);
     }
   }
+
+  // ---- side by side ------------------------------------------------------
+  // The chart's switch and key, so one choice holds on every page. Split, the
+  // pane is always there with a placeholder, so picking the first hand does not
+  // shove the list aside.
+  const LAYOUT_KEY = "pnt.reviewLayout";
+  let split = true;
+  try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
+  function resetReplay() {
+    const box = $("replay");
+    pntReplay.cancel(box);
+    if (split) {
+      box.classList.remove("hidden");
+      box.dataset.empty = ""; // pntReplay.show clears it
+      box.replaceChildren(message("click a hand to replay it"));
+    } else {
+      box.classList.add("hidden");
+    }
+  }
+  function applyLayout() {
+    $("hand-pair").classList.toggle("split", split);
+    $("hands-split").setAttribute("aria-pressed", split);
+  }
+  $("hands-split").addEventListener("click", () => {
+    split = !split;
+    try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
+    applyLayout();
+    if (!$("hand-rows").querySelector(".hand-row[aria-pressed=true]")) resetReplay();
+  });
+  applyLayout();
 
   function closeDetail() {
     detailSeq++;

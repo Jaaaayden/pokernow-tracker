@@ -60,6 +60,7 @@
   async function show(box, id) {
     const req = String(++seq);
     box.dataset.replayReq = req;
+    delete box.dataset.empty; // a page's "click a hand" placeholder, if it had one
     box.classList.remove("hidden");
     box.replaceChildren(message("loading…"));
     try {
