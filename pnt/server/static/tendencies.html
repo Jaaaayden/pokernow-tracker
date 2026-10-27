@@ -32,9 +32,11 @@
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
   h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
   h2 small, h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+    margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .crumb .go a + a { margin-left: 14px; }
   ul.note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; padding-left: 18px; max-width: 82ch; }
   ul.note li { margin: 2px 0; }
   ul.note b { color: var(--ink); font-weight: 600; }
@@ -58,7 +60,10 @@
 </head>
 <body>
 <main>
-  <div class="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a href="/stats.html">stats &rsaquo;</a>
+      <a href="/chart">range chart &rsaquo;</a>
+      <a href="/players.html">players &rsaquo;</a></span></div>
   <h1>Tendencies</h1>
   <ul class="note">
     <li><b>You:</b> the tags an opponent's HUD shows on you, and how they would play you.</li>
@@ -78,6 +83,7 @@
   const $ = (id) => document.getElementById(id);
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  if (theme) for (const a of document.querySelectorAll("#crumb .go a")) a.href += "?theme=" + encodeURIComponent(theme);
   const node = (tag, text, cls) => {
     const n = document.createElement(tag);
     if (text != null) n.textContent = text;

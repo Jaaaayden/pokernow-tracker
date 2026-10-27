@@ -40,8 +40,6 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  a.link { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13px; }
-  a.link ~ a.link { margin-left: 12px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
   .note b { color: var(--ink); font-weight: 600; }
   ul.note { padding-left: 18px; }
@@ -50,9 +48,11 @@
   .card.loading { opacity: .45; transition: opacity .15s; }
   .err { color: #d03b3b; margin: 12px 0; }
   .muted { color: var(--muted); }
-  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+    margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .crumb .go a + a { margin-left: 14px; }
 
   /* --- the headline figures --- */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
@@ -107,7 +107,10 @@
 </head>
 <body>
 <main>
-  <div class="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a id="reviewlink" href="/chart?by=review">hand review &rsaquo;</a>
+      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a>
+      <a id="statslink" href="/stats.html">stats &rsaquo;</a></span></div>
   <h1>Biggest pots <small id="subtitle">the hands worth remembering</small></h1>
 
   <div class="controls">
@@ -126,8 +129,6 @@
       <button data-unit="chips" aria-pressed="true">chips</button>
       <button data-unit="bb" aria-pressed="false">bb</button>
     </span>
-    <a class="link" href="/allin.html">all-in EV &rsaquo;</a>
-    <a class="link" href="/chart?by=review">hand review &rsaquo;</a>
   </div>
 
   <ul class="note">
@@ -172,6 +173,12 @@
     if (state.unit !== "chips") q.set("unit", state.unit);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
+    const t = new URLSearchParams(theme ? { theme } : {});
+    const p = new URLSearchParams(t);
+    if (state.player) p.set("player", state.player);
+    $("reviewlink").href = "/chart?by=review&" + p;
+    $("allinlink").href = "/allin.html?" + p;
+    $("statslink").href = "/stats.html?" + t;
   };
 
   const chips = (v) => v == null ? "–" : Math.round(v).toLocaleString();
