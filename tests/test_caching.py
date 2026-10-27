@@ -287,6 +287,15 @@ def test_a_deleted_game_leaves_the_report_and_the_cache(db):
 # change without a rebuild: those must never be served from the cache.
 
 
+def test_spot_answers_never_push_out_the_slow_ones(db):
+    """A chart click files its stats, range and sizing apart: a full cache of them
+    leaves Results, Tilt and the rest where they were."""
+    slow = q.remembered(db, ("results", "someone"), lambda: {"cost": "seconds"})
+    for i in range(q.SPOT_ANSWERS.cap + 1):
+        q.remembered(db, ("spot-stats", "someone", None, f"spot{i}"), dict, q.SPOT_ANSWERS)
+    assert q.remembered(db, ("results", "someone"), lambda: pytest.fail("recomputed")) is slow
+
+
 def _review_fresh(db, alias, **kw):
     from pnt.stats import review as rv
 

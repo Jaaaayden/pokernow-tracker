@@ -89,7 +89,7 @@
   .pot-row .tag.allin { border-color: var(--accent); color: var(--accent); }
   .pot-row .tag.short { border-color: var(--down); color: var(--down); }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; }
+  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .replay .who { color: var(--ink-2); margin: 0 0 6px; }
   .replay .street { margin-top: 10px; }
@@ -102,6 +102,30 @@
     .pot-row { gap: 1px 10px; font-size: 12px; padding: 6px 2px; }
     .pot-row .pot { font-size: 14px; }
     .pot-row .tags { margin-left: 0; }
+    .replay { font-size: 11px; }
+  }
+  /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
+     list on the left, the replay sticking beside it as the page scrolls. A
+     narrow list keeps the pot, when, who won it and a short log's warning; the
+     replay has the board and the rest. With no pots, or on a phone until a pot
+     is picked, the list has the whole width. */
+  #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
+  #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
+    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 620px) {
+    #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
+    #hand-pair.split > .replay[data-empty] { display: none; }
+  }
+  .pot-rows { container-type: inline-size; }
+  @container (max-width: 360px) {
+    .pot-row { gap: 1px 6px; padding: 5px 2px; font-size: 11px; }
+    .pot-row .board, .pot-row .tag:not(.short), .pot-row .pot small { display: none; }
+    .pot-row .pot, .pot-row .when { min-width: 0; }
+    .pot-row .who { min-width: 0; flex-basis: 100%; overflow-wrap: anywhere; }
+    .pot-row .tags { margin-left: 0; }
+    .pot-row .pot { font-size: 13px; }
   }
 </style>
 </head>
@@ -129,6 +153,7 @@
       <button data-unit="chips" aria-pressed="true">chips</button>
       <button data-unit="bb" aria-pressed="false">bb</button>
     </span>
+    <button id="hands-split" aria-pressed="false" title="list on the left, replay on the right">Side by side</button>
   </div>
 
   <ul class="note">
@@ -141,8 +166,10 @@
   <div class="tiles" id="tiles"></div>
 
   <div class="card" id="card">
-    <div class="pot-rows" id="rows"></div>
-    <div class="replay hidden" id="replay"></div>
+    <div id="hand-pair">
+      <div class="pot-rows" id="rows"></div>
+      <div class="replay hidden" id="replay"></div>
+    </div>
   </div>
 </main>
 
@@ -267,7 +294,7 @@
 
     const list = $("rows");
     list.replaceChildren();
-    $("replay").classList.add("hidden");
+    resetReplay(d.pots.length > 0);
     if (!d.pots.length) {
       const p = document.createElement("p");
       p.className = "muted";
@@ -364,6 +391,40 @@
     });
     return b;
   }
+
+  // ---- side by side ------------------------------------------------------
+  // The chart's switch and key, so one choice holds on every page. Split, the
+  // pane is there with a placeholder whenever there are pots to pick, so the
+  // first pick does not shove the list aside.
+  const LAYOUT_KEY = "pnt.reviewLayout";
+  let split = true;
+  try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
+  function resetReplay(shown) {
+    const box = $("replay");
+    pntReplay.cancel(box);
+    if (split && shown) {
+      box.classList.remove("hidden");
+      box.dataset.empty = ""; // pntReplay.show clears it
+      const p = document.createElement("p");
+      p.className = "muted"; p.textContent = "click a pot to replay it";
+      box.replaceChildren(p);
+    } else {
+      box.classList.add("hidden");
+    }
+  }
+  function applyLayout() {
+    $("hand-pair").classList.toggle("split", split);
+    $("hands-split").setAttribute("aria-pressed", split);
+  }
+  $("hands-split").addEventListener("click", () => {
+    split = !split;
+    try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
+    applyLayout();
+    // A replay on show stays, even when a re-render has unpressed its row.
+    const box = $("replay");
+    if (box.classList.contains("hidden") || "empty" in box.dataset) resetReplay(!!state.data?.pots.length);
+  });
+  applyLayout();
 
   // ---- controls ----------------------------------------------------------
   function apply() {

@@ -177,6 +177,19 @@ def test_a_tag_change_reaches_a_cached_spot(client):
     assert app_module._spot_key(conn, "srp") == "srp"
 
 
+def test_a_tag_change_reaches_a_players_remembered_spot_stats(client):
+    """A player's spot stats are remembered per generation, which a tag does not
+    move: the tag's hand must still count the moment it is tagged."""
+    player = client.get("/stats", params={"game": HU_GAME}).json()[0]["player"]
+
+    def hands():
+        return client.get(f"/players/{player}/stats", params={"filter": "tag=study"}).json()["hands"]
+
+    assert hands() == 0
+    client.post(f"/games/{HU_GAME}/hands/3/tags", json={"tag": "study"})
+    assert hands() == 1
+
+
 # ---------------------------------------------------------- the filter term ---
 
 
