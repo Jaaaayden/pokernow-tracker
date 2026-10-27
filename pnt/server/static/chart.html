@@ -4325,10 +4325,12 @@
   const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
   const SHOW_WORDS = { ahead: "ahead of", chop: "chopping with", behind: "behind" };
   // The pot types the rows carry (`pot`, from Facts.pot_level), and the list's
-  // two filters. Kept across renders; a value with no rows falls back to all.
+  // three filters. Kept across renders; a value with no rows falls back to all.
   const SHOW_POTS = { limped: "limped", srp: "SRP", "3bet": "3-bet", "4bet": "4-bet+", other: "bomb pot" };
   const SHOW_KINDS = { strong: "strong", marginal: "marginal", draw: "draw", air: "air", one: "one card" };
-  const showsPick = { pot: "all", kind: "all" };
+  // A shown fold against a winner whose cards are known (`vs`): what they let go.
+  const SHOW_VS = { ahead: "folded the best", chop: "folded a chop", behind: "folded behind" };
+  const showsPick = { pot: "all", kind: "all", vs: "all" };
   function renderShows(d) {
     const wrap = $("shows");
     wrap.replaceChildren();
@@ -4385,14 +4387,15 @@
     wrap.append(filters, list);
 
     const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
-    const potsSeen = new Set(d.rows.map(r => r.pot));
-    if (showsPick.pot !== "all" && !potsSeen.has(showsPick.pot)) showsPick.pot = "all";
-    // A button counts the rows it would show with the other filter as it is.
+    const vsOf = (r) => r.vs ? r.vs.result : "none";
+    const seen = { pot: new Set(d.rows.map(r => r.pot)), vs: new Set(d.rows.map(vsOf)) };
+    for (const key of ["pot", "vs"]) if (showsPick[key] !== "all" && !seen[key].has(showsPick[key])) showsPick[key] = "all";
+    // A button counts the rows it would show with the other filters as they are.
     const seg = (label, key, labels, of, other) => {
       const box = document.createElement("span");
       box.className = "seg"; box.setAttribute("role", "group"); box.setAttribute("aria-label", label);
       for (const v of ["all", ...Object.keys(labels)]) {
-        if (key === "pot" && v !== "all" && !potsSeen.has(v)) continue;
+        if (seen[key] && v !== "all" && !seen[key].has(v)) continue;
         const n = d.rows.filter(r => other(r) && (v === "all" || of(r) === v)).length;
         const b = document.createElement("button");
         b.type = "button";
@@ -4405,6 +4408,7 @@
     };
     const potOk = (r) => showsPick.pot === "all" || r.pot === showsPick.pot;
     const kindOk = (r) => showsPick.kind === "all" || kindOf(r) === showsPick.kind;
+    const vsOk = (r) => showsPick.vs === "all" || vsOf(r) === showsPick.vs;
     const row = (r) => {
       const tr = document.createElement("tr");
       tr.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}: click to replay`;
@@ -4431,13 +4435,16 @@
     const draw = () => {
       const group = (label, box) => { const g = document.createElement("span"); g.append(label, box); return g; };
       filters.replaceChildren(
-        group("pot", seg("Pot type", "pot", SHOW_POTS, r => r.pot, kindOk)),
-        group("shown", seg("Shown class", "kind", SHOW_KINDS, kindOf, potOk)),
+        group("pot", seg("Pot type", "pot", SHOW_POTS, r => r.pot, r => kindOk(r) && vsOk(r))),
+        group("shown", seg("Shown class", "kind", SHOW_KINDS, kindOf, r => potOk(r) && vsOk(r))),
       );
-      const rows = d.rows.filter(r => potOk(r) && kindOk(r));
+      // Only when some shown fold has a winner to compare against.
+      if (seen.vs.size > 1 || !seen.vs.has("none"))
+        filters.append(group("after a fold", seg("Against the winner", "vs", SHOW_VS, vsOf, r => potOk(r) && kindOk(r))));
+      const rows = d.rows.filter(r => potOk(r) && kindOk(r) && vsOk(r));
       body.replaceChildren(...rows.map(row));
       if (!rows.length) {
-        const td = Object.assign(document.createElement("td"), { colSpan: 7, className: "dim", textContent: "no shows match both filters" });
+        const td = Object.assign(document.createElement("td"), { colSpan: 7, className: "dim", textContent: "no shows match these filters" });
         const tr = document.createElement("tr"); tr.appendChild(td); body.appendChild(tr);
       }
     };
