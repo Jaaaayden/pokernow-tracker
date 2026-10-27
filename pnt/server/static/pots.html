@@ -89,7 +89,7 @@
   .pot-row .tag.allin { border-color: var(--accent); color: var(--accent); }
   .pot-row .tag.short { border-color: var(--down); color: var(--down); }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; }
+  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .replay .who { color: var(--ink-2); margin: 0 0 6px; }
   .replay .street { margin-top: 10px; }
@@ -117,10 +117,11 @@
     #hand-pair.split > .replay[data-empty] { display: none; }
   }
   .pot-rows { container-type: inline-size; }
-  @container (max-width: 420px) {
+  @container (max-width: 360px) {
     .pot-row { gap: 1px 6px; padding: 5px 2px; font-size: 11px; }
     .pot-row .when, .pot-row .board, .pot-row .tags, .pot-row .pot small { display: none; }
-    .pot-row .pot, .pot-row .who { min-width: 0; }
+    .pot-row .pot { min-width: 0; }
+    .pot-row .who { min-width: 0; flex-basis: 100%; overflow-wrap: anywhere; }
     .pot-row .pot { font-size: 13px; }
   }
 </style>

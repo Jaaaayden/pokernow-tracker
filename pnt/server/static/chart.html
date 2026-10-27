@@ -394,7 +394,7 @@
   .common button[data-spot]::before { content: "★ "; color: var(--accent); }
   .common button[data-spot][aria-pressed=true]::before { color: inherit; }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; }
+  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .replay .who { color: var(--ink-2); margin: 0 0 6px; }
   .replay .street { margin-top: 10px; }
@@ -433,6 +433,7 @@
     .hand-row .vs:not(:has(.pc-row)) { display: none; }
     .hand-row .num, .hand-row .hole, .hand-row .board, .hand-row .vs { min-width: 0; }
     .hand-row .board { order: 1; flex-basis: 100%; }
+    .hand-row .pc-row { flex-wrap: wrap; }
     .hand-row .why { order: 2; }
     .hand-row .kind, .hand-row .why { font-size: 10px; }
     .rev-row .marks.three { display: flex; }

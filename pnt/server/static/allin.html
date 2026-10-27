@@ -118,7 +118,7 @@
   .hand-row .up { color: var(--up); }
   .hand-row .down { color: var(--down); }
   .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; }
+  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
   .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .replay .who { color: var(--ink-2); margin: 0 0 6px; }
   .replay .street { margin-top: 10px; }
@@ -146,6 +146,7 @@
     .hand-row .num, .hand-row .vs, .hand-row .board, .hand-row .money { min-width: 0; }
     .hand-row .vs, .hand-row .board { flex-basis: 100%; }
     .hand-row .vs { order: 1; }
+    .hand-row .pc-row { flex-wrap: wrap; }
     .hand-row .board { order: 2; }
   }
   .hidden { display: none !important; }
