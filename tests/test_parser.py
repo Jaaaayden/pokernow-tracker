@@ -161,6 +161,25 @@ def test_the_hand_after_a_sewn_one_is_stored_and_keeps_the_new_blind():
     assert res.hands[1].bb == 20
 
 
+def test_a_big_blind_all_in_for_less_is_played_at_the_table_blind():
+    """All in for 1 at a 10 blind: the hand is a 10-blind hand, or net/bb blows up
+    tenfold. With no blind seen before it, the post is all there is to go on."""
+    short = [
+        '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+        'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1)',
+        '"A @ AAA" posts a small blind of 5',
+        '"B @ BBB" posts a big blind of 1 and go all in',
+        'Uncalled bet of 4 returned to "A @ AAA"',
+        '"A @ AAA" collected 2 from pot',
+        "-- ending hand #45 --",
+    ]
+    res = _parse_lines([*_HAND_44, *short])
+    assert res.misses == []
+    assert [h.bb for h in res.hands] == [10, 10]
+    assert res.hands[1].total_contributed == res.hands[1].total_collected == 2
+    assert _parse_lines(short).hands[0].bb == 1
+
+
 _HAND_45_OPEN = [
     '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
     'Player stacks: #1 "A @ AAA" (1000) | #2 "B @ BBB" (1000)',

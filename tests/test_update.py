@@ -373,6 +373,10 @@ def test_rebuild_if_stale_reparses_games_an_older_parser_stored(tmp_path):
     assert PARSE_CHANGE in stale.output.splitlines()[0]
     conn = connect(db)
     assert {r[0] for r in conn.execute("SELECT parsed_with FROM games")} == {PARSE_VERSION}
+    # A games row with no raw lines is never re-parsed, so it never goes stale.
+    conn.execute("INSERT INTO games (game_id) VALUES ('probe')")
+    conn.commit()
+    assert not needs_parse_rebuild(conn)
     conn.close()
 
 

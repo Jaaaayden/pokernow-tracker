@@ -1416,7 +1416,11 @@ the board's first run.
 No exclusions: a show from a dead-button or irregular-blinds hand is still a show,
 since nothing here is positional. Shows are not `Facts`, so no spot filter
 reproduces a row; each row carries its `hand_id` instead, and
-`test_fixture_counts_match_the_view` holds every count to the view.
+`test_fixture_counts_match_the_view` holds every count to the view. Each row also
+carries the hand's pot type, read off the player's facts for it: `pot_level`, and
+`pot` as a word (`limped`, `srp`, `3bet`, `4bet` and above, or `other` for a bomb
+pot), so the page can split the list by the same level the `limped`, `srp`,
+`3bet_pot` and `4bet_pot` terms read.
 `GET /players/{alias}/shows?game=` returns it, `pnt shows <alias>` prints it, and
 the chart's **Shows** tab lists it.
 
@@ -2181,6 +2185,10 @@ starting stack can sit below the last hand's end by the escrow.
 post of kind `bomb_pot`, so nobody has a preflop decision and no preflop rate
 counts the hand. Its big blind is the bomb over the table's `Bomb Pot BB
 Quantity`, or failing that the last big blind seen.
+
+A hand's big blind is its largest big blind post, except one **posted all in**:
+that may be short of the level (all in for 1 at a 10 blind), so the hand takes
+the larger of it and the last big blind seen.
 
 **Only Hold'em on one board is analysed** (`derive.is_analysed`). PLO's four or
 five cards and a Double Board's second board are past every rate, range and

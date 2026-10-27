@@ -16,6 +16,8 @@ You plan, brief, merge and verify. Workers do the slices. A subagent with no `mo
 
 ## 2. Pick a model for each worker
 
+The user is fine with `opus` on every worker (2026-10-27: usage is not a concern). Default to it. The table below is the cheaper split, for when cost matters again.
+
 | Model | Use it for |
 |---|---|
 | `sonnet` | Clear, one-area work where there's a pattern to copy: a chart view like an existing one, a HUD or page tweak, a CLI flag, docs, tests for behavior that already exists, `ui-feedback` notes, renames |

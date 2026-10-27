@@ -19,20 +19,24 @@
     --mid: #f0efec;
     --accent: #2a78d6;
     --flag: #c4372f;
+    /* profit, loss and in-between, for figures read against a baseline */
+    --up: #1f7a4d;
+    --down: #b93a39;
+    --amber: #a86b00;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --flag: #e66e6d;
+      --flag: #e66e6d; --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --flag: #e66e6d;
+    --flag: #e66e6d; --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a;
   }
   * { box-sizing: border-box; }
   /* Thin scrollbars in the theme's own greys, with no track and no arrow buttons.
@@ -65,8 +69,8 @@
   .pnote:empty { display: none; }
   .pnote + .controls.narrow { margin-top: 0; }
   .pnote .text { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--accent); padding: 1px 0 1px 8px; }
-  .pnote .pen { flex: none; padding: 0 6px; font-size: 12px; color: var(--muted); }
-  .pnote .pen:hover { color: var(--ink); border-color: var(--accent); }
+  .pnote .pen, .pnote .fold { flex: none; padding: 0 6px; font-size: 12px; color: var(--muted); }
+  .pnote .pen:hover, .pnote .fold:hover { color: var(--ink); border-color: var(--accent); }
   .pnote.editing { flex-direction: column; align-items: stretch; gap: 4px; }
   .pnote textarea { width: 100%; max-width: 72ch; min-height: 3.4em; resize: vertical; font: inherit; font-size: 13px;
     color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 6px; padding: 6px 8px; }
@@ -76,12 +80,17 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  .views { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; }
-  /* A group wraps inside its box when the panel is narrow. The dividers are shadows
-     up and left of each button: the box clips them on its first row and column, so
-     wrapped rows get a rule between them and no stray edges. */
-  .views .seg { flex-wrap: wrap; min-width: 0; }
-  .views .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; line-height: 1.35; box-shadow: -1px -1px 0 var(--axis); }
+  /* A top bar of tabs over a rule: bold labels with room between them, the open
+     one in the accent and underlined. The second group sits at the right edge;
+     a group wraps inside itself when the panel is narrow. */
+  .views { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 24px; margin: -4px 0 14px;
+    border-bottom: 1px solid var(--grid); }
+  .views .seg { flex-wrap: wrap; min-width: 0; gap: 0 2px; border: 0; border-radius: 0; overflow: visible; }
+  .views .seg + .seg { margin-left: auto; }
+  .views .seg button { font-size: 13px; font-weight: 600; letter-spacing: .015em; padding: 7px 11px 6px; white-space: nowrap;
+    line-height: 1.3; color: var(--ink-2); border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+  .views .seg button:hover { color: var(--ink); background: var(--mid); }
+  .views .seg button[aria-pressed=true] { color: var(--accent); background: transparent; border-bottom-color: var(--accent); }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .presets button { font-size: 12px; padding: 3px 8px; border-radius: 999px; color: var(--ink-2); }
   .presets button:hover { border-color: var(--muted); }
@@ -213,7 +222,7 @@
      Segments sit 2px apart on the surface, so neighbours never merge; the bar is
      always the whole width, since its parts are shares of the known hands. */
   .lineview { display: flex; flex-direction: column; gap: 10px; }
-  .lineview .presets { margin-bottom: 0; }
+  .lineview .presets, .lineview > p { margin: 0; } /* the gap alone spaces the rows */
   .lineview .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
   .lineview .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .lrows { display: grid; grid-template-columns: max-content max-content minmax(120px, 1fr) max-content; gap: 6px 12px; align-items: center; }
@@ -436,9 +445,11 @@
   .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
   .tip .row b { color: var(--ink); font-weight: 500; }
   .err { color: #d03b3b; margin: 12px 0; }
-  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+    margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .crumb .go a + a { margin-left: 14px; }
   .hidden { display: none !important; }
 
   /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
@@ -508,7 +519,8 @@
     input[type=number] { width: 5em; }
     .seg { border-radius: 5px; }
     .seg button { padding: 2px 7px; }
-    .views .seg button { font-size: 11px; padding: 2px 7px; }
+    .views { column-gap: 12px; margin-bottom: 10px; }
+    .views .seg button { font-size: 11px; padding: 4px 7px 3px; }
     .presets { gap: 3px; margin-bottom: 8px; }
     .presets button { font-size: 10px; padding: 1px 6px; }
     .presets .lbl { font-size: 10px; }
@@ -555,12 +567,9 @@
   }
 
   /* --- results by pot type ---
-     Won and lost as one bar from zero, in the profit and loss colours the other
-     pages use (--up, --down); kept on this view so the page's own tokens stay as
-     they are. The figures stay in ink: the bar carries the sign. */
-  #results { --up: #1f7a4d; --down: #b93a39; display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #results { --up: #4cc38a; --down: #e66e6d; } }
-  :root[data-theme="dark"] #results { --up: #4cc38a; --down: #e66e6d; }
+     Won and lost as one bar from zero, in the profit and loss colours (--up,
+     --down). The figures stay in ink: the bar carries the sign. */
+  #results { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
   #results h3 { font-size: 13px; font-weight: 600; margin: 0; }
   #results table { margin-top: 6px; min-width: 620px; }
   #results td.role { padding-left: 22px; color: var(--ink-2); }
@@ -585,6 +594,13 @@
   #tilt td small { color: var(--muted); margin-left: 3px; }
   #tilt td.moved { color: var(--flag); font-weight: 600; }
   #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  /* A figure read against its baseline (numTone): better in the accent blue the
+     MDF column uses, worse in the loss red, about the same in amber. The ± and
+     n beside it stay muted. Tilt colours its bb/100, Timing its value share. */
+  #tilt td.num-good, #timing td.num-good { color: var(--accent); font-weight: 600; }
+  #tilt td.num-bad, #timing td.num-bad { color: var(--down); font-weight: 600; }
+  #tilt td.num-eh, #timing td.num-eh { color: var(--amber); }
+  #tilt td[class*="num-"] small, #timing td[class*="num-"] small { font-weight: 400; }
 
   /* --- timing tells: what the hands were, by how long the decision took ---
      A table per spot, a row per tempo bucket, with the strength tiers as one
@@ -596,8 +612,26 @@
   #shows tr.total td { font-weight: 600; }
   #shows tbody tr, #bounty tbody tr { cursor: pointer; }
   #shows tbody tr:hover td, #bounty tbody tr:hover td { background: var(--mid); }
-  #shows .cls-strong, #shows .ahead { color: var(--up); }
-  #shows .cls-air, #shows .cls-draw, #shows .behind { color: var(--down); }
+  /* Strong in the profit colour, draws and air in the loss colour, marginal in
+     amber. A class cell is tinted by its share of the row's two-card shows; a
+     list row's read is a pill of the same colour. */
+  #shows .cls-strong, #shows .ahead { --c: var(--up); }
+  #shows .cls-marginal { --c: var(--amber); }
+  #shows .cls-air, #shows .cls-draw, #shows .behind { --c: var(--down); }
+  #shows .ahead, #shows .behind { color: var(--c); }
+  #shows td.share small { color: var(--muted); font-size: 11px; margin-left: 5px; }
+  #shows .read { display: inline-block; padding: 0 8px; border-radius: 999px; white-space: nowrap; font-size: 12.5px;
+    color: var(--c, var(--muted)); background: color-mix(in srgb, var(--c, var(--muted)) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c, var(--muted)) 35%, transparent); }
+  #shows .street { color: var(--muted); margin-right: 5px; }
+  #shows .vs .pc-row { margin-left: 5px; }
+  #shows .showfilters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  #shows .showfilters > span { display: inline-flex; align-items: center; gap: 6px; }
+  #shows .showfilters .seg { flex-wrap: wrap; }
+  #shows .showfilters .seg button { font-size: 12.5px; padding: 3px 10px; white-space: nowrap; }
+  #shows tbody td { white-space: nowrap; }
+  #shows .showfilters .seg small { margin-left: 4px; opacity: .7; }
+  #shows .showfilters + table { margin-top: 0; }
   #shows td.dim, #bounty td.dim { color: var(--muted); }
   #bounty td.up { color: var(--up); font-weight: 600; }
   #bounty td.down { color: var(--down); font-weight: 600; }
@@ -658,6 +692,7 @@
   /* --- the give-up funnel, at the end of Results ---
      One bar per row from zero to 100%: of the flops seen for the steps, of the
      hands that reached the street for the folds. One colour; the figures say the rest. */
+  #funnel { display: flex; flex-direction: column; gap: 18px; } /* its two tables, spaced as #results spaces its own */
   #funnel td.share { width: 28%; min-width: 120px; }
   #funnel .fill { position: relative; height: 14px; background: var(--mid); border-radius: 4px; }
   #funnel .fill i { position: absolute; left: 0; top: 0; height: 100%; min-width: 1px; background: var(--accent); border-radius: 4px; }
@@ -781,7 +816,10 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
+      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a>
+      <a id="potslink" href="/pots.html">biggest pots &rsaquo;</a></span></div>
   <h1>Range chart <small id="subtitle">what a player had in a spot, from the hands where it was shown</small></h1>
 
   <div class="controls">
@@ -791,15 +829,13 @@
     <input id="filter" type="text" placeholder="srp,pot>=500,vs=player 3" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
-    <button id="back" title="undo the last change to the spot (Alt+←)" disabled>← Back</button>
+    <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
   </div>
-  <!-- The views, on a row of their own: what they play, then the hands to look at
-       again. Two groups rather than one long bar, so neither wraps a label. -->
+  <!-- The views, on a row of their own: how they play on the left, then over on
+       the right the results and the hands to look at again. -->
   <div class="views">
     <span class="seg" role="group" aria-label="Analysis views">
       <button data-view="preflop" aria-pressed="true" title="the 169 starting hands, coloured by result">Preflop</button>
-      <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
-      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
       <button data-view="sizing" aria-pressed="false" title="what they had, by bet size; and how often each size got folds">Sizing</button>
       <button data-view="lines" aria-pressed="false" title="every line they took after the flop, and how strong it was when shown">Lines</button>
       <button data-view="tree" aria-pressed="false" title="every spot they reached, seat first, and what they chose there">Tree</button>
@@ -807,9 +843,11 @@
       <button data-view="strength" aria-pressed="false" title="what they did on a street with a big made hand: bet it, or slowplay it">Slowplays</button>
       <button data-view="tilt" aria-pressed="false" title="how they play after losing a big pot, and as the night wears on">Tilt</button>
       <button data-view="timing" aria-pressed="false" title="how long they took to act, and what the hands were: snap, normal or tank">Timing</button>
-      <button data-view="shows" aria-pressed="false" title="the hands they turned over when nobody asked: how often air, how often strong">Shows</button>
     </span>
-    <span class="seg" role="group" aria-label="Review views">
+    <span class="seg" role="group" aria-label="Results and review views">
+      <button data-view="made" aria-pressed="false" title="what the shown hands had made, one row per kind">Made hands</button>
+      <button data-view="results" aria-pressed="false" title="big blinds won and lost, by pot type, seat and position">Results</button>
+      <button data-view="shows" aria-pressed="false" title="the hands they turned over when nobody asked: how often air, how often strong">Shows</button>
       <button data-view="review" aria-pressed="false" title="hands worth a replay: missed bluffs, missed value, failed bluffs">Review</button>
       <button data-view="tagged" aria-pressed="false" title="hands you tagged on a row or in a replay, by tag">Tagged</button>
       <button data-view="beats" aria-pressed="false" title="suckouts and coolers">Bad beats</button>
@@ -1514,6 +1552,18 @@
     state.est = q.get("est") === "1";
     state.estBoard = /^[2-9TJQKA10cdhs ]{0,16}$/i.test(q.get("eb") || "") ? (q.get("eb") || "") : "";
   };
+  // The crumb's links keep the spot, player and theme where the page takes them.
+  const crumbLinks = () => {
+    const link = (path, ...keys) => {
+      const c = new URLSearchParams();
+      for (const k of keys) if (state[k]) c.set(k, state[k]);
+      if (theme) c.set("theme", theme);
+      return path + "?" + c;
+    };
+    $("statslink").href = link("/stats.html", "filter");
+    $("allinlink").href = link("/allin.html", "filter", "player");
+    $("potslink").href = link("/pots.html", "player");
+  };
   const writeUrl = () => {
     const q = new URLSearchParams();
     if (state.player) q.set("player", state.player);
@@ -1551,6 +1601,7 @@
     if (state.by === TAGGED_VIEW && state.tag) q.set("tag", state.tag);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
+    crumbLinks();
     // An embedder cannot read this page's URL across origins, so hand it out:
     // the HUD's "open ↗" link would otherwise still point at the spot the chart
     // opened on rather than the one being looked at. It carries nothing the
@@ -1612,6 +1663,11 @@
   // since one may have been written on a card there in the meantime.
   let playerNotes = new Map();
   let noteBox = null; // the open editor, which no repaint may throw away
+  // Hide folds the note away for every player, remembered in this browser; the
+  // Players page still lists them all.
+  const NOTE_HIDE_KEY = "pnt.hidePlayerNote";
+  let noteHidden = false;
+  try { noteHidden = localStorage.getItem(NOTE_HIDE_KEY) === "1"; } catch { /* shown */ }
   const setNotes = (rows) => { playerNotes = new Map(rows.filter(p => p.notes).map(p => [p.alias, p.notes])); };
   async function refreshNotes() {
     try { setNotes(await getJson("/players")); paintPlayerNote(); } catch { /* the notes as they were */ }
@@ -1633,6 +1689,20 @@
     pen.addEventListener("click", editPlayerNote);
     line.appendChild(pen);
     if (text) {
+      const fold = document.createElement("button");
+      fold.type = "button"; fold.className = "fold";
+      fold.textContent = noteHidden ? "show note" : "hide";
+      fold.title = noteHidden ? "show your note on every player (also on the Players page)"
+        : "hide notes on every player (still on the Players page)";
+      fold.setAttribute("aria-expanded", !noteHidden);
+      fold.addEventListener("click", () => {
+        noteHidden = !noteHidden;
+        try { localStorage.setItem(NOTE_HIDE_KEY, noteHidden ? "1" : "0"); } catch { /* this visit only */ }
+        paintPlayerNote();
+      });
+      line.appendChild(fold);
+    }
+    if (text && !noteHidden) {
       const t = document.createElement("span");
       t.className = "text"; t.textContent = text;
       line.appendChild(t);
@@ -1861,6 +1931,15 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+  // A figure against its baseline, as the class word for .num-good/-bad/-eh:
+  // "good" more than `band` above it, "bad" more than `band` below, "eh" within.
+  // Given a 95% interval [lo, hi] instead, only one clear of the baseline is
+  // coloured, so noise isn't painted: "good", "bad", or "" where it overlaps.
+  function numTone(v, base, band = 0) {
+    if (v == null || base == null) return "";
+    if (Array.isArray(v)) return v[0] > base ? "good" : v[1] < base ? "bad" : "";
+    return v - base > band ? "good" : base - v > band ? "bad" : "eh";
+  }
 
   // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
   // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
@@ -2195,7 +2274,8 @@
         + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`));
     }
     const hint = message("click a line, or one part of its bar, to add it to the spot and list its hands");
-    hint.classList.add("note"); hint.style.margin = "4px 0 0";
+    hint.classList.add("note");
+    if (table) hint.style.margin = "4px 0 0";
     host.appendChild(hint);
   }
 
@@ -3067,6 +3147,7 @@
   // night. Each row is its filter: clicking one adds the terms to the spot and
   // lists the hands. See "Session dynamics" in SPEC.md.
   const TILT_GAP = 5; // points of VPIP or PFR from all hands that get marked
+  const TILT_BB_BAND = 5; // bb/100 from all hands that colours a row good or bad, not eh
   function renderTilt(d) {
     const wrap = $("tilt");
     wrap.replaceChildren();
@@ -3088,7 +3169,8 @@
     const COLS = [["", ""], ["hands", ""], ["VPIP", "voluntarily put chips in, of their preflop decisions"],
       ["PFR", "raised preflop, of their preflop decisions"],
       ["AF", "aggression after the flop: bets and raises over bets, raises, calls and folds"],
-      ["bb/100", "over complete hands with a known big blind, ± its 95% interval"]];
+      ["bb/100", `over complete hands with a known big blind, ± its 95% interval · against all hands: `
+        + `blue more than ${TILT_BB_BAND} above, red more than ${TILT_BB_BAND} below, amber within`]];
     const pct = (v, n, key) => {
       const td = document.createElement("td");
       td.append(v == null ? "–" : v.toFixed(1) + "%");
@@ -3122,6 +3204,12 @@
         sm.textContent = (r.bb_per_100_ci == null ? "" : `±${r.bb_per_100_ci.toFixed(0)} `) + `/${r.bb_hands}`;
         bb.appendChild(sm);
         const isBase = r.key === "all";
+        const tone = isBase ? "" : numTone(r.bb_per_100, base.bb_per_100, TILT_BB_BAND);
+        if (tone) {
+          const gap = r.bb_per_100 - base.bb_per_100;
+          bb.classList.add(`num-${tone}`);
+          bb.title = `${gap > 0 ? "+" : ""}${gap.toFixed(1)} bb/100 from all hands`;
+        }
         tr.append(name, n, pct(r.vpip, r.vpip_n, isBase ? null : "vpip"), pct(r.pfr, r.pfr_n, isBase ? null : "pfr"),
                   pct(r.af, r.af_n, null), bb);
         tr.title = `${r.label}: ${r.hands} hands · ` + (r.filter ? `adds ${r.filter} to the spot` : "the whole spot");
@@ -3223,18 +3311,32 @@
       cell.title = TIERS.map(([t]) => `${t} ${c.counts[t]}`).join(" · ") + ` — of ${c.known} known`;
       return cell;
     };
-    const value = (c) => td(fmtPct(c.value), ` ${c.known}/${c.n}`,
-      c.value_ci ? `value: nutted or strong, of the ${c.known} known · 95% interval ${c.value_ci[0]}–${c.value_ci[1]}%` : "no cards known");
+    // `all` is the spot's value share over every bucket in the same column: a
+    // bucket is coloured only when its interval clears it.
+    const value = (c, all) => {
+      const cell = td(fmtPct(c.value), ` ${c.known}/${c.n}`,
+        c.value_ci ? `value: nutted or strong, of the ${c.known} known · 95% interval ${c.value_ci[0]}–${c.value_ci[1]}%`
+          + (all == null ? "" : ` · ${fmtPct(all)} at every speed`) : "no cards known");
+      const tone = numTone(c.value_ci, all);
+      if (tone) cell.classList.add(`num-${tone}`);
+      return cell;
+    };
+    // The value share of a spot's rows, every speed together; `pick` finds the cell.
+    const allSpeeds = (rows, pick) => {
+      let value = 0, known = 0;
+      for (const r of rows) { const c = pick(r); value += c.counts.nutted + c.counts.strong; known += c.known; }
+      return known ? 100 * value / known : null;
+    };
 
     // One table: a header row per spot, a row per bucket.
     function spotTable(spots, { pool, rel }) {
       const t = document.createElement("table");
       const head = document.createElement("tr");
       const cols = [["", ""], ["time", "how long the first decision on the street took"], ["n", "decisions in the bucket"],
-        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands"],
+        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands · blue when its 95% interval is above the spot at every speed, red when below"],
         ["draw", ""], ["air", ""]];
-      if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out"],
-        ["owners, own cards", "the logs' owners, whose every card their own log shows"]);
+      if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out · coloured as value is"],
+        ["owners, own cards", "the logs' owners, whose every card their own log shows · coloured as value is"]);
       for (const [c, tip] of cols) { const th = document.createElement("th"); th.textContent = c; if (tip) th.title = tip; head.appendChild(th); }
       t.appendChild(head);
       for (const sp of spots) {
@@ -3244,12 +3346,15 @@
         name.colSpan = cols.length;
         h.appendChild(name);
         t.appendChild(h);
+        const all = allSpeeds(sp.rows, r => r);
+        const allOthers = pool ? allSpeeds(sp.rows, r => r.others) : null;
+        const allOwn = pool ? allSpeeds(sp.rows, r => r.own) : null;
         for (const r of sp.rows) {
           const tr = document.createElement("tr");
           const word = TEMPO_WORD[r.bucket];
           tr.append(td(word), td(tempoRange(r.bucket, bet, d.cuts, rel ? rel[sp.street] : null)), td(String(r.n)),
-            tierBar(r), value(r), td(fmtPct(r.draw)), td(fmtPct(r.air)));
-          if (pool) tr.append(value(r.others), value(r.own));
+            tierBar(r), value(r, all), td(fmtPct(r.draw)), td(fmtPct(r.air)));
+          if (pool) tr.append(value(r.others, allOthers), value(r.own, allOwn));
           if (!r.n) tr.classList.add("empty");
           if (pool) tr.title = `${sp.label}, ${word}: ${r.filter} — add it to a player's spot to list their hands`;
           else if (r.n) {
@@ -4219,7 +4324,11 @@
   // its one hand. See "Voluntary shows" in SPEC.md.
   const SHOW_CLASSES = ["strong", "marginal", "draw", "air"];
   const SHOW_WORDS = { ahead: "ahead of", chop: "chopping with", behind: "behind" };
-  const cardText = (c) => pretty(c);
+  // The pot types the rows carry (`pot`, from Facts.pot_level), and the list's
+  // two filters. Kept across renders; a value with no rows falls back to all.
+  const SHOW_POTS = { limped: "limped", srp: "SRP", "3bet": "3-bet", "4bet": "4-bet+", other: "bomb pot" };
+  const SHOW_KINDS = { strong: "strong", marginal: "marginal", draw: "draw", air: "air", one: "one card" };
+  const showsPick = { pot: "all", kind: "all" };
   function renderShows(d) {
     const wrap = $("shows");
     wrap.replaceChildren();
@@ -4238,6 +4347,7 @@
     $("table").classList.add("hidden");
     if (!d.shows) { wrap.appendChild(message("never showed a hand unasked")); return; }
 
+    // Each class cell is tinted by its share of the row's two-card shows.
     const t = document.createElement("table");
     const head = document.createElement("tr");
     for (const h of ["how the hand ended", "shows", "1 card", ...SHOW_CLASSES]) head.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
@@ -4247,37 +4357,91 @@
       if (!c.shows && c !== total) continue;
       const tr = document.createElement("tr");
       if (c === total) tr.className = "total";
-      const cells = [c.label, c.shows, c.one_card || "·", ...SHOW_CLASSES.map(k => c.classes[k] || "·")];
-      cells.forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i === 2) td.className = "dim"; tr.appendChild(td); });
+      const cell = (v, cls) => { const td = document.createElement("td"); td.textContent = v; if (cls) td.className = cls; tr.appendChild(td); return td; };
+      cell(c.label); cell(c.shows); cell(c.one_card || "·", "dim");
+      const two = c.shows - c.one_card;
+      for (const k of SHOW_CLASSES) {
+        const n = c.classes[k];
+        if (!n) { cell("·", "dim"); continue; }
+        const pct = 100 * n / two;
+        const td = cell(n, `share cls-${k}`);
+        td.appendChild(Object.assign(document.createElement("small"), { textContent: `${Math.round(pct)}%` }));
+        td.style.background = `color-mix(in srgb, var(--c) ${Math.round(pct * 0.6)}%, transparent)`;
+        td.title = `${n} of ${two} two-card shows`;
+      }
       t.appendChild(tr);
     }
     wrap.appendChild(t);
 
-    const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
+    const kindOf = (r) => r.class || "one";
+    const filters = document.createElement("div");
+    filters.className = "showfilters";
     const list = document.createElement("table");
     const lh = document.createElement("tr");
-    for (const h of ["hand", "shown", "how it ended", "board as it stood", "read as", "against the winner"]) lh.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
+    for (const h of ["hand", "pot", "shown", "how it ended", "board as it stood", "read as", "against the winner"]) lh.appendChild(Object.assign(document.createElement("th"), { textContent: h }));
     const thead = document.createElement("thead"); thead.appendChild(lh); list.appendChild(thead);
     const body = document.createElement("tbody");
-    for (const r of d.rows) {
+    list.appendChild(body);
+    wrap.append(filters, list);
+
+    const words = Object.fromEntries(d.contexts.map(c => [c.key, c.label]));
+    const potsSeen = new Set(d.rows.map(r => r.pot));
+    if (showsPick.pot !== "all" && !potsSeen.has(showsPick.pot)) showsPick.pot = "all";
+    // A button counts the rows it would show with the other filter as it is.
+    const seg = (label, key, labels, of, other) => {
+      const box = document.createElement("span");
+      box.className = "seg"; box.setAttribute("role", "group"); box.setAttribute("aria-label", label);
+      for (const v of ["all", ...Object.keys(labels)]) {
+        if (key === "pot" && v !== "all" && !potsSeen.has(v)) continue;
+        const n = d.rows.filter(r => other(r) && (v === "all" || of(r) === v)).length;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-pressed", showsPick[key] === v);
+        b.append(v === "all" ? "all" : labels[v], Object.assign(document.createElement("small"), { textContent: n }));
+        b.addEventListener("click", () => { showsPick[key] = v; draw(); });
+        box.appendChild(b);
+      }
+      return box;
+    };
+    const potOk = (r) => showsPick.pot === "all" || r.pot === showsPick.pot;
+    const kindOk = (r) => showsPick.kind === "all" || kindOf(r) === showsPick.kind;
+    const row = (r) => {
       const tr = document.createElement("tr");
       tr.title = `${r.game_id}, hand ${r.hand_number}${r.ts ? " · " + r.ts.slice(0, 16).replace("T", " ") : ""}: click to replay`;
-      const cell = (text, cls) => { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); };
+      const cell = (content, cls) => { const td = document.createElement("td"); td.append(content); if (cls) td.className = cls; tr.appendChild(td); return td; };
       cell(`#${r.hand_number}`);
-      cell(cardText(r.cards));
+      cell(SHOW_POTS[r.pot] || "", "dim");
+      cell(cardsEl(r.cards));
       cell(words[r.context] || r.context, "dim");
-      cell(r.board.length ? `${r.street}: ${cardText(r.board.join(""))}` : "preflop");
+      const board = cell(r.board.length ? cardsEl(r.board) : "preflop", r.board.length ? "" : "dim");
+      if (r.board.length) board.prepend(Object.assign(document.createElement("span"), { className: "street", textContent: r.street }));
       const made = r.made ? (r.missed ? "missed " : "") + r.made.replace(/_/g, " ") : "";
-      cell(r.class ? `${r.class} · ${made}` : "one card", r.class ? `cls-${r.class}` : "dim");
-      cell(r.vs ? `${SHOW_WORDS[r.vs.result]} ${r.vs.you ? "you" : r.vs.player} (${cardText(r.vs.cards)})` : "", r.vs ? r.vs.result : "");
+      cell(Object.assign(document.createElement("span"), {
+        className: r.class ? `read cls-${r.class}` : "read",
+        textContent: r.class ? `${r.class} · ${made}` : "one card",
+      }));
+      const vs = cell("", r.vs ? `vs ${r.vs.result}` : "vs");
+      if (r.vs) vs.append(`${SHOW_WORDS[r.vs.result]} ${r.vs.you ? "you" : r.vs.player}`, cardsEl(r.vs.cards));
       tr.addEventListener("click", () => {
         openHands(`${d.player}: hand #${r.hand_number}, shown unasked`, [r.hand_id]);
         pntReplay.show($("replay"), r.hand_id);
       });
-      body.appendChild(tr);
-    }
-    list.appendChild(body);
-    wrap.appendChild(list);
+      return tr;
+    };
+    const draw = () => {
+      const group = (label, box) => { const g = document.createElement("span"); g.append(label, box); return g; };
+      filters.replaceChildren(
+        group("pot", seg("Pot type", "pot", SHOW_POTS, r => r.pot, kindOk)),
+        group("shown", seg("Shown class", "kind", SHOW_KINDS, kindOf, potOk)),
+      );
+      const rows = d.rows.filter(r => potOk(r) && kindOk(r));
+      body.replaceChildren(...rows.map(row));
+      if (!rows.length) {
+        const td = Object.assign(document.createElement("td"), { colSpan: 7, className: "dim", textContent: "no shows match both filters" });
+        const tr = document.createElement("tr"); tr.appendChild(td); body.appendChild(tr);
+      }
+    };
+    draw();
   }
 
   // ---- 7-2 bounties ----------------------------------------------------------
@@ -5535,7 +5699,7 @@
       spotHistory.push(state.filter);
       if (spotHistory.length > 50) spotHistory.shift();
     }
-    $("back").disabled = !spotHistory.length;
+    $("back").classList.toggle("hidden", !spotHistory.length); // shown only with somewhere to go back to
     state.filter = next;
     dropCaches(); // Apply always asks the server again
     syncChips();
@@ -5918,6 +6082,7 @@
   // the chart with no way back, so it only appears in a real tab.
   if (parent !== window) $("crumb").classList.add("hidden");
   readUrl();
+  crumbLinks();
   $("filter").value = state.filter;
   $("street").value = state.street;
   $("kind").value = state.kind;
