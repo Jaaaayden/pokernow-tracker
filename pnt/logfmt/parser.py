@@ -48,9 +48,11 @@ CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 #: 1: hands a gap in the log joined together are dropped (SPEC.md, "Money").
 #: 2: a Nit Game that did not start is recognized, not a parse miss; a big blind
 #:    all in for less than the table's blind no longer sets the hand's blind.
-PARSE_VERSION = 2
+#: 3: a show, 7-2 bounty or Nit penalty logged after a hand's end line is not
+#:    booked on it when the next start skips a number.
+PARSE_VERSION = 3
 #: What the latest bump changed, for the line `pnt update` prints as it rebuilds.
-PARSE_CHANGE = "recognize a Nit Game that did not start and value short all-in blinds"
+PARSE_CHANGE = "stop booking a later hand's shows and bounties on the hand before a gap"
 
 
 @dataclass(slots=True)
@@ -540,14 +542,18 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
 
     Events occurring outside hand boundaries are handled at game level rather than
     assumed to belong to the hand in progress: blind-level changes update the game,
-    while the 7-2 bounty and voluntary shows -- both logged after the hand-end
-    line -- attach to the hand that just ended.
+    while the 7-2 bounty, Nit penalties and voluntary shows -- logged after the
+    hand-end line -- attach to the hand that just ended, once the next start shows
+    no hand went missing in between.
     """
     result = ParseResult(game_id=game_id)
     builder: _HandBuilder | None = None
     #: The most recently finished hand. The 7-2 bounty and voluntary shows arrive
     #: *between* hands, after the hand-end line, so they have no open builder.
     last: ParsedHand | None = None
+    #: What arrived after `last`'s end line, held until the next boundary: past a gap
+    #: it may be a later hand's (the rule redact.plan keeps for shows too).
+    held: list[E.Event] = []
     #: The table's decision clock as configured so far, in seconds.
     clock: dict[str, int | None] = {"limit": DEFAULT_DECISION_S, "bank": DEFAULT_TIME_BANK_S}
     #: The table's big blind as of now: the last hand's BB post, or a later
@@ -567,6 +573,9 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             continue
 
         if isinstance(ev, E.HandStart):
+            if held and last is not None and ev.hand_number == last.hand_number + 1:
+                _settle(last, held)
+            held = []
             if builder is not None and ev.hand_number == builder.hand.hand_number + 1:
                 # Only this hand's end line is missing: everything since its start is
                 # still its own, so keep what we have.
@@ -599,25 +608,21 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
                 table_bb = ev.to_amount
             continue
 
-        if isinstance(ev, E.BountyPaid):
-            # Settled after the hand it belongs to, so `last` is the usual target;
-            # `builder.hand` covers a layout that settles before the hand ends.
-            target = builder.hand if builder is not None else last
-            if target is not None:
-                _apply_bounty(target, ev)
+        if isinstance(ev, (E.BountyPaid, E.NitPenalty)) and builder is not None:
+            # Usually settled after the hand's end line (below); this covers a
+            # layout that settles before it.
+            if isinstance(ev, E.BountyPaid):
+                _apply_bounty(builder.hand, ev)
+            else:
+                _apply_nit(builder.hand, ev)
             continue
 
-        if isinstance(ev, E.NitPenalty):
-            target = builder.hand if builder is not None else last
-            if target is not None:
-                _apply_nit(target, ev)
-            continue
-
-        if isinstance(ev, E.Shows) and builder is None:
-            # Shown after the hand-end line: a fold, an uncontested win, or a muck
-            # revealed late. Shows inside the hand (showdown) go to `builder.shows`.
+        if isinstance(ev, (E.BountyPaid, E.NitPenalty, E.Shows)) and builder is None:
+            # After the hand-end line: a bounty, a Nit penalty, or a show (a fold, an
+            # uncontested win, a muck revealed late). Shows inside the hand
+            # (showdown) go to `builder.shows`.
             if last is not None:
-                _apply_voluntary_show(last, ev)
+                held.append(ev)
             continue
 
         if builder is None:
@@ -625,6 +630,7 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
                 # An end with no hand open: the log lost this hand's start, and what
                 # is settled after it is this hand's, not the last stored one's.
                 last = None
+                held = []
             # Pre-game config, or between-hand chatter. Nothing to attach it to.
             continue
 
@@ -664,8 +670,21 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
 
     if builder is not None:  # the export was taken while this hand was still live
         result.hands.append(builder.finish(complete=False, table_bb=table_bb, bomb_bbs=bomb_bbs))
+    elif held and last is not None:  # the log ends after the last hand: nothing missing
+        _settle(last, held)
 
     return result
+
+
+def _settle(hand: ParsedHand, events: list[E.Event]) -> None:
+    """Book what was logged after `hand`'s end line on it, in log order."""
+    for ev in events:
+        if isinstance(ev, E.BountyPaid):
+            _apply_bounty(hand, ev)
+        elif isinstance(ev, E.NitPenalty):
+            _apply_nit(hand, ev)
+        else:
+            _apply_voluntary_show(hand, ev)
 
 
 def iter_hands(entries: Iterable[RawEntry], game_id: str) -> Iterator[ParsedHand]:

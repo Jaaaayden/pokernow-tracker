@@ -135,6 +135,21 @@ def test_a_start_that_skips_numbers_trusts_no_show_since_the_gap():
     assert p.drop_ords == {1: 44}
 
 
+def test_a_holding_after_the_last_hands_end_line_is_a_new_hand():
+    """#45's start is lost: hero's holding arrives after #44's end line, and #44's
+    showdown happened to show the same two cards. That show says nothing about the
+    holding, which goes, named by the end line that follows."""
+    p = _plan([
+        _START_44,
+        '"B @ BBB" shows a A♠, K♠.',
+        "-- ending hand #44 --",
+        "Your hand is A♠, K♠",
+        '"A @ AAA" folds',
+        "-- ending hand #45 --",
+    ])  # fmt: skip
+    assert p.drop_ords == {3: 45} and p.kept == 0
+
+
 def test_a_holding_after_a_gap_is_named_by_the_end_line_that_follows():
     p = _plan([
         '-- starting hand #45 (id: aaaa)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
