@@ -106,9 +106,11 @@
   }
   /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
      list on the left, the replay sticking beside it as the page scrolls. A
-     narrow list keeps the pot and who won it; the tooltip and the replay have
-     the rest. On a phone the list has the whole width until a pot is picked. */
+     narrow list keeps the pot, when, who won it and a short log's warning; the
+     replay has the board and the rest. With no pots, or on a phone until a pot
+     is picked, the list has the whole width. */
   #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
   #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
   #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
@@ -119,9 +121,10 @@
   .pot-rows { container-type: inline-size; }
   @container (max-width: 360px) {
     .pot-row { gap: 1px 6px; padding: 5px 2px; font-size: 11px; }
-    .pot-row .when, .pot-row .board, .pot-row .tags, .pot-row .pot small { display: none; }
-    .pot-row .pot { min-width: 0; }
+    .pot-row .board, .pot-row .tag:not(.short), .pot-row .pot small { display: none; }
+    .pot-row .pot, .pot-row .when { min-width: 0; }
     .pot-row .who { min-width: 0; flex-basis: 100%; overflow-wrap: anywhere; }
+    .pot-row .tags { margin-left: 0; }
     .pot-row .pot { font-size: 13px; }
   }
 </style>
@@ -417,7 +420,9 @@
     split = !split;
     try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
     applyLayout();
-    if (!$("rows").querySelector(".pot-row[aria-pressed=true]")) resetReplay(!!state.data?.pots.length);
+    // A replay on show stays, even when a re-render has unpressed its row.
+    const box = $("replay");
+    if (box.classList.contains("hidden") || "empty" in box.dataset) resetReplay(!!state.data?.pots.length);
   });
   applyLayout();
 

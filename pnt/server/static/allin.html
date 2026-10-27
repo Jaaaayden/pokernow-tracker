@@ -127,9 +127,11 @@
   .replay ol { margin: 4px 0 0; padding-left: 22px; }
   .replay li.forced { color: var(--muted); }
   /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
-     list on the left, the replay sticking beside it. A narrow list drops the
-     street, equity and pot, which the tooltip and the replay still give. */
+     list on the left, the replay sticking beside it. A narrow list stacks its
+     rows and leaves the street and pot to the replay; with no hands to replay,
+     the list has the width. */
   #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
   #hand-pair.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
   #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
@@ -142,12 +144,13 @@
   .hand-rows { container-type: inline-size; }
   @container (max-width: 420px) {
     .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
-    .hand-row .street, .hand-row .eq, .hand-row .pot, .hand-row .money small { display: none; }
-    .hand-row .num, .hand-row .vs, .hand-row .board, .hand-row .money { min-width: 0; }
-    .hand-row .vs, .hand-row .board { flex-basis: 100%; }
+    .hand-row .street, .hand-row .pot { display: none; }
+    .hand-row .num, .hand-row .vs, .hand-row .board, .hand-row .eq, .hand-row .money { min-width: 0; }
+    .hand-row .vs, .hand-row .board, .hand-row .money { flex-basis: 100%; }
     .hand-row .vs { order: 1; }
     .hand-row .pc-row { flex-wrap: wrap; }
     .hand-row .board { order: 2; }
+    .hand-row .money { order: 3; margin-left: 0; text-align: left; }
   }
   .hidden { display: none !important; }
 </style>
@@ -455,6 +458,7 @@
       renderDetail();
     } catch (e) {
       if (seq !== detailSeq) return;
+      resetReplay(false);
       $("hand-rows").replaceChildren(message(String(e.message || e), "err"));
     }
     box.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -558,7 +562,7 @@
   function renderHandRows(hands) {
     const list = $("hand-rows");
     list.replaceChildren();
-    if (!hands.length) { list.appendChild(message("no hands")); return; }
+    if (!hands.length) { resetReplay(false); list.appendChild(message("no hands")); return; }
     for (const h of orderedHands(hands)) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "hand-row"; b.dataset.hand = h.hand_id;
@@ -605,15 +609,15 @@
 
   // ---- side by side ------------------------------------------------------
   // The chart's switch and key, so one choice holds on every page. Split, the
-  // pane is always there with a placeholder, so picking the first hand does not
-  // shove the list aside.
+  // pane is there with a placeholder whenever there are hands to pick, so picking
+  // the first does not shove the list aside.
   const LAYOUT_KEY = "pnt.reviewLayout";
   let split = true;
   try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
-  function resetReplay() {
+  function resetReplay(shown = true) {
     const box = $("replay");
     pntReplay.cancel(box);
-    if (split) {
+    if (split && shown) {
       box.classList.remove("hidden");
       box.dataset.empty = ""; // pntReplay.show clears it
       box.replaceChildren(message("click a hand to replay it"));
@@ -629,7 +633,9 @@
     split = !split;
     try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
     applyLayout();
-    if (!$("hand-rows").querySelector(".hand-row[aria-pressed=true]")) resetReplay();
+    // A replay on show stays, even when a re-sort has unpressed its row.
+    const box = $("replay");
+    if (box.classList.contains("hidden") || "empty" in box.dataset) resetReplay(!!state.detail?.hands.length);
   });
   applyLayout();
 

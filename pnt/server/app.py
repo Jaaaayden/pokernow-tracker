@@ -63,6 +63,7 @@ from pnt.stats.live import snapshot
 from pnt.stats.pool import pool_for, pool_from_facts
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
+    SPOT_ANSWERS,
     aggregate,
     display_names,
     facts_cached,
@@ -260,8 +261,8 @@ except (OSError, AttributeError):
 def _release_memory() -> None:
     """Give the warm-up's garbage back to the system. Deriving every game peaks
     at several times what the caches keep, and glibc keeps the freed pages: on
-    the phone copy's 1 GB VM they ended up in swap."""
-    gc.collect()
+    the phone copy's 1 GB VM they ended up in swap. No gc.collect() first: on
+    this thread it could free the folder picker's Tk objects (see there)."""
     if _TRIM is not None:
         _TRIM(0)
 
@@ -282,11 +283,10 @@ def _warm_hero(conn: sqlite3.Connection, between) -> None:
     hero = hero_of(conn)
     if hero is None:
         return
-    # Under the keys player_stats and player_range use for no filter and no game.
     between()
-    remembered(conn, ("spot-stats", hero, None, None), lambda: aggregate(facts_cached(conn, hero)))
+    _spot_stats(conn, hero, None, None)
     between()
-    remembered(conn, ("range", hero, None, None, "preflop"), lambda: range_grid(facts_cached(conn, hero)))
+    _spot_range(conn, hero, None, "preflop", None)
     between()
     _review_base(conn, hero, None)
     between()
@@ -1002,12 +1002,23 @@ def player_stats(
     game: str | None = None,
 ) -> dict:
     """One player's stats inside a spot -- what the chart page's postflop strip reads."""
-    # Remembered, as the range and sizing below: tallying ten thousand hands is a
-    # second a call on a small server, and every chart tab asks again.
-    conn = db()
-    out = remembered(conn, ("spot-stats", alias, game, _spot_key(conn, filter)),
-                     lambda: aggregate(_spot_facts(alias, filter, game, conn)))
-    return {"player": alias, "filter": filter, **out}
+    return {"player": alias, "filter": filter, **_spot_stats(db(), alias, filter, game)}
+
+
+# Remembered, as the sizing below: tallying ten thousand hands is a second a call
+# on a small server, and every chart tab asks again. The warm-up calls these too,
+# so it fills exactly the entries the endpoints read.
+def _spot_stats(conn: sqlite3.Connection, alias: str, filter: str | None, game: str | None) -> dict:
+    return remembered(conn, ("spot-stats", alias, game, _spot_key(conn, filter)),
+                      lambda: aggregate(_spot_facts(alias, filter, game, conn)), SPOT_ANSWERS)
+
+
+def _spot_range(conn: sqlite3.Connection, alias: str, filter: str | None, by: str, game: str | None) -> dict:
+    def answer() -> dict:
+        facts = _spot_facts(alias, filter, game, conn)
+        return range_grid(facts) if by == "preflop" else composition(facts)
+
+    return remembered(conn, ("range", alias, game, _spot_key(conn, filter), by), answer, SPOT_ANSWERS)
 
 
 @app.get("/players/{alias:path}/range")
@@ -1022,14 +1033,7 @@ def player_range(
     This is what the chart page renders. Every cell of the 169-grid is present,
     in chart order, so the client needs no card logic of its own.
     """
-    conn = db()
-
-    def answer() -> dict:
-        facts = _spot_facts(alias, filter, game, conn)
-        return range_grid(facts) if by == "preflop" else composition(facts)
-
-    out = remembered(conn, ("range", alias, game, _spot_key(conn, filter), by), answer)
-    return {"player": alias, "filter": filter, "by": by, **out}
+    return {"player": alias, "filter": filter, "by": by, **_spot_range(db(), alias, filter, by, game)}
 
 
 @app.get("/players/{alias:path}/sizing")
@@ -1043,7 +1047,7 @@ def player_sizing(
     """What a player had at each bet size on one street, within a spot."""
     conn = db()
     out = remembered(conn, ("sizing", alias, game, _spot_key(conn, filter), street, kind),
-                     lambda: sizing_tells(_spot_facts(alias, filter, game, conn), street, kind))
+                     lambda: sizing_tells(_spot_facts(alias, filter, game, conn), street, kind), SPOT_ANSWERS)
     return {"player": alias, "filter": filter, **out}
 
 

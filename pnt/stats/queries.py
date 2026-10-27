@@ -619,9 +619,14 @@ _FACTS_CACHE: LRU[tuple[str, str, str | None], _PlayerFacts] = LRU(_FACTS_CACHE_
 #: database, generation and arguments (`remembered`). Small dicts and lists, so a
 #: few dozen cost little; older generations' entries just age out.
 _ANSWERS: LRU[tuple, object] = LRU(32)
+#: One player's stats, range and sizing in a spot: a fraction of a second each
+#: (a second on the phone's VM) but asked on every chart click, so kept apart --
+#: in `_ANSWERS` a few dozen clicks would push out the answers that cost seconds.
+#: A range answer lists every cell's hands, about 0.3 MB for 16k hands.
+SPOT_ANSWERS: LRU[tuple, object] = LRU(48)
 
 
-def remembered(conn: sqlite3.Connection, key: tuple, compute):
+def remembered(conn: sqlite3.Connection, key: tuple, compute, answers: LRU[tuple, object] = _ANSWERS):
     """`compute()`, or the answer it gave for `key` at this generation.
 
     The generation moves inside every write that changes a derived fact -- a
@@ -634,10 +639,10 @@ def remembered(conn: sqlite3.Connection, key: tuple, compute):
     if gen is None or not path:
         return compute()
     full = (path, gen, *key)
-    hit = _ANSWERS.get(full)
+    hit = answers.get(full)
     if hit is None:
         hit = compute()
-        _ANSWERS[full] = hit
+        answers[full] = hit
     return hit
 
 
@@ -654,6 +659,7 @@ def clear_caches() -> None:
     _FACTS_CACHE.clear()
     _REVIEW_CACHE.clear()
     _ANSWERS.clear()
+    SPOT_ANSWERS.clear()
 
 
 def _game_stamps(conn: sqlite3.Connection, game_id: str | None = None) -> dict[str, int] | None:

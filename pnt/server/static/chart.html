@@ -422,20 +422,24 @@
   #review.split .replay, #hands.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
   #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
-  /* A narrow list keeps what tells its hands apart -- number, cards, net, and a
-     review row's flag -- and leaves position, pot and sizes to the tooltip and
+  /* A narrow list stacks a row instead of crushing it: number, cards and net on
+     the first line, then the board, who it was against, and the size note (a
+     review row's reason, a sat-out hand's result). Position and pot are left to
      the replay. Sized by the list, not the window, so the rows fit whether the
-     list is narrow from the pane beside it or from the screen. */
+     list is narrow from the pane beside it or from the screen. `.hand-rows`
+     in the selectors outranks the 600px block below. */
   .hand-rows { container-type: inline-size; }
   @container (max-width: 420px) {
-    .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
-    .hand-row .pos, .hand-row .pot, .hand-row .sizes, .hand-row .vs .vn { display: none; }
-    .hand-row .vs:not(:has(.pc-row)) { display: none; }
-    .hand-row .num, .hand-row .hole, .hand-row .board, .hand-row .vs { min-width: 0; }
-    .hand-row .board { order: 1; flex-basis: 100%; }
-    .hand-row .pc-row { flex-wrap: wrap; }
-    .hand-row .why { order: 2; }
-    .hand-row .kind, .hand-row .why { font-size: 10px; }
+    .hand-rows .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
+    .hand-rows .hand-row :is(.pos, .pot) { display: none; }
+    .hand-rows .hand-row :is(.num, .hole, .board, .vs, .sizes) { min-width: 0; }
+    .hand-rows .hand-row .vs .vn { max-width: 100%; }
+    .hand-rows .hand-row .board { order: 1; flex-basis: 100%; }
+    .hand-rows .hand-row .vs { order: 2; }
+    .hand-rows .hand-row .sizes { order: 3; flex-basis: 100%; font-size: 10px; }
+    .hand-rows .hand-row .why { order: 4; }
+    .hand-rows .hand-row .pc-row { flex-wrap: wrap; }
+    .hand-rows .hand-row :is(.kind, .why) { font-size: 10px; }
     .rev-row .marks.three { display: flex; }
   }
 
@@ -561,9 +565,11 @@
     th, td { padding: 3px 5px; }
     th { font-size: 10px; }
     .hand-row { gap: 1px 8px; padding: 4px 2px; font-size: 11px; }
-    /* The card columns give up their alignment; a list this narrow drops the
-       rest (the @container rules above). */
+    /* The card columns give up their alignment rather than crush the size
+       note into a column a word wide; it wraps to a line of its own instead.
+       A list narrower still stacks its rows (the @container rules above). */
     .hand-row .hole, .hand-row .board { min-width: 0; }
+    .hand-row .sizes { min-width: 12em; }
     .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
     .kinds button { padding: 1px 6px; }
     .replay { font-size: 11px; }
