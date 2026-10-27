@@ -39,12 +39,21 @@
   .fact .k { color: var(--muted); font-size: 12px; margin-top: 1px; }
   .fact.warn .v { color: var(--down); }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-  a.card { display: block; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
-           padding: 14px 16px; text-decoration: none; color: inherit; transition: border-color .12s; }
-  a.card:hover { border-color: var(--accent); }
-  a.card h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--accent); }
-  a.card p { margin: 0; color: var(--ink-2); font-size: 13px; }
+  /* Four across at full width, the range chart two wide so seven cards make two rows. */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); grid-auto-flow: dense; gap: 12px; }
+  .card { position: relative; display: block; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+          padding: 14px 16px; text-decoration: none; color: inherit; transition: border-color .12s; }
+  .card:hover { border-color: var(--accent); }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--accent); }
+  .card p { margin: 0; color: var(--ink-2); font-size: 13px; }
+  @media (min-width: 460px) { .card.wide { grid-column: span 2; } }
+  /* A card with links of its own: the main one covers the card, the others sit above it. */
+  .card a.main { color: inherit; text-decoration: none; outline: none; }
+  .card a.main::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+  .card:has(a.main:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .card .subs { position: relative; display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 8px; }
+  .card .subs a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .card .subs a:hover { text-decoration: underline; }
 
   h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase;
        letter-spacing: .04em; margin: 30px 0 10px; }
@@ -99,6 +108,47 @@
   .order button:disabled { opacity: .3; cursor: default; }
   .order button:focus-visible, .hud .reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .hud .reset { border-color: var(--ring); padding: 2px 8px; }
+  .order .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .order .head .k { margin: 0; }
+  .order .pv-btn { border-color: var(--ring); }
+  .order .pv-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  /* HUD preview: floats at the right edge, the side panel's width, over the page.
+     Its seat cards copy sidepanel.html's look -- dark in either theme, as the panel is. */
+  .pv-float { position: fixed; top: 16px; right: 16px; z-index: 10; width: 360px; max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column; overflow: hidden; background: var(--surface);
+    border: 1px solid var(--ring); border-radius: 10px; box-shadow: 0 10px 32px rgba(0,0,0,.28); }
+  .pv-float .bar { display: flex; align-items: baseline; gap: 8px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--ring); }
+  .pv-float .bar b { font-weight: 600; }
+  .pv-float .sample { flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pv-float .shut { font: inherit; color: var(--ink-2); background: none; border: 1px solid transparent;
+    border-radius: 5px; padding: 0 6px; cursor: pointer; }
+  .pv-float .shut:hover { color: var(--ink); border-color: var(--ring); }
+  .pv-float .shut:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  @media (max-width: 640px) {
+    .pv-float { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 60vh; border-radius: 10px 10px 0 0; }
+  }
+  .pv { overflow-y: auto; background: #141413; color: #fff; color-scheme: dark;
+    font: 11px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .pv .legend { padding: 4px 8px 0; color: #c3c2b7; font-size: 10px; }
+  .pv .legend .life { color: #898781; }
+  .pv .legend .drift { color: #86b6ef; }
+  .pv .empty { padding: 10px 8px; color: #c3c2b7; }
+  .pv .seat { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .pv .seat .who { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+  .pv .seat .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pv .stats { margin-top: 3px; display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 1px 4px; font-variant-numeric: tabular-nums; }
+  .pv .stat { white-space: nowrap; }
+  .pv .stat .k { color: #898781; font-size: 9px; margin-right: 3px; }
+  .pv .stat .drift { color: #86b6ef; }
+  .pv .stat small.life { color: #898781; margin-left: 2px; font-size: 9px; }
+  .pv .skel { display: inline-block; width: 28px; height: 8px; border-radius: 3px; vertical-align: middle;
+    background: linear-gradient(90deg, #262624 0%, #383835 50%, #262624 100%); background-size: 200% 100%;
+    animation: shimmer 1.2s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  @media (prefers-reduced-motion: reduce) { .pv .skel { animation: none; } }
   /* Files: a path box per setting, with the native picker beside it. */
   .files { padding: 12px 16px; }
   .files .row { display: grid; grid-template-columns: 84px 1fr auto auto; gap: 4px 8px; align-items: center;
@@ -163,14 +213,16 @@
       <h2>Stats →</h2>
       <p>Every player, sortable. Pick a street, filter to a spot, click through to a range.</p>
     </a>
-    <a class="card" href="/chart">
-      <h2>Range chart →</h2>
-      <p>What someone had in a spot — the 13×13 grid, made hands, or bet sizing.</p>
-    </a>
-    <a class="card" href="/chart?by=review">
-      <h2>Hand review →</h2>
-      <p>Missed bluffs, missed value and bluffs that got called — and the bad beats, on a tab of their own.</p>
-    </a>
+    <div class="card wide">
+      <a class="main" href="/chart">
+        <h2>Range chart →</h2>
+        <p>What someone had in a spot — the 13×13 grid, made hands, or bet sizing.</p>
+      </a>
+      <p class="subs">
+        <a href="/chart?by=review" title="missed bluffs, missed value, bluffs that got called">Hand review →</a>
+        <a href="/chart?by=beats" title="suckouts and coolers">Bad beats →</a>
+      </p>
+    </div>
     <a class="card" href="/pots.html">
       <h2>Biggest pots &rarr;</h2>
       <p>The pots that actually mattered this week &mdash; over 2,000 chips in the last 7 days, biggest first, with the replay a click away.</p>
@@ -203,13 +255,25 @@
     <div class="hud-cols">
       <div id="hud-groups"></div>
       <div class="order">
-        <div class="k" id="hud-order-k">Shown on the HUD</div>
+        <div class="head">
+          <div class="k" id="hud-order-k">Shown on the HUD</div>
+          <button type="button" class="pv-btn" id="hud-pv-btn" aria-expanded="false" aria-controls="hud-pv"
+            title="see these on a seat card, as the HUD draws them">Preview</button>
+        </div>
         <ol id="hud-list" aria-labelledby="hud-order-k"></ol>
         <button type="button" class="reset" id="hud-reset">Reset to default</button>
       </div>
     </div>
     <div class="err hidden" id="hud-err" role="alert"></div>
   </section>
+  <aside class="pv-float hidden" id="hud-pv" aria-labelledby="hud-pv-h">
+    <div class="bar">
+      <b id="hud-pv-h">HUD preview</b>
+      <span class="sample" id="hud-pv-who"></span>
+      <button type="button" class="shut" id="hud-pv-shut" title="close (Esc)" aria-label="close the preview">✕</button>
+    </div>
+    <div class="pv" id="hud-pv-body"></div>
+  </aside>
 
   <h3>Keeping it running</h3>
   <div class="panel">
@@ -418,6 +482,7 @@
       const target = items[focus.i]?.querySelector(`button[data-act="${focus.act}"]`);
       (target || $("hud-reset")).focus();
     }
+    pvPaint();
   }
 
   // Drag a row by anything but its buttons to move it; the arrows stay for the
@@ -439,7 +504,9 @@
         const b = r.getBoundingClientRect();
         return ev.clientY < b.top + b.height / 2;
       }) || null;
-      if (li.nextElementSibling !== after) list.insertBefore(li, after);
+      if (li.nextElementSibling === after) return;
+      list.insertBefore(li, after);
+      pvPaint([...list.querySelectorAll("li[data-key]")].map((r) => r.dataset.key));
     };
     const end = (ev) => {
       window.removeEventListener("pointermove", move);
@@ -493,6 +560,137 @@
 
   $("hud-reset").addEventListener("click", () => hudSet([...hud.def]));
 
+  // ---------------------------------------------------------- HUD preview --
+  // The picker's columns, in the order on screen, on seat cards drawn the way
+  // the side panel draws them (sidepanel.js: card() and figure()), over real
+  // figures: you and whoever played most hands beside you in your last game,
+  // that game first and lifetime in grey. Fetched once, on first open.
+  const pv = { open: false, loading: null, rows: null, error: null };
+  const PV_HANDS = { key: "hands", label: "hands", tip: "Hands they were dealt into. Every rate here is over some subset of these.", opp: null };
+  // The side panel's own formatting and drift rule, copied: see sidepanel.js.
+  const signed = (v, dp) => (v > 0 ? "+" : "") + v.toFixed(dp);
+  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 0) : String(v));
+  const DRIFT_POINTS = 10, DRIFT_MIN_OPP = 10;
+  // Wilson 95% range as fractions; mirrors queries.wilson (spot.js carries the same).
+  function wilson(p, n, z = 1.96) {
+    if (!(n > 0) || p == null) return null;
+    const z2 = z * z;
+    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return [Math.max(0, centre - half), Math.min(1, centre + half)];
+  }
+
+  async function pvLoad() {
+    const get = async (url) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    };
+    const [{ hero }, life] = await Promise.all([get("/settings/hero"), get("/stats")]);
+    const byLife = new Map(life.map((r) => [r.player, r]));
+    const most = (rows, not) => rows.filter((r) => r.player !== not).sort((a, b) => b.hands - a.hands)[0]?.player;
+    const you = byLife.has(hero) ? hero : most(life);
+    if (!you) return [];
+    const games = await get(`/players/${encodeURIComponent(you)}/games`);
+    const game = games[0]?.game_id;
+    const sess = game ? await get(`/stats?game=${encodeURIComponent(game)}`) : [];
+    const bySess = new Map(sess.map((r) => [r.player, r]));
+    return [you, most(sess.length ? sess : life, you)].filter(Boolean).map((p) => ({
+      alias: p,
+      stats: byLife.get(p) || { hands: 0 },
+      session: game ? bySess.get(p) || { hands: 0 } : null,
+    }));
+  }
+
+  // One figure into `into`, as sidepanel.js figure() does it; returns the hover text.
+  function pvFigure(s, col, into) {
+    const { key: k, tip } = col;
+    const st = s.stats, ss = s.session;
+    if (!ss) {
+      into.append(node("span", null, fmt(st[k], k)));
+      return tip;
+    }
+    const now = node("span", null, fmt(ss[k], k));
+    const opp = (r) => (col.opp ? r._opp?.[col.opp] : null);
+    const nOpp = opp(ss), lOpp = opp(st);
+    const ci = typeof ss[k] === "number" ? wilson(ss[k] / 100, nOpp) : null;
+    if (typeof ss[k] === "number" && typeof st[k] === "number"
+        && (nOpp ?? 0) >= DRIFT_MIN_OPP && Math.abs(ss[k] - st[k]) >= DRIFT_POINTS
+        && ci && (st[k] < 100 * ci[0] || st[k] > 100 * ci[1])) {
+      now.className = "drift";
+    }
+    into.append(now, node("small", "life", fmt(st[k], k)));
+    // hands and bb/100 are counts; W$SD is a rate with no count sent.
+    const of = (v, n) => (n != null ? `${fmt(v)}% of ${n}`
+      : v == null || k === "hands" || k === "bb_per_100" ? fmt(v, k) : `${fmt(v)}%`);
+    return `${tip}\n\nlast game: ${of(ss[k], nOpp)}\nlifetime: ${of(st[k], lOpp)}`;
+  }
+
+  function pvSeat(s, cols) {
+    const c = node("div", "seat");
+    const who = node("div", "who");
+    if (s) {
+      who.append(node("span", "name", s.alias));
+    } else {
+      const bar = node("span", "skel");
+      bar.style.width = "70px";
+      who.append(bar);
+    }
+    const stats = node("div", "stats");
+    for (const col of cols) {
+      const cell = node("span", "stat");
+      cell.append(node("span", "k", col.label));
+      if (s) cell.title = pvFigure(s, col, cell);
+      else cell.append(node("span", "skel"));
+      stats.append(cell);
+    }
+    c.append(who, stats);
+    return c;
+  }
+
+  // `keys`: the order to draw, when a drag has moved rows it has not saved yet.
+  function pvPaint(keys = hud.columns) {
+    if (!pv.open) return;
+    const cols = [PV_HANDS, ...keys.map((k) => hud.byKey.get(k))];
+    const body = $("hud-pv-body");
+    $("hud-pv-who").textContent = pv.rows?.length ? "sample: " + pv.rows.map((r) => r.alias).join(", ")
+      : pv.rows || pv.error ? "" : "loading…";
+    if (pv.error) {
+      body.replaceChildren(node("div", "empty", "could not load the sample: " + pv.error));
+    } else if (pv.rows && !pv.rows.length) {
+      body.replaceChildren(node("div", "empty", "no hands yet: the cards fill in once there are some"));
+    } else {
+      const out = (pv.rows || [null, null]).map((s) => pvSeat(s, cols));
+      if (pv.rows?.[0]?.session) {
+        const legend = node("div", "legend", "last game · ");
+        legend.append(node("span", "life", "lifetime"), " · ", node("span", "drift", "blue"), " = drifting");
+        legend.title = "The HUD shows this session first; here, their last game stands in for it.";
+        out.unshift(legend);
+      }
+      body.replaceChildren(...out);
+    }
+  }
+
+  function pvShow(on) {
+    pv.open = on;
+    $("hud-pv").classList.toggle("hidden", !on);
+    $("hud-pv-btn").setAttribute("aria-expanded", String(on));
+    if (!on) return;
+    pvPaint();
+    pv.loading ??= pvLoad()
+      .then((rows) => { pv.rows = rows; }, (e) => { pv.error = e.message || String(e); })
+      .then(() => pvPaint());
+  }
+
+  $("hud-pv-btn").addEventListener("click", () => pvShow(!pv.open));
+  $("hud-pv-shut").addEventListener("click", () => {
+    pvShow(false);
+    $("hud-pv-btn").focus();
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && pv.open) pvShow(false);
+  });
+
   (async () => {
     try {
       const r = await fetch("/settings/hud");
@@ -503,6 +701,8 @@
       hudChips();
       hudPaint();
       $("hud").classList.remove("hidden");
+      // A link can open the page with the preview showing: /#hud-preview.
+      if (location.hash === "#hud-preview") pvShow(true);
     } catch (e) {
       $("hud-err").textContent = "could not load the HUD stats: " + (e.message || e);
       $("hud-err").classList.remove("hidden");
