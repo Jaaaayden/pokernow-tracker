@@ -243,6 +243,14 @@ def test_facts_cached_agrees_with_facts_for_and_is_served_once(db, monkeypatch):
     assert calls == []
 
 
+def test_a_facts_cache_hit_reads_no_game_stamps(db, monkeypatch):
+    """The stamps are a GROUP BY over every hand; a hit at the same generation
+    has no use for them."""
+    first = q.facts_cached(db, "genericpoker")
+    monkeypatch.setattr(q, "_game_stamps", lambda *a, **k: pytest.fail("stamps read on a hit"))
+    assert q.facts_cached(db, "genericpoker") is first
+
+
 @pytest.mark.parametrize(
     "change",
     [

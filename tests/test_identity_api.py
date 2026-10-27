@@ -133,10 +133,14 @@ def test_players_counts_hands_without_deriving_them(client, stats):
 
 
 def test_remembered_answers_follow_a_merge_and_its_undo(client):
-    """A filtered /stats, Results and Tilt are kept until the generation moves; a
-    merge moves it, so none of them can answer for the players as they were."""
+    """A filtered /stats, a player's spot stats, range and sizing, Results and Tilt
+    are kept until the generation moves; a merge moves it, so none of them can
+    answer for the players as they were."""
     asks = {
         "stats": lambda: client.get("/stats", params={"filter": "srp"}).json(),
+        "spot-stats": lambda: client.get("/players/genericpoker/stats").json(),
+        "range": lambda: client.get("/players/genericpoker/range").json(),
+        "sizing": lambda: client.get("/players/genericpoker/sizing", params={"kind": "bet"}).json(),
         "results": lambda: client.get("/players/genericpoker/results").json(),
         "tilt": lambda: client.get("/players/genericpoker/tilt").json(),
     }

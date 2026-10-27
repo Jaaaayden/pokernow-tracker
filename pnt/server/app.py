@@ -14,6 +14,7 @@ Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
 from __future__ import annotations
 
 import csv
+import ctypes
 import functools
 import gc
 import logging
@@ -246,13 +247,31 @@ def _warm_strength(path: Path | None = None, wanted: Callable[[], bool] | None =
             _warm_running.discard((path, started))
         if conn is not None:
             conn.close()
+        _release_memory()
+
+
+#: glibc's malloc_trim, or None off glibc (Windows, macOS).
+try:
+    _TRIM = ctypes.CDLL("libc.so.6").malloc_trim
+except (OSError, AttributeError):
+    _TRIM = None
+
+
+def _release_memory() -> None:
+    """Give the warm-up's garbage back to the system. Deriving every game peaks
+    at several times what the caches keep, and glibc keeps the freed pages: on
+    the phone copy's 1 GB VM they ended up in swap."""
+    gc.collect()
+    if _TRIM is not None:
+        _TRIM(0)
 
 
 def _warm_hero(conn: sqlite3.Connection, between) -> None:
-    """The hero's slow first opens, asked the way the pages ask them: the Hand
-    review (seconds to flag every hand), the spot tree at the chart's depth 4 and
-    5-hand floor (TREE_DEPTH, TREE_MIN in chart.html), Results, Tilt and the
-    Tendencies page. Each lands in the cache its endpoint reads."""
+    """The hero's slow first opens, asked the way the pages ask them: the chart's
+    first view (stats and the preflop range, no filter), the Hand review (seconds
+    to flag every hand), the spot tree at the chart's depth 4 and 5-hand floor
+    (TREE_DEPTH, TREE_MIN in chart.html), Results, Tilt and the Tendencies page.
+    Each lands in the cache its endpoint reads."""
     from pnt.stats.leaks import hero_of
     from pnt.stats.results import results_breakdown
     from pnt.stats.review import _review_base
@@ -263,6 +282,11 @@ def _warm_hero(conn: sqlite3.Connection, between) -> None:
     hero = hero_of(conn)
     if hero is None:
         return
+    # Under the keys player_stats and player_range use for no filter and no game.
+    between()
+    remembered(conn, ("spot-stats", hero, None, None), lambda: aggregate(facts_cached(conn, hero)))
+    between()
+    remembered(conn, ("range", hero, None, None, "preflop"), lambda: range_grid(facts_cached(conn, hero)))
     between()
     _review_base(conn, hero, None)
     between()
@@ -978,7 +1002,12 @@ def player_stats(
     game: str | None = None,
 ) -> dict:
     """One player's stats inside a spot -- what the chart page's postflop strip reads."""
-    return {"player": alias, "filter": filter, **aggregate(_spot_facts(alias, filter, game))}
+    # Remembered, as the range and sizing below: tallying ten thousand hands is a
+    # second a call on a small server, and every chart tab asks again.
+    conn = db()
+    out = remembered(conn, ("spot-stats", alias, game, _spot_key(conn, filter)),
+                     lambda: aggregate(_spot_facts(alias, filter, game, conn)))
+    return {"player": alias, "filter": filter, **out}
 
 
 @app.get("/players/{alias:path}/range")
@@ -993,8 +1022,13 @@ def player_range(
     This is what the chart page renders. Every cell of the 169-grid is present,
     in chart order, so the client needs no card logic of its own.
     """
-    facts = _spot_facts(alias, filter, game)
-    out = range_grid(facts) if by == "preflop" else composition(facts)
+    conn = db()
+
+    def answer() -> dict:
+        facts = _spot_facts(alias, filter, game, conn)
+        return range_grid(facts) if by == "preflop" else composition(facts)
+
+    out = remembered(conn, ("range", alias, game, _spot_key(conn, filter), by), answer)
     return {"player": alias, "filter": filter, "by": by, **out}
 
 
@@ -1007,8 +1041,10 @@ def player_sizing(
     game: str | None = None,
 ) -> dict:
     """What a player had at each bet size on one street, within a spot."""
-    facts = _spot_facts(alias, filter, game)
-    return {"player": alias, "filter": filter, **sizing_tells(facts, street, kind)}
+    conn = db()
+    out = remembered(conn, ("sizing", alias, game, _spot_key(conn, filter), street, kind),
+                     lambda: sizing_tells(_spot_facts(alias, filter, game, conn), street, kind))
+    return {"player": alias, "filter": filter, **out}
 
 
 @app.get("/players/{alias:path}/hands")

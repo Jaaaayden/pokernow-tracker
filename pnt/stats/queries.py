@@ -733,13 +733,15 @@ def facts_cached(
 def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _PlayerFacts:
     gen = generation(conn)
     path = path_of(conn)
+    key = (path, alias, game_id)
+    hit = _FACTS_CACHE.get(key) if gen is not None and path else None
+    # Before the stamps: they are a GROUP BY over every hand, and a hit at this
+    # generation needs none of them -- a write that moves a stamp moves it too.
+    if hit is not None and hit.gen == gen:
+        return hit
     stamps = _game_stamps(conn, game_id) if gen is not None and path else None
     if stamps is None:
         return _PlayerFacts(0, frozenset(), facts_for(conn, alias, game_id, "money"), {})
-    key = (path, alias, game_id)
-    hit = _FACTS_CACHE.get(key)
-    if hit is not None and hit.gen == gen:
-        return hit
 
     ids = identities_of(conn, alias)
     wanted = frozenset(ids)
