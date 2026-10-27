@@ -130,6 +130,37 @@ def test_a_gap_that_starts_between_hands_pins_nothing_on_the_last_one():
     assert all(p.bounty == 0 for p in h.players.values())
 
 
+_SHOW_AND_BOUNTY = [
+    '"B @ BBB" shows a 7♠, 2♦.',
+    '"A @ AAA" paid 20 for the 7-2 bounty to "B @ BBB"',
+]
+
+
+@pytest.mark.parametrize("boundary", [
+    "-- ending hand #48 --",
+    '-- starting hand #48 (id: dddd)  No Limit Texas Hold\'em (dealer: "A @ AAA") --',
+])  # fmt: skip
+def test_what_follows_an_end_line_waits_for_the_next_boundary(boundary):
+    """The gap starts after #44's end line: the show and bounty logged next are
+    #48's, as the boundary after them shows, so #44 keeps neither."""
+    res = _parse_lines([*_HAND_44, *_SHOW_AND_BOUNTY, boundary])
+    assert res.misses == []
+    h = res.hands[0]
+    assert h.hand_number == 44 and h.voluntary_shows == {}
+    assert all(p.bounty == 0 for p in h.players.values())
+
+
+@pytest.mark.parametrize("after", [
+    ['-- starting hand #45 (id: dddd)  No Limit Texas Hold\'em (dealer: "A @ AAA") --'],
+    [],  # the log ends here
+])  # fmt: skip
+def test_what_follows_an_end_line_is_booked_when_no_hand_is_missing(after):
+    res = _parse_lines([*_HAND_44, *_SHOW_AND_BOUNTY, *after])
+    h = res.hands[0]
+    assert h.hand_number == 44 and h.voluntary_shows
+    assert sorted(p.bounty for p in h.players.values()) == [-20, 20]
+
+
 def test_the_hand_after_a_sewn_one_is_stored_and_keeps_the_new_blind():
     """The sewn hand carries the later hand's big blind post: a bomb pot after it,
     with no quantity on record, is played at that blind, not the one before the gap."""
