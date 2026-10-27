@@ -45,8 +45,8 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  .crumb { display: flex; justify-content: space-between; gap: 12px; }
-  .crumb .go a { margin-left: 14px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+  .crumb .go a + a { margin-left: 14px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
   .note p { margin: 0 0 4px; }
   .note ul { margin: 0; padding-left: 18px; }
@@ -99,7 +99,7 @@
 <body>
 <main>
   <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a href="/players.html">players &rsaquo;</a>
+    <span class="go"><a id="playerslink" href="/players.html">players &rsaquo;</a>
       <a id="chartlink" href="/chart">range chart &rsaquo;</a>
       <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a></span></div>
   <h1>Stats <small id="subtitle">every player, in one spot</small></h1>
@@ -355,6 +355,7 @@
     if (theme) c.set("theme", theme);
     $("chartlink").href = "/chart?" + c;
     $("allinlink").href = "/allin.html?" + c;
+    $("playerslink").href = "/players.html?" + new URLSearchParams(theme ? { theme } : {});
   };
 
   // [key, header, kind, opportunity key, hover text]

@@ -36,7 +36,11 @@
   .note b { color: var(--ink); font-weight: 600; }
   a.link { color: var(--accent); text-decoration: none; }
   a.link:hover { text-decoration: underline; }
-  .crumb { margin-bottom: 14px; font-size: 13px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+    margin-bottom: 14px; font-size: 13px; }
+  .crumb a { color: var(--accent); text-decoration: none; }
+  .crumb a:hover { text-decoration: underline; }
+  .crumb .go a + a { margin-left: 14px; }
 
   select, input, button { font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
@@ -114,7 +118,10 @@
 </head>
 <body>
 <main>
-  <div class="crumb"><a class="link" href="/">‹ tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
+      <a id="chartlink" href="/chart">range chart &rsaquo;</a>
+      <a id="tendencieslink" href="/tendencies.html">tendencies &rsaquo;</a></span></div>
   <h1>Players <small id="count"></small></h1>
   <ul class="note">
     <li><b>One human, one row.</b> PokerNow IDs are per browser, so one person on a phone and a laptop shows up twice.</li>
@@ -131,6 +138,8 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   let players = [];
   let openAlias = null;
 
@@ -179,7 +188,18 @@
     return e;
   };
 
+  // The crumb's chart link opens on whoever is unfolded.
+  function crumbLinks() {
+    const t = new URLSearchParams(theme ? { theme } : {});
+    const c = new URLSearchParams(t);
+    if (openAlias) c.set("player", openAlias);
+    $("statslink").href = "/stats.html?" + t;
+    $("chartlink").href = "/chart?" + c;
+    $("tendencieslink").href = "/tendencies.html?" + t;
+  }
+
   function render() {
+    crumbLinks();
     const list = $("list");
     list.replaceChildren();
     if (!players.length) {

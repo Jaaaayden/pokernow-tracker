@@ -441,9 +441,11 @@
   .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
   .tip .row b { color: var(--ink); font-weight: 500; }
   .err { color: #d03b3b; margin: 12px 0; }
-  .crumb { margin-bottom: 12px; font-size: 13px; }
+  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+    margin-bottom: 12px; font-size: 13px; }
   .crumb a { color: var(--accent); text-decoration: none; }
   .crumb a:hover { text-decoration: underline; }
+  .crumb .go a + a { margin-left: 14px; }
   .hidden { display: none !important; }
 
   /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
@@ -809,7 +811,10 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a></div>
+  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
+    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
+      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a>
+      <a id="potslink" href="/pots.html">biggest pots &rsaquo;</a></span></div>
   <h1>Range chart <small id="subtitle">what a player had in a spot, from the hands where it was shown</small></h1>
 
   <div class="controls">
@@ -1542,6 +1547,18 @@
     state.est = q.get("est") === "1";
     state.estBoard = /^[2-9TJQKA10cdhs ]{0,16}$/i.test(q.get("eb") || "") ? (q.get("eb") || "") : "";
   };
+  // The crumb's links keep the spot, player and theme where the page takes them.
+  const crumbLinks = () => {
+    const link = (path, ...keys) => {
+      const c = new URLSearchParams();
+      for (const k of keys) if (state[k]) c.set(k, state[k]);
+      if (theme) c.set("theme", theme);
+      return path + "?" + c;
+    };
+    $("statslink").href = link("/stats.html", "filter");
+    $("allinlink").href = link("/allin.html", "filter", "player");
+    $("potslink").href = link("/pots.html", "player");
+  };
   const writeUrl = () => {
     const q = new URLSearchParams();
     if (state.player) q.set("player", state.player);
@@ -1579,6 +1596,7 @@
     if (state.by === TAGGED_VIEW && state.tag) q.set("tag", state.tag);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
+    crumbLinks();
     // An embedder cannot read this page's URL across origins, so hand it out:
     // the HUD's "open ↗" link would otherwise still point at the spot the chart
     // opened on rather than the one being looked at. It carries nothing the
@@ -6025,6 +6043,7 @@
   // the chart with no way back, so it only appears in a real tab.
   if (parent !== window) $("crumb").classList.add("hidden");
   readUrl();
+  crumbLinks();
   $("filter").value = state.filter;
   $("street").value = state.street;
   $("kind").value = state.kind;
