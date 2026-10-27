@@ -46,10 +46,11 @@ CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 #: Each game records the version that parsed it (`games.parsed_with`), and
 #: `pnt rebuild --if-stale` re-parses any game parsed by an older one.
 #: 1: hands a gap in the log joined together are dropped (SPEC.md, "Money").
-#: 2: a Nit Game that did not start is recognized, not a parse miss.
+#: 2: a Nit Game that did not start is recognized, not a parse miss; a big blind
+#:    all in for less than the table's blind no longer sets the hand's blind.
 PARSE_VERSION = 2
 #: What the latest bump changed, for the line `pnt update` prints as it rebuilds.
-PARSE_CHANGE = "recognize a Nit Game that did not start"
+PARSE_CHANGE = "recognize a Nit Game that did not start and value short all-in blinds"
 
 
 @dataclass(slots=True)
@@ -287,6 +288,9 @@ class _HandBuilder:
         self._committed: dict[str, int] = {}  # this street only
         self._seq = 0
         self._bb_seat: int | None = None
+        #: A big blind posted all in: possibly short of the level, so `finish`
+        #: weighs it against the table's blind.
+        self._bb_all_in = 0
 
     # -- event handlers ----------------------------------------------------
     def roster(self, ev: E.PlayerStacks) -> None:
@@ -307,7 +311,10 @@ class _HandBuilder:
             # Blind levels change mid-game, so the big blind is a property of the
             # hand, not of the game. Take the largest BB post in case someone also
             # posts a missed blind.
-            self.hand.bb = max(self.hand.bb or 0, ev.amount)
+            if ev.all_in:
+                self._bb_all_in = max(self._bb_all_in, ev.amount)
+            else:
+                self.hand.bb = max(self.hand.bb or 0, ev.amount)
         already = self._committed.get(p.pn_id, 0)
         if ev.kind in DEAD_POSTS:
             # Real chips into the pot, but they buy no part of the street's bet.
@@ -399,6 +406,10 @@ class _HandBuilder:
         self, *, complete: bool = True, table_bb: int | None = None, bomb_bbs: int | None = None
     ) -> ParsedHand:
         self.hand.complete = complete
+        if self.hand.bb is None and self._bb_all_in:
+            # A big blind all in for 1 at a 5/10 table is not a 1-chip hand: the
+            # callers still paid 10. The table's blind wins unless the post tops it.
+            self.hand.bb = max(self._bb_all_in, table_bb or 0)
         if self.hand.bb is None:
             self.hand.bb = bomb_pot_bb(self.hand, bomb_bbs, table_bb)
         positions, irregular = assign_positions(
@@ -636,7 +647,7 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
         elif isinstance(ev, E.HeroCards):
             builder.hand.hero_cards = ev.cards
         elif isinstance(ev, E.Post):
-            if ev.kind == E.POST_BB:
+            if ev.kind == E.POST_BB and not ev.all_in:
                 bb_posted = ev.amount
             builder.post(ev)
         elif isinstance(ev, E.Action):
