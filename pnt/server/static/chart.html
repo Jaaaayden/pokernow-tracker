@@ -19,20 +19,24 @@
     --mid: #f0efec;
     --accent: #2a78d6;
     --flag: #c4372f;
+    /* profit, loss and in-between, for figures read against a baseline */
+    --up: #1f7a4d;
+    --down: #b93a39;
+    --amber: #a86b00;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --flag: #e66e6d;
+      --flag: #e66e6d; --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --flag: #e66e6d;
+    --flag: #e66e6d; --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a;
   }
   * { box-sizing: border-box; }
   /* Thin scrollbars in the theme's own greys, with no track and no arrow buttons.
@@ -563,12 +567,9 @@
   }
 
   /* --- results by pot type ---
-     Won and lost as one bar from zero, in the profit and loss colours the other
-     pages use (--up, --down); kept on this view so the page's own tokens stay as
-     they are. The figures stay in ink: the bar carries the sign. */
-  #results { --up: #1f7a4d; --down: #b93a39; display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #results { --up: #4cc38a; --down: #e66e6d; } }
-  :root[data-theme="dark"] #results { --up: #4cc38a; --down: #e66e6d; }
+     Won and lost as one bar from zero, in the profit and loss colours (--up,
+     --down). The figures stay in ink: the bar carries the sign. */
+  #results { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
   #results h3 { font-size: 13px; font-weight: 600; margin: 0; }
   #results table { margin-top: 6px; min-width: 620px; }
   #results td.role { padding-left: 22px; color: var(--ink-2); }
@@ -593,6 +594,13 @@
   #tilt td small { color: var(--muted); margin-left: 3px; }
   #tilt td.moved { color: var(--flag); font-weight: 600; }
   #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  /* A figure read against its baseline (numTone): better in the accent blue the
+     MDF column uses, worse in the loss red, about the same in amber. The ± and
+     n beside it stay muted. Tilt colours its bb/100, Timing its value share. */
+  #tilt td.num-good, #timing td.num-good { color: var(--accent); font-weight: 600; }
+  #tilt td.num-bad, #timing td.num-bad { color: var(--down); font-weight: 600; }
+  #tilt td.num-eh, #timing td.num-eh { color: var(--amber); }
+  #tilt td[class*="num-"] small, #timing td[class*="num-"] small { font-weight: 400; }
 
   /* --- timing tells: what the hands were, by how long the decision took ---
      A table per spot, a row per tempo bucket, with the strength tiers as one
@@ -607,9 +615,6 @@
   /* Strong in the profit colour, draws and air in the loss colour, marginal in
      amber. A class cell is tinted by its share of the row's two-card shows; a
      list row's read is a pill of the same colour. */
-  #shows { --up: #1f7a4d; --down: #b93a39; --amber: #a86b00; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #shows { --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a; } }
-  :root[data-theme="dark"] #shows { --up: #4cc38a; --down: #e66e6d; --amber: #e0a43a; }
   #shows .cls-strong, #shows .ahead { --c: var(--up); }
   #shows .cls-marginal { --c: var(--amber); }
   #shows .cls-air, #shows .cls-draw, #shows .behind { --c: var(--down); }
@@ -1926,6 +1931,15 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+  // A figure against its baseline, as the class word for .num-good/-bad/-eh:
+  // "good" more than `band` above it, "bad" more than `band` below, "eh" within.
+  // Given a 95% interval [lo, hi] instead, only one clear of the baseline is
+  // coloured, so noise isn't painted: "good", "bad", or "" where it overlaps.
+  function numTone(v, base, band = 0) {
+    if (v == null || base == null) return "";
+    if (Array.isArray(v)) return v[0] > base ? "good" : v[1] < base ? "bad" : "";
+    return v - base > band ? "good" : base - v > band ? "bad" : "eh";
+  }
 
   // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
   // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
@@ -3133,6 +3147,7 @@
   // night. Each row is its filter: clicking one adds the terms to the spot and
   // lists the hands. See "Session dynamics" in SPEC.md.
   const TILT_GAP = 5; // points of VPIP or PFR from all hands that get marked
+  const TILT_BB_BAND = 5; // bb/100 from all hands that colours a row good or bad, not eh
   function renderTilt(d) {
     const wrap = $("tilt");
     wrap.replaceChildren();
@@ -3154,7 +3169,8 @@
     const COLS = [["", ""], ["hands", ""], ["VPIP", "voluntarily put chips in, of their preflop decisions"],
       ["PFR", "raised preflop, of their preflop decisions"],
       ["AF", "aggression after the flop: bets and raises over bets, raises, calls and folds"],
-      ["bb/100", "over complete hands with a known big blind, ± its 95% interval"]];
+      ["bb/100", `over complete hands with a known big blind, ± its 95% interval · against all hands: `
+        + `blue more than ${TILT_BB_BAND} above, red more than ${TILT_BB_BAND} below, amber within`]];
     const pct = (v, n, key) => {
       const td = document.createElement("td");
       td.append(v == null ? "–" : v.toFixed(1) + "%");
@@ -3188,6 +3204,12 @@
         sm.textContent = (r.bb_per_100_ci == null ? "" : `±${r.bb_per_100_ci.toFixed(0)} `) + `/${r.bb_hands}`;
         bb.appendChild(sm);
         const isBase = r.key === "all";
+        const tone = isBase ? "" : numTone(r.bb_per_100, base.bb_per_100, TILT_BB_BAND);
+        if (tone) {
+          const gap = r.bb_per_100 - base.bb_per_100;
+          bb.classList.add(`num-${tone}`);
+          bb.title = `${gap > 0 ? "+" : ""}${gap.toFixed(1)} bb/100 from all hands`;
+        }
         tr.append(name, n, pct(r.vpip, r.vpip_n, isBase ? null : "vpip"), pct(r.pfr, r.pfr_n, isBase ? null : "pfr"),
                   pct(r.af, r.af_n, null), bb);
         tr.title = `${r.label}: ${r.hands} hands · ` + (r.filter ? `adds ${r.filter} to the spot` : "the whole spot");
@@ -3289,18 +3311,32 @@
       cell.title = TIERS.map(([t]) => `${t} ${c.counts[t]}`).join(" · ") + ` — of ${c.known} known`;
       return cell;
     };
-    const value = (c) => td(fmtPct(c.value), ` ${c.known}/${c.n}`,
-      c.value_ci ? `value: nutted or strong, of the ${c.known} known · 95% interval ${c.value_ci[0]}–${c.value_ci[1]}%` : "no cards known");
+    // `all` is the spot's value share over every bucket in the same column: a
+    // bucket is coloured only when its interval clears it.
+    const value = (c, all) => {
+      const cell = td(fmtPct(c.value), ` ${c.known}/${c.n}`,
+        c.value_ci ? `value: nutted or strong, of the ${c.known} known · 95% interval ${c.value_ci[0]}–${c.value_ci[1]}%`
+          + (all == null ? "" : ` · ${fmtPct(all)} at every speed`) : "no cards known");
+      const tone = numTone(c.value_ci, all);
+      if (tone) cell.classList.add(`num-${tone}`);
+      return cell;
+    };
+    // The value share of a spot's rows, every speed together; `pick` finds the cell.
+    const allSpeeds = (rows, pick) => {
+      let value = 0, known = 0;
+      for (const r of rows) { const c = pick(r); value += c.counts.nutted + c.counts.strong; known += c.known; }
+      return known ? 100 * value / known : null;
+    };
 
     // One table: a header row per spot, a row per bucket.
     function spotTable(spots, { pool, rel }) {
       const t = document.createElement("table");
       const head = document.createElement("tr");
       const cols = [["", ""], ["time", "how long the first decision on the street took"], ["n", "decisions in the bucket"],
-        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands"],
+        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands · blue when its 95% interval is above the spot at every speed, red when below"],
         ["draw", ""], ["air", ""]];
-      if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out"],
-        ["owners, own cards", "the logs' owners, whose every card their own log shows"]);
+      if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out · coloured as value is"],
+        ["owners, own cards", "the logs' owners, whose every card their own log shows · coloured as value is"]);
       for (const [c, tip] of cols) { const th = document.createElement("th"); th.textContent = c; if (tip) th.title = tip; head.appendChild(th); }
       t.appendChild(head);
       for (const sp of spots) {
@@ -3310,12 +3346,15 @@
         name.colSpan = cols.length;
         h.appendChild(name);
         t.appendChild(h);
+        const all = allSpeeds(sp.rows, r => r);
+        const allOthers = pool ? allSpeeds(sp.rows, r => r.others) : null;
+        const allOwn = pool ? allSpeeds(sp.rows, r => r.own) : null;
         for (const r of sp.rows) {
           const tr = document.createElement("tr");
           const word = TEMPO_WORD[r.bucket];
           tr.append(td(word), td(tempoRange(r.bucket, bet, d.cuts, rel ? rel[sp.street] : null)), td(String(r.n)),
-            tierBar(r), value(r), td(fmtPct(r.draw)), td(fmtPct(r.air)));
-          if (pool) tr.append(value(r.others), value(r.own));
+            tierBar(r), value(r, all), td(fmtPct(r.draw)), td(fmtPct(r.air)));
+          if (pool) tr.append(value(r.others, allOthers), value(r.own, allOwn));
           if (!r.n) tr.classList.add("empty");
           if (pool) tr.title = `${sp.label}, ${word}: ${r.filter} — add it to a player's spot to list their hands`;
           else if (r.n) {
