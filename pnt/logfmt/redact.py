@@ -108,9 +108,11 @@ def plan(entries: Iterable[RawEntry]) -> Plan:
                 hand_number = ev.hand_number
             ended = True
         elif isinstance(ev, E.HeroCards):
-            # A second holding before the next start: the log lost the lines between
-            # two hands, this one's start among them, so its number is not known yet.
-            if hero_ord is not None:
+            # A holding before the next start, after a second holding or after the
+            # last hand's end line: the log lost the lines between two hands, this
+            # one's start among them, so its number is not known yet -- and the
+            # last hand's shows say nothing about it.
+            if hero_ord is not None or ended:
                 close_hand(gap=True)
                 hand_number = None
             hero_ord, hero_cards = raw.ord, frozenset(ev.cards)
