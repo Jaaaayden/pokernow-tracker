@@ -50,6 +50,8 @@ NOISE = [
     # pgl-4BCPln1rscQ70WViLUY8D: an escrow funded by an add-on rather than the stack.
     'The player "Pay @ CCC" made an add-on of 90 to their Nit Escrow.',
     'The player "Pay @ CCC" confirmed the Nit Game using an add-on.',
+    # pglDEDh0yMNBNqOQDmKmCO0Q_: a round called off for want of players.
+    "Nit Game did not start because there were not enough confirmed players.",
 ]
 
 
@@ -74,6 +76,16 @@ def test_the_penalty_is_booked_on_the_hand_that_just_ended():
     assert res.misses == []
     nit = {pid: p.nit for pid, p in res.hands[0].players.items()}
     assert nit == {"AAA": 40, "BBB": 40, "CCC": -80}
+
+
+def test_a_round_that_did_not_start_books_nothing():
+    """Confirmed buy-ins, then the round is called off: the hand after it is
+    parsed as a plain hand, with no miss and no Nit money."""
+    lines = LINES[:3] + ["Nit Game did not start because there were not enough confirmed players."]
+    res = _parse(lines + LINES[5:-2])
+    assert res.misses == []
+    assert len(res.hands) == 1
+    assert all(p.nit == 0 for p in res.hands[0].players.values())
 
 
 def test_the_penalty_is_in_net_but_outside_the_pot_and_the_bounty():

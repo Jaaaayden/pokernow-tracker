@@ -2182,6 +2182,10 @@ post of kind `bomb_pot`, so nobody has a preflop decision and no preflop rate
 counts the hand. Its big blind is the bomb over the table's `Bomb Pot BB
 Quantity`, or failing that the last big blind seen.
 
+A hand's big blind is its largest big blind post, except one **posted all in**:
+that may be short of the level (all in for 1 at a 10 blind), so the hand takes
+the larger of it and the last big blind seen.
+
 **Only Hold'em on one board is analysed** (`derive.is_analysed`). PLO's four or
 five cards and a Double Board's second board are past every rate, range and
 review rule here, so both count for money and are listed, no more. Every reader
