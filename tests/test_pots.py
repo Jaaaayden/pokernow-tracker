@@ -249,11 +249,16 @@ def test_the_endpoint_serves_the_page_to_browsers_and_json_to_everyone_else(tmp_
     page = client.get("/pots", headers={"Accept": "text/html"})
     assert page.status_code == 200 and "Biggest pots" in page.text
     assert client.get("/pots.html").status_code == 200
+    # The page's own query string, as a browser or the note overlay sends it.
+    page = client.get("/pots", params={"days": "all", "min": 0}, headers={"Accept": "text/html"})
+    assert page.status_code == 200 and "Biggest pots" in page.text
 
     body = client.get("/pots", params={"all_time": 1, "min_pot": 0, "limit": 4}).json()
     assert body["since"] is None and len(body["pots"]) == 4
     assert body["pots"][0]["pot"] == body["biggest"]
 
+    assert client.get("/pots", params={"days": "all", "min_pot": 0}).json()["since"] is None
     assert client.get("/pots", params={"days": 0}).status_code == 422
+    assert client.get("/pots", params={"days": "soon"}).status_code == 422
     assert client.get("/pots", params={"limit": 9999}).status_code == 422
     assert client.get("/pots", params={"player": "nobody"}).status_code == 404

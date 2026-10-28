@@ -821,7 +821,7 @@ def allin(
 @app.get("/pots", response_model=None)
 def pots(
     request: Request,
-    days: Annotated[float, Query(gt=0, description="Window in days, counted back from now.")] = DEFAULT_DAYS,
+    days: Annotated[str, Query(description="Window in days, counted back from now, or 'all'.")] = str(DEFAULT_DAYS),
     all_time: Annotated[bool, Query(description="Ignore the window and read all of history.")] = False,
     min_pot: Annotated[int, Query(ge=0, description="Chips a pot must reach to be listed.")] = DEFAULT_MIN_POT,
     game: str | None = None,
@@ -837,10 +837,22 @@ def pots(
     """
     if "text/html" in request.headers.get("accept", ""):
         return _page("pots.html")
+    # Checked here, not by the signature, so the page's own `?days=all` link still
+    # opens the page above instead of a 422.
+    if days == "all":
+        all_time = True
+    window = None
+    if not all_time:
+        try:
+            window = float(days)
+        except ValueError:
+            window = 0.0
+        if not window > 0:
+            raise HTTPException(status_code=422, detail=f"days must be a number over 0 or 'all', not {days!r}")
     try:
         return big_pots(
             db(),
-            days=None if all_time else days,
+            days=window,
             min_pot=min_pot,
             game_id=game,
             player=player,
