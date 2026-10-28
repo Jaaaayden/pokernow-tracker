@@ -14,8 +14,11 @@
 
   const style = document.createElement("style");
   style.textContent = `
-    .fh-btn { width: 28px; padding: 5px 0; border-radius: 999px; font-weight: 600; color: var(--ink-2); }
+    /* Each a glyph and a word, so neither is a bare ? or ★ to guess at. */
+    .fh-btn { padding: 5px 10px; border-radius: 999px; color: var(--ink-2); white-space: nowrap; }
+    .fh-btn b { font-weight: 700; margin-right: 4px; }
     .fh-btn[aria-expanded=true] { background: var(--accent); color: #fff; border-color: transparent; }
+    @media (max-width: 600px) { .fh-btn { padding: 2px 7px; } .fh-btn b { margin-right: 3px; } }
     .fh { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
       padding: 8px 12px 10px; margin: 0 0 12px; font-size: 12px; line-height: 1.3; }
     .fh [hidden] { display: none !important; }
@@ -53,8 +56,10 @@
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "fh-btn";
-  btn.textContent = "?";
-  btn.title = "every term you can put in a spot";
+  const glyph = document.createElement("b");
+  glyph.textContent = "?";
+  btn.append(glyph, "Filters");
+  btn.title = "every term the Spot box takes, with what it means: click one to add it";
   btn.setAttribute("aria-expanded", "false");
   btn.setAttribute("aria-controls", "filter-help");
   input.after(btn);
@@ -667,9 +672,10 @@
     document.head.appendChild(css);
 
     const wrap = el("span", null, "fh-star-wrap");
-    const star = el("button", "★", "fh-btn fh-star");
+    const star = el("button", null, "fh-btn fh-star");
+    star.append(el("b", "★"), "Saved");
     star.type = "button";
-    star.title = "saved spots: apply one, or save this one";
+    star.title = "your saved spots: apply one, or save the Spot box's under a name";
     star.setAttribute("aria-expanded", "false");
     star.setAttribute("aria-haspopup", "true");
     const menu = el("div", null, "fh-spots");
