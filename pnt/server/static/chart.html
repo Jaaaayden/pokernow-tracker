@@ -61,6 +61,7 @@
   }
   input[type=text] { min-width: 0; flex: 1 1 320px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
   input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
+  #treeback { color: var(--accent); border-color: var(--accent); }
   .controls.narrow { margin-top: -6px; }
   .controls.narrow .lbl { color: var(--muted); font-size: 12px; margin-right: 8px; }
   /* Your note on the player on show, under the dropdown. Set off like a hand's
@@ -891,10 +892,11 @@
     <label for="player">Player</label>
     <select id="player"></select>
     <label for="filter">Spot</label>
-    <input id="filter" type="text" placeholder="srp,pot>=500,vs=player 3" spellcheck="false">
+    <input id="filter" type="text" placeholder="e.g. 3bet_pot,vs=player 3,last:7d · every term under ? Filters" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
     <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
+    <button id="treeback" class="hidden" title="the spot tree, scrolled where you left it (or the browser's Back)">‹ Back to tree</button>
   </div>
   <!-- The views, on a row of their own: how they play on the left, then over on
        the right the results and the hands to look at again. -->
@@ -1629,7 +1631,13 @@
     $("allinlink").href = link("/allin.html", "filter", "player");
     $("potslink").href = link("/pots.html", "player");
   };
-  const writeUrl = () => {
+  // A tree click is the one change that pushes a history entry (writeUrl(true)):
+  // the browser's Back returns to the tree, scrolled where it was. The entry it
+  // lands on is marked with its spot (treeSpot), and keeps the mark through the
+  // page's own rewrites only while the spot is still the one the click made.
+  const treeSpotKey = () => `${state.player}|${state.by}|${state.filter}`;
+  const fromTree = () => history.state?.treeSpot === treeSpotKey();
+  const writeUrl = (push = false) => {
     const q = new URLSearchParams();
     if (state.player) q.set("player", state.player);
     if (state.filter) q.set("filter", state.filter);
@@ -1665,7 +1673,9 @@
     }
     if (state.by === TAGGED_VIEW && state.tag) q.set("tag", state.tag);
     if (theme) q.set("theme", theme);
-    history.replaceState(null, "", "?" + q.toString());
+    if (push) history.pushState({ treeSpot: treeSpotKey() }, "", "?" + q.toString());
+    else history.replaceState(fromTree() ? history.state : null, "", "?" + q.toString());
+    syncBack();
     crumbLinks();
     // An embedder cannot read this page's URL across origins, so hand it out:
     // the HUD's "open ↗" link would otherwise still point at the spot the chart
@@ -4036,14 +4046,18 @@
   }
 
   // A node's (or one choice's) terms onto the spot the tree was built on, then the
-  // grid: the range and the group-by panel for exactly those hands.
+  // grid: the range and the group-by panel for exactly those hands. A history
+  // entry of its own, so Back (the browser's, or ‹ Back to tree) returns here with
+  // the tree's entry holding where it was scrolled to.
   function drillTree(base, filter) {
     hideTip();
+    history.replaceState({ ...history.state, scrollY }, "");
     const cur = (base || "").split(",").map(t => t.trim()).filter(Boolean);
     $("filter").value = [...cur, ...filter.split(",").filter(t => !cur.includes(t))].join(",");
     state.by = "preflop";
     document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
-    apply();
+    apply(false, true);
+    scrollTo(0, 0); // the grid starts at the top, not where the tree was scrolled
   }
 
   function renderTree(d) {
@@ -5983,20 +5997,27 @@
   // bar adds terms, and Back takes the spot to what it was before, in one click,
   // rather than picking those terms back out of the box.
   const spotHistory = [];
-  function apply(fromBack = false) {
+  // `push` is a tree click's (drillTree): the spot gets a history entry of its own.
+  function apply(fromBack = false, push = false) {
     state.player = $("player").value;
     const next = $("filter").value.trim();
     if (fromBack !== true && next !== state.filter) {
       spotHistory.push(state.filter);
       if (spotHistory.length > 50) spotHistory.shift();
     }
-    $("back").classList.toggle("hidden", !spotHistory.length); // shown only with somewhere to go back to
     state.filter = next;
     dropCaches(); // Apply always asks the server again
     syncChips();
     closeHands();
-    writeUrl();
+    writeUrl(push);
     load();
+  }
+  // ← Back is shown only with somewhere to go back to. Fresh from a tree click it
+  // gives way to ‹ Back to tree, which is the browser's Back.
+  function syncBack() {
+    const tree = fromTree();
+    $("treeback").classList.toggle("hidden", !tree);
+    $("back").classList.toggle("hidden", tree || !spotHistory.length);
   }
   $("apply").addEventListener("click", () => apply());
   const back = () => {
@@ -6005,8 +6026,29 @@
     apply(true);
   };
   $("back").addEventListener("click", back);
+  $("treeback").addEventListener("click", () => history.back());
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.key === "ArrowLeft" && spotHistory.length) { e.preventDefault(); back(); }
+    // Fresh from the tree, Alt+← is left to the browser: back to the tree.
+    if (e.altKey && e.key === "ArrowLeft" && spotHistory.length && !fromTree()) { e.preventDefault(); back(); }
+  });
+  // The browser's Back and Forward: an entry's URL is the page's whole state, so
+  // it is read again and drawn, and a tree entry scrolled to where it was once the
+  // tree is on the page. A spot Back returns to comes off ← Back's list too.
+  history.scrollRestoration = "manual";
+  addEventListener("popstate", async () => {
+    const was = state.filter;
+    readUrl();
+    state.hand = null; // a linked hand opens once, at boot
+    if (!state.player || !listed(state.player)) state.player = $("player").value;
+    $("player").value = state.player;
+    if (state.filter !== was && spotHistory.at(-1) === state.filter) spotHistory.pop();
+    syncControls();
+    syncBack();
+    crumbLinks();
+    closeHands();
+    const y = history.state?.scrollY;
+    await load();
+    if (y != null) scrollTo(0, y);
   });
   $("clear").addEventListener("click", () => { $("filter").value = ""; apply(); });
   $("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
@@ -6275,7 +6317,7 @@
   }
   {
     const more = document.createElement("button"); more.type = "button"; more.id = "morefilters"; more.className = "more";
-    more.title = "more chips, by kind; every filter term is under the ? by the Spot box";
+    more.title = "more chips, by kind; every filter term is under ? Filters by the Spot box";
     let open = false;
     try { open = localStorage.getItem(FILTERS_KEY) === "open"; } catch { /* closed */ }
     const show = (o) => {
@@ -6372,20 +6414,24 @@
   // Embedded in the HUD, a link to the index would navigate the panel away from
   // the chart with no way back, so it only appears in a real tab.
   if (parent !== window) $("crumb").classList.add("hidden");
+  // The controls set from the URL's state: at boot, and on Back and Forward.
+  function syncControls() {
+    $("filter").value = state.filter;
+    $("street").value = state.street;
+    $("kind").value = state.kind;
+    if (state.order) $("review-sort").value = state.order;
+    $("review-split").setAttribute("aria-pressed", state.split);
+    $("hands-split").setAttribute("aria-pressed", state.split);
+    $("session-played").setAttribute("aria-pressed", state.played);
+    $("session-sat").setAttribute("aria-pressed", state.satOut);
+    $("review-seen").setAttribute("aria-pressed", state.hideSeen);
+    syncChips();
+    document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
+    document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
+  }
   readUrl();
   crumbLinks();
-  $("filter").value = state.filter;
-  $("street").value = state.street;
-  $("kind").value = state.kind;
-  if (state.order) $("review-sort").value = state.order;
-  $("review-split").setAttribute("aria-pressed", state.split);
-  $("hands-split").setAttribute("aria-pressed", state.split);
-  $("session-played").setAttribute("aria-pressed", state.played);
-  $("session-sat").setAttribute("aria-pressed", state.satOut);
-  $("review-seen").setAttribute("aria-pressed", state.hideSeen);
-  syncChips();
-  document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
-  document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
+  syncControls();
   loadPlayers().then(load).catch(e => { $("err").textContent = String(e.message || e); $("err").classList.remove("hidden"); });
   // `hand=<id>` (a link to one hand, e.g. the players page's shown hands): list
   // that hand and replay it, as if its row had been clicked.
