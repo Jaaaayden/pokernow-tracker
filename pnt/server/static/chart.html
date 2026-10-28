@@ -283,6 +283,34 @@
   .sp-wrap table tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
   .sp-foot { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
   .sp-foot button { font-size: 12px; padding: 0 6px; }
+  .sp-key { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+  .sp-key i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  /* The merged grid: one cell per made hand and street, its share over its n, and
+     a thin bar of bet it / slowplayed / gave up under them. */
+  .sp-gridbox { max-width: 680px; }
+  .sp-grid th:not(:first-child), .sp-grid td:not(:first-child) { text-align: center; width: 24%; }
+  .sp-grid td.c b { display: block; font-weight: 600; }
+  .sp-grid tr.total td.c b { font-weight: 700; }
+  .sp-mix { display: flex; gap: 1px; height: 4px; margin: 3px auto 0; max-width: 6em; border-radius: 2px; overflow: hidden; }
+  .sp-mix i { display: block; height: 100%; }
+  .sp-detail { margin-top: 14px; }
+  .sp-detail summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+  .sp-detail > div { margin-top: 8px; }
+  .sp-h { margin-top: 18px; }
+  .sp-h h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .sp-made { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 18px; margin-top: 8px; }
+  .sp-made .gh { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; border-bottom: 1px solid var(--grid); padding-bottom: 3px; }
+  .sp-made .gh small { color: var(--muted); }
+  .sp-made .ln { display: grid; grid-template-columns: minmax(0, max-content) minmax(30px, 1fr) max-content; gap: 8px;
+    align-items: center; padding: 2px 0; font-size: 12px; cursor: pointer; }
+  .sp-made .ln:hover .code, .sp-made .ln:focus-visible .code { text-decoration: underline; }
+  .sp-made .ln:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .sp-made .code { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sp-made .code.more { font-family: inherit; color: var(--ink-2); }
+  .sp-made .bar { height: 6px; background: var(--mid); border-radius: 3px; overflow: hidden; }
+  .sp-made .bar i { display: block; height: 100%; background: var(--accent); }
+  .sp-made .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+  .sp-made > .sp-foot { grid-column: 1 / -1; margin: 0; }
 
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 12px; }
   th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
@@ -2663,36 +2691,42 @@
   const SP_LEAF = { trips: "trips (paired board)", total: "all of them" };
   const spLeaf = (leaf) => SP_LEAF[leaf] || leaf.replace(/_/g, " ");
   const SP_NOTE = [
-    "**Rows:** each made hand they had on this street, shown hands only.",
+    "**Grid:** slowplay % of each made hand they had on each street, shown hands only. Hover a cell for what they did, click for its hands.",
     "**Skew:** a strong hand that bet and got folds is never shown, so slowplay % reads high, except yours (all cards known).",
-    "Read coverage first. Click a cell for its hands.",
+    "**Line by when made:** the whole line, by the street the hand first got that strong. Read coverage first.",
   ];
 
   function renderStrengthTiles(d) {
-    setTileKeys(`in the hand on the ${d.street}`, "cards known", "coverage");
-    $("t-hands").textContent = d.hands;
-    $("t-known").textContent = d.known;
-    $("t-cov").textContent = fmtPct(d.coverage);
-    $("t-raise").textContent = fmtPct(d.total.slowplay_pct);
-    setRaiseKey("slowplayed", `${d.total.slowplay} of ${d.total.n} shown ${spLeaf(d.floor)}+ on the ${d.street}`);
-    tileTip("t-raise", ciText(d.total.slowplay_pct, d.total.n));
+    // Every postflop hand sees the flop, so its counts are the view's coverage.
+    const f = d.streets.flop, a = d.all_streets;
+    setTileKeys("in the hand on the flop", "cards known", "coverage");
+    $("t-hands").textContent = f.hands;
+    $("t-known").textContent = f.known;
+    $("t-cov").textContent = fmtPct(f.coverage);
+    $("t-raise").textContent = fmtPct(a.slowplay_pct);
+    setRaiseKey("slowplayed", `${a.slowplay} of ${a.n} shown ${spLeaf(d.floor)}+ streets, flop to river`);
+    tileTip("t-raise", ciText(a.slowplay_pct, a.n));
   }
+
+  // Which made hand the line-by-when-made table is for, and whether the per-action
+  // table is open: kept while the page is open. An old link that named a turn or
+  // river table opens it on that street.
+  let spMadeLeaf = "total";
+  let spDetailOpen = null;
+  const SP_STREETS = ["flop", "turn", "river"];
+  // A grid cell's bar: bet it, slowplayed, gave up, in the order of SP_GROUPS.
+  const SP_MIX = ["var(--ink-2)", "var(--accent)", "var(--axis)"];
+  // Lines listed per made-on street before the rest roll up.
+  const SP_TOP_LINES = 4;
 
   function renderStrength(d) {
     const wrap = $("strength");
     wrap.replaceChildren();
+    if (spDetailOpen === null) spDetailOpen = state.street !== "flop";
     const labels = Object.fromEntries(d.categories.map(c => [c.key, c.label]));
 
-    // The pickers: which street, and the weakest made hand counted.
+    // The picker: the weakest made hand counted.
     const ctl = document.createElement("div"); ctl.className = "sp-ctl";
-    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
-    seg.setAttribute("aria-label", "Street");
-    for (const s of ["flop", "turn", "river"]) {
-      const b = document.createElement("button"); b.type = "button"; b.textContent = s;
-      b.setAttribute("aria-pressed", s === d.street);
-      b.addEventListener("click", () => { state.street = s; $("street").value = s; writeUrl(); load(); });
-      seg.appendChild(b);
-    }
     const fl = document.createElement("label"); fl.textContent = "made at least ";
     const sel = document.createElement("select"); sel.setAttribute("aria-label", "Weakest made hand counted");
     for (const [v, text] of SP_FLOORS) {
@@ -2701,14 +2735,116 @@
     sel.value = d.floor;
     sel.addEventListener("change", () => { state.floor = sel.value; writeUrl(); load(); });
     fl.appendChild(sel);
-    ctl.append(seg, fl);
+    const key = document.createElement("span"); key.className = "sp-key";
+    SP_GROUPS.forEach(([name], i) => {
+      const k = document.createElement("i"); k.style.background = SP_MIX[i];
+      const item = document.createElement("span"); item.append(k, name.toLowerCase());
+      key.appendChild(item);
+    });
+    ctl.append(fl, key);
     wrap.appendChild(ctl);
 
+    // The grid: a row per made hand, a column per street, each cell the slowplay
+    // share of that hand on that street, shaded by it.
+    const leaves = d.streets.flop.rows.map(r => r.leaf)
+      .filter(leaf => SP_STREETS.some(s => d.streets[s].rows.find(r => r.leaf === leaf).n > 0));
+    if (!leaves.length) {
+      const p = document.createElement("p"); p.className = "muted";
+      p.textContent = `no shown ${spLeaf(d.floor)} or better that acted after the flop in this spot`;
+      wrap.appendChild(p);
+    } else {
+      const t = document.createElement("table"); t.className = "sp-grid";
+      const head = document.createElement("tr");
+      for (const text of ["made hand", ...SP_STREETS]) {
+        const e = document.createElement("th"); e.textContent = text; head.appendChild(e);
+      }
+      t.appendChild(head);
+      const cellFor = (s, r) => {
+        const td = document.createElement("td");
+        if (!r.n) { td.className = "zero"; td.textContent = "·"; return td; }
+        td.className = "c";
+        const pct = document.createElement("b"); pct.textContent = fmtPct(r.slowplay_pct);
+        const n = document.createElement("small"); n.textContent = `${r.slowplay} of ${r.n}`;
+        const mix = document.createElement("span"); mix.className = "sp-mix";
+        SP_GROUPS.forEach(([, keys], i) => {
+          const k = keys.reduce((sum, key) => sum + r.cells[key].n, 0);
+          if (!k) return;
+          const seg = document.createElement("i"); seg.style.flex = `${k} 1 0`; seg.style.background = SP_MIX[i];
+          mix.appendChild(seg);
+        });
+        td.append(pct, n, mix);
+        td.style.background = `color-mix(in srgb, var(--accent) ${Math.round((r.slowplay_pct || 0) * 0.45)}%, transparent)`;
+        const filter = [d.filter, r.filter].filter(Boolean).join(",");
+        const tip = d.categories.filter(c => r.cells[c.key].n)
+          .map(c => [labels[c.key], `${r.cells[c.key].n} · ${fmtPct(r.cells[c.key].pct)}`]);
+        if (r.all_in) tip.push(["all in already", String(r.all_in)]);
+        tip.push(["click", "list the hands"]);
+        const title = `${spLeaf(r.leaf)} on the ${s}`;
+        td.addEventListener("pointermove", (ev) => showLineTip(ev, title, tip));
+        td.addEventListener("pointerleave", hideTip);
+        td.addEventListener("focus", (ev) => showLineTip(ev, title, tip));
+        td.addEventListener("blur", hideTip);
+        td.tabIndex = 0; td.setAttribute("role", "button");
+        const ids = Object.values(r.cells).flatMap(c => c.hand_ids);
+        pickable(td, `${title} · ${filter}`, ids);
+        td.addEventListener("click", hideTip);
+        return td;
+      };
+      for (const leaf of [...leaves, "total"]) {
+        const tr = document.createElement("tr");
+        if (leaf === "total") tr.className = "total";
+        const name = document.createElement("td"); name.textContent = spLeaf(leaf);
+        tr.appendChild(name);
+        for (const s of SP_STREETS) {
+          const st = d.streets[s];
+          tr.appendChild(cellFor(s, leaf === "total" ? st.total : st.rows.find(r => r.leaf === leaf)));
+        }
+        t.appendChild(tr);
+      }
+      const box = document.createElement("div"); box.className = "sp-wrap sp-gridbox"; box.appendChild(t);
+      wrap.appendChild(box);
+    }
+
+    // The per-action table, one street at a time, under the grid.
+    const det = document.createElement("details"); det.className = "sp-detail"; det.open = spDetailOpen;
+    const sum = document.createElement("summary"); sum.textContent = "By action, one street";
+    const body = document.createElement("div");
+    det.append(sum, body);
+    det.addEventListener("toggle", () => { spDetailOpen = det.open; });
+    const drawDetail = () => renderSpDetail(body, d.streets[state.street], d.filter, labels, () => {
+      writeUrl(); drawDetail();
+    });
+    drawDetail();
+    wrap.appendChild(det);
+
+    renderSpMadeOn(wrap, d);
+
+    // What the grid leaves out, said rather than dropped silently.
+    const foot = document.createElement("p"); foot.className = "sp-foot";
+    const never = d.streets.flop.rows.map(r => r.leaf).filter(leaf => !leaves.includes(leaf)).map(spLeaf);
+    if (never.length) foot.append(`Never shown acting with: ${never.join(", ")}. `);
+    foot.append("Slowplayed is a check or a call: a check-raise is a trap too, but puts money in, so it is counted as betting it.");
+    wrap.appendChild(foot);
+  }
+
+  // One street's table: a row per made hand, a column per thing they did. Its
+  // cells partition the row and each lists its hands.
+  function renderSpDetail(box, d, spot, labels, redraw) {
+    box.replaceChildren();
+    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Street");
+    for (const s of SP_STREETS) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = s;
+      b.setAttribute("aria-pressed", s === d.street);
+      b.addEventListener("click", () => { state.street = s; $("street").value = s; redraw(); });
+      seg.appendChild(b);
+    }
+    box.appendChild(seg);
     const rows = d.rows.filter(r => r.n > 0);
     if (!rows.length) {
       const p = document.createElement("p"); p.className = "muted";
       p.textContent = `no shown ${spLeaf(d.floor)} or better that acted on the ${d.street} in this spot`;
-      wrap.appendChild(p);
+      box.appendChild(p);
     } else {
       const groups = SP_GROUPS.map(([name, keys]) =>
         [name, keys.filter(k => !SP_OPTIONAL.has(k) || d.total.cells[k].n > 0)]).filter(([, keys]) => keys.length);
@@ -2738,7 +2874,7 @@
         // Shaded by share of the row, slowplays in the accent, the rest in grey.
         const tint = slow ? "var(--accent)" : "var(--muted)";
         td.style.background = `color-mix(in srgb, ${tint} ${Math.round(c.pct * 0.45)}%, transparent)`;
-        const filter = [d.filter, c.filter].filter(Boolean).join(",");
+        const filter = [spot, c.filter].filter(Boolean).join(",");
         td.title = `${c.n} of ${r.n} · ${filter}`;
         td.tabIndex = 0; td.setAttribute("role", "button");
         pickable(td, `${d.street} ${spLeaf(r.leaf)} · ${labels[k]} · ${filter}`, c.hand_ids);
@@ -2755,22 +2891,97 @@
         tr.appendChild(pct);
         t.appendChild(tr);
       }
-      const box = document.createElement("div"); box.className = "sp-wrap"; box.appendChild(t);
-      wrap.appendChild(box);
+      const wrap = document.createElement("div"); wrap.className = "sp-wrap"; wrap.appendChild(t);
+      box.appendChild(wrap);
     }
-
-    // What the table leaves out, said rather than dropped silently.
-    const foot = document.createElement("p"); foot.className = "sp-foot";
-    const never = d.rows.filter(r => r.n === 0).map(r => spLeaf(r.leaf));
-    if (never.length) foot.append(`Never shown acting with: ${never.join(", ")}. `);
     if (d.total.all_in) {
+      const foot = document.createElement("p"); foot.className = "sp-foot";
       foot.append(`${d.total.all_in} more were all in before the ${d.street}, with nothing to decide `);
       const b = document.createElement("button"); b.type = "button"; b.textContent = "list ›";
       b.addEventListener("click", () => openHands(`${d.street} · all in already · ${d.total.all_in_filter}`, d.total.all_in_ids));
-      foot.append(b, ". ");
+      foot.append(b, ".");
+      box.appendChild(foot);
     }
-    foot.append("Slowplayed is a check or a call: a check-raise is a trap too, but puts money in, so it is counted as betting it.");
-    wrap.appendChild(foot);
+  }
+
+  // The whole line of each strong hand, by the street it was first that strong:
+  // the flopped boat that went x/b/b beside the turned one that went b/b/b.
+  function renderSpMadeOn(wrap, d) {
+    const m = d.made_on;
+    const shown = m.rows.filter(r => r.n > 0);
+    const head = document.createElement("div"); head.className = "sp-ctl sp-h";
+    const h = document.createElement("h3"); h.textContent = "Line by when it was made";
+    head.appendChild(h);
+    if (!shown.length) {
+      wrap.appendChild(head);
+      return;
+    }
+    if (spMadeLeaf !== "total" && !shown.some(r => r.leaf === spMadeLeaf)) spMadeLeaf = "total";
+    const fl = document.createElement("label"); fl.textContent = "ended as ";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Made hand it ended as");
+    for (const r of [m.total, ...shown]) {
+      const o = document.createElement("option"); o.value = r.leaf;
+      o.textContent = `${r.leaf === "total" ? `any ${spLeaf(d.floor)}+` : spLeaf(r.leaf)} (${r.n})`;
+      sel.appendChild(o);
+    }
+    sel.value = spMadeLeaf;
+    fl.appendChild(sel);
+    head.appendChild(fl);
+    wrap.appendChild(head);
+
+    const grid = document.createElement("div"); grid.className = "sp-made";
+    const draw = () => {
+      grid.replaceChildren();
+      const row = spMadeLeaf === "total" ? m.total : m.rows.find(r => r.leaf === spMadeLeaf);
+      const name = spMadeLeaf === "total" ? `${spLeaf(d.floor)}+` : spLeaf(spMadeLeaf);
+      for (const s of SP_STREETS) {
+        const g = row.streets[s];
+        const col = document.createElement("div"); col.className = "grp";
+        const t = document.createElement("div"); t.className = "gh";
+        t.append(`made on the ${s} `);
+        const sm = document.createElement("small"); sm.textContent = `${g.n} · ${fmtPct(g.pct)}`; t.appendChild(sm);
+        col.appendChild(t);
+        if (!g.n) {
+          const p = document.createElement("div"); p.className = "muted"; p.textContent = "none";
+          col.appendChild(p);
+        }
+        const top = g.lines.slice(0, SP_TOP_LINES);
+        const rest = g.lines.slice(SP_TOP_LINES);
+        const lineRow = (code, words, n, pct, ids) => {
+          const r = document.createElement("div"); r.className = "ln";
+          r.tabIndex = 0; r.setAttribute("role", "button");
+          const c = document.createElement("span"); c.className = "code"; c.textContent = code;
+          if (words) c.title = words; else c.classList.add("more");
+          const bar = document.createElement("span"); bar.className = "bar";
+          const fill = document.createElement("i"); fill.style.width = `${pct || 0}%`; bar.appendChild(fill);
+          const v = document.createElement("span"); v.className = "num"; v.textContent = `${n} · ${fmtPct(pct)}`;
+          r.append(c, bar, v);
+          pickable(r, `${name} made on the ${s} · ${code}`, ids);
+          return r;
+        };
+        for (const l of top) {
+          const words = l.line.split("/").map(seg => lineWords(seg, "own").textContent).join(" / ");
+          col.appendChild(lineRow(l.line, words, l.n, l.pct, l.hand_ids));
+        }
+        if (rest.length) {
+          const n = rest.reduce((sum, l) => sum + l.n, 0);
+          col.appendChild(lineRow(`${rest.length} other lines`, null, n, Math.round(1000 * n / g.n) / 10,
+            rest.flatMap(l => l.hand_ids)));
+        }
+        grid.appendChild(col);
+      }
+      if (row.all_in) {
+        const p = document.createElement("p"); p.className = "sp-foot";
+        p.append(`${row.all_in} more were already all in when they made it `);
+        const b = document.createElement("button"); b.type = "button"; b.textContent = "list ›";
+        b.addEventListener("click", () => openHands(`${name} · all in before it was made`, row.all_in_ids));
+        p.append(b, ".");
+        grid.appendChild(p);
+      }
+    };
+    sel.addEventListener("change", () => { spMadeLeaf = sel.value; draw(); });
+    draw();
+    wrap.appendChild(grid);
   }
 
   // ---- results by pot type ----------------------------------------------------
