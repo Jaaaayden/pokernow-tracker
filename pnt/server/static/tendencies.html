@@ -56,6 +56,43 @@
   .dim { color: var(--muted); }
   .err { color: var(--down); margin: 12px 0; }
   .loading { opacity: .45; }
+  .hidden { display: none !important; }
+
+  /* --- one player --- */
+  .pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; font-size: 13px; color: var(--ink-2); }
+  .pick input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis);
+    border-radius: 6px; padding: 5px 8px; width: 15em; }
+  .pick a { color: var(--accent); text-decoration: none; }
+  .pick a:hover { text-decoration: underline; }
+  #one h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 14px 0 2px; }
+  #one h3::first-letter { text-transform: uppercase; }
+  table.measures { max-width: 980px; }
+  td.pool { white-space: nowrap; width: 1%; color: var(--muted); text-align: right; }
+  td.shared { white-space: nowrap; width: 1%; color: var(--muted); font-size: 12px; }
+  tr.streaky td { color: var(--muted); }
+  td.m { width: 34%; }
+  td.m a { color: var(--ink); text-decoration: none; }
+  td.m a:hover { color: var(--accent); }
+  td.fig { white-space: nowrap; width: 1%; text-align: right; }
+  td.fig small { color: var(--muted); margin-left: 4px; }
+  tr.out td.fig b { color: var(--accent); }
+  /* Where the player sits: the pool's middle half as a band, the player a dot. */
+  td.gauge { width: 160px; }
+  .gauge-track { position: relative; height: 8px; margin-top: 6px; border-radius: 4px; background: var(--grid); }
+  .gauge-band { position: absolute; top: 0; bottom: 0; border-radius: 4px;
+    background: color-mix(in srgb, var(--muted) 55%, transparent); }
+  .gauge-dot { position: absolute; top: -2px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%;
+    background: var(--ink-2); border: 2px solid var(--surface); }
+  tr.out .gauge-dot { background: var(--accent); }
+  @media (max-width: 620px) {
+    td.gauge, td.shared, table:not(.measures) td.pool { display: none; }
+    td.m { width: auto; }
+    /* A tag's advice gets a line of its own under the tag and its figure. */
+    #one-body table:not(.measures) tr { display: flex; flex-wrap: wrap; align-items: baseline;
+      border-bottom: 1px solid var(--grid); }
+    #one-body table:not(.measures) td { border-bottom: 0; width: auto; }
+    #one-body table:not(.measures) td:nth-child(4) { flex-basis: 100%; padding-top: 0; }
+  }
 </style>
 </head>
 <body>
@@ -69,12 +106,18 @@
     <li><b>You:</b> the tags an opponent's HUD shows on you, and how they would play you.</li>
     <li><b>Your opponents:</b> the exploits that fire on your regulars, most common first. Each is judged against the others at the table, e.g. folds to c-bets 51% vs a pool at 40%.</li>
     <li><b>The table:</b> what the regulars do together, on fixed cuts, since a whole table never stands out from itself.</li>
+    <li><b>One player:</b> pick a name for their tags and every measure against the pool, e.g. folds to river bets 53% vs 39%.</li>
     <li>Click a tag or a name for those hands on the chart.</li>
   </ul>
+  <div class="pick"><label for="who">Player</label>
+    <input id="who" list="who-list" placeholder="search a player" autocomplete="off" spellcheck="false">
+    <datalist id="who-list"></datalist>
+    <a id="everyone" href="?" class="hidden">&lsaquo; everyone</a></div>
 
   <section class="card loading" id="you"><h2>You <small id="you-sub"></small></h2><div id="you-body" class="dim">loading…</div></section>
   <section class="card loading" id="pool"><h2>Your opponents <small id="pool-sub"></small></h2><div id="pool-body" class="dim">loading…</div></section>
   <section class="card loading" id="table"><h2>The table <small id="table-sub"></small></h2><div id="table-body" class="dim">loading…</div></section>
+  <section class="card hidden" id="one"><h2><span id="one-name"></span> <small id="one-sub"></small></h2><div id="one-body"></div></section>
   <div class="err" id="err" hidden></div>
 </main>
 
@@ -160,11 +203,111 @@
     body.replaceChildren(t);
   }
 
-  fetch("/tendencies", { headers: { accept: "application/json" } })
-    .then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json(); })
-    .then((d) => { renderYou(d); renderPool(d); renderTable(d); })
+  // ---- one player -------------------------------------------------------
+  const pctText = (v) => v == null ? "–" : `${v}%`;
+  function tagTable(rows, p, d) {
+    const t = node("table");
+    for (const x of rows) {
+      const tr = node("tr", null, x.carried_by ? "streaky" : null);
+      const pool = x.pool_pct != null ? `pool ${x.pool_pct}%` : x.kind === "archetype" ? "" : "fixed cut";
+      const shared = x.shared ? `${x.shared} of ${d.regulars} regulars` : "";
+      tr.append(tagCell(x, chart(p.player, x), x.tip), node("td", figure(x), "n"), node("td", pool, "pool"),
+        node("td", x.carried_by ? `one session carries it · ${x.advice}` : x.advice), node("td", shared, "shared"));
+      t.append(tr);
+    }
+    return t;
+  }
+  function gauge(r) {
+    const td = node("td", null, "gauge");
+    if (r.pct == null) return td;
+    const track = node("div", null, "gauge-track");
+    if (r.pool_spread) {
+      const band = node("div", null, "gauge-band");
+      band.style.left = `${r.pool_spread[0]}%`;
+      band.style.width = `${Math.max(1, r.pool_spread[1] - r.pool_spread[0])}%`;
+      track.append(band);
+    }
+    const dot = node("div", null, "gauge-dot");
+    dot.style.left = `${Math.min(100, r.pct)}%`;
+    track.append(dot);
+    track.title = r.pool_spread
+      ? `${r.pct}% against the pool's middle half, ${r.pool_spread[0]}–${r.pool_spread[1]}%`
+      : `${r.pct}%: too few players for a pool line`;
+    td.append(track);
+    return td;
+  }
+  function renderOne(d) {
+    const p = d.player;
+    $("one-name").textContent = p.player;
+    $("one-sub").textContent = `${p.hands.toLocaleString()} hands · VPIP ${pctText(p.vpip)} · PFR ${pctText(p.pfr)}`;
+    const body = $("one-body");
+    body.replaceChildren();
+    const tags = [...p.tags, ...p.streaky];
+    body.append(tags.length ? tagTable(tags, p, d) : node("p", "No tag fires on them.", "dim"));
+    for (const g of p.measures) {
+      body.append(node("h3", g.street));
+      const t = node("table", null, "measures");
+      for (const r of g.rows) {
+        // Outside the pool's middle half is what is worth a look.
+        const out = r.pct != null && r.pool_spread && !r.own_log && (r.pct < r.pool_spread[0] || r.pct > r.pool_spread[1]);
+        const tr = node("tr", null, out ? "out" : null);
+        const m = node("td", null, "m");
+        const a = node("a", r.label);
+        a.href = chart(p.player, r);
+        m.append(a);
+        const fig = node("td", null, "fig");
+        fig.append(node("b", pctText(r.pct)), node("small", `of ${r.n.toLocaleString()}`));
+        const pool = r.own_log ? "their own log" : r.pool_pct != null ? `pool ${r.pool_pct}%` : "";
+        tr.append(m, fig, gauge(r), node("td", pool, "pool"));
+        t.append(tr);
+      }
+      body.append(t);
+    }
+  }
+
+  // ?player= picks one: the URL keeps it, so it survives a reload and can be sent.
+  const picked = new URLSearchParams(location.search).get("player") || "";
+  $("who").value = picked;
+  const back = new URLSearchParams(theme ? { theme } : {});
+  $("everyone").href = "?" + back;
+  $("everyone").classList.toggle("hidden", !picked);
+  function pick(name) {
+    const q = new URLSearchParams(back);
+    if (name) q.set("player", name);
+    location.search = "?" + q;
+  }
+  let aliases = [];
+  fetch("/players").then((r) => r.json()).then((rows) => {
+    aliases = rows.map((p) => p.alias);
+    $("who-list").replaceChildren(...aliases.map((a) => Object.assign(document.createElement("option"), { value: a })));
+  }).catch(() => {});
+  // A name from the list picks at once; Enter takes the first that starts with
+  // what was typed, case aside.
+  $("who").addEventListener("input", (e) => { if (aliases.includes(e.target.value) && e.target.value !== picked) pick(e.target.value); });
+  $("who").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const v = e.target.value.trim().toLowerCase();
+    if (!v) return pick("");
+    const hit = aliases.find((a) => a.toLowerCase() === v) || aliases.find((a) => a.toLowerCase().startsWith(v));
+    if (hit) pick(hit);
+  });
+
+  const sections = picked ? ["one"] : ["you", "pool", "table"];
+  if (picked) {
+    for (const id of ["you", "pool", "table"]) $(id).classList.add("hidden");
+    $("one").classList.remove("hidden");
+    $("one").classList.add("loading");
+    $("one-name").textContent = picked;
+    $("one-body").textContent = "loading…";
+  }
+  fetch("/tendencies" + (picked ? "?" + new URLSearchParams({ player: picked }) : ""), { headers: { accept: "application/json" } })
+    .then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status} ${r.statusText}`);
+      return r.json();
+    })
+    .then((d) => { if (picked) renderOne(d); else { renderYou(d); renderPool(d); renderTable(d); } })
     .catch((e) => { $("err").textContent = `Could not load /tendencies: ${e.message || e}`; $("err").hidden = false; })
-    .finally(() => { for (const id of ["you", "pool", "table"]) $(id).classList.remove("loading"); });
+    .finally(() => { for (const id of sections) $(id).classList.remove("loading"); });
 })();
 </script>
 </body>
