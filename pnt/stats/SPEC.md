@@ -1389,12 +1389,44 @@ strong hand that bet and got folds to is never shown, while one that checked or
 called usually reaches showdown. An opponent's slowplay share reads high for that
 reason. The hero's cards are known on every hand, so the hero's does not.
 
-`GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns the table,
-every cell with `n`, `pct` of its row, `filter` and `hand_ids`.
+**All three streets.** `slowplay.all_streets(facts, floor)` is the table on every
+street at once, `streets: {flop, turn, river}`, and `all_streets`: `n`, `slowplay`
+and `slowplay_pct` summed over the three `total` rows. A hand strong on two streets
+is two decisions there, so it counts decisions, not hands.
+
+**Line by when made.** `slowplay.made_on(facts, floor)` asks how a hand that ended
+strong got there: did the flopped boat go `x/b/b` and the turned one `b/b/b`?
+
+- A hand's **class** is its made hand (`made_<street>`'s reading) on the last
+  street it was still in for: the river if the board ran out, else where it ended.
+  It counts when that class is `floor` or better.
+- It was **made on** the first street whose made hand was already at least that
+  strong (`MADE_LEAVES` rank). Two pair on the flop that boats on the turn is a
+  full house made on the turn; a set that stays a set is made on the flop.
+- It is listed when they acted on the made-on street (`line_<street>=*`). One
+  already all in by then had no decision with it and is counted as the row's
+  `all_in` (with `all_in_ids`) instead.
+- Its **line** is the whole own line, as in "Action lines": `line[flop]/line[turn]/
+  line[river]`, `-` where they did not act. `x/b/b` is check, bet, bet; `xc/-/-`
+  is a flop check-call that ended their decisions.
+
+`rows` has one entry per leaf from `straight_flush` to `floor` and `total` all of
+them, each with `n`, `all_in` and `streets[<made on>]`: `n`, `pct` of the row,
+`hand_ids`, and `lines`, every line with its `n`, `pct` of the made-on group and
+`hand_ids`, most common first (ties by line). A group's lines add up to its `n`;
+a row's groups add up to its. No filter is given: the made-on condition compares
+two streets per hand, which no single term says.
+
+`GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns `street`'s
+table at the top level, every cell with `n`, `pct` of its row, `filter` and
+`hand_ids`, plus `streets`, `all_streets` and `made_on`.
 `GET /slowplay` (same parameters, plus `min`) pools everyone's hands and adds
 `players`, each player's total row, highest slowplay share first. `pnt slowplay
-[alias] --street flop --floor set` prints both; the chart's **Strength by street**
-view draws the player's.
+[alias] --street flop --floor set` prints both. The chart's **Strength by street**
+view draws the player's: a grid of `slowplay_pct` per leaf and street (each cell
+lists the row's hands on that street; hover shows its columns), the one-street
+table under it, and the line-by-when-made groups, the top four lines each and the
+rest rolled up.
 
 The **SLOWPLAYS** tag (see "Exploit tags") is this table's flop `total` row at the
 default floor: `n` is the row's `n`, its hits the slowplays, and its filter the

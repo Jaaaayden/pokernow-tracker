@@ -2156,15 +2156,18 @@ def player_slowplay(
 ) -> dict:
     """What a player did on one street with each strong made hand: bet, raised,
     check-raised, or slowplayed it with a check or a call. Every cell carries the
-    filter that finds its hands. Built from shown hands, so read coverage first."""
-    from pnt.stats.slowplay import slowplay
+    filter that finds its hands. Built from shown hands, so read coverage first.
+    `streets` has the table for all three streets, `street`'s at the top level as
+    before, and `made_on` each strong hand's whole line by the street it was made."""
+    from pnt.stats.slowplay import all_streets, made_on
 
     facts = _spot_facts(alias, filter, game)
     try:
-        out = slowplay(facts, street, floor)
+        every = all_streets(facts, floor)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"player": alias, "filter": filter, **out}
+    return {"player": alias, "filter": filter, **every["streets"][street], **every,
+            "made_on": made_on(facts, floor)}
 
 
 @app.get("/slowplay")
