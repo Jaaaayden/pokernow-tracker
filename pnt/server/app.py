@@ -54,7 +54,7 @@ from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.bluffs import CATEGORY, bluff_value, members
 from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
-from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.filters import date_key, parse_filter, vocabulary
 from pnt.stats.fold_equity import fold_equity
 from pnt.stats.fold_equity import pool_facts as fold_pool_facts
 from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
@@ -777,10 +777,16 @@ def _predicate(conn: sqlite3.Connection, filter: str | None):
 def _spot_key(conn: sqlite3.Connection, filter: str | None, tags: int | None = None) -> str | None:
     """`filter` as a cache key. A `tag=` term reads tags no generation counts, so
     a filter that may hold one carries every tag and flag along with it: `tags`,
-    when the caller has already read them (`_tag_print`)."""
-    if not filter or "tag" not in filter:
+    when the caller has already read them (`_tag_print`). A `last:7d` counts back
+    from today, so it carries the date: tomorrow is another key."""
+    if not filter:
         return filter
-    return f"{filter}\x00{_tag_print(conn) if tags is None else tags}"
+    key = filter
+    if (day := date_key(filter)) is not None:
+        key = f"{key}\x00{day}"
+    if "tag" in filter:
+        key = f"{key}\x00{_tag_print(conn) if tags is None else tags}"
+    return key
 
 
 def _tag_print(conn: sqlite3.Connection) -> int:

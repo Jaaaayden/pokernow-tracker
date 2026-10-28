@@ -87,6 +87,8 @@ _BEFORE_FLAGS = frozenset({
     "straddled", "dead_button", "post_loss",
 })
 _BEFORE_NUMERIC = re.compile(r"^(players|eff_bb|callers_before|session_hand|session_hour|hands_since_loss)(>=|<=|!=|=|>|<)")
+#: When the hand was dealt: `since:`, `before:`, `last:`.
+_BEFORE_DATE = re.compile(r"^(since|before|last):")
 _OPEN_BB = re.compile(r"^open_bb(>=|<=|!=|=|>|<)")
 _FLOP_TEXTURE = re.compile(rf"^flop(!=|=)({'|'.join(TEXTURE_TAGS)})$")
 
@@ -204,7 +206,7 @@ def _before(seg: str, level: int) -> bool:
         return True
     if seg.startswith("position=") and "(" not in seg:
         return True
-    if _BEFORE_NUMERIC.match(seg):
+    if _BEFORE_NUMERIC.match(seg) or _BEFORE_DATE.match(seg):
         return True
     return level >= 2 and bool(_OPEN_BB.match(seg))
 
