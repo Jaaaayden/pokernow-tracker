@@ -132,6 +132,16 @@
   .tile.warn .v { color: var(--ink-2); }
   .tile.pick { cursor: pointer; text-align: left; font: inherit; color: inherit; }
   .tile.pick:hover { border-color: var(--muted); }
+  /* A result's sign, wherever one is printed: profit green, loss red (signTone).
+     A tile's net under BIG_BB is .soft, a paler tone; .attn is a count that
+     wants a look. Each tile render resets these (setTileKeys). */
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .tile .v.up { color: var(--up); }
+  .tile .v.down { color: var(--down); }
+  .tile .v.up.soft { color: color-mix(in srgb, var(--up) 70%, var(--muted)); }
+  .tile .v.down.soft { color: color-mix(in srgb, var(--down) 70%, var(--muted)); }
+  .tile .v.attn { color: var(--amber); }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 72ch; }
   ul.note { padding-left: 18px; max-width: 90ch; }
   ul.note li { margin: 1px 0; }
@@ -288,6 +298,12 @@
   th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  /* The plain data tables (made hands, Group by, Results, the side bets): a
+     header ruled off in the axis grey, light zebra rows, room to read. :where
+     keeps it weak, so each table's own hover and row styles still win. */
+  :where(#table, .gb-body, #results, #bounty) th { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--axis); white-space: nowrap; }
+  :where(#table, .gb-body, #results, #bounty) :is(th, td) { padding: 6px 10px; }
+  :where(#table, .gb-body, #results, #bounty) tr:nth-child(even) > td { background: color-mix(in srgb, var(--mid) 40%, transparent); }
   tr.pick { cursor: pointer; }
   tr.pick:hover td { background: var(--mid); }
   tr.pick:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -300,8 +316,6 @@
   #table .tbl-ctl .dim { color: var(--muted); }
   #table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   #table th.sortable:hover { color: var(--ink); }
-  #table td.up { color: var(--up); }
-  #table td.down { color: var(--down); }
 
   /* --- fold equity, under the sizing blocks --- */
   .foldeq { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
@@ -589,7 +603,7 @@
 
   /* --- results by pot type ---
      Won and lost as one bar from zero, in the profit and loss colours (--up,
-     --down). The figures stay in ink: the bar carries the sign. */
+     --down); the net and bb/100 figures take the same colours. */
   #results { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
   #results h3 { font-size: 13px; font-weight: 600; margin: 0; }
   #results table { margin-top: 6px; min-width: 620px; }
@@ -745,8 +759,6 @@
   .gb td.lab { white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
   .gb td.lab .add { color: var(--accent); margin-right: 6px; }
   .gb td small { color: var(--muted); margin-left: 3px; }
-  .gb td.up { color: var(--up); }
-  .gb td.down { color: var(--down); }
   .gb tr.row { cursor: pointer; }
   .gb tr.row:hover td, .gb tr.row:focus-visible td { background: var(--mid); }
   .gb tr.row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -1952,6 +1964,21 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+  // A won or lost figure in the profit or loss colour: .up above zero, .down
+  // below, neither at zero or with no figure. Given `bb`, the result's size on a
+  // tile, one under BIG_BB takes the softer tone. Clears its own classes first,
+  // so a reused element never keeps an old sign.
+  const BIG_BB = 100;
+  function signTone(el, v, bb = null) {
+    el.classList.remove("up", "down", "soft");
+    if (v > 0 || v < 0) {
+      el.classList.add(v > 0 ? "up" : "down");
+      if (bb != null && Math.abs(bb) < BIG_BB) el.classList.add("soft");
+    }
+    return el;
+  }
+  // `text` as a span in `v`'s colour, for a result inside a line of muted text.
+  const toned = (text, v) => signTone(Object.assign(document.createElement("span"), { textContent: text }), v);
   // A figure against its baseline, as the class word for .num-good/-bad/-eh:
   // "good" more than `band` above it, "bad" more than `band` below, "eh" within.
   // Given a 95% interval [lo, hi] instead, only one clear of the baseline is
@@ -2271,7 +2298,7 @@
         }
         const val = document.createElement("div"); val.className = "val";
         val.textContent = `${g.known}/${g.n} (${fmtPct(g.coverage)})`;
-        const sm = document.createElement("small"); sm.textContent = fmtNet(g.net_bb);
+        const sm = document.createElement("small"); sm.appendChild(toned(fmtNet(g.net_bb), g.net_bb));
         val.appendChild(sm);
         rows.append(lab, n, stack, val);
 
@@ -2795,6 +2822,8 @@
     $("t-hands").textContent = d.hands;
     $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb).replace(" bb", "");
     $("t-cov").textContent = tot.bb_per_100 == null ? "–" : tot.bb_per_100.toFixed(1);
+    signTone($("t-known"), tot.net_bb, tot.net_bb);
+    signTone($("t-cov"), tot.bb_per_100);
     tileTip("t-cov", tot.bb_per_100 == null || tot.bb_per_100_ci == null ? ""
       : `± ${tot.bb_per_100_ci.toFixed(1)} bb/100 (95%: ${(tot.bb_per_100 - tot.bb_per_100_ci).toFixed(1)} to `
         + `${(tot.bb_per_100 + tot.bb_per_100_ci).toFixed(1)}) over ${tot.bb_hands} complete hands`);
@@ -2854,6 +2883,7 @@
                          fmtPct(r.vpip_pct), fmtPct(r.saw_flop_pct), fmtPct(r.wtsd), fmtPct(r.wsd)]) {
           const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
         }
+        signTone(tr.cells[3], r.net_bb); signTone(tr.cells[4], r.bb_per_100);
         const where = r.filter == null ? "no filter term says this yet, so the hands are listed as they are"
           : `adds ${r.filter} to the spot`;
         tr.title = `${r.label}: ${r.hands} hands, ${r.bb_hands} with a known result`
@@ -3646,13 +3676,14 @@
         if (small) { const s = document.createElement("small"); s.textContent = small; el.appendChild(s); }
         if (title) el.title = title;
         tr.appendChild(el);
+        return el;
       };
       const ci = (v, h) => v == null || h == null ? "" : `95%: ${(v - h).toFixed(1)} to ${(v + h).toFixed(1)} over ${c.bb_hands} complete hands`;
       td(String(c.hands));
       td(String(c.shown), c.hands ? `${Math.round(100 * c.shown / c.hands)}%` : "");
-      td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1));
-      td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
-        ci(c.bb_per_100, c.bb_per_100_ci));
+      signTone(td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1)), c.net_bb);
+      signTone(td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
+        ci(c.bb_per_100, c.bb_per_100_ci)), c.bb_per_100);
       if (seatAt >= 0) {
         const vf = c.bb_per_100_vs_fold, raw = c.bb_per_100;
         if (cls === "total" || !blindRow(c) || vf == null || raw == null) td("");
@@ -4513,10 +4544,12 @@
     };
     setTileKeys(...copy.tiles);
     $("t-hands").textContent = copy.count(d.total).toLocaleString();
+    $("t-hands").classList.toggle("down", copy.count(d.total) > 0); // chips paid out
     $("t-known").textContent = d.total.won.toLocaleString();
     $("t-cov").textContent = d.players.length;
     const me = d.players.find(r => r.player === d.player);
     $("t-raise").textContent = me ? signed(me.net.chips) : "–";
+    if (me) signTone($("t-raise"), me.net.chips, me.net.bb);
     setRaiseKey(me ? `${d.player}'s net` : "net", me ? `${me.won.count} won · ${me.paid.count} paid` : copy.none);
     $("subtitle").textContent = "every player · all hands";
     setNote(copy.note,
@@ -4551,7 +4584,7 @@
         count("paid", r.paid_filter);
         cell(r.paid.chips.toLocaleString(), "dim");
         cell(signed(r.net.chips), r.net.chips > 0 ? "up" : r.net.chips < 0 ? "down" : "");
-        cell(r.net.bb == null ? "—" : signed(r.net.bb));
+        signTone(cell(r.net.bb == null ? "—" : signed(r.net.bb)), r.net.bb);
         const of = cell(r.hands.toLocaleString(), "dim");
         of.title = `${r.bounty_hands} ${copy.hands}${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
         tr.title = `Switch the chart to ${r.player}`;
@@ -4597,6 +4630,8 @@
   function setTileKeys(hands, known, cov) {
     $("t-hands-k").textContent = hands; $("t-known-k").textContent = known; $("t-cov-k").textContent = cov;
     for (const id of ["t-known", "t-cov", "t-raise"]) tileTip(id, "");
+    // and the colours the last view put on the figures (signTone, .attn)
+    for (const id of ["t-hands", "t-known", "t-cov", "t-raise"]) $(id).classList.remove("up", "down", "soft", "attn");
   }
   // Hover text on the tile around a figure: the ± on a tile that shows a sampled
   // rate. Coverage gets none: it counts these exact hands, it does not estimate.
@@ -4641,6 +4676,9 @@
     $("t-cov").textContent = fmtPct(d.showdowns ? Math.round(1000 * d.known_showdowns / d.showdowns) / 10 : null);
     const biggest = Math.max(...rows.map(h => h.pot_bb ?? 0), 0);
     $("t-raise").textContent = rows.length ? `${Math.round(biggest)} bb` : "–";
+    // Won or lost: that hand's own net, not the pot's size.
+    const top = rows.find(h => (h.pot_bb ?? 0) === biggest);
+    if (top) signTone($("t-raise"), top.net_bb, top.net_bb);
     const skipped = d.skipped.stack_unknown ? ` · ${d.skipped.stack_unknown} with a stack unknown` : "";
     setRaiseKey("biggest pot flagged", `${rows.length} flagged · ${d.skipped.cards_unknown} showdowns mucked${skipped}`);
   }
@@ -4653,7 +4691,9 @@
     $("t-hands").textContent = mine.length;
     $("t-known").textContent = mine.filter(played).length;
     $("t-cov").textContent = mine.length ? fmtBb(net) : "–";
+    if (mine.length) signTone($("t-cov"), net, net);
     $("t-raise").textContent = mine.filter(h => h.flags.length).length;
+    $("t-raise").classList.toggle("attn", mine.some(h => h.flags.length));
     const seen = mine.filter(h => h.reviewed).length;
     setRaiseKey("flagged for review", `${seen} of ${mine.length} marked reviewed`);
   }
@@ -4800,7 +4840,7 @@
     for (const [k, v] of rows) {
       const r = document.createElement("div"); r.className = "row";
       const kk = document.createElement("span"); kk.textContent = k;
-      const vv = document.createElement("b"); vv.textContent = v;
+      const vv = document.createElement("b"); vv.append(k === "net" ? toned(v, c.net_bb) : v);
       r.append(kk, vv); tip.appendChild(r);
     }
     tip.style.display = "block";
@@ -4836,7 +4876,7 @@
       pickable(track, title, term ? null : c.hand_ids, term);
       const val = document.createElement("div"); val.className = "val";
       val.textContent = fmtPct(c.pct);
-      const sm = document.createElement("small"); sm.textContent = `${c.n} · ${fmtBb(c.net_bb)}`;
+      const sm = document.createElement("small"); sm.append(`${c.n} · `, toned(fmtBb(c.net_bb), c.net_bb));
       val.appendChild(sm);
       bars.append(lab, track, val);
     }
@@ -4999,12 +5039,14 @@
         pickable(tr, title, term ? null : ids, term);
       }
       t.appendChild(tr);
+      return tr;
     };
     if (view === "made") {
       for (const { c, text } of classRows(d.classes)) {
         const term = madeTerm(c);
-        row([text, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
+        const tr = row([text, fmtPct(c.pct), c.n, fmtBb(c.net_bb).replace(" bb", ""), c.won],
           { title: `${text} · shown ${c.n}×` + (term ? ` · ${term}` : ""), ids: c.hand_ids, term });
+        signTone(tr.cells[3], c.net_bb);
       }
     } else {
       for (const b of d.blocks) {
@@ -5146,7 +5188,7 @@
     if (h.board2?.length) boardEl.append(document.createElement("br"), cardsEl(h.board2));
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
     span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
-    span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
+    signTone(span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb)), h.net_bb);
     if (opts.why) span("why", opts.why);
     b.title = handTitle(h) + (opts.title ? "\n" + opts.title : "");
     b.addEventListener("click", () => {
@@ -5330,9 +5372,14 @@
   function renderTaggedTiles(d) {
     setTileKeys(d.tag ? `tagged ${d.tag}` : "hands tagged", "marked reviewed", "net");
     const rows = d.hands;
+    const net = rows.reduce((s, h) => s + (h.net_bb ?? 0), 0);
     $("t-hands").textContent = rows.length;
-    $("t-known").textContent = rows.filter(h => h.reviewed).length;
-    $("t-cov").textContent = rows.length ? fmtBb(rows.reduce((s, h) => s + (h.net_bb ?? 0), 0)) : "–";
+    $("t-hands").classList.toggle("attn", rows.length > 0);
+    const seen = rows.filter(h => h.reviewed).length;
+    $("t-known").textContent = seen;
+    signTone($("t-known"), seen); // done with, in the profit green
+    $("t-cov").textContent = rows.length ? fmtBb(net) : "–";
+    if (rows.length) signTone($("t-cov"), net, net);
     $("t-raise").textContent = d.tags.filter(t => !t.builtin && t.hands).length;
     setRaiseKey("tags in this spot", `${rows.filter(h => h.note).length} with a note`);
   }
