@@ -78,3 +78,51 @@ def test_the_endpoint_and_page(tmp_path, monkeypatch):
     assert [t["id"] for t in body["you"]] == [t["id"] for t in expect["you"]]
     page = client.get("/tendencies.html")
     assert page.status_code == 200 and "/tendencies" in page.text
+
+
+def test_one_player_gets_their_tags_and_every_measure(db):
+    from pnt.stats.pool import pool_for
+    from pnt.stats.tendencies import MEASURES, player_tendencies
+
+    alias = report(db)[0]["player"]
+    out = player_tendencies(db, alias, shared={"fish": 3})
+    want = tags_for(facts_for(db, alias), pool_for(db, None), alias)
+    assert out["player"] == alias and out["hands"] == want["profile"]["hands"]
+    assert [t["id"] for t in out["tags"]] == [t["id"] for t in want["tags"] if t["kind"] != "fun"]
+    assert all(t["advice"] and t["shared"] == (3 if t["id"] == "fish" else 0) for t in out["tags"])
+    names = display_names(db)
+    rows = [r for g in out["measures"] for r in g["rows"]]
+    assert [r["id"] for r in rows] == [m[0] for _, ms in MEASURES for m in ms]
+    for r in rows:
+        assert r["n"] >= r["hits"] >= 0
+        assert (r["pct"] is None) == (r["n"] == 0)
+        parse_filter(r["filter"], names)  # every measure opens its hands on the chart
+
+
+def test_an_unknown_player_raises(db):
+    from pnt.stats.tendencies import player_tendencies
+
+    with pytest.raises(ValueError):
+        player_tendencies(db, "nobody-at-all")
+
+
+def test_the_endpoint_adds_one_player(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
+    import importlib
+
+    monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
+    from pnt.server import app as app_module
+
+    importlib.reload(app_module)
+    conn = connect(tmp_path / "api.sqlite")
+    for path in ALL_LOGS:
+        import_csv(conn, path)
+    alias = report(conn)[0]["player"]
+    conn.close()
+    client = local_client(app_module.app)
+    assert "player" not in client.get("/tendencies").json()
+    body = client.get("/tendencies", params={"player": alias}).json()
+    shared = {t["id"]: t["count"] for t in body["pool"]}
+    assert body["player"]["player"] == alias
+    assert all(t["shared"] == shared.get(t["id"], 0) for t in body["player"]["tags"])
+    assert client.get("/tendencies", params={"player": "nobody-at-all"}).status_code == 404

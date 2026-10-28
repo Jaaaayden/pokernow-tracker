@@ -2097,7 +2097,12 @@ are built from.
 because judged against itself the pool is never an outlier, and a whole-table
 habit (everyone folds to c-bets) would otherwise never show. `pnt tags --pool`
 prints every baseline with the middle half of the players' rates, and `--basis
-fixed` judges on the fixed cuts alone.
+fixed` judges on the fixed cuts alone. `GET /tendencies?player=` adds one
+player's view (`tendencies.player_tendencies`): their tags, each with how many
+regulars share it, and every measure the tags read (`MEASURES`) beside the
+pool's median and middle half without them -- so a measure that fired nothing
+still says where the player sits. A shown-hand measure that is mostly their own
+log is flagged (`own_log`), since the baseline leaves those rows out.
 
 Calibrated 2026-10-14 on the 15,052-hand database (9 players): the default gap
 splits each rule's clear outliers from the pool's middle half -- FOLDS TO CBET for
@@ -3225,6 +3230,14 @@ bug would be almost a day of stale hands at the boundary, and nowhere else.
 **A capped list says so.** `over` counts every pot that cleared the bar and
 `hands` every hand in the window, so a list of 50 out of 200 is visibly a slice
 rather than quietly the whole of it.
+
+**`chips` is pot volume, not money won.** It adds up every pot that cleared the
+bar, each once: a run-it-twice or Double Board pot is one pot paid out in parts,
+and a chopped pot is one pot shared. The same buy-ins go round many pots, so the
+volume dwarfs what anyone won: on the 19,000-hand database, 6.75M chips through
+every pot (355 a hand, about 30 bb) against 432k chips won across all the
+winning sessions. `chips_bb` is the same pots in each hand's own big blinds,
+leaving out a hand with none on record, as a row's `pot_bb` does.
 
 **A chopped pot names no winner.** Where two or more players collected, "winner
 +13" would describe a pot everyone mostly got back; the row says *chopped* and

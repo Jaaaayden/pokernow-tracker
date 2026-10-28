@@ -2369,16 +2369,32 @@ def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one ga
 
 
 @app.get("/tendencies")
-def tendencies_report(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+def tendencies_report(
+    game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None,
+    player: Annotated[str | None, Query(description="Add `player`: this one player's tags and measures.")] = None,
+) -> dict:
     """The tags on the hero (`you`), and per tag the regular opponents it fires on
     (`pool`), most first. A regular has `min_hands` hands or more. Fun tags are left
-    out. Each player's entry carries the filter that opens the tag's hands."""
+    out. Each player's entry carries the filter that opens the tag's hands.
+
+    With `player`, the answer adds `player`: their tags, each with how many
+    regulars share it, and every measure the tags read beside the pool's rate."""
     from pnt.stats.leaks import hero_of
-    from pnt.stats.tendencies import tendencies
+    from pnt.stats.tendencies import player_tendencies, tendencies
 
     conn = db()
     # The hero is a setting, not a derived fact: picking another moves no generation.
-    return remembered(conn, ("tendencies", game, hero_of(conn, game)), lambda: tendencies(conn, game))
+    hero = hero_of(conn, game)
+    out = remembered(conn, ("tendencies", game, hero), lambda: tendencies(conn, game))
+    if not player:
+        return out
+    shared = {t["id"]: t["count"] for t in out["pool"]}
+    try:
+        one = remembered(conn, ("tendencies", game, hero, "player", player),
+                         lambda: player_tendencies(conn, player, game, shared))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {**out, "player": one}
 
 
 # ---- timing tells --------------------------------------------------------------
