@@ -478,6 +478,11 @@ list is in [`SPEC.md`](../pnt/stats/SPEC.md).
 `tag=flagged` the 🚩 ones, `tag!=study` the rest. See
 [Tagging hands](#tagging-hands).
 
+**Dates:** `since:2026-10-20` keeps the hands from that day on, `before:2026-10-20`
+the ones before it, and `last:7d` today and the six days before (`last:1d` is
+today). Days are your computer's calendar days. Add one to any spot to see whether
+a player plays differently lately: `last:30d,position=BTN,opener`.
+
 ### Saved spots
 
 The ★ beside a Spot box keeps a filter under a name.

@@ -683,6 +683,34 @@ counts every player's rows from `facts_by_player(game)`, which `/stats?filter=`
 groups, so a count is the sum of that table's `hands` column. It reads only, but
 carries the write header like every POST.
 
+### Dates
+
+Three terms keep the hands dealt in a stretch of days, so any spot can be read
+for how a player plays lately, or how they ran:
+
+| Term | Keeps the rows whose `ts` is |
+|---|---|
+| `since:2026-10-20` | at or after local midnight starting that day |
+| `before:2026-10-20` | before local midnight starting that day |
+| `last:7d` | at or after local midnight starting the day six days before today: `last:1d` is today |
+
+- **A day is a local calendar day**: the timezone of the machine the server (or
+  the CLI) runs on, never UTC. `hands.ts` is UTC, so the day's start is turned
+  into UTC before the comparison, which is on the text as `pots.cutoff` compares
+  it. A hand with no `ts` matches none of the three.
+- **Bare terms.** No operator and no value list: `since:a|b` is an error, and
+  `since:2026-10-01|vpip` two terms. A date is `YYYY-MM-DD` and a span `Nd` with N
+  at least 1; anything else (`since:2026-13-40`, `last:abc`) raises, a 400 from the
+  server. `!` does not take one; `before:` is the other side of `since:`, and
+  `!(since:…)` works.
+- Two of a side together are an AND, so `since:2026-10-01,since:2026-10-20` is the
+  later bound. The `?` panel drops the earlier when the later is typed, as it does
+  `pot>=500` for `pot>=200`: `since:` and `last:` share the first-day side.
+- **`last:` moves with the clock.** It is resolved when the filter is parsed, and
+  a cache keyed by filter text (`app._spot_key`, through `filters.date_key`) adds
+  today's date to a filter holding one, so yesterday's answer is never served
+  today. `since:` and `before:` name their day and need nothing.
+
 ### Saved spots and hand tags
 
 Both are yours, not the log's (`db/userdata.py`), kept like a flag: keyed on
@@ -1539,8 +1567,8 @@ situation flags at or below the node, `first_in`, `steal_opp`, `squeeze_opp`,
 `cold_call_opp`, `3bet_opp`, `fold_to_steal_opp`, `acted_preflop`, `straddled`,
 `dead_button`, `post_loss` and their `!` forms, and comparisons on `players`,
 `eff_bb`, `callers_before`, `session_hand`, `session_hour`, `hands_since_loss`,
-plus `open_bb` from level 2 up. **Every other term is left out and listed as
-`ignored`**: a postflop term, a pot type, `hand=` or `cards_known` would count
+the date terms (`since:`, `before:`, `last:`), plus `open_bb` from level 2 up.
+**Every other term is left out and listed as `ignored`**: a postflop term, a pot type, `hand=` or `cards_known` would count
 only the hands that got that far, and a term that implies the decision would
 make the frequency 100%.
 
