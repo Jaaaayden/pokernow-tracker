@@ -17,6 +17,7 @@ import csv
 import ctypes
 import functools
 import gc
+import json
 import logging
 import os
 import sqlite3
@@ -84,6 +85,7 @@ from pnt.stats.review import (
     set_flag,
     set_note,
 )
+from pnt.stats.showdown import summary as showdown_summary
 from pnt.stats.tags import tags_for
 from pnt.update import EXTENSION_DIR, extension_build
 
@@ -1195,15 +1197,18 @@ def hand(hand_id: int) -> dict:
     ).fetchone()
     if h is None:
         raise HTTPException(status_code=404, detail="no such hand")
+    players = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM hand_players WHERE hand_id = ? ORDER BY seats_from_button",
+            (hand_id,),
+        )
+    ]
     return {
         "hand": dict(h),
-        "players": [
-            dict(r)
-            for r in conn.execute(
-                "SELECT * FROM hand_players WHERE hand_id = ? ORDER BY seats_from_button",
-                (hand_id,),
-            )
-        ],
+        "players": players,
+        # Who won each pot, on each board, with what (stats/showdown.py).
+        "showdown": showdown_summary(players, json.loads(h["board_json"] or "[]")),
         # pn_id -> the name a replay should print: the canonical alias when there
         # is one, otherwise the last name PokerNow showed for that ID.
         "names": {

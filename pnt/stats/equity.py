@@ -101,6 +101,42 @@ def rank7(cards: Sequence[Card]) -> tuple[int, ...]:
     return (0, *sorted(counts, reverse=True)[:5])
 
 
+def rank_omaha(hole: Sequence[Card], board: Sequence[Card]) -> tuple[int, ...]:
+    """`rank7` under Omaha's rule: exactly two hole cards and three from the board."""
+    return max(
+        rank7(two + three)
+        for two in itertools.combinations(hole, 2)
+        for three in itertools.combinations(board, 3)
+    )
+
+
+_RANK_WORDS = {14: "ace", 13: "king", 12: "queen", 11: "jack", 10: "ten", 9: "nine", 8: "eight",
+               7: "seven", 6: "six", 5: "five", 4: "four", 3: "three", 2: "two"}
+
+
+def rank_name(rank: Sequence[int]) -> str:
+    """A `rank7` tuple in words: ``two pair, kings and nines``, ``flush, ace high``,
+    ``full house, sixes full of eights``. Kickers are left out."""
+    word = _RANK_WORDS.__getitem__
+
+    def many(v: int) -> str:
+        return "sixes" if v == 6 else word(v) + "s"
+
+    cat, *v = rank
+    if cat == 8:
+        return "royal flush" if v[0] == 14 else f"straight flush, {word(v[0])} high"
+    return (
+        f"four of a kind, {many(v[0])}" if cat == 7
+        else f"full house, {many(v[0])} full of {many(v[1])}" if cat == 6
+        else f"flush, {word(v[0])} high" if cat == 5
+        else f"straight, {word(v[0])} high" if cat == 4
+        else f"three of a kind, {many(v[0])}" if cat == 3
+        else f"two pair, {many(v[0])} and {many(v[1])}" if cat == 2
+        else f"pair of {many(v[0])}" if cat == 1
+        else f"{word(v[0])} high"
+    )
+
+
 def best_of(hands: Mapping[str, str], board: Sequence[str]) -> tuple[str, ...]:
     """Who holds the best hand on a complete board: more than one on a chop.
 
