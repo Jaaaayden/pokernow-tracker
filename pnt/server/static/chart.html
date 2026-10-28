@@ -425,8 +425,12 @@
      compact when it is narrow (below). On a phone the list has the whole width
      until a hand is picked, rather than give most of it to the placeholder. The
      review views and the drill-down list under the charts share the one switch;
-     allin.html and pots.html read it too (pnt.reviewLayout). */
-  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+     allin.html and pots.html read it too (pnt.reviewLayout). Two-fifths and
+     three-fifths of the card, each capped at 600px on a wide screen and the pair
+     centred there, so the space either side of it matches rather than pooling
+     to the right of a replay that never needs 900px. */
+  #review.split, #hands.split { display: grid; grid-template-columns: min(calc(40% - 4.8px), 600px) min(calc(60% - 7.2px), 600px);
+    justify-content: center; gap: 0 12px; align-items: start; }
   @media (max-width: 600px) {
     #review.split:has(> .replay[data-empty]), #hands.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
     .split > .replay[data-empty] { display: none; }
