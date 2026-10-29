@@ -2363,8 +2363,9 @@
       host.appendChild(rows);
     }
     if (d.hidden.groups) {
+      // A note like the hint under it, not body text above it.
       host.appendChild(message(`${d.hidden.groups} more line${d.hidden.groups === 1 ? "" : "s"} with fewer than `
-        + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`));
+        + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`, "muted note"));
     }
     const hint = message("click a line, or one part of its bar, to add it to the spot and list its hands");
     hint.classList.add("note");
