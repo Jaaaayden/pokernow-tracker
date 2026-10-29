@@ -129,10 +129,10 @@
   /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
      list on the left, the replay sticking beside it. A narrow list stacks its
      rows and leaves the street and pot to the replay; with no hands to replay,
-     the list has the width. Each side is capped at 600px and the pair centred,
-     as on the chart, so a wide screen leaves even margins. */
-  #hand-pair.split { display: grid; grid-template-columns: min(calc(40% - 4.8px), 600px) min(calc(60% - 7.2px), 600px);
-    justify-content: center; gap: 0 12px; align-items: start; }
+     the list has the width. As on the chart, the replay stops at about 640px
+     and the list takes the rest of the card. */
+  #hand-pair.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 640px));
+    gap: 0 12px; align-items: start; }
   #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
   #hand-pair.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
   #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;

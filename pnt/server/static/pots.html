@@ -134,10 +134,11 @@
   }
   /* Side by side on a wide screen, a pot is one dense line -- pot, when, who
      won it from whom, the board, the tags that change how it reads -- so the
-     replay gets the width. A second board runs after a slash; the street and
-     table size wait for the replay. Stacked keeps the roomier rows. */
+     replay has room. A second board runs after a slash; the street and table
+     size wait for the replay. Stacked keeps the roomier rows. The replay stops
+     at about 640px, as on the chart, and the list takes the rest of the card. */
   @media (min-width: 621px) {
-    #hand-pair.split { grid-template-columns: minmax(520px, 5fr) minmax(0, 7fr); }
+    #hand-pair.split { grid-template-columns: minmax(520px, 1fr) minmax(0, min(45%, 640px)); }
     #hand-pair.split .pot-row { flex-wrap: nowrap; gap: 0 10px; padding: 4px 6px; font-size: 12px; white-space: nowrap; }
     #hand-pair.split .pot-row .pot { min-width: 6.4em; font-size: 13px; }
     #hand-pair.split .pot-row .pot small { font-size: 11px; margin-left: 4px; }

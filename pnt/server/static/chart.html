@@ -377,7 +377,9 @@
   .hand-row[data-sat-out] .hole, .hand-row[data-sat-out] .net { color: var(--muted); }
   .hand-row .board { min-width: 10.5em; color: var(--ink-2); }
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
-  .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
+  /* 12em before it grows: short of that it takes the next line whole rather
+     than wrap a word a line beside the pot. */
+  .hand-row .sizes { flex: 1 1 12em; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
   .hand-rows.tall { max-height: 560px; }
   .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
@@ -446,6 +448,8 @@
   .replay ol { margin: 4px 0 0; padding-left: 22px; }
   .replay li.forced { color: var(--muted); }
   .muted { color: var(--muted); }
+  /* An empty list's line, at the size of the replay's hint beside it. */
+  .hand-rows > p.muted { font-size: 13px; }
 
   /* --- side by side: the list on the left, the replay on the right ---
      The replay pane sticks to the top of the window and scrolls on its own, so
@@ -454,12 +458,11 @@
      compact when it is narrow (below). On a phone the list has the whole width
      until a hand is picked, rather than give most of it to the placeholder. The
      review views and the drill-down list under the charts share the one switch;
-     allin.html and pots.html read it too (pnt.reviewLayout). Two-fifths and
-     three-fifths of the card, each capped at 600px on a wide screen and the pair
-     centred there, so the space either side of it matches rather than pooling
-     to the right of a replay that never needs 900px. */
-  #review.split, #hands.split { display: grid; grid-template-columns: min(calc(40% - 4.8px), 600px) min(calc(60% - 7.2px), 600px);
-    justify-content: center; gap: 0 12px; align-items: start; }
+     allin.html and pots.html read it too (pnt.reviewLayout). The pair fills the
+     card: the replay never needs more than about 640px, so it stops there and
+     the list takes the rest, rather than leaving dead space beside either. */
+  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 640px));
+    gap: 0 12px; align-items: start; }
   @media (max-width: 600px) {
     #review.split:has(> .replay[data-empty]), #hands.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
     .split > .replay[data-empty] { display: none; }
@@ -619,7 +622,7 @@
     .hand-row .sizes { min-width: 12em; }
     .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
     .kinds button { padding: 1px 6px; }
-    .replay { font-size: 11px; }
+    .replay, .hand-rows > p.muted { font-size: 11px; }
     .tip { font-size: 11px; }
 
     .card { padding: 8px; border-radius: 8px; }
