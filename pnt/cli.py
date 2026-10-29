@@ -2367,8 +2367,7 @@ def timing(
     logs' owners' own cards apart from everyone else's shown hands. Hands stored
     before this version have no times until `pnt rebuild`.
     """
-    from .stats.fold_equity import pool_facts
-    from .stats.timing import owners, timing_report
+    from .stats.timing import owners, pool_rows, timing_report
 
     conn = connect(db)
     names = display_names(conn)
@@ -2378,7 +2377,7 @@ def timing(
             everything = facts_for(conn, alias, game)
             out = timing_report([f for f in everything if pred is None or pred(f)], baseline=everything)
         else:
-            out = timing_report(pool_facts(conn, game, pred), owners=owners(conn), who=names)
+            out = timing_report(pool_rows(conn, game, pred), owners=owners(conn), who=names)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     if as_json:
