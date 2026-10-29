@@ -394,6 +394,60 @@ def test_lru_holds_its_cap_and_survives_racing_threads():
     assert len(cache) <= 8
 
 
+def test_a_key_missed_by_several_threads_at_once_is_computed_once():
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from pnt.stats.lru import LRU
+
+    cache: LRU[str, int] = LRU(4)
+    computed = []
+    go = threading.Barrier(6)
+
+    def ask() -> int:
+        go.wait()
+        hit = cache.get("k")
+        if hit is None:
+            with cache.making("k"):
+                hit = cache.get("k")
+                if hit is None:
+                    computed.append(1)
+                    time.sleep(0.05)
+                    hit = cache["k"] = 7
+        return hit
+
+    with ThreadPoolExecutor(6) as pool:
+        assert [f.result() for f in [pool.submit(ask) for _ in range(6)]] == [7] * 6
+    assert computed == [1]
+    assert not cache._making  # nothing left behind once every thread is done
+
+
+def test_a_page_asking_for_one_cold_player_at_once_derives_them_once(db, monkeypatch):
+    """A page's requests all name its player, each on its own thread and
+    connection: the first derives every game, the rest wait for it."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = path_of(db)
+    calls = _games_loaded(monkeypatch)
+    go = threading.Barrier(4)
+
+    def ask():
+        conn = connect(path)
+        try:
+            go.wait()
+            return q.facts_cached(conn, "genericpoker")
+        finally:
+            conn.close()
+
+    with ThreadPoolExecutor(4) as pool:
+        got = [f.result() for f in [pool.submit(ask) for _ in range(4)]]
+    assert len(calls) == len(set(calls)) > 1
+    assert all(g is got[0] for g in got)
+    assert got[0] == q.facts_for(db, "genericpoker")
+
+
 def test_lru_forgets_least_recently_used():
     from pnt.stats.lru import LRU
 

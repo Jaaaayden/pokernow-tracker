@@ -17,6 +17,7 @@ from __future__ import annotations
 import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from ..db.conn import generation, path_of, reading
@@ -84,9 +85,12 @@ def _game_counts(
         hit = _GAME_COUNTS.get((path, gid))
         if hit is None or hit[0] != stamp:
             if between is not None:
-                between()
-            facts = [f for h in load_hands(conn, gid) for f in derive(h)]
-            hit = _GAME_COUNTS[path, gid] = (stamp, _counts_by_id(facts, own))
+                between()  # before the lock: a request may be waiting on it
+            with _GAME_COUNTS.making((path, gid)):
+                hit = _GAME_COUNTS.get((path, gid))
+                if hit is None or hit[0] != stamp:
+                    facts = [f for h in load_hands(conn, gid) for f in derive(h)]
+                    hit = _GAME_COUNTS[path, gid] = (stamp, _counts_by_id(facts, own))
         out.append(hit[1])
     if game is None:
         _GAME_COUNTS.prune(lambda k: k[0] == path and k[1] not in stamps)
@@ -105,6 +109,19 @@ def pool_for(
     hit = _POOL.get((path, game))
     if hit is not None and gen is not None and hit[0] == gen:
         return hit[1]
+    # The warm-up pauses inside, so it never holds the lock; its games are
+    # still each derived once, under `_game_counts`' own.
+    with _POOL.making((path, game)) if between is None else nullcontext():
+        hit = _POOL.get((path, game))
+        if hit is not None and gen is not None and hit[0] == gen:
+            return hit[1]
+        return _count_pool(conn, game, between, path, gen)
+
+
+def _count_pool(
+    conn: sqlite3.Connection, game: str | None, between: Callable[[], None] | None, path: str, gen: int | None
+) -> Pool:
+    """`pool_for`'s miss."""
     with reading(conn):
         own = owners(conn)
         ident = identity_map(conn)

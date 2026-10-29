@@ -4,8 +4,12 @@ FastAPI runs the stats endpoints on a thread pool, and the warm-up thread fills
 the same caches at start. A bare dict there races: two misses evict the same
 oldest key, a prune iterates while another request inserts, a touch pops a key
 another request is reading. Each of those surfaced as a 500. Every step here
-holds one lock; the work of computing a value does not, so two threads that miss
-the same key may both compute it -- the second write wins, and both are right.
+holds one lock; the work of computing a value does not.
+
+Computing it is guarded per key instead (`making`): a page asks for one player
+in several requests at once, and the phone switches tabs faster than a cold
+player derives, so each request deriving the same answer on its own cost a
+multiple of one. On the phone's VM four of them took 436 s.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Iterator
+from contextlib import contextmanager
 from typing import Generic, TypeVar
 
 K = TypeVar("K", bound=Hashable)
@@ -26,6 +31,8 @@ class LRU(Generic[K, V]):
         self.cap = cap
         self._d: OrderedDict[K, V] = OrderedDict()
         self._lock = threading.Lock()
+        #: Per key being computed: its lock, and how many threads hold or wait on it.
+        self._making: dict[K, list] = {}
 
     def get(self, key: K, default: V | None = None) -> V | None:
         """The value, marked as just used; `default` when absent."""
@@ -42,6 +49,24 @@ class LRU(Generic[K, V]):
             if self.cap is not None:
                 while len(self._d) > self.cap:
                     self._d.popitem(last=False)
+
+    @contextmanager
+    def making(self, key: K) -> Iterator[None]:
+        """Held while one thread computes `key`'s value: another that missed the
+        same key waits here, then looks again and finds it. Never hold it across a
+        wait for something else -- the warm-up's pause until requests are done is
+        one, since a request waiting here keeps it from ever being done."""
+        with self._lock:
+            entry = self._making.setdefault(key, [threading.Lock(), 0])
+            entry[1] += 1
+        try:
+            with entry[0]:
+                yield
+        finally:
+            with self._lock:
+                entry[1] -= 1
+                if not entry[1]:
+                    del self._making[key]
 
     def prune(self, drop: Callable[[K], bool]) -> None:
         """Forget every key `drop` says to."""

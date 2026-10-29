@@ -641,8 +641,11 @@ def remembered(conn: sqlite3.Connection, key: tuple, compute, answers: LRU[tuple
     full = (path, gen, *key)
     hit = answers.get(full)
     if hit is None:
-        hit = compute()
-        answers[full] = hit
+        with answers.making(full):
+            hit = answers.get(full)
+            if hit is None:
+                hit = compute()
+                answers[full] = hit
     return hit
 
 
@@ -706,7 +709,10 @@ def _tallies(conn: sqlite3.Connection, game_id: str | None) -> list[dict[str, Ta
     for gid, stamp in stamps.items():
         hit = _GAME_TALLIES.get((path, gid))
         if hit is None or hit[0] != stamp:
-            hit = _GAME_TALLIES[path, gid] = (stamp, _tally_by_id(load_hands(conn, gid)))
+            with _GAME_TALLIES.making((path, gid)):
+                hit = _GAME_TALLIES.get((path, gid))
+                if hit is None or hit[0] != stamp:
+                    hit = _GAME_TALLIES[path, gid] = (stamp, _tally_by_id(load_hands(conn, gid)))
         out.append(hit[1])
     if game_id is None:  # a game deleted since is forgotten with it
         _GAME_TALLIES.prune(lambda k: k[0] == path and k[1] not in stamps)
@@ -745,6 +751,20 @@ def _facts_cached(conn: sqlite3.Connection, alias: str, game_id: str | None) -> 
     # generation needs none of them -- a write that moves a stamp moves it too.
     if hit is not None and hit.gen == gen:
         return hit
+    # Every request a page makes names its player: one derives, the rest wait.
+    with _FACTS_CACHE.making(key):
+        hit = _FACTS_CACHE.get(key) if gen is not None and path else None
+        if hit is not None and hit.gen == gen:
+            return hit
+        return _refresh_facts(conn, alias, game_id, gen, path, hit)
+
+
+def _refresh_facts(
+    conn: sqlite3.Connection, alias: str, game_id: str | None, gen: int | None, path: str,
+    hit: _PlayerFacts | None,
+) -> _PlayerFacts:
+    """`_facts_cached`'s miss: the games whose stamp moved derived again."""
+    key = (path, alias, game_id)
     stamps = _game_stamps(conn, game_id) if gen is not None and path else None
     if stamps is None:
         return _PlayerFacts(0, frozenset(), facts_for(conn, alias, game_id, "money"), {})
@@ -817,26 +837,37 @@ def report(
     key = (path, game_id)
     cached = _REPORT_CACHE.get(key) if cacheable else None
     if cached is None or cached[0] != gen:
-        ident = identity_map(conn)
-        grouped_t: dict[int, Tally] = {}
-        names: dict[int, str] = {}
-        for per_id in _tallies(conn, game_id):
-            for pn_id, t in per_id.items():
-                pid, alias = ident.get(pn_id, (-1, pn_id))
-                g = grouped_t.get(pid)
-                if g is None:
-                    g = grouped_t[pid] = Tally()
-                g += t
-                names[pid] = alias
-        full = [{"player": names.get(pid, "?"), **rates(t)} for pid, t in grouped_t.items()]
-        full.sort(key=lambda r: -r["hands"])
-        cached = (gen, full)
-        if cacheable:
-            # Stored before min_hands is applied, so a stricter or looser threshold
-            # is served from the same derivation.
-            _REPORT_CACHE[key] = cached
+        with _REPORT_CACHE.making(key):
+            cached = _REPORT_CACHE.get(key) if cacheable else None
+            if cached is None or cached[0] != gen:
+                cached = _full_report(conn, game_id, gen, cacheable, key)
     # Copied out so a caller that edits a row cannot corrupt the next reader.
     return [dict(r) for r in cached[1] if r["hands"] >= min_hands]
+
+
+def _full_report(
+    conn: sqlite3.Connection, game_id: str | None, gen: int | None, cacheable: bool, key: tuple
+) -> tuple[int | None, list[dict]]:
+    """`report()`'s miss: every player's rates, derived where a game's stamp moved."""
+    ident = identity_map(conn)
+    grouped_t: dict[int, Tally] = {}
+    names: dict[int, str] = {}
+    for per_id in _tallies(conn, game_id):
+        for pn_id, t in per_id.items():
+            pid, alias = ident.get(pn_id, (-1, pn_id))
+            g = grouped_t.get(pid)
+            if g is None:
+                g = grouped_t[pid] = Tally()
+            g += t
+            names[pid] = alias
+    full = [{"player": names.get(pid, "?"), **rates(t)} for pid, t in grouped_t.items()]
+    full.sort(key=lambda r: -r["hands"])
+    cached = (gen, full)
+    if cacheable:
+        # Stored before min_hands is applied, so a stricter or looser threshold
+        # is served from the same derivation.
+        _REPORT_CACHE[key] = cached
+    return cached
 
 
 def split_report(

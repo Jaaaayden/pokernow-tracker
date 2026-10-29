@@ -1703,6 +1703,12 @@
     return r.json();
   }
   const getJson = (url) => sendJson(url);
+  // The view on show's own requests. Leaving it cancels them: a cold player takes
+  // the server a minute on the phone's VM, and the browser opens six connections
+  // to it at most, so a few quick tab swaps left the next view queued behind
+  // answers nobody would read. The server finishes them anyway, into its caches.
+  let viewCtl = new AbortController();
+  const viewJson = (url) => sendJson(url, { signal: viewCtl.signal });
   const postJson = (url, body, signal) => sendJson(url, {
     // x-pnt: the server refuses writes without it (see app.py).
     method: "POST", headers: { "Content-Type": "application/json", "x-pnt": "1" }, body: JSON.stringify(body), signal,
@@ -1843,6 +1849,8 @@
     paintPlayerNote(); // the player on show may have changed
     const seq = ++loadSeq;
     const live = () => seq === loadSeq;
+    viewCtl.abort();
+    viewCtl = new AbortController();
     const view = state.by;
     if (!quiet) $("card").classList.add("loading");
     $("err").classList.add("hidden");
@@ -1863,7 +1871,7 @@
         if (!quiet && state.review?.key === key) {
           data = state.review.data;
         } else {
-          data = await getJson(`/players/${player}/review?` + q);
+          data = await viewJson(`/players/${player}/review?` + q);
           if (!("counts" in data)) {
             throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
           }
@@ -1874,47 +1882,47 @@
       } else if (view === "sizing") {
         // Fold equity rides along: same player and spot, every street at once. A
         // server too old to have it costs that section, not the view.
-        const fe = getJson(`/players/${player}/fold_equity?` + q).catch(e => ({ error: String(e.message || e) }));
+        const fe = viewJson(`/players/${player}/fold_equity?` + q).catch(e => ({ error: String(e.message || e) }));
         q.set("street", state.street); q.set("kind", state.kind);
-        data = await getJson(`/players/${player}/sizing?` + q);
+        data = await viewJson(`/players/${player}/sizing?` + q);
         data.fold_equity = await fe;
       } else if (view === LINES_VIEW) {
         q.set("mode", state.lmode);
         if (state.lstreet) q.set("street", state.lstreet);
-        data = await getJson(`/players/${player}/lines?` + q);
+        data = await viewJson(`/players/${player}/lines?` + q);
       } else if (view === "strength") {
         q.set("street", state.street); q.set("floor", state.floor);
-        data = await getJson(`/players/${player}/slowplay?` + q);
+        data = await viewJson(`/players/${player}/slowplay?` + q);
       } else if (view === "tilt") {
-        data = await getJson(`/players/${player}/tilt?` + q);
+        data = await viewJson(`/players/${player}/tilt?` + q);
       } else if (view === "timing") {
         data = await loadTiming(quiet, live);
       } else if (view === "shows") {
         // Shows are not hands in a spot: the spot box does not narrow them.
-        data = await getJson(`/players/${player}/shows`);
+        data = await viewJson(`/players/${player}/shows`);
       } else if (view === "bounties" || view === "nit") {
-        data = await getJson(view === "nit" ? "/nit" : "/bounties");
+        data = await viewJson(view === "nit" ? "/nit" : "/bounties");
         data.player = state.player;
       } else if (view === "results") {
         // The red and blue lines ride along: same player and spot. A server too
         // old to have them costs the graph, not the view.
         const wq = new URLSearchParams(q); wq.set("adjusted", "true");
-        const w = getJson(`/players/${player}/winnings?` + wq).catch(e => ({ error: String(e.message || e) }));
-        const fn = getJson(`/players/${player}/funnel?` + q).catch(e => ({ error: String(e.message || e) }));
-        data = await getJson(`/players/${player}/results?` + q);
+        const w = viewJson(`/players/${player}/winnings?` + wq).catch(e => ({ error: String(e.message || e) }));
+        const fn = viewJson(`/players/${player}/funnel?` + q).catch(e => ({ error: String(e.message || e) }));
+        data = await viewJson(`/players/${player}/results?` + q);
         data.winnings = await w;
         data.funnel = await fn;
       } else if (view === TREE_VIEW) {
         data = await loadTree(quiet, live);
       } else if (view === "made" && state.made === "streets") {
         // The made view's tiles ride on its range; the Streets tab draws /streets.
-        const st = getJson(`/players/${player}/streets?` + q).catch(e => ({ error: String(e.message || e) }));
+        const st = viewJson(`/players/${player}/streets?` + q).catch(e => ({ error: String(e.message || e) }));
         const rq = new URLSearchParams(q); rq.set("by", view);
-        data = await getJson(`/players/${player}/range?` + rq);
+        data = await viewJson(`/players/${player}/range?` + rq);
         data.streets = await st;
       } else {
         q.set("by", view);
-        data = await getJson(`/players/${player}/range?` + q);
+        data = await viewJson(`/players/${player}/range?` + q);
         const probe = data.cells ? Object.values(data.cells)[0] : data.classes?.[0];
         if (probe && !("hand_ids" in probe)) {
           throw new Error("the running server is older than this page (no hand ids in its data): restart `pnt service` (or `pnt serve`)");
@@ -1981,9 +1989,9 @@
     if (state.game) q.set("game", state.game);
     const [hands, review, away] = state.game
       ? await Promise.all([
-          getJson(`/players/${player}/hands?` + q),
-          getJson(`/players/${player}/review?` + q),
-          satOut ? getJson(`/players/${player}/sat-out?` + q) : { hands: [] },
+          viewJson(`/players/${player}/hands?` + q),
+          viewJson(`/players/${player}/review?` + q),
+          satOut ? viewJson(`/players/${player}/sat-out?` + q) : { hands: [] },
         ])
       : [{ hands: [] }, { hands: [] }, { hands: [] }];
     if (!live()) return null;
@@ -2411,7 +2419,7 @@
     if (!quiet && state.bluffs?.has(key)) return state.bluffs.get(key);
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
-    const data = await getJson(pool ? "/bluffs?" + q : `/players/${encodeURIComponent(state.player)}/bluffs?` + q);
+    const data = await viewJson(pool ? "/bluffs?" + q : `/players/${encodeURIComponent(state.player)}/bluffs?` + q);
     if (live()) (state.bluffs ??= new Map()).set(key, data);
     return data;
   }
@@ -3533,8 +3541,8 @@
     // spot, and asked again on a quiet reload, when the HUD says there are new hands.
     const held = !quiet && state.timingPool?.key === key ? state.timingPool.data : null;
     const poolReq = held ? Promise.resolve(held)
-      : getJson("/timing?" + q).catch(e => ({ error: String(e.message || e) }));
-    const data = await getJson(`/players/${encodeURIComponent(state.player)}/timing?` + q);
+      : viewJson("/timing?" + q).catch(e => ({ error: String(e.message || e) }));
+    const data = await viewJson(`/players/${encodeURIComponent(state.player)}/timing?` + q);
     const pool = await poolReq;
     if (live() && !pool.error) state.timingPool = { key, data: pool };
     data.pool = pool;
@@ -4030,7 +4038,7 @@
     const building = `${TITLE[TREE_VIEW]} · building…`;
     if (!quiet) $("card-title").textContent = building;
     try {
-      const data = await getJson(`/players/${encodeURIComponent(state.player)}/tree?` + q);
+      const data = await viewJson(`/players/${encodeURIComponent(state.player)}/tree?` + q);
       if (!("roots" in data)) throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
       if (live()) state.tree = { key, data };
       return data;
@@ -5597,7 +5605,7 @@
     const q = new URLSearchParams({ player: state.player });
     if (state.filter) q.set("filter", state.filter);
     if (state.tag) q.set("tag", state.tag);
-    const data = await getJson("/tagged?" + q);
+    const data = await viewJson("/tagged?" + q);
     if (live()) state.tagged = { key, data };
     return data;
   }
@@ -5675,7 +5683,7 @@
       renderTagChips(shown);
       renderTaggedTiles(shown);
     } catch (err) {
-      showErr(err);
+      if (seq === loadSeq) showErr(err); // a newer load cancelled it
     }
   });
 
@@ -5929,7 +5937,7 @@
     try {
       const q = new URLSearchParams();
       if (state.filter) q.set("filter", state.filter);
-      const s = await getJson(`/players/${encodeURIComponent(state.player)}/stats?` + q);
+      const s = await viewJson(`/players/${encodeURIComponent(state.player)}/stats?` + q);
       if (live()) renderStrip(s);
     } catch {
       if (live()) el.classList.add("hidden"); // an older server has no per-player stats
