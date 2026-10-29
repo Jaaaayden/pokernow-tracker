@@ -137,11 +137,82 @@
       p.append(cardsEl(runs[1]));
       box.appendChild(p);
     }
+    if (d.showdown) box.appendChild(showdownEl(d, name, amt));
     if (d.voluntary_shows?.length) {
       const p = message("shown after the hand: ");
       d.voluntary_shows.forEach((v, i) => p.append(i ? ", " : "", `${name(v.pn_id)} `, cardsEl(v.cards)));
       box.appendChild(p);
     }
+  }
+
+  // ---- showdown ----------------------------------------------------------------
+  // The foot of the replay: who won each pot on each board, with what (the
+  // payload's `showdown`, stats/showdown.py). A winner's line is the share won,
+  // a loser's, muted, what they put into that pot. Profit and loss take the
+  // page's --up/--down, with the chart's values as the fallback for a page
+  // without them.
+  const SD_CSS = `
+    .sd { --sd-up: var(--up, #1f7a4d); --sd-down: var(--down, #b93a39); }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .sd { --sd-up: var(--up, #4cc38a); --sd-down: var(--down, #e66e6d); }
+    }
+    :root[data-theme="dark"] .sd { --sd-up: var(--up, #4cc38a); --sd-down: var(--down, #e66e6d); }
+    .sd ul { list-style: none; margin: 4px 0 0; padding-left: 22px; }
+    .sd li + li.sd-where { margin-top: 4px; }
+    .sd .sd-where { color: var(--muted); }
+    .sd .sd-lose { color: var(--muted); }
+    .sd .sd-up { color: var(--sd-up); font-weight: 600; }
+    .sd .sd-down { color: var(--sd-down); }`;
+  if (!document.getElementById("pnt-sd-css")) {
+    const style = document.createElement("style");
+    style.id = "pnt-sd-css";
+    style.textContent = SD_CSS;
+    document.head.appendChild(style);
+  }
+  function showdownEl(d, name, amt) {
+    const s = d.showdown;
+    const sec = document.createElement("div"); sec.className = "street sd";
+    const b = document.createElement("b");
+    sec.appendChild(b);
+    if (s.uncontested) {
+      b.textContent = "result";
+      const info = document.createElement("span");
+      info.textContent = `${name(s.uncontested.pn_id)} won the ${amt(s.uncontested.won)} pot uncontested`;
+      sec.appendChild(info);
+      return sec;
+    }
+    b.textContent = "showdown";
+    const hole = Object.fromEntries(d.players.map(p => [p.pn_id, p.hole_cards]));
+    const double = d.hand.double_board;
+    const ul = document.createElement("ul");
+    const line = (pid, hand, cls, delta) => {
+      const li = document.createElement("li");
+      if (cls) li.className = cls;
+      li.append(name(pid), " ");
+      if (hole[pid]) li.append(cardsEl(hole[pid]), " ");
+      li.append(hand || (delta > 0 ? "not shown" : "mucked"));
+      if (delta) {
+        const n = document.createElement("span");
+        n.className = delta > 0 ? "sd-up" : "sd-down";
+        n.textContent = ` ${delta > 0 ? "+" : "-"}${amt(Math.abs(delta))}`;
+        li.appendChild(n);
+      }
+      return li;
+    };
+    for (const pot of s.pots) {
+      for (const r of pot.boards) {
+        // Where: the pot, then the board when there is more than one.
+        const where = document.createElement("li"); where.className = "sd-where";
+        where.append([pot.label, amt(pot.chips)].join(" "));
+        if (pot.boards.length > 1) where.append(` · ${double ? "board" : "run"} ${r.run + 1} `, cardsEl(r.board));
+        if (r.winners.length > 1) where.append(" · chopped");
+        ul.appendChild(where);
+        for (const w of r.winners) ul.appendChild(line(w.pn_id, w.hand, "", w.won));
+        for (const l of r.losers) ul.appendChild(line(l.pn_id, l.hand, "sd-lose", -l.lost));
+      }
+    }
+    sec.appendChild(ul);
+    return sec;
   }
 
   function actionText(a, potBefore, name, amt, street) {

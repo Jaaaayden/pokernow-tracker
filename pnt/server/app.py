@@ -17,6 +17,7 @@ import csv
 import ctypes
 import functools
 import gc
+import json
 import logging
 import os
 import sqlite3
@@ -54,7 +55,7 @@ from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.bluffs import CATEGORY, bluff_value, members
 from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
-from pnt.stats.filters import parse_filter, vocabulary
+from pnt.stats.filters import date_key, parse_filter, vocabulary
 from pnt.stats.fold_equity import fold_equity
 from pnt.stats.fold_equity import pool_facts as fold_pool_facts
 from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
@@ -84,6 +85,7 @@ from pnt.stats.review import (
     set_flag,
     set_note,
 )
+from pnt.stats.showdown import summary as showdown_summary
 from pnt.stats.tags import tags_for
 from pnt.update import EXTENSION_DIR, extension_build
 
@@ -777,10 +779,16 @@ def _predicate(conn: sqlite3.Connection, filter: str | None):
 def _spot_key(conn: sqlite3.Connection, filter: str | None, tags: int | None = None) -> str | None:
     """`filter` as a cache key. A `tag=` term reads tags no generation counts, so
     a filter that may hold one carries every tag and flag along with it: `tags`,
-    when the caller has already read them (`_tag_print`)."""
-    if not filter or "tag" not in filter:
+    when the caller has already read them (`_tag_print`). A `last:7d` counts back
+    from today, so it carries the date: tomorrow is another key."""
+    if not filter:
         return filter
-    return f"{filter}\x00{_tag_print(conn) if tags is None else tags}"
+    key = filter
+    if (day := date_key(filter)) is not None:
+        key = f"{key}\x00{day}"
+    if "tag" in filter:
+        key = f"{key}\x00{_tag_print(conn) if tags is None else tags}"
+    return key
 
 
 def _tag_print(conn: sqlite3.Connection) -> int:
@@ -815,7 +823,7 @@ def allin(
 @app.get("/pots", response_model=None)
 def pots(
     request: Request,
-    days: Annotated[float, Query(gt=0, description="Window in days, counted back from now.")] = DEFAULT_DAYS,
+    days: Annotated[str, Query(description="Window in days, counted back from now, or 'all'.")] = str(DEFAULT_DAYS),
     all_time: Annotated[bool, Query(description="Ignore the window and read all of history.")] = False,
     min_pot: Annotated[int, Query(ge=0, description="Chips a pot must reach to be listed.")] = DEFAULT_MIN_POT,
     game: str | None = None,
@@ -831,10 +839,22 @@ def pots(
     """
     if "text/html" in request.headers.get("accept", ""):
         return _page("pots.html")
+    # Checked here, not by the signature, so the page's own `?days=all` link still
+    # opens the page above instead of a 422.
+    if days == "all":
+        all_time = True
+    window = None
+    if not all_time:
+        try:
+            window = float(days)
+        except ValueError:
+            window = 0.0
+        if not window > 0:
+            raise HTTPException(status_code=422, detail=f"days must be a number over 0 or 'all', not {days!r}")
     try:
         return big_pots(
             db(),
-            days=None if all_time else days,
+            days=window,
             min_pot=min_pot,
             game_id=game,
             player=player,
@@ -1177,15 +1197,18 @@ def hand(hand_id: int) -> dict:
     ).fetchone()
     if h is None:
         raise HTTPException(status_code=404, detail="no such hand")
+    players = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM hand_players WHERE hand_id = ? ORDER BY seats_from_button",
+            (hand_id,),
+        )
+    ]
     return {
         "hand": dict(h),
-        "players": [
-            dict(r)
-            for r in conn.execute(
-                "SELECT * FROM hand_players WHERE hand_id = ? ORDER BY seats_from_button",
-                (hand_id,),
-            )
-        ],
+        "players": players,
+        # Who won each pot, on each board, with what (stats/showdown.py).
+        "showdown": showdown_summary(players, json.loads(h["board_json"] or "[]")),
         # pn_id -> the name a replay should print: the canonical alias when there
         # is one, otherwise the last name PokerNow showed for that ID.
         "names": {
@@ -2150,15 +2173,18 @@ def player_slowplay(
 ) -> dict:
     """What a player did on one street with each strong made hand: bet, raised,
     check-raised, or slowplayed it with a check or a call. Every cell carries the
-    filter that finds its hands. Built from shown hands, so read coverage first."""
-    from pnt.stats.slowplay import slowplay
+    filter that finds its hands. Built from shown hands, so read coverage first.
+    `streets` has the table for all three streets, `street`'s at the top level as
+    before, and `made_on` each strong hand's whole line by the street it was made."""
+    from pnt.stats.slowplay import all_streets, made_on
 
     facts = _spot_facts(alias, filter, game)
     try:
-        out = slowplay(facts, street, floor)
+        every = all_streets(facts, floor)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"player": alias, "filter": filter, **out}
+    return {"player": alias, "filter": filter, **every["streets"][street], **every,
+            "made_on": made_on(facts, floor)}
 
 
 @app.get("/slowplay")
@@ -2360,16 +2386,32 @@ def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one ga
 
 
 @app.get("/tendencies")
-def tendencies_report(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
+def tendencies_report(
+    game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None,
+    player: Annotated[str | None, Query(description="Add `player`: this one player's tags and measures.")] = None,
+) -> dict:
     """The tags on the hero (`you`), and per tag the regular opponents it fires on
     (`pool`), most first. A regular has `min_hands` hands or more. Fun tags are left
-    out. Each player's entry carries the filter that opens the tag's hands."""
+    out. Each player's entry carries the filter that opens the tag's hands.
+
+    With `player`, the answer adds `player`: their tags, each with how many
+    regulars share it, and every measure the tags read beside the pool's rate."""
     from pnt.stats.leaks import hero_of
-    from pnt.stats.tendencies import tendencies
+    from pnt.stats.tendencies import player_tendencies, tendencies
 
     conn = db()
     # The hero is a setting, not a derived fact: picking another moves no generation.
-    return remembered(conn, ("tendencies", game, hero_of(conn, game)), lambda: tendencies(conn, game))
+    hero = hero_of(conn, game)
+    out = remembered(conn, ("tendencies", game, hero), lambda: tendencies(conn, game))
+    if not player:
+        return out
+    shared = {t["id"]: t["count"] for t in out["pool"]}
+    try:
+        one = remembered(conn, ("tendencies", game, hero, "player", player),
+                         lambda: player_tendencies(conn, player, game, shared))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {**out, "player": one}
 
 
 # ---- timing tells --------------------------------------------------------------

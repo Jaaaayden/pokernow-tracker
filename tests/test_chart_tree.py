@@ -35,8 +35,26 @@ def test_a_tree_click_goes_to_the_grid_with_the_node_filter():
     html = CHART.read_text("utf-8")
     body = html[html.index("function drillTree("):]
     body = body[: body.index("\n  }\n")]
-    assert 'state.by = "preflop"' in body and "apply()" in body
+    assert 'state.by = "preflop"' in body and "apply(false, true)" in body
     assert '"preflop"' in html[html.index("const GB_VIEWS"):][:60]
+
+
+def test_back_from_a_tree_click_returns_to_the_tree_where_it_was():
+    """A tree click is the one push: the tree's entry keeps its scroll first, and
+    Back reads the URL again and scrolls once the view is drawn, not before. The
+    ‹ Back to tree control is the browser's Back."""
+    html = CHART.read_text("utf-8")
+    drill = html[html.index("function drillTree("):]
+    drill = drill[: drill.index("\n  }\n")]
+    assert drill.index("scrollY }") < drill.index("apply(false, true)")
+    assert html.count("history.pushState(") == 1
+    write = html[html.index("const writeUrl = ("):]
+    assert "if (push) history.pushState(" in write[: write.index("crumbLinks();")]
+    pop = html[html.index('addEventListener("popstate"'):]
+    pop = pop[: pop.index("\n  });\n")]
+    assert "readUrl();" in pop and "syncControls();" in pop
+    assert pop.index("await load();") < pop.index("scrollTo(0, y)")
+    assert 'id="treeback"' in html and '$("treeback").addEventListener("click", () => history.back())' in html
 
 
 def test_the_made_view_has_a_streets_tab():

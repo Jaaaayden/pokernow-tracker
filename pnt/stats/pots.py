@@ -58,7 +58,7 @@ def _window(
     game_id: str | None,
     pn_ids: list[str] | None,
 ) -> tuple[str, list]:
-    """The SQL selecting (hand_id, pot, ord) for every hand in the window."""
+    """The SQL selecting (hand_id, pot, ord, bb) for every hand in the window."""
     clauses, params = [], []
     if since is not None:
         clauses.append("h.ts >= ?")
@@ -72,7 +72,7 @@ def _window(
         params += pn_ids
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     sql = (
-        "SELECT hp.hand_id AS hand_id, SUM(hp.contributed) AS pot, MAX(h.ord) AS ord"
+        "SELECT hp.hand_id AS hand_id, SUM(hp.contributed) AS pot, MAX(h.ord) AS ord, MAX(h.bb) AS bb"
         " FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
         f"{where} GROUP BY hp.hand_id"
     )
@@ -123,13 +123,15 @@ def big_pots(
 
     # One pass for the shape of the window: how many hands are in it, how many
     # cleared the bar, and what the biggest was -- so a list capped at `limit`
-    # can still say what it is a slice of.
+    # can still say what it is a slice of. The volume in bb leaves out a hand
+    # with no big blind on record, as a row's `pot_bb` does.
     summary = conn.execute(
         "SELECT COUNT(*) AS hands, COALESCE(SUM(pot >= ?), 0) AS over,"
         " COALESCE(MAX(pot), 0) AS biggest,"
-        " COALESCE(SUM(CASE WHEN pot >= ? THEN pot ELSE 0 END), 0) AS chips"
+        " COALESCE(SUM(CASE WHEN pot >= ? THEN pot ELSE 0 END), 0) AS chips,"
+        " COALESCE(SUM(CASE WHEN pot >= ? AND bb > 0 THEN pot * 1.0 / bb END), 0) AS chips_bb"
         f" FROM ({sql})",
-        [min_pot, min_pot, *params],
+        [min_pot, min_pot, min_pot, *params],
     ).fetchone()
 
     picked = conn.execute(
@@ -205,8 +207,11 @@ def big_pots(
         #: How many cleared the bar -- more than `len(pots)` when the list is capped.
         "over": summary["over"],
         "biggest": summary["biggest"],
-        #: Chips that passed through those pots, added up.
+        #: Chips that passed through those pots, added up: volume, not money won.
+        #: The same buy-ins go round many pots, so it dwarfs any player's result.
         "chips": summary["chips"],
+        #: The same volume in each hand's big blinds.
+        "chips_bb": round(summary["chips_bb"], 1),
         "limit": limit,
         "pots": rows,
     }

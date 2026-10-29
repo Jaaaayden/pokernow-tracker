@@ -11,6 +11,7 @@
     --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
     --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
     --up: #1f7a4d; --down: #b93a39; --bar: rgba(42,120,214,0.10);
+    --violet: #7353c4; --amber: #a86a0c; --teal: #1b7d86;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -18,6 +19,7 @@
       --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
       --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
+      --violet: #a690f2; --amber: #e3a54c; --teal: #4fc0c9;
     }
   }
   :root[data-theme="dark"] {
@@ -25,10 +27,12 @@
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
     --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
+    --violet: #a690f2; --amber: #e3a54c; --teal: #4fc0c9;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
+  /* The chart's width: side by side, the replay needs the room. */
+  main { max-width: none; margin: 0; padding: 20px clamp(12px, 2vw, 28px) 48px; }
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -55,10 +59,18 @@
   .crumb .go a + a { margin-left: 14px; }
 
   /* --- the headline figures --- */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 10px 12px; }
-  .tile b { display: block; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .tile span { color: var(--muted); font-size: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px;
+    max-width: 1100px; }
+  /* Each figure in its own hue, so the four read apart at a glance. */
+  .tile { --tone: var(--ink-2); background: color-mix(in srgb, var(--tone) 6%, var(--surface));
+    border: 1px solid var(--ring); border-top: 3px solid var(--tone); border-radius: 10px; padding: 8px 12px 10px; }
+  .tile.big { --tone: var(--accent); }
+  .tile.over { --tone: var(--violet); }
+  .tile.vol { --tone: var(--amber); }
+  .tile.hands { --tone: var(--teal); }
+  .tile b { display: block; font-size: 22px; font-weight: 650; color: var(--tone); font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--ink-2); font-size: 12px; }
+  .tile small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; font-variant-numeric: tabular-nums; }
 
   /* --- the list --- */
   .pot-rows { display: flex; flex-direction: column; }
@@ -79,10 +91,11 @@
   .pot-row .pot small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
   .pot-row .when { min-width: 8.5em; color: var(--muted); font-size: 12px; }
   .pot-row .who { min-width: 15em; flex: 1; }
-  .pot-row .who .up { color: var(--up); }
-  .pot-row .who .down { color: var(--down); }
+  .pot-row .up { color: var(--up); }
+  .pot-row .down { color: var(--down); }
   .pot-row .who .sep { color: var(--muted); margin: 0 6px; }
   .pot-row .board { min-width: 10em; color: var(--ink-2); }
+  .pot-row .board .b2 { display: none; }
   .pot-row .tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
   .pot-row .tag { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
     color: var(--muted); white-space: nowrap; }
@@ -109,6 +122,7 @@
      narrow list keeps the pot, when, who won it and a short log's warning; the
      replay has the board and the rest. With no pots, or on a phone until a pot
      is picked, the list has the whole width. */
+  #hand-pair:not(.split) { max-width: 1280px; }
   #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
   #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
   #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
@@ -117,6 +131,26 @@
   @media (max-width: 620px) {
     #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
     #hand-pair.split > .replay[data-empty] { display: none; }
+  }
+  /* Side by side on a wide screen, a pot is one dense line -- pot, when, who
+     won it from whom, the board, the tags that change how it reads -- so the
+     replay has room. A second board runs after a slash; the street and table
+     size wait for the replay. Stacked keeps the roomier rows. The replay stops
+     at about 640px, as on the chart, and the list takes the rest of the card. */
+  @media (min-width: 621px) {
+    #hand-pair.split { grid-template-columns: minmax(520px, 1fr) minmax(0, min(45%, 640px)); }
+    #hand-pair.split .pot-row { flex-wrap: nowrap; gap: 0 10px; padding: 4px 6px; font-size: 12px; white-space: nowrap; }
+    #hand-pair.split .pot-row .pot { min-width: 6.4em; font-size: 13px; }
+    #hand-pair.split .pot-row .pot small { font-size: 11px; margin-left: 4px; }
+    #hand-pair.split .pot-row .when { min-width: 0; font-size: 11px; }
+    #hand-pair.split .pot-row .who { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+    #hand-pair.split .pot-row .who .sep { margin: 0 4px; }
+    #hand-pair.split .pot-row .board { min-width: 0; flex: none; }
+    #hand-pair.split .pot-row .board br { display: none; }
+    #hand-pair.split .pot-row .board .b2 { display: inline; color: var(--muted); margin: 0 3px; }
+    #hand-pair.split .pot-row .tags { flex: none; flex-wrap: nowrap; gap: 3px; }
+    #hand-pair.split .pot-row .tag { font-size: 10px; padding: 0 5px; }
+    #hand-pair.split .pot-row .tag.minor { display: none; }
   }
   .pot-rows { container-type: inline-size; }
   @container (max-width: 360px) {
@@ -269,15 +303,17 @@
     }
   }
 
-  function tile(value, caption, title) {
+  function tile(hue, value, caption, title, detail) {
     const d = document.createElement("div");
-    d.className = "tile";
+    d.className = "tile " + hue;
     if (title) d.title = title;
     const b = document.createElement("b"); b.textContent = value;
     const s = document.createElement("span"); s.textContent = caption;
     d.append(b, s);
+    if (detail) { const m = document.createElement("small"); m.textContent = detail; d.append(m); }
     return d;
   }
+  const short = (v) => v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e4 ? `${Math.round(v / 1e3)}k` : chips(v);
 
   const WINDOW_WORD = { "1": "in the last 24 hours", "7": "in the last 7 days", "30": "in the last 30 days", all: "ever recorded" };
 
@@ -285,11 +321,18 @@
     const d = state.data;
     const word = WINDOW_WORD[state.days];
     $("subtitle").textContent = `over ${chips(d.min_pot)} ${word}` + (d.player ? ` · ${d.player}` : "");
+    // Pot volume: the chips that went into these pots, each pot once. The same
+    // buy-ins go round many pots, so it is far more than anyone won or lost.
+    const bbVol = d.chips_bb == null ? null : `${short(d.chips_bb)} bb`;
+    const avg = d.over ? `${chips(d.chips / d.over)} a pot` : null;
     $("tiles").replaceChildren(
-      tile(chips(d.biggest), "biggest pot", "the largest single pot in the window"),
-      tile(String(d.over), `pots over ${chips(d.min_pot)}`, "how many cleared the bar"),
-      tile(chips(d.chips), "chips in those pots", "every flagged pot added up"),
-      tile(d.hands.toLocaleString(), "hands in the window", "the denominator: every hand dealt in it"),
+      tile("big", chips(d.biggest), "biggest pot", "the largest single pot in the window"),
+      tile("over", d.over.toLocaleString(), `pots over ${chips(d.min_pot)}`, "how many cleared the bar"),
+      tile("vol", state.unit === "bb" && bbVol ? bbVol : chips(d.chips), "pot volume, not money won",
+        "every chip that went into these pots, each pot once (a run twice or a chop is one pot)."
+        + " The same buy-ins go round many pots, so this is far more than anyone won.",
+        [state.unit === "bb" ? `${chips(d.chips)} chips` : bbVol, avg].filter(Boolean).join(" · ")),
+      tile("hands", d.hands.toLocaleString(), "hands in the window", "the denominator: every hand dealt in it"),
     );
 
     const list = $("rows");
@@ -307,7 +350,7 @@
     if (d.over > d.pots.length) {
       const p = document.createElement("p");
       p.className = "muted";
-      p.textContent = `the ${d.pots.length} biggest of ${d.over} pots over the bar`;
+      p.textContent = `the ${d.pots.length} biggest of ${d.over.toLocaleString()} pots over the bar`;
       p.style.margin = "0 0 6px";
       list.appendChild(p);
     }
@@ -342,16 +385,18 @@
       names.textContent = h.seats.filter(s => s.collected > 0).map(s => s.player).join(" · ");
       who.appendChild(names);
     } else if (h.winner) {
-      const w = document.createElement("span");
-      w.className = "up";
-      w.textContent = `${h.winner} ${money(h, "won", "won_bb")}`;
-      who.appendChild(w);
+      // The name in ink, the net in green or red by its sign.
+      const net = (row, chipsKey, bbKey) => {
+        const n = document.createElement("span");
+        n.className = row[chipsKey] > 0 ? "up" : row[chipsKey] < 0 ? "down" : "";
+        n.textContent = money(row, chipsKey, bbKey);
+        return n;
+      };
+      who.append(`${h.winner} `, net(h, "won", "won_bb"));
       if (h.loser) {
         const sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "vs";
-        const l = document.createElement("span"); l.className = "down";
         const lost = h.seats[h.seats.length - 1];
-        l.textContent = `${h.loser} ${money(lost, "net", "net_bb")}`;
-        who.append(sep, l);
+        who.append(sep, `${h.loser} `, net(lost, "net", "net_bb"));
       }
     } else {
       who.textContent = "—";
@@ -363,7 +408,11 @@
     const board = span("board", h.board.length ? cardsEl(h.board) : "no flop",
       h.run_count > 1 && !h.double_board ? "ran twice; run one shown" : "");
     // Double Board: the second board under the first, both bet on every street.
-    if (h.board2?.length) board.append(document.createElement("br"), cardsEl(h.board2));
+    // Side by side, it follows the first after a slash on the one line.
+    if (h.board2?.length) {
+      const slash = document.createElement("span"); slash.className = "b2"; slash.textContent = "/";
+      board.append(document.createElement("br"), slash, cardsEl(h.board2));
+    }
 
     const tags = document.createElement("span");
     tags.className = "tags";
@@ -375,9 +424,9 @@
       tags.appendChild(t);
     };
     if (h.all_in) tag("all in", "allin");
-    tag(h.went_to_showdown ? "showdown" : h.street, null,
+    tag(h.went_to_showdown ? "showdown" : h.street, "minor",
       h.went_to_showdown ? "shown down" : `no showdown; ended on the ${h.street}`);
-    tag(`${h.players}-handed`);
+    tag(`${h.players}-handed`, "minor");
     if (h.double_board) tag("double board");
     else if (h.run_count > 1) tag("ran twice");
     if (h.plo) tag("PLO");

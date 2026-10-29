@@ -16,6 +16,10 @@ bias runs one way: a set that bet and got folds to is never shown, while a set
 that checked or called usually reaches showdown. An opponent's slowplay share
 reads high for that reason; the hero's cards are known on every hand, so theirs
 does not. ``coverage`` is reported beside every table, as in the range views.
+
+`all_streets` is the table on all three streets at once, the chart's merged grid;
+`made_on` is each strong hand's whole line, grouped by the street it was first
+that strong -- the flopped boat that went x/b/b beside the turned one, b/b/b.
 """
 
 from __future__ import annotations
@@ -219,6 +223,74 @@ def slowplay(facts: Iterable[Facts], street: str, floor: str = DEFAULT_FLOOR) ->
         "rows": rows,
         "total": total,
     }
+
+
+def all_streets(facts: Iterable[Facts], floor: str = DEFAULT_FLOOR) -> dict:
+    """The table on every street at once, keyed by street, and the slowplay share
+    over all three totals: the merged grid the chart draws. A hand strong on two
+    streets is two decisions, so `all_streets` counts decisions, not hands."""
+    facts = list(facts)
+    tables = {street: slowplay(facts, street, floor) for street in POSTFLOP_STREETS}
+    n = sum(t["total"]["n"] for t in tables.values())
+    slow = sum(t["total"]["slowplay"] for t in tables.values())
+    return {
+        "streets": tables,
+        "all_streets": {"n": n, "slowplay": slow, "slowplay_pct": _pct(slow, n)},
+    }
+
+
+def made_on(facts: Iterable[Facts], floor: str = DEFAULT_FLOOR) -> dict:
+    """The whole line of each hand that ended at `floor` or better, grouped by the
+    street it was first that strong: did the flopped boat go x/b/b and the turned
+    one b/b/b?
+
+    A hand's class is its made hand on the last street it was in for (the board
+    ran out, or it ended); it was **made on** the first street whose made hand was
+    already that strong. Counted when the cards are known and they acted on that
+    street; one already all in by then had no decision with it and is `all_in`.
+    The line is `lines`' own line, ``x/b/b``, with ``-`` for a street they did not
+    act on. Lines in a group are most common first; every line is listed.
+    """
+    floor = check_floor(floor)
+    leaves = MADE_LEAVES[: MADE_LEAVES.index(floor) + 1]
+    rank = {leaf: i for i, leaf in enumerate(MADE_LEAVES)}
+    acted: dict[str, dict[str, list[Facts]]] = {leaf: {s: [] for s in POSTFLOP_STREETS} for leaf in leaves}
+    idle: dict[str, list[Facts]] = {leaf: [] for leaf in leaves}
+    for f in facts:
+        held = [(s, _made_leaf(f, s)) for s in POSTFLOP_STREETS]
+        held = [(s, leaf) for s, leaf in held if leaf is not None]
+        if not held or held[-1][1] not in acted:
+            continue
+        final = held[-1][1]
+        street = next(s for s, leaf in held if rank[leaf] <= rank[final])
+        (acted[final][street] if street in f.line else idle[final]).append(f)
+
+    def row(leaf: str, by: dict[str, list[Facts]], all_in: list[Facts]) -> dict:
+        n = sum(len(rows) for rows in by.values())
+        out = {}
+        for street, rows in by.items():
+            lines: dict[str, list[Facts]] = {}
+            for f in rows:
+                lines.setdefault("/".join(f.line.get(s, "-") for s in POSTFLOP_STREETS), []).append(f)
+            ranked = sorted(lines.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+            out[street] = {
+                "n": len(rows),
+                "pct": _pct(len(rows), n),
+                "hand_ids": [f.hand_id for f in rows],
+                "lines": [
+                    {"line": line, "n": len(hs), "pct": _pct(len(hs), len(rows)), "hand_ids": [f.hand_id for f in hs]}
+                    for line, hs in ranked
+                ],
+            }
+        return {"leaf": leaf, "n": n, "all_in": len(all_in), "all_in_ids": [f.hand_id for f in all_in], "streets": out}
+
+    rows = [row(leaf, acted[leaf], idle[leaf]) for leaf in leaves]
+    total = row(
+        "total",
+        {s: [f for leaf in leaves for f in acted[leaf][s]] for s in POSTFLOP_STREETS},
+        [f for leaf in leaves for f in idle[leaf]],
+    )
+    return {"floor": floor, "rows": rows, "total": total}
 
 
 def by_player(

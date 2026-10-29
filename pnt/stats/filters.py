@@ -20,7 +20,8 @@ pot reached 500 chips, and `vs=henry` the hands played against henry.
 `called_jam` the other side of it. `line_flop=xr` is a flop check-raise, and
 `made_flop>=set,line_flop=x*` the sets that checked the flop -- a slowplay.
 `action_flop=*Br*` is the whole street, everyone's actions: they bet and someone
-raised them, their own letters in capitals.
+raised them, their own letters in capitals. `since:2026-10-20` and `last:7d` keep
+the recent hands, so any spot can be read for how they play lately.
 
 A comma is and, `|` or, and `|` binds tighter: `3bet_pot|4bet_pot` is either pot,
 `position=BTN|CO` either seat, and `(srp,position=BTN)|3bet_pot` groups with
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping
+from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 
 from ..logfmt.parser import position_name
@@ -646,6 +648,61 @@ def _tag_term(term: str, tags: TagResolver | None) -> Predicate | None:
     return None
 
 
+#: Today on this machine's calendar, which `last:` counts back from. A name of
+#: its own so a test can move the clock.
+_today = date.today
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DAYS = re.compile(r"(\d+)d", re.IGNORECASE)
+
+
+def _day_start(day: date) -> str:
+    """Local midnight at the start of `day`, written as the parser writes `hands.ts`
+    (ISO-8601 UTC, to the millisecond, with the `Z`), so a hand compares as text,
+    the way `pots.cutoff` does."""
+    try:
+        at = datetime.combine(day, time()).astimezone(UTC)
+    except (OverflowError, OSError):  # Windows has no local time before 1970
+        at = datetime.combine(day, time(), UTC)
+    return f"{at.strftime('%Y-%m-%dT%H:%M:%S')}.000Z"
+
+
+def _date_term(term: str) -> Predicate | None:
+    """`since:2026-10-20`, `before:2026-10-20`, `last:7d` (SPEC.md, "Dates").
+
+    Days are this machine's calendar days: `since:` keeps the hands from that
+    local midnight on, `before:` the hands before it, and `last:7d` today and the
+    six days before. A hand with no timestamp matches none of them.
+    """
+    key, sep, value = term.partition(":")
+    if not sep or key not in ("since", "before", "last"):
+        return None
+    value = value.strip()
+    if key == "last":
+        m = _DAYS.fullmatch(value)
+        if m is None or int(m.group(1)) < 1:
+            raise ValueError(f"bad span {value!r} for last: use a number of days, e.g. last:7d")
+        cut = _day_start(_today() - timedelta(days=int(m.group(1)) - 1))
+    else:
+        try:
+            if not _DATE.fullmatch(value):
+                raise ValueError
+            cut = _day_start(date.fromisoformat(value))
+        except ValueError:
+            raise ValueError(f"bad date {value!r} for {key}: use YYYY-MM-DD, e.g. {key}:2026-10-20") from None
+    if key == "before":
+        return lambda f, cut=cut: f.ts is not None and f.ts < cut
+    return lambda f, cut=cut: f.ts is not None and f.ts >= cut
+
+
+def date_key(expr: str | None) -> str | None:
+    """What a cache keyed by filter text must add for `expr` to stay current:
+    today's date when a `last:` term counts back from it, else None. `since:`
+    and `before:` name their day and need nothing."""
+    if not expr or not re.search(r"(^|[,|(\s])last:", expr):
+        return None
+    return _today().isoformat()
+
+
 def _numeric_term(term: str) -> Predicate | None:
     for name, getter in NUMERIC.items():
         if not term.startswith(name):
@@ -845,6 +902,11 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
     ("Your tags", (
         ("tag=TAG", "tag=river-bluff", "hands you tagged, e.g. tag=cooler|study · tag=flagged the 🚩 ones"),
     )),
+    ("Date", (
+        ("since:DATE", "since:2026-10-20", "dealt that day or later, your local calendar"),
+        ("before:DATE", "before:2026-10-20", "dealt before that day"),
+        ("last:DAYS", "last:7d", "the last N days, today included: last:1d is today"),
+    )),
     ("Session", (
         ("post_loss", "post_loss", f"the {WINDOW} hands after losing {BIG_LOSS_BB} bb or more in one hand, same session"),
         ("hands_since_loss<=N", "hands_since_loss<=5", "their hands since that big loss: 1 is the next hand"),
@@ -1017,6 +1079,8 @@ def parse_filter(
       ``think_river>=5``     seconds their first river decision took; ``tempo_river=tank``
                              its bucket (pre, snap, normal, tank, timeout), preflop included
       ``tag=river-bluff``    a hand you tagged; ``tag!=`` negates
+      ``since:2026-10-20``   dealt on or after that local day; ``before:`` before it,
+                             ``last:7d`` today and the six days before
       ``!cbet_flop``         any flag, negated
     """
     preds = _Parser(expr, names, tags).parse()
@@ -1051,7 +1115,7 @@ def _compile_term(
     term: str, names: Mapping[str, str] | None, tags: TagResolver | None = None
 ) -> tuple[Predicate, str]:
     """One term as a predicate, with the family that read it: `numeric` for a
-    comparison, `flag` and `not` for the bare forms, else the family a value list
+    comparison, `flag`, `not` and `date` for the bare forms, else the family a value list
     has to stay inside (`position=BTN|CO` is two `position` terms)."""
     if term in FLAGS:
         return FLAGS[term], "flag"
@@ -1087,6 +1151,7 @@ def _compile_term(
         ("vs", lambda t: _player_term(t, names)),
         ("tag", lambda t: _tag_term(t, tags)),
         ("hand", _hand_term),
+        ("date", _date_term),
         ("decision", _decision_term),
         ("answer", _answer_term),
         ("line", lambda t: _street_term(t, "line")),
@@ -1106,6 +1171,7 @@ def _compile_term(
         f"unknown filter term: {term!r}. "
         f"Known flags: {', '.join(sorted(FLAGS))}; "
         f"position=<POS>; fold_street=<street>; vs=<player>; tag=<tag>; hand=<class>; "
+        f"since:YYYY-MM-DD, before:YYYY-MM-DD or last:Nd; "
         f"a comparison on {', '.join(NUMERIC)}; "
         f"a size ({', '.join(SIZE_BUCKETS)}) on {', '.join(SIZED)}; "
         f"a decision ({', '.join(DECISIONS)}) on {', '.join(DECIDED)}; "
@@ -1279,7 +1345,7 @@ class _Parser:
                     if values is not None:
                         alts.append(values.predicate())
                     values = None
-                    if family in ("flag", "not"):
+                    if family in ("flag", "not", "date"):
                         alts.append(pred)
                     else:
                         values = _Values(segment, pred, family, self.names, self.tags)

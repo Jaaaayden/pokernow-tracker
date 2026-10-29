@@ -78,6 +78,20 @@ def test_the_bar_is_inclusive(db):
     assert all(r["pot"] > size for r in above["pots"])
 
 
+def test_the_volume_counts_each_pot_once(db):
+    """`chips` is the listed pots added up, a run-it-twice or chopped pot once,
+    and `chips_bb` the same pots in their own big blinds."""
+    out = pt.big_pots(db, days=None, min_pot=0, limit=10**4)
+    assert out["over"] == len(out["pots"]), "the cap holds every fixture pot"
+    assert out["chips"] == sum(r["pot"] for r in out["pots"])
+    assert out["chips_bb"] == pytest.approx(sum(r["pot"] / r["bb"] for r in out["pots"] if r["bb"]), abs=0.1)
+    split = [r for r in out["pots"] if r["run_count"] > 1 or r["chopped"]]
+    assert split, "the fixture logs have chopped pots"
+    for r in split:
+        # Paid out run by run, never more than once: what was collected is the pot.
+        assert sum(s["collected"] for s in r["seats"]) <= r["pot"]
+
+
 # -------------------------------------------------------------- the window ---
 
 
@@ -235,11 +249,16 @@ def test_the_endpoint_serves_the_page_to_browsers_and_json_to_everyone_else(tmp_
     page = client.get("/pots", headers={"Accept": "text/html"})
     assert page.status_code == 200 and "Biggest pots" in page.text
     assert client.get("/pots.html").status_code == 200
+    # The page's own query string, as a browser or the note overlay sends it.
+    page = client.get("/pots", params={"days": "all", "min": 0}, headers={"Accept": "text/html"})
+    assert page.status_code == 200 and "Biggest pots" in page.text
 
     body = client.get("/pots", params={"all_time": 1, "min_pot": 0, "limit": 4}).json()
     assert body["since"] is None and len(body["pots"]) == 4
     assert body["pots"][0]["pot"] == body["biggest"]
 
+    assert client.get("/pots", params={"days": "all", "min_pot": 0}).json()["since"] is None
     assert client.get("/pots", params={"days": 0}).status_code == 422
+    assert client.get("/pots", params={"days": "soon"}).status_code == 422
     assert client.get("/pots", params={"limit": 9999}).status_code == 422
     assert client.get("/pots", params={"player": "nobody"}).status_code == 404

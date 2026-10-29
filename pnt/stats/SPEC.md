@@ -683,6 +683,34 @@ counts every player's rows from `facts_by_player(game)`, which `/stats?filter=`
 groups, so a count is the sum of that table's `hands` column. It reads only, but
 carries the write header like every POST.
 
+### Dates
+
+Three terms keep the hands dealt in a stretch of days, so any spot can be read
+for how a player plays lately, or how they ran:
+
+| Term | Keeps the rows whose `ts` is |
+|---|---|
+| `since:2026-10-20` | at or after local midnight starting that day |
+| `before:2026-10-20` | before local midnight starting that day |
+| `last:7d` | at or after local midnight starting the day six days before today: `last:1d` is today |
+
+- **A day is a local calendar day**: the timezone of the machine the server (or
+  the CLI) runs on, never UTC. `hands.ts` is UTC, so the day's start is turned
+  into UTC before the comparison, which is on the text as `pots.cutoff` compares
+  it. A hand with no `ts` matches none of the three.
+- **Bare terms.** No operator and no value list: `since:a|b` is an error, and
+  `since:2026-10-01|vpip` two terms. A date is `YYYY-MM-DD` and a span `Nd` with N
+  at least 1; anything else (`since:2026-13-40`, `last:abc`) raises, a 400 from the
+  server. `!` does not take one; `before:` is the other side of `since:`, and
+  `!(since:…)` works.
+- Two of a side together are an AND, so `since:2026-10-01,since:2026-10-20` is the
+  later bound. The `?` panel drops the earlier when the later is typed, as it does
+  `pot>=500` for `pot>=200`: `since:` and `last:` share the first-day side.
+- **`last:` moves with the clock.** It is resolved when the filter is parsed, and
+  a cache keyed by filter text (`app._spot_key`, through `filters.date_key`) adds
+  today's date to a filter holding one, so yesterday's answer is never served
+  today. `since:` and `before:` name their day and need nothing.
+
 ### Saved spots and hand tags
 
 Both are yours, not the log's (`db/userdata.py`), kept like a flag: keyed on
@@ -1361,12 +1389,44 @@ strong hand that bet and got folds to is never shown, while one that checked or
 called usually reaches showdown. An opponent's slowplay share reads high for that
 reason. The hero's cards are known on every hand, so the hero's does not.
 
-`GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns the table,
-every cell with `n`, `pct` of its row, `filter` and `hand_ids`.
+**All three streets.** `slowplay.all_streets(facts, floor)` is the table on every
+street at once, `streets: {flop, turn, river}`, and `all_streets`: `n`, `slowplay`
+and `slowplay_pct` summed over the three `total` rows. A hand strong on two streets
+is two decisions there, so it counts decisions, not hands.
+
+**Line by when made.** `slowplay.made_on(facts, floor)` asks how a hand that ended
+strong got there: did the flopped boat go `x/b/b` and the turned one `b/b/b`?
+
+- A hand's **class** is its made hand (`made_<street>`'s reading) on the last
+  street it was still in for: the river if the board ran out, else where it ended.
+  It counts when that class is `floor` or better.
+- It was **made on** the first street whose made hand was already at least that
+  strong (`MADE_LEAVES` rank). Two pair on the flop that boats on the turn is a
+  full house made on the turn; a set that stays a set is made on the flop.
+- It is listed when they acted on the made-on street (`line_<street>=*`). One
+  already all in by then had no decision with it and is counted as the row's
+  `all_in` (with `all_in_ids`) instead.
+- Its **line** is the whole own line, as in "Action lines": `line[flop]/line[turn]/
+  line[river]`, `-` where they did not act. `x/b/b` is check, bet, bet; `xc/-/-`
+  is a flop check-call that ended their decisions.
+
+`rows` has one entry per leaf from `straight_flush` to `floor` and `total` all of
+them, each with `n`, `all_in` and `streets[<made on>]`: `n`, `pct` of the row,
+`hand_ids`, and `lines`, every line with its `n`, `pct` of the made-on group and
+`hand_ids`, most common first (ties by line). A group's lines add up to its `n`;
+a row's groups add up to its. No filter is given: the made-on condition compares
+two streets per hand, which no single term says.
+
+`GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns `street`'s
+table at the top level, every cell with `n`, `pct` of its row, `filter` and
+`hand_ids`, plus `streets`, `all_streets` and `made_on`.
 `GET /slowplay` (same parameters, plus `min`) pools everyone's hands and adds
 `players`, each player's total row, highest slowplay share first. `pnt slowplay
-[alias] --street flop --floor set` prints both; the chart's **Strength by street**
-view draws the player's.
+[alias] --street flop --floor set` prints both. The chart's **Strength by street**
+view draws the player's: a grid of `slowplay_pct` per leaf and street (each cell
+lists the row's hands on that street; hover shows its columns), the one-street
+table under it, and the line-by-when-made groups, the top four lines each and the
+rest rolled up.
 
 The **SLOWPLAYS** tag (see "Exploit tags") is this table's flop `total` row at the
 default floor: `n` is the row's `n`, its hits the slowplays, and its filter the
@@ -1539,8 +1599,8 @@ situation flags at or below the node, `first_in`, `steal_opp`, `squeeze_opp`,
 `cold_call_opp`, `3bet_opp`, `fold_to_steal_opp`, `acted_preflop`, `straddled`,
 `dead_button`, `post_loss` and their `!` forms, and comparisons on `players`,
 `eff_bb`, `callers_before`, `session_hand`, `session_hour`, `hands_since_loss`,
-plus `open_bb` from level 2 up. **Every other term is left out and listed as
-`ignored`**: a postflop term, a pot type, `hand=` or `cards_known` would count
+the date terms (`since:`, `before:`, `last:`), plus `open_bb` from level 2 up.
+**Every other term is left out and listed as `ignored`**: a postflop term, a pot type, `hand=` or `cards_known` would count
 only the hands that got that far, and a term that implies the decision would
 make the frequency 100%.
 
@@ -2037,7 +2097,12 @@ are built from.
 because judged against itself the pool is never an outlier, and a whole-table
 habit (everyone folds to c-bets) would otherwise never show. `pnt tags --pool`
 prints every baseline with the middle half of the players' rates, and `--basis
-fixed` judges on the fixed cuts alone.
+fixed` judges on the fixed cuts alone. `GET /tendencies?player=` adds one
+player's view (`tendencies.player_tendencies`): their tags, each with how many
+regulars share it, and every measure the tags read (`MEASURES`) beside the
+pool's median and middle half without them -- so a measure that fired nothing
+still says where the player sits. A shown-hand measure that is mostly their own
+log is flagged (`own_log`), since the baseline leaves those rows out.
 
 Calibrated 2026-10-14 on the 15,052-hand database (9 players): the default gap
 splits each rule's clear outliers from the pool's middle half -- FOLDS TO CBET for
@@ -3165,6 +3230,14 @@ bug would be almost a day of stale hands at the boundary, and nowhere else.
 **A capped list says so.** `over` counts every pot that cleared the bar and
 `hands` every hand in the window, so a list of 50 out of 200 is visibly a slice
 rather than quietly the whole of it.
+
+**`chips` is pot volume, not money won.** It adds up every pot that cleared the
+bar, each once: a run-it-twice or Double Board pot is one pot paid out in parts,
+and a chopped pot is one pot shared. The same buy-ins go round many pots, so the
+volume dwarfs what anyone won: on the 19,000-hand database, 6.75M chips through
+every pot (355 a hand, about 30 bb) against 432k chips won across all the
+winning sessions. `chips_bb` is the same pots in each hand's own big blinds,
+leaving out a hand with none on record, as a row's `pot_bb` does.
 
 **A chopped pot names no winner.** Where two or more players collected, "winner
 +13" would describe a pot everyone mostly got back; the row says *chopped* and

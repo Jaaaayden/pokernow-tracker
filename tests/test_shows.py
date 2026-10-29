@@ -253,7 +253,7 @@ def test_the_chart_opens_a_linked_hand():
     and the Shows view does the same for a row."""
     static = Path(__file__).resolve().parents[1] / "pnt" / "server" / "static"
     chart = static.joinpath("chart.html").read_text("utf-8")
-    read_url = chart[chart.index("const readUrl = () => {"):chart.index("const writeUrl = () => {")]
+    read_url = chart[chart.index("const readUrl = () => {"):chart.index("const writeUrl = (")]
     assert 'state.hand = ' in read_url and 'q.get("hand")' in read_url
     boot = chart[chart.index("  readUrl();\n"):]
     assert "openHands(" in boot and 'pntReplay.show($("replay"), state.hand)' in boot

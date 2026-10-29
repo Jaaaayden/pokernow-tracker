@@ -14,8 +14,11 @@
 
   const style = document.createElement("style");
   style.textContent = `
-    .fh-btn { width: 28px; padding: 5px 0; border-radius: 999px; font-weight: 600; color: var(--ink-2); }
+    /* Each a glyph and a word, so neither is a bare ? or ★ to guess at. */
+    .fh-btn { padding: 5px 10px; border-radius: 999px; color: var(--ink-2); white-space: nowrap; }
+    .fh-btn b { font-weight: 700; margin-right: 4px; }
     .fh-btn[aria-expanded=true] { background: var(--accent); color: #fff; border-color: transparent; }
+    @media (max-width: 600px) { .fh-btn { padding: 2px 7px; } .fh-btn b { margin-right: 3px; } }
     .fh { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
       padding: 8px 12px 10px; margin: 0 0 12px; font-size: 12px; line-height: 1.3; }
     .fh [hidden] { display: none !important; }
@@ -53,8 +56,10 @@
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "fh-btn";
-  btn.textContent = "?";
-  btn.title = "every term you can put in a spot";
+  const glyph = document.createElement("b");
+  glyph.textContent = "?";
+  btn.append(glyph, "Filters");
+  btn.title = "every term the Spot box takes, with what it means: click one to add it";
   btn.setAttribute("aria-expanded", "false");
   btn.setAttribute("aria-controls", "filter-help");
   input.after(btn);
@@ -85,14 +90,14 @@
   // --- Templates. A vocabulary term is literals and parameter slots:
   // `cbet_<street>=SIZE` is "cbet_", street, "=", SIZE. A trailing `>=N` is an
   // operator slot then a number, since every comparison takes any operator.
-  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|TIER|ANSWER|FLAG|TAG)/;
+  const SLOT = /(<street>|<spot>|POS|SIZE|TEXTURE|DECISION|CLASS|NAME|LINE|SEQ|MADE|TIER|ANSWER|FLAG|TAG|DATE|DAYS)/;
   const OP_WORDS = { ">=": "at least", "<=": "at most", "=": "exactly", ">": "more than", "<": "less than" };
   const PICK = {
     street: "pick a street", spot: "pick a decision point", POS: "pick a position", SIZE: "pick a size",
     TEXTURE: "pick a texture", DECISION: "pick what they did", op: "pick a comparison", NAME: "pick a player",
     N: "type a number", CLASS: "type a hand like AKs, T9o, 77 or 72",
     MADE: "pick a made hand", TIER: "pick a tier", ANSWER: "pick fold, call or raise", FLAG: "pick a flag to negate",
-    TAG: "pick a tag",
+    TAG: "pick a tag", DATE: "type a day as YYYY-MM-DD, or pick one", DAYS: "type a number of days then d, or pick one",
   };
   // The slots that take several values after a plain `=` or `!=`, joined by `|`.
   const MANY = new Set(["MADE", "TIER", "TAG"]);
@@ -128,7 +133,15 @@
       ["xB*/xB*/", "bet flop and turn after a check"], ["Bc/Bc/Bc", "bet every street, called each time"],
       ["Xb*/Xb*/", "checked and faced a bet on flop and turn"], ["xBr*//", "got check-raised on the flop"],
     ],
+    // Days counted back from today, on this computer's calendar as the server's are.
+    get DATE_ALL() { return [[dayAgo(0), "today"], [dayAgo(7), "a week ago"], [dayAgo(30), "30 days ago"]]; },
+    DAYS_ALL: [["1d", "today"], ["7d", "today and the 6 days before"], ["30d", "the last 30 days"]],
   };
+  function dayAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
   const allStreets = (t) => !t.segs.some((s) => s.slot === "street");
   function pickText(t, kind) {
     if (MANY.has(kind)
@@ -307,9 +320,14 @@
   const LOWER = new Set([">=", ">"]);
   const UPPER = new Set(["<=", "<"]);
   const isNum = (s) => s !== "" && !Number.isNaN(Number(s));
+  // Which end of the dates a term bounds: `since:` and `last:` both set the first
+  // day, so either restates the other, and `before:` the last.
+  const DATE_SIDE = { since: "from", last: "from", before: "to" };
+  const dateSide = (t) => DATE_SIDE[t.trim().toLowerCase().match(/^(since|before|last):/)?.[1]];
 
   function conflicts(a, b) {
     if (a.toLowerCase() === b.toLowerCase()) return true;
+    if (dateSide(a) || dateSide(b)) return dateSide(a) === dateSide(b);
     // `!x` against `x`, or against a sized or compared `x` (`!cbet_flop` and
     // `cbet_flop=medium`): no hand is both.
     const negates = (x, y) => x.startsWith("!") && parts(y).name === x.slice(1).toLowerCase();
@@ -452,6 +470,8 @@
     put("ANSWER", vocab.answers.join("  "));
     put("NAME", "a player's name, as on the players page");
     put("TAG", "a tag you put on a hand (the + tag box on the chart's rows)  flagged the 🚩 ones");
+    put("DATE", "a day as YYYY-MM-DD, on this computer's calendar");
+    put("DAYS", "a number of days then d: 1d today, 7d today and the 6 before");
 
     panel.replaceChildren(head, groupsBox, slotBox, empty, values);
   }
@@ -652,9 +672,10 @@
     document.head.appendChild(css);
 
     const wrap = el("span", null, "fh-star-wrap");
-    const star = el("button", "★", "fh-btn fh-star");
+    const star = el("button", null, "fh-btn fh-star");
+    star.append(el("b", "★"), "Saved");
     star.type = "button";
-    star.title = "saved spots: apply one, or save this one";
+    star.title = "your saved spots: apply one, or save the Spot box's under a name";
     star.setAttribute("aria-expanded", "false");
     star.setAttribute("aria-haspopup", "true");
     const menu = el("div", null, "fh-spots");

@@ -61,6 +61,7 @@
   }
   input[type=text] { min-width: 0; flex: 1 1 320px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
   input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
+  #treeback { color: var(--accent); border-color: var(--accent); }
   .controls.narrow { margin-top: -6px; }
   .controls.narrow .lbl { color: var(--muted); font-size: 12px; margin-right: 8px; }
   /* Your note on the player on show, under the dropdown. Set off like a hand's
@@ -132,6 +133,16 @@
   .tile.warn .v { color: var(--ink-2); }
   .tile.pick { cursor: pointer; text-align: left; font: inherit; color: inherit; }
   .tile.pick:hover { border-color: var(--muted); }
+  /* A result's sign, wherever one is printed: profit green, loss red (signTone).
+     A tile's net under BIG_BB is .soft, a paler tone; .attn is a count that
+     wants a look. Each tile render resets these (setTileKeys). */
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .tile .v.up { color: var(--up); }
+  .tile .v.down { color: var(--down); }
+  .tile .v.up.soft { color: color-mix(in srgb, var(--up) 70%, var(--muted)); }
+  .tile .v.down.soft { color: color-mix(in srgb, var(--down) 70%, var(--muted)); }
+  .tile .v.attn { color: var(--amber); }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 72ch; }
   ul.note { padding-left: 18px; max-width: 90ch; }
   ul.note li { margin: 1px 0; }
@@ -283,11 +294,45 @@
   .sp-wrap table tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
   .sp-foot { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
   .sp-foot button { font-size: 12px; padding: 0 6px; }
+  .sp-key { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+  .sp-key i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  /* The merged grid: one cell per made hand and street, its share over its n, and
+     a thin bar of bet it / slowplayed / gave up under them. */
+  .sp-gridbox { max-width: 680px; }
+  .sp-grid th:not(:first-child), .sp-grid td:not(:first-child) { text-align: center; width: 24%; }
+  .sp-grid td.c b { display: block; font-weight: 600; }
+  .sp-grid tr.total td.c b { font-weight: 700; }
+  .sp-mix { display: flex; gap: 1px; height: 4px; margin: 3px auto 0; max-width: 6em; border-radius: 2px; overflow: hidden; }
+  .sp-mix i { display: block; height: 100%; }
+  .sp-detail { margin-top: 14px; }
+  .sp-detail summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+  .sp-detail > div { margin-top: 8px; }
+  .sp-h { margin-top: 18px; }
+  .sp-h h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .sp-made { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 18px; margin-top: 8px; }
+  .sp-made .gh { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; border-bottom: 1px solid var(--grid); padding-bottom: 3px; }
+  .sp-made .gh small { color: var(--muted); }
+  .sp-made .ln { display: grid; grid-template-columns: minmax(0, max-content) minmax(30px, 1fr) max-content; gap: 8px;
+    align-items: center; padding: 2px 0; font-size: 12px; cursor: pointer; }
+  .sp-made .ln:hover .code, .sp-made .ln:focus-visible .code { text-decoration: underline; }
+  .sp-made .ln:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .sp-made .code { font-family: ui-monospace, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sp-made .code.more { font-family: inherit; color: var(--ink-2); }
+  .sp-made .bar { height: 6px; background: var(--mid); border-radius: 3px; overflow: hidden; }
+  .sp-made .bar i { display: block; height: 100%; background: var(--accent); }
+  .sp-made .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+  .sp-made > .sp-foot { grid-column: 1 / -1; margin: 0; }
 
   table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 12px; }
   th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  /* The plain data tables (made hands, Group by, Results, the side bets): a
+     header ruled off in the axis grey, light zebra rows, room to read. :where
+     keeps it weak, so each table's own hover and row styles still win. */
+  :where(#table, .gb-body, #results, #bounty) th { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--axis); white-space: nowrap; }
+  :where(#table, .gb-body, #results, #bounty) :is(th, td) { padding: 6px 10px; }
+  :where(#table, .gb-body, #results, #bounty) tr:nth-child(even) > td { background: color-mix(in srgb, var(--mid) 40%, transparent); }
   tr.pick { cursor: pointer; }
   tr.pick:hover td { background: var(--mid); }
   tr.pick:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -300,8 +345,6 @@
   #table .tbl-ctl .dim { color: var(--muted); }
   #table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   #table th.sortable:hover { color: var(--ink); }
-  #table td.up { color: var(--up); }
-  #table td.down { color: var(--down); }
 
   /* --- fold equity, under the sizing blocks --- */
   .foldeq { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--grid); }
@@ -334,7 +377,9 @@
   .hand-row[data-sat-out] .hole, .hand-row[data-sat-out] .net { color: var(--muted); }
   .hand-row .board { min-width: 10.5em; color: var(--ink-2); }
   .hand-row .pot { min-width: 5.5em; color: var(--ink-2); }
-  .hand-row .sizes { flex: 1; color: var(--muted); font-size: 12px; }
+  /* 12em before it grows: short of that it takes the next line whole rather
+     than wrap a word a line beside the pot. */
+  .hand-row .sizes { flex: 1 1 12em; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
   .hand-rows.tall { max-height: 560px; }
   .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
@@ -403,6 +448,8 @@
   .replay ol { margin: 4px 0 0; padding-left: 22px; }
   .replay li.forced { color: var(--muted); }
   .muted { color: var(--muted); }
+  /* An empty list's line, at the size of the replay's hint beside it. */
+  .hand-rows > p.muted { font-size: 13px; }
 
   /* --- side by side: the list on the left, the replay on the right ---
      The replay pane sticks to the top of the window and scrolls on its own, so
@@ -411,8 +458,11 @@
      compact when it is narrow (below). On a phone the list has the whole width
      until a hand is picked, rather than give most of it to the placeholder. The
      review views and the drill-down list under the charts share the one switch;
-     allin.html and pots.html read it too (pnt.reviewLayout). */
-  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
+     allin.html and pots.html read it too (pnt.reviewLayout). The pair fills the
+     card: the replay never needs more than about 640px, so it stops there and
+     the list takes the rest, rather than leaving dead space beside either. */
+  #review.split, #hands.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 640px));
+    gap: 0 12px; align-items: start; }
   @media (max-width: 600px) {
     #review.split:has(> .replay[data-empty]), #hands.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
     .split > .replay[data-empty] { display: none; }
@@ -572,7 +622,7 @@
     .hand-row .sizes { min-width: 12em; }
     .hand-row .kind, .hand-row .why, .kinds button { font-size: 10px; }
     .kinds button { padding: 1px 6px; }
-    .replay { font-size: 11px; }
+    .replay, .hand-rows > p.muted { font-size: 11px; }
     .tip { font-size: 11px; }
 
     .card { padding: 8px; border-radius: 8px; }
@@ -589,7 +639,7 @@
 
   /* --- results by pot type ---
      Won and lost as one bar from zero, in the profit and loss colours (--up,
-     --down). The figures stay in ink: the bar carries the sign. */
+     --down); the net and bb/100 figures take the same colours. */
   #results { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
   #results h3 { font-size: 13px; font-weight: 600; margin: 0; }
   #results table { margin-top: 6px; min-width: 620px; }
@@ -745,8 +795,6 @@
   .gb td.lab { white-space: nowrap; max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
   .gb td.lab .add { color: var(--accent); margin-right: 6px; }
   .gb td small { color: var(--muted); margin-left: 3px; }
-  .gb td.up { color: var(--up); }
-  .gb td.down { color: var(--down); }
   .gb tr.row { cursor: pointer; }
   .gb tr.row:hover td, .gb tr.row:focus-visible td { background: var(--mid); }
   .gb tr.row:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -847,10 +895,11 @@
     <label for="player">Player</label>
     <select id="player"></select>
     <label for="filter">Spot</label>
-    <input id="filter" type="text" placeholder="srp,pot>=500,vs=player 3" spellcheck="false">
+    <input id="filter" type="text" placeholder="e.g. 3bet_pot,vs=player 3,last:7d · every term under ? Filters" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
     <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
+    <button id="treeback" class="hidden" title="the spot tree, scrolled where you left it (or the browser's Back)">‹ Back to tree</button>
   </div>
   <!-- The views, on a row of their own: how they play on the left, then over on
        the right the results and the hands to look at again. -->
@@ -1585,7 +1634,13 @@
     $("allinlink").href = link("/allin.html", "filter", "player");
     $("potslink").href = link("/pots.html", "player");
   };
-  const writeUrl = () => {
+  // A tree click is the one change that pushes a history entry (writeUrl(true)):
+  // the browser's Back returns to the tree, scrolled where it was. The entry it
+  // lands on is marked with its spot (treeSpot), and keeps the mark through the
+  // page's own rewrites only while the spot is still the one the click made.
+  const treeSpotKey = () => `${state.player}|${state.by}|${state.filter}`;
+  const fromTree = () => history.state?.treeSpot === treeSpotKey();
+  const writeUrl = (push = false) => {
     const q = new URLSearchParams();
     if (state.player) q.set("player", state.player);
     if (state.filter) q.set("filter", state.filter);
@@ -1621,7 +1676,9 @@
     }
     if (state.by === TAGGED_VIEW && state.tag) q.set("tag", state.tag);
     if (theme) q.set("theme", theme);
-    history.replaceState(null, "", "?" + q.toString());
+    if (push) history.pushState({ treeSpot: treeSpotKey() }, "", "?" + q.toString());
+    else history.replaceState(fromTree() ? history.state : null, "", "?" + q.toString());
+    syncBack();
     crumbLinks();
     // An embedder cannot read this page's URL across origins, so hand it out:
     // the HUD's "open ↗" link would otherwise still point at the spot the chart
@@ -1952,6 +2009,21 @@
   // ---- render ----------------------------------------------------------
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
+  // A won or lost figure in the profit or loss colour: .up above zero, .down
+  // below, neither at zero or with no figure. Given `bb`, the result's size on a
+  // tile, one under BIG_BB takes the softer tone. Clears its own classes first,
+  // so a reused element never keeps an old sign.
+  const BIG_BB = 100;
+  function signTone(el, v, bb = null) {
+    el.classList.remove("up", "down", "soft");
+    if (v > 0 || v < 0) {
+      el.classList.add(v > 0 ? "up" : "down");
+      if (bb != null && Math.abs(bb) < BIG_BB) el.classList.add("soft");
+    }
+    return el;
+  }
+  // `text` as a span in `v`'s colour, for a result inside a line of muted text.
+  const toned = (text, v) => signTone(Object.assign(document.createElement("span"), { textContent: text }), v);
   // A figure against its baseline, as the class word for .num-good/-bad/-eh:
   // "good" more than `band` above it, "bad" more than `band` below, "eh" within.
   // Given a 95% interval [lo, hi] instead, only one clear of the baseline is
@@ -2271,7 +2343,7 @@
         }
         const val = document.createElement("div"); val.className = "val";
         val.textContent = `${g.known}/${g.n} (${fmtPct(g.coverage)})`;
-        const sm = document.createElement("small"); sm.textContent = fmtNet(g.net_bb);
+        const sm = document.createElement("small"); sm.appendChild(toned(fmtNet(g.net_bb), g.net_bb));
         val.appendChild(sm);
         rows.append(lab, n, stack, val);
 
@@ -2291,8 +2363,9 @@
       host.appendChild(rows);
     }
     if (d.hidden.groups) {
+      // A note like the hint under it, not body text above it.
       host.appendChild(message(`${d.hidden.groups} more line${d.hidden.groups === 1 ? "" : "s"} with fewer than `
-        + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`));
+        + `${d.min} hands hidden (${d.hidden.hands} hands). Narrow to one street to fold them together.`, "muted note"));
     }
     const hint = message("click a line, or one part of its bar, to add it to the spot and list its hands");
     hint.classList.add("note");
@@ -2663,36 +2736,42 @@
   const SP_LEAF = { trips: "trips (paired board)", total: "all of them" };
   const spLeaf = (leaf) => SP_LEAF[leaf] || leaf.replace(/_/g, " ");
   const SP_NOTE = [
-    "**Rows:** each made hand they had on this street, shown hands only.",
+    "**Grid:** slowplay % of each made hand they had on each street, shown hands only. Hover a cell for what they did, click for its hands.",
     "**Skew:** a strong hand that bet and got folds is never shown, so slowplay % reads high, except yours (all cards known).",
-    "Read coverage first. Click a cell for its hands.",
+    "**Line by when made:** the whole line, by the street the hand first got that strong. Read coverage first.",
   ];
 
   function renderStrengthTiles(d) {
-    setTileKeys(`in the hand on the ${d.street}`, "cards known", "coverage");
-    $("t-hands").textContent = d.hands;
-    $("t-known").textContent = d.known;
-    $("t-cov").textContent = fmtPct(d.coverage);
-    $("t-raise").textContent = fmtPct(d.total.slowplay_pct);
-    setRaiseKey("slowplayed", `${d.total.slowplay} of ${d.total.n} shown ${spLeaf(d.floor)}+ on the ${d.street}`);
-    tileTip("t-raise", ciText(d.total.slowplay_pct, d.total.n));
+    // Every postflop hand sees the flop, so its counts are the view's coverage.
+    const f = d.streets.flop, a = d.all_streets;
+    setTileKeys("in the hand on the flop", "cards known", "coverage");
+    $("t-hands").textContent = f.hands;
+    $("t-known").textContent = f.known;
+    $("t-cov").textContent = fmtPct(f.coverage);
+    $("t-raise").textContent = fmtPct(a.slowplay_pct);
+    setRaiseKey("slowplayed", `${a.slowplay} of ${a.n} shown ${spLeaf(d.floor)}+ streets, flop to river`);
+    tileTip("t-raise", ciText(a.slowplay_pct, a.n));
   }
+
+  // Which made hand the line-by-when-made table is for, and whether the per-action
+  // table is open: kept while the page is open. An old link that named a turn or
+  // river table opens it on that street.
+  let spMadeLeaf = "total";
+  let spDetailOpen = null;
+  const SP_STREETS = ["flop", "turn", "river"];
+  // A grid cell's bar: bet it, slowplayed, gave up, in the order of SP_GROUPS.
+  const SP_MIX = ["var(--ink-2)", "var(--accent)", "var(--axis)"];
+  // Lines listed per made-on street before the rest roll up.
+  const SP_TOP_LINES = 4;
 
   function renderStrength(d) {
     const wrap = $("strength");
     wrap.replaceChildren();
+    if (spDetailOpen === null) spDetailOpen = state.street !== "flop";
     const labels = Object.fromEntries(d.categories.map(c => [c.key, c.label]));
 
-    // The pickers: which street, and the weakest made hand counted.
+    // The picker: the weakest made hand counted.
     const ctl = document.createElement("div"); ctl.className = "sp-ctl";
-    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
-    seg.setAttribute("aria-label", "Street");
-    for (const s of ["flop", "turn", "river"]) {
-      const b = document.createElement("button"); b.type = "button"; b.textContent = s;
-      b.setAttribute("aria-pressed", s === d.street);
-      b.addEventListener("click", () => { state.street = s; $("street").value = s; writeUrl(); load(); });
-      seg.appendChild(b);
-    }
     const fl = document.createElement("label"); fl.textContent = "made at least ";
     const sel = document.createElement("select"); sel.setAttribute("aria-label", "Weakest made hand counted");
     for (const [v, text] of SP_FLOORS) {
@@ -2701,14 +2780,116 @@
     sel.value = d.floor;
     sel.addEventListener("change", () => { state.floor = sel.value; writeUrl(); load(); });
     fl.appendChild(sel);
-    ctl.append(seg, fl);
+    const key = document.createElement("span"); key.className = "sp-key";
+    SP_GROUPS.forEach(([name], i) => {
+      const k = document.createElement("i"); k.style.background = SP_MIX[i];
+      const item = document.createElement("span"); item.append(k, name.toLowerCase());
+      key.appendChild(item);
+    });
+    ctl.append(fl, key);
     wrap.appendChild(ctl);
 
+    // The grid: a row per made hand, a column per street, each cell the slowplay
+    // share of that hand on that street, shaded by it.
+    const leaves = d.streets.flop.rows.map(r => r.leaf)
+      .filter(leaf => SP_STREETS.some(s => d.streets[s].rows.find(r => r.leaf === leaf).n > 0));
+    if (!leaves.length) {
+      const p = document.createElement("p"); p.className = "muted";
+      p.textContent = `no shown ${spLeaf(d.floor)} or better that acted after the flop in this spot`;
+      wrap.appendChild(p);
+    } else {
+      const t = document.createElement("table"); t.className = "sp-grid";
+      const head = document.createElement("tr");
+      for (const text of ["made hand", ...SP_STREETS]) {
+        const e = document.createElement("th"); e.textContent = text; head.appendChild(e);
+      }
+      t.appendChild(head);
+      const cellFor = (s, r) => {
+        const td = document.createElement("td");
+        if (!r.n) { td.className = "zero"; td.textContent = "·"; return td; }
+        td.className = "c";
+        const pct = document.createElement("b"); pct.textContent = fmtPct(r.slowplay_pct);
+        const n = document.createElement("small"); n.textContent = `${r.slowplay} of ${r.n}`;
+        const mix = document.createElement("span"); mix.className = "sp-mix";
+        SP_GROUPS.forEach(([, keys], i) => {
+          const k = keys.reduce((sum, key) => sum + r.cells[key].n, 0);
+          if (!k) return;
+          const seg = document.createElement("i"); seg.style.flex = `${k} 1 0`; seg.style.background = SP_MIX[i];
+          mix.appendChild(seg);
+        });
+        td.append(pct, n, mix);
+        td.style.background = `color-mix(in srgb, var(--accent) ${Math.round((r.slowplay_pct || 0) * 0.45)}%, transparent)`;
+        const filter = [d.filter, r.filter].filter(Boolean).join(",");
+        const tip = d.categories.filter(c => r.cells[c.key].n)
+          .map(c => [labels[c.key], `${r.cells[c.key].n} · ${fmtPct(r.cells[c.key].pct)}`]);
+        if (r.all_in) tip.push(["all in already", String(r.all_in)]);
+        tip.push(["click", "list the hands"]);
+        const title = `${spLeaf(r.leaf)} on the ${s}`;
+        td.addEventListener("pointermove", (ev) => showLineTip(ev, title, tip));
+        td.addEventListener("pointerleave", hideTip);
+        td.addEventListener("focus", (ev) => showLineTip(ev, title, tip));
+        td.addEventListener("blur", hideTip);
+        td.tabIndex = 0; td.setAttribute("role", "button");
+        const ids = Object.values(r.cells).flatMap(c => c.hand_ids);
+        pickable(td, `${title} · ${filter}`, ids);
+        td.addEventListener("click", hideTip);
+        return td;
+      };
+      for (const leaf of [...leaves, "total"]) {
+        const tr = document.createElement("tr");
+        if (leaf === "total") tr.className = "total";
+        const name = document.createElement("td"); name.textContent = spLeaf(leaf);
+        tr.appendChild(name);
+        for (const s of SP_STREETS) {
+          const st = d.streets[s];
+          tr.appendChild(cellFor(s, leaf === "total" ? st.total : st.rows.find(r => r.leaf === leaf)));
+        }
+        t.appendChild(tr);
+      }
+      const box = document.createElement("div"); box.className = "sp-wrap sp-gridbox"; box.appendChild(t);
+      wrap.appendChild(box);
+    }
+
+    // The per-action table, one street at a time, under the grid.
+    const det = document.createElement("details"); det.className = "sp-detail"; det.open = spDetailOpen;
+    const sum = document.createElement("summary"); sum.textContent = "By action, one street";
+    const body = document.createElement("div");
+    det.append(sum, body);
+    det.addEventListener("toggle", () => { spDetailOpen = det.open; });
+    const drawDetail = () => renderSpDetail(body, d.streets[state.street], d.filter, labels, () => {
+      writeUrl(); drawDetail();
+    });
+    drawDetail();
+    wrap.appendChild(det);
+
+    renderSpMadeOn(wrap, d);
+
+    // What the grid leaves out, said rather than dropped silently.
+    const foot = document.createElement("p"); foot.className = "sp-foot";
+    const never = d.streets.flop.rows.map(r => r.leaf).filter(leaf => !leaves.includes(leaf)).map(spLeaf);
+    if (never.length) foot.append(`Never shown acting with: ${never.join(", ")}. `);
+    foot.append("Slowplayed is a check or a call: a check-raise is a trap too, but puts money in, so it is counted as betting it.");
+    wrap.appendChild(foot);
+  }
+
+  // One street's table: a row per made hand, a column per thing they did. Its
+  // cells partition the row and each lists its hands.
+  function renderSpDetail(box, d, spot, labels, redraw) {
+    box.replaceChildren();
+    const seg = document.createElement("span"); seg.className = "seg"; seg.setAttribute("role", "group");
+    seg.setAttribute("aria-label", "Street");
+    for (const s of SP_STREETS) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = s;
+      b.setAttribute("aria-pressed", s === d.street);
+      b.addEventListener("click", () => { state.street = s; $("street").value = s; redraw(); });
+      seg.appendChild(b);
+    }
+    box.appendChild(seg);
     const rows = d.rows.filter(r => r.n > 0);
     if (!rows.length) {
       const p = document.createElement("p"); p.className = "muted";
       p.textContent = `no shown ${spLeaf(d.floor)} or better that acted on the ${d.street} in this spot`;
-      wrap.appendChild(p);
+      box.appendChild(p);
     } else {
       const groups = SP_GROUPS.map(([name, keys]) =>
         [name, keys.filter(k => !SP_OPTIONAL.has(k) || d.total.cells[k].n > 0)]).filter(([, keys]) => keys.length);
@@ -2738,7 +2919,7 @@
         // Shaded by share of the row, slowplays in the accent, the rest in grey.
         const tint = slow ? "var(--accent)" : "var(--muted)";
         td.style.background = `color-mix(in srgb, ${tint} ${Math.round(c.pct * 0.45)}%, transparent)`;
-        const filter = [d.filter, c.filter].filter(Boolean).join(",");
+        const filter = [spot, c.filter].filter(Boolean).join(",");
         td.title = `${c.n} of ${r.n} · ${filter}`;
         td.tabIndex = 0; td.setAttribute("role", "button");
         pickable(td, `${d.street} ${spLeaf(r.leaf)} · ${labels[k]} · ${filter}`, c.hand_ids);
@@ -2755,22 +2936,97 @@
         tr.appendChild(pct);
         t.appendChild(tr);
       }
-      const box = document.createElement("div"); box.className = "sp-wrap"; box.appendChild(t);
-      wrap.appendChild(box);
+      const wrap = document.createElement("div"); wrap.className = "sp-wrap"; wrap.appendChild(t);
+      box.appendChild(wrap);
     }
-
-    // What the table leaves out, said rather than dropped silently.
-    const foot = document.createElement("p"); foot.className = "sp-foot";
-    const never = d.rows.filter(r => r.n === 0).map(r => spLeaf(r.leaf));
-    if (never.length) foot.append(`Never shown acting with: ${never.join(", ")}. `);
     if (d.total.all_in) {
+      const foot = document.createElement("p"); foot.className = "sp-foot";
       foot.append(`${d.total.all_in} more were all in before the ${d.street}, with nothing to decide `);
       const b = document.createElement("button"); b.type = "button"; b.textContent = "list ›";
       b.addEventListener("click", () => openHands(`${d.street} · all in already · ${d.total.all_in_filter}`, d.total.all_in_ids));
-      foot.append(b, ". ");
+      foot.append(b, ".");
+      box.appendChild(foot);
     }
-    foot.append("Slowplayed is a check or a call: a check-raise is a trap too, but puts money in, so it is counted as betting it.");
-    wrap.appendChild(foot);
+  }
+
+  // The whole line of each strong hand, by the street it was first that strong:
+  // the flopped boat that went x/b/b beside the turned one that went b/b/b.
+  function renderSpMadeOn(wrap, d) {
+    const m = d.made_on;
+    const shown = m.rows.filter(r => r.n > 0);
+    const head = document.createElement("div"); head.className = "sp-ctl sp-h";
+    const h = document.createElement("h3"); h.textContent = "Line by when it was made";
+    head.appendChild(h);
+    if (!shown.length) {
+      wrap.appendChild(head);
+      return;
+    }
+    if (spMadeLeaf !== "total" && !shown.some(r => r.leaf === spMadeLeaf)) spMadeLeaf = "total";
+    const fl = document.createElement("label"); fl.textContent = "ended as ";
+    const sel = document.createElement("select"); sel.setAttribute("aria-label", "Made hand it ended as");
+    for (const r of [m.total, ...shown]) {
+      const o = document.createElement("option"); o.value = r.leaf;
+      o.textContent = `${r.leaf === "total" ? `any ${spLeaf(d.floor)}+` : spLeaf(r.leaf)} (${r.n})`;
+      sel.appendChild(o);
+    }
+    sel.value = spMadeLeaf;
+    fl.appendChild(sel);
+    head.appendChild(fl);
+    wrap.appendChild(head);
+
+    const grid = document.createElement("div"); grid.className = "sp-made";
+    const draw = () => {
+      grid.replaceChildren();
+      const row = spMadeLeaf === "total" ? m.total : m.rows.find(r => r.leaf === spMadeLeaf);
+      const name = spMadeLeaf === "total" ? `${spLeaf(d.floor)}+` : spLeaf(spMadeLeaf);
+      for (const s of SP_STREETS) {
+        const g = row.streets[s];
+        const col = document.createElement("div"); col.className = "grp";
+        const t = document.createElement("div"); t.className = "gh";
+        t.append(`made on the ${s} `);
+        const sm = document.createElement("small"); sm.textContent = `${g.n} · ${fmtPct(g.pct)}`; t.appendChild(sm);
+        col.appendChild(t);
+        if (!g.n) {
+          const p = document.createElement("div"); p.className = "muted"; p.textContent = "none";
+          col.appendChild(p);
+        }
+        const top = g.lines.slice(0, SP_TOP_LINES);
+        const rest = g.lines.slice(SP_TOP_LINES);
+        const lineRow = (code, words, n, pct, ids) => {
+          const r = document.createElement("div"); r.className = "ln";
+          r.tabIndex = 0; r.setAttribute("role", "button");
+          const c = document.createElement("span"); c.className = "code"; c.textContent = code;
+          if (words) c.title = words; else c.classList.add("more");
+          const bar = document.createElement("span"); bar.className = "bar";
+          const fill = document.createElement("i"); fill.style.width = `${pct || 0}%`; bar.appendChild(fill);
+          const v = document.createElement("span"); v.className = "num"; v.textContent = `${n} · ${fmtPct(pct)}`;
+          r.append(c, bar, v);
+          pickable(r, `${name} made on the ${s} · ${code}`, ids);
+          return r;
+        };
+        for (const l of top) {
+          const words = l.line.split("/").map(seg => lineWords(seg, "own").textContent).join(" / ");
+          col.appendChild(lineRow(l.line, words, l.n, l.pct, l.hand_ids));
+        }
+        if (rest.length) {
+          const n = rest.reduce((sum, l) => sum + l.n, 0);
+          col.appendChild(lineRow(`${rest.length} other lines`, null, n, Math.round(1000 * n / g.n) / 10,
+            rest.flatMap(l => l.hand_ids)));
+        }
+        grid.appendChild(col);
+      }
+      if (row.all_in) {
+        const p = document.createElement("p"); p.className = "sp-foot";
+        p.append(`${row.all_in} more were already all in when they made it `);
+        const b = document.createElement("button"); b.type = "button"; b.textContent = "list ›";
+        b.addEventListener("click", () => openHands(`${name} · all in before it was made`, row.all_in_ids));
+        p.append(b, ".");
+        grid.appendChild(p);
+      }
+    };
+    sel.addEventListener("change", () => { spMadeLeaf = sel.value; draw(); });
+    draw();
+    wrap.appendChild(grid);
   }
 
   // ---- results by pot type ----------------------------------------------------
@@ -2795,6 +3051,8 @@
     $("t-hands").textContent = d.hands;
     $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb).replace(" bb", "");
     $("t-cov").textContent = tot.bb_per_100 == null ? "–" : tot.bb_per_100.toFixed(1);
+    signTone($("t-known"), tot.net_bb, tot.net_bb);
+    signTone($("t-cov"), tot.bb_per_100);
     tileTip("t-cov", tot.bb_per_100 == null || tot.bb_per_100_ci == null ? ""
       : `± ${tot.bb_per_100_ci.toFixed(1)} bb/100 (95%: ${(tot.bb_per_100 - tot.bb_per_100_ci).toFixed(1)} to `
         + `${(tot.bb_per_100 + tot.bb_per_100_ci).toFixed(1)}) over ${tot.bb_hands} complete hands`);
@@ -2854,6 +3112,7 @@
                          fmtPct(r.vpip_pct), fmtPct(r.saw_flop_pct), fmtPct(r.wtsd), fmtPct(r.wsd)]) {
           const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
         }
+        signTone(tr.cells[3], r.net_bb); signTone(tr.cells[4], r.bb_per_100);
         const where = r.filter == null ? "no filter term says this yet, so the hands are listed as they are"
           : `adds ${r.filter} to the spot`;
         tr.title = `${r.label}: ${r.hands} hands, ${r.bb_hands} with a known result`
@@ -3646,13 +3905,14 @@
         if (small) { const s = document.createElement("small"); s.textContent = small; el.appendChild(s); }
         if (title) el.title = title;
         tr.appendChild(el);
+        return el;
       };
       const ci = (v, h) => v == null || h == null ? "" : `95%: ${(v - h).toFixed(1)} to ${(v + h).toFixed(1)} over ${c.bb_hands} complete hands`;
       td(String(c.hands));
       td(String(c.shown), c.hands ? `${Math.round(100 * c.shown / c.hands)}%` : "");
-      td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1));
-      td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
-        ci(c.bb_per_100, c.bb_per_100_ci));
+      signTone(td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1)), c.net_bb);
+      signTone(td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
+        ci(c.bb_per_100, c.bb_per_100_ci)), c.bb_per_100);
       if (seatAt >= 0) {
         const vf = c.bb_per_100_vs_fold, raw = c.bb_per_100;
         if (cls === "total" || !blindRow(c) || vf == null || raw == null) td("");
@@ -3790,14 +4050,18 @@
   }
 
   // A node's (or one choice's) terms onto the spot the tree was built on, then the
-  // grid: the range and the group-by panel for exactly those hands.
+  // grid: the range and the group-by panel for exactly those hands. A history
+  // entry of its own, so Back (the browser's, or ‹ Back to tree) returns here with
+  // the tree's entry holding where it was scrolled to.
   function drillTree(base, filter) {
     hideTip();
+    history.replaceState({ ...history.state, scrollY }, "");
     const cur = (base || "").split(",").map(t => t.trim()).filter(Boolean);
     $("filter").value = [...cur, ...filter.split(",").filter(t => !cur.includes(t))].join(",");
     state.by = "preflop";
     document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
-    apply();
+    apply(false, true);
+    scrollTo(0, 0); // the grid starts at the top, not where the tree was scrolled
   }
 
   function renderTree(d) {
@@ -4513,10 +4777,12 @@
     };
     setTileKeys(...copy.tiles);
     $("t-hands").textContent = copy.count(d.total).toLocaleString();
+    $("t-hands").classList.toggle("down", copy.count(d.total) > 0); // chips paid out
     $("t-known").textContent = d.total.won.toLocaleString();
     $("t-cov").textContent = d.players.length;
     const me = d.players.find(r => r.player === d.player);
     $("t-raise").textContent = me ? signed(me.net.chips) : "–";
+    if (me) signTone($("t-raise"), me.net.chips, me.net.bb);
     setRaiseKey(me ? `${d.player}'s net` : "net", me ? `${me.won.count} won · ${me.paid.count} paid` : copy.none);
     $("subtitle").textContent = "every player · all hands";
     setNote(copy.note,
@@ -4551,7 +4817,7 @@
         count("paid", r.paid_filter);
         cell(r.paid.chips.toLocaleString(), "dim");
         cell(signed(r.net.chips), r.net.chips > 0 ? "up" : r.net.chips < 0 ? "down" : "");
-        cell(r.net.bb == null ? "—" : signed(r.net.bb));
+        signTone(cell(r.net.bb == null ? "—" : signed(r.net.bb)), r.net.bb);
         const of = cell(r.hands.toLocaleString(), "dim");
         of.title = `${r.bounty_hands} ${copy.hands}${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
         tr.title = `Switch the chart to ${r.player}`;
@@ -4597,6 +4863,8 @@
   function setTileKeys(hands, known, cov) {
     $("t-hands-k").textContent = hands; $("t-known-k").textContent = known; $("t-cov-k").textContent = cov;
     for (const id of ["t-known", "t-cov", "t-raise"]) tileTip(id, "");
+    // and the colours the last view put on the figures (signTone, .attn)
+    for (const id of ["t-hands", "t-known", "t-cov", "t-raise"]) $(id).classList.remove("up", "down", "soft", "attn");
   }
   // Hover text on the tile around a figure: the ± on a tile that shows a sampled
   // rate. Coverage gets none: it counts these exact hands, it does not estimate.
@@ -4641,6 +4909,9 @@
     $("t-cov").textContent = fmtPct(d.showdowns ? Math.round(1000 * d.known_showdowns / d.showdowns) / 10 : null);
     const biggest = Math.max(...rows.map(h => h.pot_bb ?? 0), 0);
     $("t-raise").textContent = rows.length ? `${Math.round(biggest)} bb` : "–";
+    // Won or lost: that hand's own net, not the pot's size.
+    const top = rows.find(h => (h.pot_bb ?? 0) === biggest);
+    if (top) signTone($("t-raise"), top.net_bb, top.net_bb);
     const skipped = d.skipped.stack_unknown ? ` · ${d.skipped.stack_unknown} with a stack unknown` : "";
     setRaiseKey("biggest pot flagged", `${rows.length} flagged · ${d.skipped.cards_unknown} showdowns mucked${skipped}`);
   }
@@ -4653,7 +4924,9 @@
     $("t-hands").textContent = mine.length;
     $("t-known").textContent = mine.filter(played).length;
     $("t-cov").textContent = mine.length ? fmtBb(net) : "–";
+    if (mine.length) signTone($("t-cov"), net, net);
     $("t-raise").textContent = mine.filter(h => h.flags.length).length;
+    $("t-raise").classList.toggle("attn", mine.some(h => h.flags.length));
     const seen = mine.filter(h => h.reviewed).length;
     setRaiseKey("flagged for review", `${seen} of ${mine.length} marked reviewed`);
   }
@@ -4800,7 +5073,7 @@
     for (const [k, v] of rows) {
       const r = document.createElement("div"); r.className = "row";
       const kk = document.createElement("span"); kk.textContent = k;
-      const vv = document.createElement("b"); vv.textContent = v;
+      const vv = document.createElement("b"); vv.append(k === "net" ? toned(v, c.net_bb) : v);
       r.append(kk, vv); tip.appendChild(r);
     }
     tip.style.display = "block";
@@ -4836,7 +5109,7 @@
       pickable(track, title, term ? null : c.hand_ids, term);
       const val = document.createElement("div"); val.className = "val";
       val.textContent = fmtPct(c.pct);
-      const sm = document.createElement("small"); sm.textContent = `${c.n} · ${fmtBb(c.net_bb)}`;
+      const sm = document.createElement("small"); sm.append(`${c.n} · `, toned(fmtBb(c.net_bb), c.net_bb));
       val.appendChild(sm);
       bars.append(lab, track, val);
     }
@@ -4999,12 +5272,14 @@
         pickable(tr, title, term ? null : ids, term);
       }
       t.appendChild(tr);
+      return tr;
     };
     if (view === "made") {
       for (const { c, text } of classRows(d.classes)) {
         const term = madeTerm(c);
-        row([text, fmtPct(c.pct), c.n, c.net_bb.toFixed(1), c.won],
+        const tr = row([text, fmtPct(c.pct), c.n, fmtBb(c.net_bb).replace(" bb", ""), c.won],
           { title: `${text} · shown ${c.n}×` + (term ? ` · ${term}` : ""), ids: c.hand_ids, term });
+        signTone(tr.cells[3], c.net_bb);
       }
     } else {
       for (const b of d.blocks) {
@@ -5146,7 +5421,7 @@
     if (h.board2?.length) boardEl.append(document.createElement("br"), cardsEl(h.board2));
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
     span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
-    span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb));
+    signTone(span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb)), h.net_bb);
     if (opts.why) span("why", opts.why);
     b.title = handTitle(h) + (opts.title ? "\n" + opts.title : "");
     b.addEventListener("click", () => {
@@ -5330,9 +5605,14 @@
   function renderTaggedTiles(d) {
     setTileKeys(d.tag ? `tagged ${d.tag}` : "hands tagged", "marked reviewed", "net");
     const rows = d.hands;
+    const net = rows.reduce((s, h) => s + (h.net_bb ?? 0), 0);
     $("t-hands").textContent = rows.length;
-    $("t-known").textContent = rows.filter(h => h.reviewed).length;
-    $("t-cov").textContent = rows.length ? fmtBb(rows.reduce((s, h) => s + (h.net_bb ?? 0), 0)) : "–";
+    $("t-hands").classList.toggle("attn", rows.length > 0);
+    const seen = rows.filter(h => h.reviewed).length;
+    $("t-known").textContent = seen;
+    signTone($("t-known"), seen); // done with, in the profit green
+    $("t-cov").textContent = rows.length ? fmtBb(net) : "–";
+    if (rows.length) signTone($("t-cov"), net, net);
     $("t-raise").textContent = d.tags.filter(t => !t.builtin && t.hands).length;
     setRaiseKey("tags in this spot", `${rows.filter(h => h.note).length} with a note`);
   }
@@ -5721,20 +6001,27 @@
   // bar adds terms, and Back takes the spot to what it was before, in one click,
   // rather than picking those terms back out of the box.
   const spotHistory = [];
-  function apply(fromBack = false) {
+  // `push` is a tree click's (drillTree): the spot gets a history entry of its own.
+  function apply(fromBack = false, push = false) {
     state.player = $("player").value;
     const next = $("filter").value.trim();
     if (fromBack !== true && next !== state.filter) {
       spotHistory.push(state.filter);
       if (spotHistory.length > 50) spotHistory.shift();
     }
-    $("back").classList.toggle("hidden", !spotHistory.length); // shown only with somewhere to go back to
     state.filter = next;
     dropCaches(); // Apply always asks the server again
     syncChips();
     closeHands();
-    writeUrl();
+    writeUrl(push);
     load();
+  }
+  // ← Back is shown only with somewhere to go back to. Fresh from a tree click it
+  // gives way to ‹ Back to tree, which is the browser's Back.
+  function syncBack() {
+    const tree = fromTree();
+    $("treeback").classList.toggle("hidden", !tree);
+    $("back").classList.toggle("hidden", tree || !spotHistory.length);
   }
   $("apply").addEventListener("click", () => apply());
   const back = () => {
@@ -5743,8 +6030,29 @@
     apply(true);
   };
   $("back").addEventListener("click", back);
+  $("treeback").addEventListener("click", () => history.back());
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.key === "ArrowLeft" && spotHistory.length) { e.preventDefault(); back(); }
+    // Fresh from the tree, Alt+← is left to the browser: back to the tree.
+    if (e.altKey && e.key === "ArrowLeft" && spotHistory.length && !fromTree()) { e.preventDefault(); back(); }
+  });
+  // The browser's Back and Forward: an entry's URL is the page's whole state, so
+  // it is read again and drawn, and a tree entry scrolled to where it was once the
+  // tree is on the page. A spot Back returns to comes off ← Back's list too.
+  history.scrollRestoration = "manual";
+  addEventListener("popstate", async () => {
+    const was = state.filter;
+    readUrl();
+    state.hand = null; // a linked hand opens once, at boot
+    if (!state.player || !listed(state.player)) state.player = $("player").value;
+    $("player").value = state.player;
+    if (state.filter !== was && spotHistory.at(-1) === state.filter) spotHistory.pop();
+    syncControls();
+    syncBack();
+    crumbLinks();
+    closeHands();
+    const y = history.state?.scrollY;
+    await load();
+    if (y != null) scrollTo(0, y);
   });
   $("clear").addEventListener("click", () => { $("filter").value = ""; apply(); });
   $("filter").addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
@@ -6013,7 +6321,7 @@
   }
   {
     const more = document.createElement("button"); more.type = "button"; more.id = "morefilters"; more.className = "more";
-    more.title = "more chips, by kind; every filter term is under the ? by the Spot box";
+    more.title = "more chips, by kind; every filter term is under ? Filters by the Spot box";
     let open = false;
     try { open = localStorage.getItem(FILTERS_KEY) === "open"; } catch { /* closed */ }
     const show = (o) => {
@@ -6110,20 +6418,24 @@
   // Embedded in the HUD, a link to the index would navigate the panel away from
   // the chart with no way back, so it only appears in a real tab.
   if (parent !== window) $("crumb").classList.add("hidden");
+  // The controls set from the URL's state: at boot, and on Back and Forward.
+  function syncControls() {
+    $("filter").value = state.filter;
+    $("street").value = state.street;
+    $("kind").value = state.kind;
+    if (state.order) $("review-sort").value = state.order;
+    $("review-split").setAttribute("aria-pressed", state.split);
+    $("hands-split").setAttribute("aria-pressed", state.split);
+    $("session-played").setAttribute("aria-pressed", state.played);
+    $("session-sat").setAttribute("aria-pressed", state.satOut);
+    $("review-seen").setAttribute("aria-pressed", state.hideSeen);
+    syncChips();
+    document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
+    document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
+  }
   readUrl();
   crumbLinks();
-  $("filter").value = state.filter;
-  $("street").value = state.street;
-  $("kind").value = state.kind;
-  if (state.order) $("review-sort").value = state.order;
-  $("review-split").setAttribute("aria-pressed", state.split);
-  $("hands-split").setAttribute("aria-pressed", state.split);
-  $("session-played").setAttribute("aria-pressed", state.played);
-  $("session-sat").setAttribute("aria-pressed", state.satOut);
-  $("review-seen").setAttribute("aria-pressed", state.hideSeen);
-  syncChips();
-  document.querySelectorAll("[data-view]").forEach(x => x.setAttribute("aria-pressed", x.dataset.view === state.by));
-  document.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === state.color));
+  syncControls();
   loadPlayers().then(load).catch(e => { $("err").textContent = String(e.message || e); $("err").classList.remove("hidden"); });
   // `hand=<id>` (a link to one hand, e.g. the players page's shown hands): list
   // that hand and replay it, as if its row had been clicked.
