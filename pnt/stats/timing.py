@@ -24,11 +24,12 @@ import sqlite3
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Mapping
+from dataclasses import dataclass
 
 from ..logfmt.events import PREFLOP
 from .derive import POSTFLOP_STREETS, TEMPO_BUCKETS, TEMPO_CUTS, Facts
 from .lines import tier_at
-from .queries import wilson
+from .queries import load_hands, play_facts, wilson
 
 STREETS = (PREFLOP, *POSTFLOP_STREETS)
 TIERS = ("nutted", "strong", "marginal", "draw", "air")
@@ -277,6 +278,39 @@ def timing_report(
     if who is not None:
         out["thin"] = thin(facts, who)
     return out
+
+
+@dataclass(slots=True)
+class Timed:
+    """What the report reads of one `Facts` row, and nothing else."""
+
+    game_id: str
+    pn_id: str
+    hand_id: int
+    line: dict[str, str]
+    tempo: dict[str, str]
+    think_ms: dict[str, int]
+    pf_faced: dict[int, str]
+    hole_cards: str | None
+    board: tuple[str, ...]
+
+
+def pool_rows(
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    predicate: Callable[[Facts], bool] | None = None,
+) -> list[Timed]:
+    """`fold_equity.pool_facts` for the pool's report, one game at a time and kept
+    to `Timed`. The whole database's Facts at once is about 400 MB, which the
+    phone's 1 GB VM swaps on for minutes; a game's session facts never read
+    another game's rows, so the answer is the same."""
+    games = [game_id] if game_id else [g for (g,) in conn.execute("SELECT DISTINCT game_id FROM hands")]
+    return [
+        Timed(f.game_id, f.pn_id, f.hand_id, f.line, f.tempo, f.think_ms, f.pf_faced, f.hole_cards, f.board)
+        for g in games
+        for f in play_facts(load_hands(conn, g))
+        if predicate is None or predicate(f)
+    ]
 
 
 def owners(conn: sqlite3.Connection) -> set[tuple[str, str]]:

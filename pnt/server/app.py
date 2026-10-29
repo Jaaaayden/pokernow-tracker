@@ -2448,14 +2448,19 @@ def pool_timing(
     strength split into the logs' owners' own cards and everyone else's shown
     hands, and `thin`: who has enough known hands to read alone. No hand ids --
     one hand is several players' rows here."""
-    from pnt.stats.fold_equity import pool_facts
-    from pnt.stats.timing import owners, timing_report
+    from pnt.stats.timing import owners, pool_rows, timing_report
 
     conn = db()
-    facts = pool_facts(conn, game, _predicate(conn, filter))
-    names = display_names(conn)
-    return {"player": None, "filter": filter, "players": len({names.get(f.pn_id, f.pn_id) for f in facts}),
-            **timing_report(facts, owners=owners(conn), who=names)}
+    pred = _predicate(conn, filter)
+
+    def answer() -> dict:
+        rows = pool_rows(conn, game, pred)
+        names = display_names(conn)
+        return {"player": None, "filter": filter, "players": len({names.get(f.pn_id, f.pn_id) for f in rows}),
+                **timing_report(rows, owners=owners(conn), who=names)}
+
+    # Seconds over every hand, and the same answer until the next write.
+    return remembered(conn, ("timing", game, _spot_key(conn, filter)), answer)
 
 
 # --- group by (SPEC.md, "Group by") ------------------------------------------
