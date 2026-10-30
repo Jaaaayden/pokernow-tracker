@@ -34,8 +34,23 @@ from pathlib import Path
 
 from ..ingest.csv_source import game_id_from_filename, read_csv
 from ..ingest.log_folder import _quote
+from .tokens import PN_ID
 
-_PLAYER = re.compile(r'"(?P<name>[^"\r\n]*?) @ (?P<id>[A-Za-z0-9_-]+)"')
+#: A quoted ``"name @ id"`` token. It opens at the start of the line or after a
+#: space or ``(``, and closes before the end, a space or ``, . )``, as every token
+#: in the grammar does. That anchoring, not a quote-free name, is what ends it:
+#: a name may hold a ``"`` of its own (``Bob "the" Nit``), and stopping at it
+#: would leave the start of the real name behind.
+_PLAYER = re.compile(
+    rf'(?<![^\s(])"(?P<name>[^\r\n]*?) @ (?P<id>{PN_ID})"(?=$|[\s,.)])', re.MULTILINE
+)
+#: The one line that names IDs outside a quoted token: a mid-session login. The
+#: new ID is the one the player's token now carries, so leaving either bare would
+#: tie a stand-in straight back to a real account.
+_ID_CHANGE = re.compile(
+    rf'^(?P<head>The player ".*" changed the ID from )(?P<old>{PN_ID}) to '
+    rf"(?P<new>{PN_ID})(?P<tail> because .*)$"
+)
 _ALPHABET = string.ascii_letters + string.digits + "_-"
 #: What every player in a published log must look like afterwards.
 STAND_IN = r"player \d+"
@@ -86,7 +101,10 @@ class Pseudonyms:
             name = self.name(self.aliases.get(m["id"], m["name"]))
             return f'"{name} @ {self.pn_id(m["id"])}"'
 
-        return _PLAYER.sub(swap, text)
+        def swap_ids(m: re.Match) -> str:
+            return f'{m["head"]}{self.pn_id(m["old"])} to {self.pn_id(m["new"])}{m["tail"]}'
+
+        return _ID_CHANGE.sub(swap_ids, _PLAYER.sub(swap, text))
 
 
 def anonymize_file(src: Path, out: Path, names: Pseudonyms) -> Path:
@@ -120,5 +138,14 @@ def anonymize_aliases(src: Path, dst: Path, names: Pseudonyms) -> int:
 
 
 def players_in(path: Path) -> set[tuple[str, str]]:
-    """Every (name, id) a file names: what an audit of a published folder reads."""
-    return {(m["name"], m["id"]) for e in read_csv(path) for m in _PLAYER.finditer(e.entry)}
+    """Every (name, id) a file names: what an audit of a published folder reads.
+
+    The bare IDs of a login line count too, under the name of the player on it."""
+    found = set()
+    for e in read_csv(path):
+        tokens = [(m["name"], m["id"]) for m in _PLAYER.finditer(e.entry)]
+        found.update(tokens)
+        login = _ID_CHANGE.match(e.entry)
+        if login and tokens:
+            found.update({(tokens[0][0], login["old"]), (tokens[0][0], login["new"])})
+    return found
