@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from contextvars import ContextVar
+from decimal import Decimal
 
 from . import events as E
-from .tokens import PlayerRef, parse_cards, split_player_token
+from .tokens import PN_ID, PlayerRef, parse_cards, split_player_token
 
 _P = r'"(?P<p>.+)"'
 
@@ -25,11 +27,25 @@ _P = r'"(?P<p>.+)"'
 #: otherwise swallow everything between the first and last quote.
 _P2 = r'"[^"]*"'
 
+#: An amount as the log prints it: whole chips, or a decimal on a Cents Mode table.
+_AMT = r"\d+(?:\.\d+)?"
 
-def _num(text: str) -> float:
-    """Blind amounts are ints in chip games and decimals in currency-configured ones."""
-    value = float(text)
-    return int(value) if value.is_integer() else value
+#: Whether the line being classified was logged in Cents Mode (see `classify`).
+_CENTS: ContextVar[bool] = ContextVar("cents", default=False)
+
+
+def _chips(text: str, cents: bool = False) -> int:
+    """An amount in the table's own integer units, whatever the log printed.
+
+    Cents Mode only changes the display: the table still counts in whole units
+    and prints each one divided by 100 (the blind schedule `5/20` is logged as a
+    small blind of ``0.05``). So a decimal amount, or any amount logged in Cents
+    Mode, is multiplied back by 100. Every amount of a hand then shares one unit
+    with the hands dealt outside Cents Mode, and stats in big blinds are unchanged.
+    """
+    if cents or "." in text or _CENTS.get():
+        return int((Decimal(text) * 100).to_integral_value())
+    return int(text)
 
 
 def _player(m: re.Match, group: str = "p") -> PlayerRef:
@@ -54,20 +70,27 @@ def _hand_start(m: re.Match, ord_: int, raw: str) -> E.Event:
     )
 
 
-_SEAT_RE = re.compile(r'#(\d+) "(.+?)" \((\d+)\)')
+_SEAT_RE = re.compile(rf'#(\d+) "(.+)" \(({_AMT})\)')
+#: Between two seats: ``(stack) | #seat``. Splitting on a bare ``|`` would cut a
+#: name with a pipe in it, and lose the whole roster with it.
+_SEAT_SPLIT = re.compile(r"(?<=\)) \| (?=#\d)")
 
 
 def _player_stacks(m: re.Match, ord_: int, raw: str) -> E.Event:
-    body = m.group("body")
-    found = _SEAT_RE.findall(body)
-    # Sanity: one seat entry per '|'-separated field. A name containing '" (' would
-    # desync this, so we verify rather than assume.
-    if len(found) != body.count("|") + 1:
-        return E.Unknown(ord=ord_, raw=raw, reason="player-stacks roster desync")
+    found = []
+    for part in _SEAT_SPLIT.split(m.group("body")):
+        # Each seat must be the whole field: a name containing '" (' or ') | #'
+        # could otherwise desync the roster, so we verify rather than assume.
+        seat = _SEAT_RE.fullmatch(part)
+        if seat is None:
+            return E.Unknown(ord=ord_, raw=raw, reason="player-stacks roster desync")
+        found.append(seat.groups())
+    # A stack printed with a decimal point is Cents Mode, so every stack is.
+    cents = any("." in stack for _, _, stack in found)
     seats = tuple(
-        (int(seat), split_player_token(tok), int(stack)) for seat, tok, stack in found
+        (int(seat), split_player_token(tok), _chips(stack, cents)) for seat, tok, stack in found
     )
-    return E.PlayerStacks(ord=ord_, raw=raw, seats=seats)
+    return E.PlayerStacks(ord=ord_, raw=raw, seats=seats, cents=cents)
 
 
 _POST_KINDS = {
@@ -120,16 +143,18 @@ RULES: list[Rule] = [
         # owes. Without it the line did not match at all, and an unmatched post is
         # not a missing label but a missing *blind*: the chips never enter the pot,
         # the hand records no big-blind post, and every net figure in it is wrong.
+        # PokerNow writes "posts an ante"; the article is optional, so that line
+        # and the "posts a ..." of every other post both match.
         re.compile(
-            rf"^{_P} posts a (?P<kind>small blind|big blind|ante|missed big blind|"
-            r"missing small blind|straddle) of (?P<amt>\d+)(?P<allin> and go all in)?$"
+            rf"^{_P} posts an? (?P<kind>small blind|big blind|ante|missed big blind|"
+            rf"missing small blind|straddle) of (?P<amt>{_AMT})(?P<allin> and go all in)?$"
         ),
         lambda m, o, r: E.Post(
             ord=o,
             raw=r,
             player=_player(m),
             kind=_POST_KINDS[m.group("kind")],
-            amount=int(m.group("amt")),
+            amount=_chips(m.group("amt")),
             all_in=bool(m.group("allin")),
         ),
     ),
@@ -138,7 +163,7 @@ RULES: list[Rule] = [
         # all of it forced. Matched before the plain `calls N` rule below. A short
         # stack's "and go all in" can come with two spaces before the label.
         re.compile(
-            rf"^{_P} (?:posts a bet of|calls) (?P<amt>\d+)(?P<allin> and go all in)?\s+"
+            rf"^{_P} (?:posts a bet of|calls) (?P<amt>{_AMT})(?P<allin> and go all in)?\s+"
             r"\(bomb pot bet\)$"
         ),
         lambda m, o, r: E.Post(
@@ -146,7 +171,7 @@ RULES: list[Rule] = [
             raw=r,
             player=_player(m),
             kind=E.POST_BOMB,
-            amount=int(m.group("amt")),
+            amount=_chips(m.group("amt")),
             all_in=bool(m.group("allin")),
         ),
     ),
@@ -163,24 +188,24 @@ RULES: list[Rule] = [
         ),
     ),
     (
-        re.compile(rf"^{_P} (?P<kind>calls|bets) (?P<amt>\d+)(?P<allin> and go all in)?$"),
+        re.compile(rf"^{_P} (?P<kind>calls|bets) (?P<amt>{_AMT})(?P<allin> and go all in)?$"),
         lambda m, o, r: E.Action(
             ord=o,
             raw=r,
             player=_player(m),
             kind={"calls": "call", "bets": "bet"}[m.group("kind")],
-            amount_to=int(m.group("amt")),
+            amount_to=_chips(m.group("amt")),
             all_in=bool(m.group("allin")),
         ),
     ),
     (
-        re.compile(rf"^{_P} raises to (?P<amt>\d+)(?P<allin> and go all in)?$"),
+        re.compile(rf"^{_P} raises to (?P<amt>{_AMT})(?P<allin> and go all in)?$"),
         lambda m, o, r: E.Action(
             ord=o,
             raw=r,
             player=_player(m),
             kind="raise",
-            amount_to=int(m.group("amt")),
+            amount_to=_chips(m.group("amt")),
             all_in=bool(m.group("allin")),
         ),
     ),
@@ -202,18 +227,18 @@ RULES: list[Rule] = [
     ),
     # -- pot resolution
     (
-        re.compile(rf"^Uncalled bet of (?P<amt>\d+) returned to {_P}$"),
+        re.compile(rf"^Uncalled bet of (?P<amt>{_AMT}) returned to {_P}$"),
         lambda m, o, r: E.UncalledReturn(
-            ord=o, raw=r, player=_player(m), amount=int(m.group("amt"))
+            ord=o, raw=r, player=_player(m), amount=_chips(m.group("amt"))
         ),
     ),
     (
-        re.compile(rf"^{_P} collected (?P<amt>\d+) from pot(?: with (?P<rank>.+))?$"),
+        re.compile(rf"^{_P} collected (?P<amt>{_AMT}) from pot(?: with (?P<rank>.+))?$"),
         lambda m, o, r: E.Collected(
             ord=o,
             raw=r,
             player=_player(m),
-            amount=int(m.group("amt")),
+            amount=_chips(m.group("amt")),
             ranking=m.group("rank"),
         ),
     ),
@@ -223,7 +248,7 @@ RULES: list[Rule] = [
     # as noise -- counting both would credit the winner twice.
     (
         re.compile(
-            rf"^{_P} paid (?P<amt>\d+) for the (?P<kind>.+?) bounty to "
+            rf"^{_P} paid (?P<amt>{_AMT}) for the (?P<kind>.+?) bounty to "
             rf"\"(?P<p2>[^\"]*)\"(?P<more>(?:, \"[^\"]*\")*)$"
         ),
         lambda m, o, r: E.BountyPaid(
@@ -231,13 +256,13 @@ RULES: list[Rule] = [
             raw=r,
             payer=_player(m),
             payee=split_player_token(m.group("p2")),
-            amount=int(m.group("amt")),
+            amount=_chips(m.group("amt")),
             kind=m.group("kind"),
             others=tuple(split_player_token(t) for t in re.findall(r'"([^"]*)"', m.group("more"))),
         ),
     ),
     (
-        re.compile(rf"^{_P} collected (?P<amt>\d+) from the (?P<kind>.+?) bounty$"),
+        re.compile(rf"^{_P} collected (?P<amt>{_AMT}) from the (?P<kind>.+?) bounty$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="bounty_summary"),
     ),
     # -- Nit Game: each player escrows the prize per opponent from their stack;
@@ -245,7 +270,7 @@ RULES: list[Rule] = [
     # -- chips between players (see `E.NitPenalty`); the rest is bookkeeping.
     (
         re.compile(
-            rf"^{_P} paid (?P<amt>\d+) each to (?P<to>\"[^\"]*\"(?:, \"[^\"]*\")*) "
+            rf"^{_P} paid (?P<amt>{_AMT}) each to (?P<to>\"[^\"]*\"(?:, \"[^\"]*\")*) "
             r"as the Nit penalty\.$"
         ),
         lambda m, o, r: E.NitPenalty(
@@ -253,7 +278,7 @@ RULES: list[Rule] = [
             raw=r,
             payer=_player(m),
             payees=tuple(split_player_token(t) for t in re.findall(r'"([^"]*)"', m.group("to"))),
-            amount=int(m.group("amt")),
+            amount=_chips(m.group("amt")),
         ),
     ),
     (
@@ -280,7 +305,7 @@ RULES: list[Rule] = [
     (
         # An escrow bought from off the table, not the stack: still the player's own
         # money, so like the buy-in it moves no net.
-        re.compile(rf"^The player {_P} made an add-on of \d+ to their Nit Escrow\.$"),
+        re.compile(rf"^The player {_P} made an add-on of {_AMT} to their Nit Escrow\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_add_on"),
     ),
     (
@@ -291,7 +316,7 @@ RULES: list[Rule] = [
     ),
     (
         re.compile(
-            rf"^The player {_P} received \d+ chips of returned Nit escrow when leaving the table\.$"
+            rf"^The player {_P} received {_AMT} chips of returned Nit escrow when leaving the table\.$"
         ),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="nit_escrow_returned"),
     ),
@@ -306,14 +331,14 @@ RULES: list[Rule] = [
         re.compile(
             rf"^The player {_P} (?P<kind>joined the game with a stack of|"
             r"quits the game with a stack of|stand up with the stack of|"
-            r"sit back with the stack of) (?P<stack>\d+)\.$"
+            rf"sit back with the stack of) (?P<stack>{_AMT})\.$"
         ),
         lambda m, o, r: E.SeatChange(
             ord=o,
             raw=r,
             player=_player(m),
             kind=_SEAT_KINDS[m.group("kind")],
-            stack=int(m.group("stack")),
+            stack=_chips(m.group("stack")),
         ),
     ),
     (
@@ -324,31 +349,31 @@ RULES: list[Rule] = [
     ),
     (
         re.compile(
-            rf"^The admin approved the player {_P} participation with a stack of (?P<stack>\d+)\.$"
+            rf"^The admin approved the player {_P} participation with a stack of (?P<stack>{_AMT})\.$"
         ),
         lambda m, o, r: E.SeatChange(
-            ord=o, raw=r, player=_player(m), kind="admin_approved", stack=int(m.group("stack"))
+            ord=o, raw=r, player=_player(m), kind="admin_approved", stack=_chips(m.group("stack"))
         ),
     ),
     (
         re.compile(
-            rf"^The admin updated the player {_P} stack from (?P<a>\d+) to (?P<b>\d+)\.$"
+            rf"^The admin updated the player {_P} stack from (?P<a>{_AMT}) to (?P<b>{_AMT})\.$"
         ),
         lambda m, o, r: E.AdminStackChange(
-            ord=o, raw=r, player=_player(m), from_stack=int(m.group("a")), to_stack=int(m.group("b"))
+            ord=o, raw=r, player=_player(m), from_stack=_chips(m.group("a")), to_stack=_chips(m.group("b"))
         ),
     ),
     (
         re.compile(
             r"^The game's (?P<which>small blind|big blind|ante) was changed "
-            r"from (?P<a>\d+(?:\.\d+)?) to (?P<b>\d+(?:\.\d+)?)\.$"
+            rf"from (?P<a>{_AMT}) to (?P<b>{_AMT})\.$"
         ),
         lambda m, o, r: E.BlindChange(
             ord=o,
             raw=r,
             which={"small blind": "sb", "big blind": "bb", "ante": "ante"}[m.group("which")],
-            from_amount=_num(m.group("a")),
-            to_amount=_num(m.group("b")),
+            from_amount=_chips(m.group("a")),
+            to_amount=_chips(m.group("b")),
         ),
     ),
     # -- recognized noise (no effect on stats, but explicitly accounted for)
@@ -418,7 +443,7 @@ RULES: list[Rule] = [
         # A player who logs in mid-session keeps their seat under their account's ID.
         # Lines after it carry the new ID; nothing here links the two identities.
         re.compile(
-            rf"^The player {_P} changed the ID from [A-Za-z0-9_-]+ to [A-Za-z0-9_-]+ "
+            rf"^The player {_P} changed the ID from {PN_ID} to {PN_ID} "
             r"because [^\n]+\.$"
         ),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="id_changed"),
@@ -428,11 +453,11 @@ RULES: list[Rule] = [
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="seat_request_canceled"),
     ),
     (
-        re.compile(rf"^The player {_P} requested a rebuy of \d+\.$"),
+        re.compile(rf"^The player {_P} requested a rebuy of {_AMT}\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_requested"),
     ),
     (
-        re.compile(rf"^The player {_P} rebought\. New stack \d+\.$"),
+        re.compile(rf"^The player {_P} rebought\. New stack {_AMT}\.$"),
         lambda m, o, r: E.Noise(ord=o, raw=r, kind="rebuy_completed"),
     ),
     (
@@ -448,12 +473,27 @@ RULES: list[Rule] = [
 ]
 
 
-def classify(entry: str, ord_: int) -> E.Event:
+def classify(entry: str, ord_: int, *, cents: bool = False) -> E.Event:
     """Turn one raw log entry into a typed event.
 
     Returns `Unknown` rather than raising, so one unfamiliar line cannot abort an
     import of 10,000 hands.
+
+    `cents`: the table was in Cents Mode when this line was logged, so even an
+    amount printed without a decimal point is in hundredths (see `_chips`). The
+    parser knows the mode; a line read on its own does not need it unless it
+    carries an amount.
     """
+    if not cents:
+        return _classify(entry, ord_)
+    token = _CENTS.set(True)
+    try:
+        return _classify(entry, ord_)
+    finally:
+        _CENTS.reset(token)
+
+
+def _classify(entry: str, ord_: int) -> E.Event:
     text = entry.strip()
     for pattern, build in RULES:
         m = pattern.match(text)

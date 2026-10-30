@@ -6,7 +6,8 @@ import pytest
 
 from pnt.ingest.csv_source import read_csv
 from pnt.logfmt.grammar import classify
-from pnt.logfmt.parser import assign_positions, position_name
+from pnt.logfmt.parser import assign_positions, position_name, position_slots
+from tests.conftest import MULTIWAY_GAME
 
 EXPECTED_HANDS = {
     "pgl41zM3_CKphpnKM1DMIosUT": 188,
@@ -449,6 +450,58 @@ def test_position_anchors_agree_on_regular_hands(parsed_all):
 )
 def test_position_names(sfb, n, expected):
     assert position_name(sfb, n) == expected
+
+
+@pytest.mark.parametrize(
+    "n, labels",
+    [
+        # Three dealt in round a dead small blind: the one left of the big blind is
+        # also right of the button, so the cutoff.
+        (3, {0: "BTN", 2: "BB", 3: "CO"}),
+        # Four: first to act is the hijack, the seat right of the button the cutoff.
+        (4, {0: "BTN", 2: "BB", 3: "HJ", 4: "CO"}),
+        (5, {0: "BTN", 2: "BB", 3: "UTG", 4: "HJ", 5: "CO"}),
+    ],
+)
+def test_a_dead_small_blind_hand_is_named_with_its_dead_slot(n, labels):
+    """The dead slot still sits between the button and the big blind, so the hand
+    is named as the table it was dealt at: n + 1 slots, not n."""
+    slots = position_slots(labels, n)
+    assert slots == n + 1
+    assert {k: position_name(k, n, slots) for k in labels} == labels
+
+
+def test_dead_small_blind_fixture_hand_is_labelled_btn_bb_co(parsed_all):
+    """Hand #25 of `pgl1UViJ4`: seats 0, 2 and 3 from the button. Seat 3 acts
+    first preflop and sits right of the button; it was labelled UTG past the end
+    of the three-handed table."""
+    h = next(h for h in parsed_all[MULTIWAY_GAME].hands if h.hand_number == 25)
+    sfb = [p.seats_from_button for p in h.players.values()]
+    slots = position_slots(sfb, h.n_dealt_in)
+    assert sorted(position_name(k, h.n_dealt_in, slots) for k in sfb) == ["BB", "BTN", "CO"]
+
+
+def test_the_position_filter_names_a_dead_small_blind_hand_by_its_slots(db):
+    """What `position=` and the views that follow it read: the hand's facts carry
+    its slot count, so seat 3 of hand #25 is the cutoff there too."""
+    from pnt.stats.derive import derive
+    from pnt.stats.filters import parse_filter
+    from pnt.stats.queries import load_hands
+
+    h = next(h for h in load_hands(db, MULTIWAY_GAME) if h.hand_number == 25)
+    f = {f.pn_id: f for f in derive(h)}["d-4X_F_SSU"]
+    assert (f.seats_from_button, f.n_dealt_in, f.position_slots) == (3, 3, 4)
+    assert parse_filter("position=CO")(f)
+    assert not parse_filter("position=UTG")(f)
+
+
+def test_a_dealer_who_posts_the_big_blind_is_anchored_on_the_big_blind():
+    """A player sat down between the blinds, and the dealer the start line names
+    posted the big blind (seen in a real log). The action follows the blinds:
+    the newcomer acts first, as the button does three-handed."""
+    got, irregular = assign_positions([1, 6, 10], dealer_seat=6, bb_seat=6)
+    assert irregular is True
+    assert got == {6: 2, 1: 1, 10: 0}
 
 
 def test_unknown_lines_become_unknown_not_exceptions():

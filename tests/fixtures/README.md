@@ -26,6 +26,16 @@ is a regression test with money at stake rather than a bigger sample.
 Edge corpus: 395 hands, 7,158 log entries, 0 parse misses, 1 deliberately
 incomplete hand.
 
+## Synthetic
+
+Made up, not exported: no real log has these shapes, so a written one pins them.
+Names and IDs are invented. Kept out of `ALL_LOGS` and `EDGE_LOGS`; its own tests
+read it.
+
+| Game ID | Hands | Exercises |
+|---|---|---|
+| `pglCentsModeSynthetic01` | 3 | **Cents Mode**: amounts printed as decimals (`calls 0.30`, stacks `(10.37)`), switched off before #3, which is printed in whole units at the same blind. **`posts an ante of`** on every hand, and a player named **`Pipe\|Dream`** in `Player stacks:`. Tests: `tests/test_cents_mode.py` |
+
 Why the two corpora stay separate: the hand-worked stat totals in
 `test_stats.py` are pinned to the core three by a manual count. Adding logs to
 `ALL_LOGS` would invalidate that count; invariants that must hold everywhere use

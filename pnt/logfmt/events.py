@@ -24,10 +24,6 @@ POST_STRADDLE = "straddle"
 #: flop. Nobody acts voluntarily preflop, so no preflop rate counts the hand.
 POST_BOMB = "bomb_pot"
 
-FORCED_POST_KINDS = frozenset(
-    {POST_SB, POST_BB, POST_ANTE, POST_MISSED_BB, POST_MISSING_SB, POST_STRADDLE, POST_BOMB}
-)
-
 # --- Streets ----------------------------------------------------------------
 PREFLOP = "preflop"
 FLOP = "flop"
@@ -63,6 +59,9 @@ class PlayerStacks(Event):
     """The dealt-in roster. This -- not join/quit events -- defines who is in the hand."""
 
     seats: tuple[tuple[int, PlayerRef, int], ...]  # (seat, player, starting_stack)
+    #: The stacks were printed as decimals: the table is in Cents Mode, so the
+    #: hand's other amounts are in hundredths too (`grammar._chips`).
+    cents: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,11 +176,11 @@ class AdminStackChange(Event):
 @dataclass(frozen=True, slots=True)
 class BlindChange(Event):
     which: str  # sb | bb | ante
-    #: int for chip-denominated games, float when the table is configured in a
-    #: decimal currency (e.g. "changed from 0.10 to 0.05"). Only ever a game-level
-    #: fallback: a hand's big blind comes from that hand's actual BB post.
-    from_amount: float
-    to_amount: float
+    #: In the table's integer units, like every amount: a Cents Mode table's
+    #: "changed from 0.10 to 0.05" is 10 to 5. Only ever a game-level fallback: a
+    #: hand's big blind comes from that hand's actual BB post.
+    from_amount: int
+    to_amount: int
 
 
 @dataclass(frozen=True, slots=True)
