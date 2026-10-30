@@ -317,7 +317,11 @@ async def _lifespan(_app: FastAPI):
     stop = threading.Event()
     worker = None
     if local_config.get("dataset") == "sample":  # switched on before the last stop
-        write_dataset(DatasetRequest(which="sample"))
+        try:
+            write_dataset(DatasetRequest(which="sample"))
+        except Exception:  # never worth a server that cannot start: the HUD needs it
+            log.exception("could not show the sample again; the pages show your own data")
+            _leave_sample()
     threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
@@ -1857,11 +1861,7 @@ def _build_sample(path: Path) -> None:
         _sample_error = f"could not build the sample: {exc}"
     else:
         for old in samplemod.stale():
-            for p in (old, old.with_name(old.name + "-wal"), old.with_name(old.name + "-shm")):
-                try:
-                    p.unlink(missing_ok=True)
-                except OSError:
-                    pass  # still open somewhere: the next build tidies it
+            _unlink_sample_db(old)  # one still open somewhere is left: the next build tidies it
         with _sample_lock:
             if _sample_wanted:
                 _enter_sample(path)
@@ -1869,14 +1869,31 @@ def _build_sample(path: Path) -> None:
         _sample_building = None
 
 
+def _unlink_sample_db(path: Path) -> None:
+    """Delete a sample database with its WAL files, as far as Windows allows."""
+    for p in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass  # still open somewhere
+
+
 def _sample_current(path: Path) -> bool:
+    """Whether the sample's database at `path` is built for the bundled files as
+    they are now. One that will not open (cut short by a crash, a bad disk) is
+    deleted, so the switch builds it again instead of failing on it at every start."""
     if not path.is_file():
         return False
-    conn = connect(path)
     try:
-        return samplemod.is_current(conn)
-    finally:
-        conn.close()
+        conn = connect(path)
+        try:
+            return samplemod.is_current(conn)
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        log.warning("the sample's database %s will not open (%s); building it again", path, exc)
+        _unlink_sample_db(path)  # a build into it would only fail the same way
+    return False
 
 
 @app.get("/settings/dataset")
