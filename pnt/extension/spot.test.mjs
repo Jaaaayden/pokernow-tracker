@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText } = require("./spot.js");
+const { handEnded, actingId, pickRow, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText } = require("./spot.js");
 
 test("the acting clock reads seconds, then minutes, and nothing when unknown", () => {
   assert.equal(clockText(0), "0s");
@@ -65,6 +65,9 @@ const live = (over = {}) => ({
   ...over,
 });
 
+// The alias of the row the chart would show.
+const pickPlayer = (...a) => pickRow(...a)?.alias ?? null;
+
 test("the hand-end line is what triggers a rebuild", () => {
   assert.equal(handEnded([{ entry: '"A @ 1" folds' }, { entry: "-- ending hand #7 --" }]), true);
   assert.equal(handEnded([{ entry: "-- starting hand #8 (id: x) --" }]), false);
@@ -96,25 +99,37 @@ test("a spot is sent once; a player with no data is still followed, on all their
 // The same table, with the names the page shows on each seat.
 const named = (over = {}) => {
   const l = live(over);
-  l.players.forEach((p, i) => { p.name = ["alex", "bk", "newbie"][i]; });
+  l.players.forEach((p, i) => { p.name = ["Al", "Bee", "newbie"][i]; });
   return l;
 };
 
 test("the table's player to act leads the log's", () => {
   // The log still has bk to act; the table has already moved on to Alex.
-  assert.equal(pickPlayer(named(), null, "alex"), "Alex");
-  assert.equal(actingId(named(), "alex"), "alex");
-  assert.equal(pickPlayer(named({ to_act: null }), null, "alex"), "Alex", "the log thinks the street is closed");
-  assert.equal(pickPlayer(named(), "blake", "alex"), "blake", "a pin still wins");
+  assert.equal(pickPlayer(named(), null, "Al"), "Alex");
+  assert.equal(actingId(named(), "Al"), "alex");
+  assert.equal(pickPlayer(named({ to_act: null }), null, "Al"), "Alex", "the log thinks the street is closed");
+  assert.equal(pickPlayer(named(), "blake", "Al"), "blake", "a pin still wins");
   assert.equal(pickPlayer(named(), null, "a stranger"), "blake", "an unknown name falls back to the log");
   assert.equal(actingId(named(), "a stranger"), "bk");
   assert.equal(pickPlayer(named(), null, "newbie"), "blake", "no alias: fall back to the log");
   const folded = named();
   folded.players[0].folded = true;
-  assert.equal(pickPlayer(folded, null, "alex"), "blake", "a folded seat is never to act");
+  assert.equal(pickPlayer(folded, null, "Al"), "blake", "a folded seat is never to act");
   const twins = named();
-  twins.players[1].name = "alex";
-  assert.equal(pickPlayer(twins, null, "alex"), "blake", "an ambiguous name is not trusted");
+  twins.players[1].name = "Al";
+  assert.equal(pickPlayer(twins, null, "Al"), "blake", "an ambiguous name is not trusted");
+});
+
+test("the table's player to act matches by ID when content.js has it, masked names or not", () => {
+  // The sample switch masks /live's names: the table's real name never matches.
+  const masked = named();
+  masked.players.forEach((p, i) => { p.name = p.alias = `player ${i + 1}`; });
+  assert.equal(actingId(masked, "alex"), "alex", "the ID still finds the seat");
+  assert.equal(pickRow(masked, null, "alex").pn_id, "alex");
+  assert.equal(actingId(masked, "a stranger"), "bk", "a name that is not there: the log's");
+  const folded = named();
+  folded.players[0].folded = true;
+  assert.equal(actingId(folded, "alex"), "bk", "a folded seat is never to act, by ID either");
 });
 
 test("ahead of the log, the chart shows all their hands; the spot follows once /live agrees", () => {
@@ -227,13 +242,11 @@ test("a tag chip's hover text is the evidence and the count behind it", () => {
     "Showed air 6.9% (shown).\n19 of 276\nOne session only: gone without a 74-hand game (11 sessions in all).");
 });
 
-test("the archetype always gets a chip; the rest are capped with the overflow named", () => {
-  const { shown, hidden } = tagChips(tags, 3);
-  assert.deepEqual(shown.map((t) => t.id), ["fish", "no_bluff", "folds_river"]);
-  assert.deepEqual(hidden.map((t) => t.id), ["limper", "fun_72"]);
-  assert.deepEqual(tagChips(tags.slice(1), 1).shown.map((t) => t.id), ["no_bluff"]);
-  assert.deepEqual(tagChips([tags[0]], 3), { shown: [tags[0]], hidden: [] });
-  assert.deepEqual(tagChips(null), { shown: [], hidden: [] });
+test("the archetype chip comes first, then the rest in the order sent", () => {
+  const moved = [tags[1], tags[0], ...tags.slice(2)];
+  assert.deepEqual(tagChips(moved).map((t) => t.id), ["fish", "no_bluff", "folds_river", "limper", "fun_72"]);
+  assert.deepEqual(tagChips([tags[0], null]), [tags[0]]);
+  assert.deepEqual(tagChips(null), []);
 });
 
 test("wilson is the 95% score interval, and ciText prints it as a ± and a range", () => {

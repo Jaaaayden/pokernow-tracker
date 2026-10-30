@@ -30,7 +30,7 @@
     game: null,
     rev: -1,            // the report's rev at the last redraw
     hud: null, live: null,
-    acting: null,       // the name on the table's decision-current seat, ahead of /live
+    acting: null,       // the table's player to act, ahead of /live: their pn_id, else their name (spot.js tableRow)
     actingAt: null,     // Date.now() when the action reached them (content.js): the clock
     follow: true,       // the chart follows the live spot
     compact: false,     // the stats table only: no tags, spot lines or chart
@@ -136,7 +136,7 @@
     // Only new data redraws the cards: a redraw on every status tick would throw
     // away the tooltip being read. The table's player to act counts as new data --
     // it arrives a poll or more before /live says the same.
-    const acting = snap.tableActing ?? null;
+    const acting = snap.tableActingPn ?? snap.tableActing ?? null;
     state.actingAt = acting ? snap.tableActingAt ?? state.actingAt : null;
     if (snap.rev !== state.rev || acting !== state.acting) {
       state.rev = snap.rev;
@@ -817,8 +817,7 @@
     // off, since the live action would otherwise replace the spot on the next report.
     // Streaky tags -- ones a single session carries -- come last, dimmed.
     const tags = el("div", "tags");
-    const { shown } = PNT.tagChips(s.tags?.tags, Infinity);
-    for (const tag of [...shown, ...(s.tags?.streaky || [])]) {
+    for (const tag of [...PNT.tagChips(s.tags?.tags), ...(s.tags?.streaky || [])]) {
       const chip = el("span", `tag kind-${tag.kind}${tag.carried_by ? " streaky" : ""}`, tag.label);
       chip.title = PNT.tagTitle(tag);
       chip.addEventListener("click", (e) => {
