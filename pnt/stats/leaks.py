@@ -116,10 +116,6 @@ def _pct(num: int, den: int) -> float | None:
     return round(100.0 * num / den, 1) if den else None
 
 
-def _round(x: float | None, nd: int = 2) -> float | None:
-    return round(x, nd) if x is not None else None
-
-
 #: The settings key (`db.userdata`) naming the hero by `player_id`, chosen with
 #: `pnt hero` or on the front page. A player_id, not an alias, so a rename keeps it.
 HERO_SETTING = "hero"

@@ -166,6 +166,10 @@ def test_tree_for_matches_build_tree_and_caches(db):
     b, _ = _tree(db, "Chris")
     assert a["roots"] == b["roots"]
     assert tree_for(db, "Chris") is a
+    from pnt.stats.queries import clear_caches
+
+    clear_caches()  # forgets every memoized result, the tree's included
+    assert tree_for(db, "Chris") is not a
     with pytest.raises(ValueError):
         tree_for(db, "ghost")
 

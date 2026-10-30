@@ -26,16 +26,23 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 from ..db.conn import writing
 from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from .cards import board_at
-from .derive import ANALYSED_SQL, Facts, HandRow, derive
+from .derive import ANALYSED_SQL, Facts, HandRow
 from .equity import cache_key, expected_collected, side_pots
-from .queries import display_names, identities_of, identity_map, load_hands
+from .queries import (
+    display_names,
+    facts_cached,
+    identities_of,
+    identity_map,
+    load_hands,
+    play_facts,
+)
 
 STREETS = (PREFLOP, FLOP, TURN, RIVER)
 
@@ -229,16 +236,20 @@ def allin_rows(
 
 
 def _apply(
-    rows: list[AllInRow], hands: dict[int, HandRow], predicate: Callable[[Facts], bool] | None
+    rows: list[AllInRow], facts: Callable[[], Iterable[Facts]], predicate: Callable[[Facts], bool] | None
 ) -> list[AllInRow]:
-    """Keep the rows whose (hand, player) Facts satisfy the spot filter."""
+    """Keep the rows whose (hand, player) Facts satisfy the spot filter.
+
+    `facts` gives the play-scope Facts the rows' hands are among, session facts
+    (tilt.py) filled in: those are numbered over every hand of a session, so a
+    term like `post_loss` cannot be read off the all-in hands derived alone.
+    Only called when there is a filter to apply.
+    """
     if predicate is None:
         return rows
-    facts: dict[tuple[int, str], Facts] = {}
-    for hid in {r.hand_id for r in rows}:
-        for f in derive(hands[hid]):
-            facts[(hid, f.pn_id)] = f
-    return [r for r in rows if predicate(facts[(r.hand_id, r.pn_id)])]
+    wanted = {(r.hand_id, r.pn_id) for r in rows}
+    keep = {(f.hand_id, f.pn_id) for f in facts() if (f.hand_id, f.pn_id) in wanted and predicate(f)}
+    return [r for r in rows if (r.hand_id, r.pn_id) in keep]
 
 
 def _bb(chips: float, bb: int | None) -> float | None:
@@ -272,8 +283,13 @@ def allin_report(
 
     `skipped` rides on every row so a page needs no second request for it.
     """
-    rows, skipped, hands = allin_rows(conn, game_id)
-    rows = _apply(rows, hands, predicate)
+    rows, skipped, _ = allin_rows(conn, game_id)
+
+    def pool() -> Iterable[Facts]:  # one game at a time: a session never spans two
+        for g in sorted({r.game_id for r in rows}):
+            yield from play_facts(load_hands(conn, g))
+
+    rows = _apply(rows, pool, predicate)
     ident = identity_map(conn)
     grouped: dict[int, list[AllInRow]] = defaultdict(list)
     aliases: dict[int, str] = {}
@@ -313,8 +329,8 @@ def allin_hand_list(
     Raises ValueError on an unknown alias, as `facts_for` does.
     """
     ids = set(identities_of(conn, alias))
-    rows, skipped, hands = allin_rows(conn, game_id)
-    rows = _apply([r for r in rows if r.pn_id in ids], hands, predicate)
+    rows, skipped, _ = allin_rows(conn, game_id)
+    rows = _apply([r for r in rows if r.pn_id in ids], lambda: facts_cached(conn, alias, game_id), predicate)
     names = display_names(conn)
     out = []
     for r in rows:

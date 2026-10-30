@@ -229,10 +229,8 @@ class Facts:
     #: acting on it. The player who declined to bet when nobody else did either.
     check_back: dict[str, bool] = field(default_factory=dict)
     #: At their *first* decision facing a bet on the street -- same keys as
-    #: `faced_bet` -- how many bets and raises were in front of them (1 a bet, 2 a
-    #: raise, 3 a re-raise), the size of the latest one, and what they did there,
-    #: exactly one of ANSWERS. See SPEC.md, "Facing a bet".
-    faced_level: dict[str, int] = field(default_factory=dict)
+    #: `faced_bet` -- the size of the latest bet or raise in front of them, and
+    #: what they did there, exactly one of ANSWERS. See SPEC.md, "Facing a bet".
     #: That latest bet or raise, measured as its maker's `bet_pot` or `raise_pot`.
     faced_bet_pot: dict[str, float] = field(default_factory=dict)
     #: The SIZE_BUCKETS bucket of that same bet or raise.
@@ -631,10 +629,9 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
         cbet_raised = False
         street_aggressor: str | None = None
         acted: set[str] = set()
-        # The street's betting as it stands: bets and raises so far (1 a bet, 2 a
-        # raise), each player's chips in on this street, the most anyone has in,
-        # and the size of the latest bet or raise as (pot fraction, bucket).
-        level = 0
+        # The street's betting as it stands: each player's chips in on this
+        # street, the most anyone has in, and the size of the latest bet or raise
+        # as (pot fraction, bucket).
         put: dict[str, int] = {}
         top = 0
         latest: tuple[float, str] | None = None
@@ -645,8 +642,8 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
 
         for i, a in enumerate(street_actions):
             # --- shared street state first, for every actor: a player missing
-            # from `facts` still moves the level and the price for everyone else.
-            faced = (level, latest)
+            # from `facts` still moves the price for everyone else.
+            faced = latest
             pot = pot_before[a.seq]
             to_call = max(0, top - put.get(a.pn_id, 0))
             sized: tuple[float, str] | None = None
@@ -658,7 +655,6 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                 extra = a.amount - to_call
                 sized = (round(extra / (pot + to_call), 3), size_bucket(extra, pot + to_call))
             if a.kind in AGGRESSIVE:
-                level += 1
                 latest = sized
             put[a.pn_id] = put.get(a.pn_id, 0) + a.amount
             top = max(top, put[a.pn_id])
@@ -698,11 +694,10 @@ def _postflop(hand: HandRow, facts: dict[str, Facts], preflop_aggressor: str | N
                     f.raised_bet[street] = True
                 # The first time only: a bettor who is raised and calls has
                 # answered a raise, and that is their decision facing a bet.
-                if street not in f.faced_level and a.kind in ANSWERS:
-                    f.faced_level[street] = faced[0]
+                if street not in f.faced_bet_action and a.kind in ANSWERS:
                     f.faced_bet_action[street] = a.kind
-                    if faced[1] is not None:
-                        f.faced_bet_pot[street], f.faced_bet_size[street] = faced[1]
+                    if faced is not None:
+                        f.faced_bet_pot[street], f.faced_bet_size[street] = faced
 
             if a.kind == "raise" and street not in f.raise_pot and sized is not None:
                 f.raise_pot[street], f.raise_size[street] = sized
@@ -1055,8 +1050,10 @@ def derive(hand: HandRow, every_game: bool = False) -> list[Facts]:
         f.saw_flop = hand.saw_flop and pid not in folded_preflop
         f.wtsd_opp = f.saw_flop
         # Showdown = two or more players still live at the end (never inferred from
-        # `shows` lines -- see SPEC.md).
-        f.wtsd = f.saw_flop and hand.went_to_showdown and not p.folded
+        # `shows` lines -- see SPEC.md). A log cut off before the river shows the
+        # live players at no showdown: it just stopped.
+        f.wtsd = (f.saw_flop and hand.went_to_showdown and not p.folded
+                  and (hand.complete or len(hand.board) == 5))
         f.wsd = f.wtsd and p.collected > 0
         f.won_pot = p.collected > 0
     if not analysed and not every_game:

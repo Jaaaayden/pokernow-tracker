@@ -132,7 +132,7 @@ def test_a_faced_cbet_is_the_first_bet_faced(db):
         for f in facts_for(db, player):
             for s, size in f.faced_cbet_size.items():
                 seen += 1
-                assert f.faced_level[s] == 1 and f.faced_bet_size[s] == size
+                assert f.faced_bet_size[s] == size
     assert seen
 
 

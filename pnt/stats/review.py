@@ -33,7 +33,7 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from ..db.conn import generation, path_of, writing
+from ..db.conn import generation, path_of, reading, writing
 from ..logfmt.events import PREFLOP, RIVER
 from .allin import AllInRow, allin_rows, decision_street
 from .cards import (
@@ -70,6 +70,7 @@ from .queries import (
     load_hands,
 )
 from .tags import tags_for
+from .tilt import annotate
 
 #: Every cutoff the flags use. Mirrored as the table in SPEC.md, "Hand review".
 THRESHOLDS: dict = {
@@ -873,10 +874,19 @@ def review_rows(
     DSL and count the population they came from. Raises ValueError on an unknown
     alias.
     """
-    ids = set(identities_of(conn, alias))
+    # One snapshot for the reads (as `facts_cached` makes them); `allin_rows` below
+    # writes the equity cache, so it runs after.
+    with reading(conn):
+        ids = set(identities_of(conn, alias))
+        loaded = load_hands(conn, game_id, ids) if ids else []
+    every = {h.hand_id: {f.pn_id: f for f in derive(h)} for h in loaded}
+    # The session facts (tilt.py) are numbered over every hand they played, PLO's
+    # included, as in `facts_cached`: the chart's `post_loss` or `session_hand>=N`
+    # must find the same hands here.
+    annotate([f for fs in every.values() for pid, f in fs.items() if pid in ids])
     # Analysed hands only, the counts included: no flag reads PLO or a second board.
-    hands = [h for h in load_hands(conn, game_id, ids) if is_analysed(h)] if ids else []
-    facts_by_hand = {h.hand_id: {f.pn_id: f for f in derive(h)} for h in hands}
+    hands = [h for h in loaded if is_analysed(h)]
+    facts_by_hand = {h.hand_id: every[h.hand_id] for h in hands}
     allin_ids = [
         h.hand_id for h in hands
         if h.complete and h.went_to_showdown and any(a.all_in for a in h.actions)

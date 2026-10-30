@@ -82,7 +82,6 @@ def test_check_raise_and_its_opportunity(hu):
 
 def test_facing_a_bet_the_first_time(hu):
     chris = hu[10][CHRIS]
-    assert chris.faced_level == {"flop": 1, "turn": 1}
     assert chris.faced_bet_pot == {"flop": 0.5, "turn": 0.75}
     assert chris.faced_bet_size == {"flop": "medium", "turn": "large"}
     assert chris.faced_bet_action == {"flop": "call", "turn": "fold"}
@@ -92,10 +91,10 @@ def test_facing_a_bet_the_first_time(hu):
     # #92: Chris's flop bet was raised, so the bet he first faced is gp's raise,
     # sized as gp's raise. gp's river bet was raised too, and he called.
     chris, gp = hu[92][CHRIS], hu[92][GP]
-    assert chris.faced_level["flop"] == 2 and chris.faced_bet_action["flop"] == "call"
+    assert chris.faced_bet_action["flop"] == "call"
     assert chris.faced_bet_pot["flop"] == gp.raise_pot["flop"] == 0.75
     assert chris.faced_bet_action["river"] == "raise" and chris.faced_bet_pot["river"] == 0.333
-    assert gp.faced_level == {"flop": 1, "river": 2}
+    assert gp.faced_bet_pot["flop"] == chris.bet_pot["flop"]
     assert gp.faced_bet_action == {"flop": "raise", "river": "call"}
     assert gp.faced_bet_pot["river"] == chris.raise_pot["river"]
 
@@ -176,14 +175,13 @@ def test_three_way_lines_and_sizes():
     assert (a.line, b.line, c.line) == ({"flop": "xr", "turn": "b"}, {"flop": "bf"}, {"flop": "cc", "turn": "f"})
     assert a.check_raise == {"flop": True}
     assert a.raise_pot == {"flop": 1.0} and a.raise_size == {"flop": "large"}, "a pot raise is 1.0"
-    assert a.faced_level == {"flop": 1} and a.faced_bet_action == {"flop": "raise"}
+    assert a.faced_bet_action == {"flop": "raise"}
     assert a.faced_bet_pot == {"flop": 0.5} and a.faced_bet_size == {"flop": "medium"}
-    # B bet and was raised: the first bet B faced is A's raise, at level 2.
-    assert b.faced_level == {"flop": 2} and b.faced_bet_pot == {"flop": 1.0}
+    # B bet and was raised: the first bet B faced is A's raise.
+    assert b.faced_bet_pot == {"flop": 1.0} == a.raise_pot
     assert b.faced_bet_action == {"flop": "fold"} and b.fold_street == "flop"
     # C called B's bet first, so that is C's decision facing a bet, though C
     # went on to call the raise as well. The turn blocker C folded to.
-    assert c.faced_level == {"flop": 1, "turn": 1}
     assert c.faced_bet_action == {"flop": "call", "turn": "fold"}
     assert c.faced_bet_size == {"flop": "medium", "turn": "blocker"}
     assert c.called_bet == {"flop": True}
@@ -260,12 +258,12 @@ def _raise(to: int) -> dict:
 def test_raise_sizing_convention(to, frac, bucket):
     f = _raise(to)
     assert f["B"].raise_pot == {"flop": frac} and f["B"].raise_size == {"flop": bucket}
-    assert f["A"].faced_bet_pot == {"flop": frac} and f["A"].faced_level == {"flop": 2}
+    assert f["A"].faced_bet_pot == {"flop": frac}
     assert f["A"].bet_answer == {"flop": "raise"}
 
 
-def test_a_re_raise_is_level_three():
-    """A bets, B raises, C re-raises: A first faces a bet with two raises over it."""
+def test_a_re_raise_is_what_the_bettor_faces():
+    """A bets, B raises, C re-raises: A first faces C's re-raise, B the bet, C the raise."""
     hand = _hand(
         ["A", "B", "C"],
         [
@@ -277,9 +275,9 @@ def test_a_re_raise_is_level_three():
         board=("9c", "8d", "2h"),
     )
     f = {x.pn_id: x for x in derive(hand)}
-    assert f["A"].faced_level == {"flop": 3}
-    assert f["B"].faced_level == {"flop": 1} and f["B"].faced_bet_action == {"flop": "raise"}
-    assert f["C"].faced_level == {"flop": 2} and f["C"].faced_bet_action == {"flop": "raise"}
+    assert f["A"].faced_bet_action == {"flop": "fold"}
+    assert f["B"].faced_bet_pot == f["A"].bet_pot and f["B"].faced_bet_action == {"flop": "raise"}
+    assert f["C"].faced_bet_pot == f["B"].raise_pot and f["C"].faced_bet_action == {"flop": "raise"}
     assert f["A"].faced_bet_pot == f["C"].raise_pot
 
 
@@ -310,14 +308,13 @@ def test_line_invariants(every_hand):
                 assert ("b" in line) == (s in f.bet_size)
             # The facing-a-bet facts answer exactly the faced_bet opportunities.
             keys = f.faced_bet.keys()
-            assert f.faced_level.keys() == keys
             assert f.faced_bet_pot.keys() == keys
             assert f.faced_bet_size.keys() == keys
             assert f.faced_bet_action.keys() == keys
             assert f.raise_size.keys() == f.raise_pot.keys() == f.raised_bet.keys()
             assert f.bet_answer.keys() <= f.bet_size.keys()
             for s, did in f.faced_bet_action.items():
-                assert did in ANSWERS and f.faced_level[s] >= 1
+                assert did in ANSWERS
                 assert f.faced_bet_size[s] in SIZE_BUCKETS
                 flag = {"fold": f.folded_to_bet, "call": f.called_bet, "raise": f.raised_bet}[did]
                 assert flag.get(s)
