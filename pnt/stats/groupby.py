@@ -75,7 +75,7 @@ def _seat(f: Facts, _: Context) -> Key:
     keeps its label, so the cell reproduces from its term; a dead button has none."""
     if f.seats_from_button is None or f.dead_button:
         return None
-    return position_name(f.seats_from_button, f.n_dealt_in)
+    return position_name(f.seats_from_button, f.n_dealt_in, f.position_slots)
 
 
 #: Results' pot types, under the names the pot-type flags have.

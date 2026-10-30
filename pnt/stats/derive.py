@@ -26,7 +26,7 @@ from ..logfmt.events import (
     RIVER,
     TURN,
 )
-from ..logfmt.parser import position_name
+from ..logfmt.parser import position_name, position_slots
 from .cards import board_at
 
 POSTFLOP_STREETS = (FLOP, TURN, RIVER)
@@ -187,6 +187,9 @@ class Facts:
     seats_from_button: int | None
     dead_button: bool
     blinds_irregular: bool = False
+    #: The hand's position slots, a dead small blind's included: what
+    #: `position_name` sizes the table by. 0 reads as `n_dealt_in`.
+    position_slots: int = 0
     game_id: str = ""
     hand_number: int = 0
     ts: str | None = None
@@ -441,7 +444,7 @@ class Facts:
         button or a dead blind. The rule `positional_report` follows."""
         if self.seats_from_button is None or self.dead_button or self.blinds_irregular:
             return None
-        return position_name(self.seats_from_button, self.n_dealt_in)
+        return position_name(self.seats_from_button, self.n_dealt_in, self.position_slots)
 
     @property
     def posted_bb(self) -> Fraction | None:
@@ -904,7 +907,7 @@ def _seat_ranks(hand: HandRow) -> dict[str, int]:
     the order right on those hands, which is all this needs: the position *label*
     stays untrustworthy there, and is still withheld.
     """
-    slots = max([hand.n_dealt_in, *((p.seats_from_button or 0) + 1 for p in hand.players.values())])
+    slots = position_slots((p.seats_from_button for p in hand.players.values()), hand.n_dealt_in)
     return {
         pid: (p.seats_from_button - 1 if p.seats_from_button >= 1 else slots - 1)
         for pid, p in hand.players.items()
@@ -1005,6 +1008,7 @@ def derive(hand: HandRow, every_game: bool = False) -> list[Facts]:
     bomb = is_bomb_pot(hand)
     pot = sum(p.contributed for p in hand.players.values())
     streets_pot = pot_at(hand, pot)
+    slots = position_slots((p.seats_from_button for p in hand.players.values()), hand.n_dealt_in)
     facts = {
         pid: Facts(
             hand_id=hand.hand_id,
@@ -1013,6 +1017,7 @@ def derive(hand: HandRow, every_game: bool = False) -> list[Facts]:
             seats_from_button=p.seats_from_button,
             dead_button=hand.dead_button,
             blinds_irregular=hand.blinds_irregular,
+            position_slots=slots,
             game_id=hand.game_id,
             hand_number=hand.hand_number,
             ts=hand.ts,

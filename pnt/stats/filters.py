@@ -1142,7 +1142,7 @@ def _compile_term(
         return (
             lambda f, w=want: f.seats_from_button is not None
             and not f.dead_button
-            and position_name(f.seats_from_button, f.n_dealt_in).upper() == w
+            and position_name(f.seats_from_button, f.n_dealt_in, f.position_slots).upper() == w
         ), "position"
 
     # In the order the terms were always tried: the first family to claim a term

@@ -1709,7 +1709,7 @@ this order:
 
 | Part | Content |
 |---|---|
-| **position** | `position=<POS>`; withheld on dead-button and irregular-blind hands, as every positional view does |
+| **position** | `position=<POS>`; withheld on dead-button and irregular-blind hands, as `pnt positions` does (judgement call 4) |
 | **preflop history** | The terms this player's earlier preflop decisions earned (table below) |
 | **pot type** | `limped` / `srp` / `3bet_pot` / `4bet_pot` from `pot_level`, from the first postflop node on |
 | **players** | `players_flop=2` or `players_flop>=3` from `players_flop` (everyone who did not fold preflop), on postflop nodes; the groups of "Multiway vs heads-up" |
@@ -3275,12 +3275,22 @@ archaeology.
      `pgl1UViJ4` has the button on seat 2, a `Dead Small Blind` line, and seat 10
      posting the *big* blind one slot from the button. `seats_from_button` is
      shifted past the gap, which means it can exceed `n_dealt_in - 1` on these
-     hands.
+     hands. The same flag marks a hand whose named dealer posted the big blind
+     (a player sat down between the blinds): its positions are anchored on the
+     big blind, as on a dead button.
 
    Both are rare (1 each in 549 hands) and both are flagged rather than guessed
-   at. `positional_report` drops them; aggregate stats still include them, since
-   only the *position label* is uncertain, not the actions. IP/OOP is likewise
-   still computed on them — see call 11, which is the same distinction again.
+   at. `positional_report` drops them, and so do the HUD and the line explorer's
+   node filters; aggregate stats still include them, since only the *position
+   label* is uncertain, not the actions. IP/OOP is likewise still computed on
+   them — see call 11, which is the same distinction again.
+
+   The `position=` filter, and the views that follow it (Results, group-by,
+   the tree), do label a dead-small-blind hand. They name it as the table it
+   was dealt at, dead slot included: `position_slots` is `n_dealt_in` plus the
+   gap, so four dealt in are BTN, BB, HJ and CO, and three are BTN, BB and CO.
+   The seat right of the button is the cutoff, as on any other hand. A dead
+   button gets no label anywhere.
 5. **Antes and dead small blinds** contribute to the pot but not to a player's
    street commitment, so they do not reduce what that player must pay to call.
 6. **Each bet-size edge belongs to the bucket above it, rounded down to a chip**,

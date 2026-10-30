@@ -116,7 +116,7 @@ def _seat(f: Facts) -> str | None:
     """
     if f.seats_from_button is None or f.dead_button:
         return None
-    return position_name(f.seats_from_button, f.n_dealt_in)
+    return position_name(f.seats_from_button, f.n_dealt_in, f.position_slots)
 
 
 def _position_table(facts: list[Facts]) -> list[dict]:
