@@ -289,9 +289,9 @@ class Tally:
         return self._in_bb(_NET_SQ, squared=True)
 
     # bb/100 against folding (SPEC.md, "bb/100 against folding"), over the same
-    # hands as `bb_sum`: Σ posted_bb where they had a preflop decision, Σ net_bb
-    # where they had none (a walk, which folding could not change), and Σx² of each
-    # hand's net_bb + posted_bb, 0 on a hand with no decision.
+    # hands as `bb_sum`: Σ posted_bb where they had a decision (preflop, or postflop
+    # in a bomb pot), Σ net_bb where they had none (a walk, which folding could not
+    # change), and Σx² of each hand's net_bb + posted_bb, 0 on a hand with no decision.
     @property
     def posted(self) -> Fraction:
         return self._in_bb(_POSTED)
@@ -320,7 +320,9 @@ class Tally:
             s[_NET] += net
             s[_NET_SQ] += net * net
             self.bb_n += 1
-            if x.vpip_opp:
+            # A decision: preflop, or -- in a bomb pot, which has none there --
+            # on any postflop street (`line`). See SPEC.md, call 2 there.
+            if x.vpip_opp or x.line:
                 s[_POSTED] += x.posted
                 s[_VF_SQ] += (net + x.posted) ** 2
             else:

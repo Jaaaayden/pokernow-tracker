@@ -89,6 +89,52 @@ def test_a_walk_adds_nothing_and_a_defended_blind_adds_its_post():
     assert r["bb_per_100"] == 350.0 and r["bb_per_100_vs_fold"] == 450.0
 
 
+def _bomb(acts: list[tuple], collected: dict[str, int], stack: int = 1000) -> HandRow:
+    """Heads-up bomb pot of 20 a player at a 10 big blind: (pid, street, kind, amount)."""
+    posts = [(p, "preflop", "post", 20) for p in (A, HERO)]
+    actions = [
+        HandAction(seq=i + 1, street=st, pn_id=p, kind=k, amount=amt, is_forced=k == "post",
+                   all_in=False, post_kind="bomb_pot" if k == "post" else None)
+        for i, (p, st, k, amt) in enumerate(posts + acts)
+    ]
+    folded = {a.pn_id for a in actions if a.kind == "fold"}
+    rows = {
+        pid: HandPlayerRow(
+            pn_id=pid, seat=i + 1, seats_from_button=i,
+            contributed=sum(a.amount for a in actions if a.pn_id == pid),
+            collected=collected.get(pid, 0), folded=pid in folded,
+            starting_stack=stack if pid == HERO else 1000,
+        )
+        for i, pid in enumerate([A, HERO])
+    }
+    return HandRow(
+        hand_id=9, game_id="g", hand_number=9, n_dealt_in=2, dead_button=False, blinds_irregular=False,
+        went_to_showdown=not folded, saw_flop=True, complete=True, bb=10, ts=None, players=rows,
+        actions=actions,
+    )
+
+
+def test_a_bomb_pot_counts_from_its_first_postflop_decision():
+    """No preflop decision, but every postflop one is real: folding the flop
+    would have lost the 2 bb bomb and nothing more. Hero calls 40 and 100 and
+    loses: -160 is -16 bb raw and -14 bb against folding."""
+    lost = _bomb([(HERO, "flop", "check", 0), (A, "flop", "bet", 40), (HERO, "flop", "call", 40),
+                  (HERO, "turn", "check", 0), (A, "turn", "bet", 100), (HERO, "turn", "call", 100),
+                  (HERO, "river", "check", 0), (A, "river", "check", 0)], {A: 320})
+    r = aggregate([hero(lost)])
+    assert r["bb_per_100"] == -1600.0 and r["bb_per_100_vs_fold"] == -1400.0
+    # Folding at the first decision is exactly folding: 0 against folding.
+    folds = _bomb([(HERO, "flop", "check", 0), (A, "flop", "bet", 40), (HERO, "flop", "fold", 0)], {A: 80})
+    assert aggregate([hero(folds)])["bb_per_100_vs_fold"] == 0
+
+
+def test_all_in_from_a_bomb_post_adds_nothing():
+    """A stack the bomb put all in had no decision at all, as from a blind."""
+    shove = _bomb([(A, "flop", "check", 0), (A, "turn", "check", 0), (A, "river", "check", 0)], {A: 40}, stack=20)
+    assert not hero(shove).line
+    assert aggregate([hero(shove)])["bb_per_100_vs_fold"] == 0
+
+
 def test_an_incomplete_hand_is_out_of_both_sides():
     cut = mk([A, HERO, B], [(HERO, "post", 5, "sb"), (B, "post", 10, "bb"), (A, "raise", 30),
                             (HERO, "call", 25)], {}, hand_id=7, complete=False)
@@ -100,7 +146,7 @@ def test_an_incomplete_hand_is_out_of_both_sides():
 
 def _manual(rows) -> tuple[float, float]:
     xs = [
-        (Fraction(f.net, f.bb_size) + f.posted_bb) if f.vpip_opp else Fraction(0)
+        (Fraction(f.net, f.bb_size) + f.posted_bb) if f.vpip_opp or f.line else Fraction(0)
         for f in rows if f.bb_size and f.complete
     ]
     n = len(xs)
