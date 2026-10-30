@@ -382,6 +382,8 @@
   .hand-row .sizes { flex: 1 1 12em; color: var(--muted); font-size: 12px; }
   .hand-row .net { margin-left: auto; }
   .hand-rows.tall { max-height: 560px; }
+  .hand-rows .more-rows { flex: none; align-self: flex-start; margin: 8px 4px; font-size: 12px; padding: 3px 10px;
+    border-style: dashed; color: var(--accent); }
   .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
     color: var(--ink-2); white-space: nowrap; }
   .hand-row .kind[data-group=beat] { border-color: var(--accent); color: var(--accent); }
@@ -471,7 +473,8 @@
   #review.split .hand-rows.tall, #hands.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
   #review.split .replay, #hands.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
-  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  /* Every on/off button reads the same pressed: accent text and border. */
+  :is(#hands-split, #esttoggle, #tabletoggle, #ttexture)[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   /* A narrow list stacks a row instead of crushing it: number, cards and net on
      the first line, then the board, who it was against, and the size note (a
      review row's reason, a sat-out hand's result). Position and pot are left to
@@ -665,13 +668,16 @@
   #tilt td small { color: var(--muted); margin-left: 3px; }
   #tilt td.moved { color: var(--flag); font-weight: 600; }
   #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
-  /* A figure read against its baseline (numTone): better in the accent blue the
-     MDF column uses, worse in the loss red, about the same in amber. The ± and
-     n beside it stay muted. Tilt colours its bb/100, Timing its value share. */
-  #tilt td.num-good, #timing td.num-good { color: var(--accent); font-weight: 600; }
-  #tilt td.num-bad, #timing td.num-bad { color: var(--down); font-weight: 600; }
-  #tilt td.num-eh, #timing td.num-eh { color: var(--amber); }
-  #tilt td[class*="num-"] small, #timing td[class*="num-"] small { font-weight: 400; }
+  /* Tilt's bb/100 is money, so it takes the profit and loss colours; one more
+     than TILT_BB_BAND from all hands is bold. */
+  #tilt td.moved-bb { font-weight: 600; }
+  #tilt td.moved-bb small { font-weight: 400; }
+  /* A share read against its baseline (numTone), not money: above in the accent
+     blue the MDF column uses, below in amber, so it never reads as a loss. The
+     ± and n beside it stay muted. Timing colours its value share. */
+  #timing td.num-good { color: var(--accent); font-weight: 600; }
+  #timing td.num-bad { color: var(--amber); font-weight: 600; }
+  #timing td[class*="num-"] small { font-weight: 400; }
 
   /* --- timing tells: what the hands were, by how long the decision took ---
      A table per spot, a row per tempo bucket, with the strength tiers as one
@@ -683,12 +689,15 @@
   #shows tr.total td { font-weight: 600; }
   #shows tbody tr, #bounty tbody tr { cursor: pointer; }
   #shows tbody tr:hover td, #bounty tbody tr:hover td { background: var(--mid); }
-  /* Strong in the profit colour, draws and air in the loss colour, marginal in
-     amber. A class cell is tinted by its share of the row's two-card shows; a
-     list row's read is a pill of the same colour. */
-  #shows .cls-strong, #shows .ahead { --c: var(--up); }
+  /* Strength as the Lines view colours it: strong blue, marginal amber, draws
+     and air red. Green stays money's. Ahead and behind are a result, so they take
+     the profit and loss pair. A class cell is tinted by its share of the row's
+     two-card shows; a list row's read is a pill of the same colour. */
+  #shows .cls-strong { --c: var(--accent); }
+  #shows .ahead { --c: var(--up); }
   #shows .cls-marginal { --c: var(--amber); }
-  #shows .cls-air, #shows .cls-draw, #shows .behind { --c: var(--down); }
+  #shows .cls-air, #shows .cls-draw { --c: var(--flag); }
+  #shows .behind { --c: var(--down); }
   #shows .ahead, #shows .behind { color: var(--c); }
   #shows td.share small { color: var(--muted); font-size: 11px; margin-left: 5px; }
   #shows .read { display: inline-block; padding: 0 8px; border-radius: 999px; white-space: nowrap; font-size: 12.5px;
@@ -787,7 +796,16 @@
   .gb-ctl { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
   .gb-ctl label { display: inline-flex; gap: 6px; align-items: center; }
   .gb-ctl input[type=number] { width: 5em; }
-  .gb-body { overflow-x: auto; }
+  .gb-body { overflow-x: auto; container-type: inline-size; }
+  /* Beside the grid the card is about 450px: the side figures (shown %, ±, fold
+     all) go to the hover, headers wrap and cells tighten, so every column fits. */
+  @container (max-width: 620px) {
+    .gb-body :is(th, td) { padding: 5px 5px; }
+    .gb-body th { white-space: normal; vertical-align: bottom; }
+    .gb-body td small { display: none; }
+    .gb-body td.mix { width: auto; min-width: 56px; }
+    .gb-body td.lab { max-width: 9em; }
+  }
   .gb-body.loading { opacity: .45; transition: opacity .15s; }
   .gb table { margin-top: 8px; }
   .gb th.sort { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -1097,6 +1115,9 @@
   // ---- palette (reference instance; one hue per job) ----------------------
   const BLUE = ["#cde2fb","#9ec5f4","#6da7ec","#3987e5","#256abf","#184f95","#0d366b"];
   const RED  = ["#fbd9d8","#f6b6b5","#ef9291","#e66e6d","#e34948","#b93a39","#8f2d2c"];
+  // Money: profit in GREEN, loss in RED, the --up/--down pair every net and
+  // bb/100 figure on the page takes. Blue is never money here.
+  const GREEN = ["#d3efe0","#a6dcc0","#74c69d","#4cb382","#2f9566","#1f7a4d","#14563a"];
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   const dark = () => document.documentElement.dataset.theme
@@ -1272,8 +1293,8 @@
     return ts.includes("limp") && ts.includes("faced_open=raise");
   };
   // Each chip helper comes in two forms: `next…` is the spot a click would leave,
-  // without writing it, so the chip counts can ask for it; `set…`/`toggleTerm`
-  // writes it into the box.
+  // without writing it, so the chip counts can ask for it and a click writes it
+  // into the box (`setOneOf` is the one that writes directly).
   // Replace whichever limp chip is pressed with `pair`'s two terms, or clear the
   // row when `pair` was the one already pressed.
   function nextLimpTerms(pair) {
@@ -1327,12 +1348,7 @@
     if (!pressed) next.push(term);
     return next.join(",");
   }
-  const setLimpTerms = (pair) => { $("filter").value = nextLimpTerms(pair); };
-  const toggleTerm = (t) => { $("filter").value = nextToggle(t); };
-  const setGroupTerm = (key, term) => { $("filter").value = nextGroupTerm(key, term); };
   const setOneOf = (group, term) => { $("filter").value = nextOneOf(group, term); };
-  const setDepthTerms = (pair) => { $("filter").value = nextDepthTerms(pair); };
-  const setJamTerm = (key, term) => { $("filter").value = nextJamTerm(key, term); };
   // The pot box and the vs picker are two more ways of writing a term into the
   // box above them; the text stays the one source of truth, so they read back
   // whatever is typed there. `pot>=` is the only shape the box writes, but it
@@ -1723,7 +1739,12 @@
       o.value = p.alias; o.textContent = p.alias;
       sel.appendChild(o);
     }
-    if (!state.player || !rows.some(p => p.alias === state.player)) state.player = rows[0]?.alias ?? null;
+    if (!state.player || !rows.some(p => p.alias === state.player)) {
+      // No ?player=: the hero, as the stats page and the HUD open on. The first
+      // name only when no hero is known (or the server is too old to say).
+      const hero = await getJson("/settings/hero").then(h => h.hero, () => null);
+      state.player = rows.some(p => p.alias === hero) ? hero : rows[0]?.alias ?? null;
+    }
     sel.value = state.player ?? "";
     // The same names as opponents to pick from. Kept in one list rather than
     // minus the player on show: swapping the player must not lose the vs term.
@@ -2015,7 +2036,10 @@
   }
 
   // ---- render ----------------------------------------------------------
+  // Net bb: a tile carries the unit, a table cell under a "net bb" header does not.
+  // Both signed, at most 1 decimal; "–" for no figure.
   const fmtBb = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " bb";
+  const fmtNetCell = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
   const fmtPct = (v) => v == null ? "–" : v.toFixed(1) + "%";
   // A won or lost figure in the profit or loss colour: .up above zero, .down
   // below, neither at zero or with no figure. Given `bb`, the result's size on a
@@ -3055,9 +3079,9 @@
     const graph = renderWinnings(d.winnings);
     if (graph) wrap.appendChild(graph);
     const tot = d.total;
-    setTileKeys("hands in this spot ›", "net bb, complete hands", "bb/100");
+    setTileKeys("hands in this spot ›", "net, complete hands", "bb/100");
     $("t-hands").textContent = d.hands;
-    $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb).replace(" bb", "");
+    $("t-known").textContent = tot.net_bb == null ? "–" : fmtBb(tot.net_bb);
     $("t-cov").textContent = tot.bb_per_100 == null ? "–" : tot.bb_per_100.toFixed(1);
     signTone($("t-known"), tot.net_bb, tot.net_bb);
     signTone($("t-cov"), tot.bb_per_100);
@@ -3079,7 +3103,7 @@
     const num = (v) => v == null ? "–" : v.toFixed(1);
     const COLS = ["", "", "hands", "net bb", "bb/100", "VPIP", "saw flop", "WTSD", "W$SD"];
     const TIPS = {
-      VPIP: "share of these hands they put chips in voluntarily",
+      VPIP: "voluntarily put chips in, of their preflop decisions: a walk has none",
       "saw flop": "share of these hands they saw a flop",
       WTSD: "went to showdown, of the hands that saw a flop",
       "W$SD": "won at showdown, of the showdowns",
@@ -3116,7 +3140,7 @@
         }
         bar.appendChild(zero);
         tr.append(name, bar);
-        for (const v of [r.hands, r.net_bb == null ? "–" : fmtBb(r.net_bb).replace(" bb", ""), num(r.bb_per_100),
+        for (const v of [r.hands, fmtNetCell(r.net_bb), num(r.bb_per_100),
                          fmtPct(r.vpip_pct), fmtPct(r.saw_flop_pct), fmtPct(r.wtsd), fmtPct(r.wsd)]) {
           const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
         }
@@ -3456,9 +3480,8 @@
 
     const COLS = [["", ""], ["hands", ""], ["VPIP", "voluntarily put chips in, of their preflop decisions"],
       ["PFR", "raised preflop, of their preflop decisions"],
-      ["AF", "aggression after the flop: bets and raises over bets, raises, calls and folds"],
-      ["bb/100", `over complete hands with a known big blind, ± its 95% interval · against all hands: `
-        + `blue more than ${TILT_BB_BAND} above, red more than ${TILT_BB_BAND} below, amber within`]];
+      ["AFq", "aggression frequency after the flop: bets and raises over bets, raises, calls and folds"],
+      ["bb/100", "over complete hands with a known big blind, ± its 95% interval · hover a row for its gap to all hands"]];
     const pct = (v, n, key) => {
       const td = document.createElement("td");
       td.append(v == null ? "–" : v.toFixed(1) + "%");
@@ -3492,10 +3515,12 @@
         sm.textContent = (r.bb_per_100_ci == null ? "" : `±${r.bb_per_100_ci.toFixed(0)} `) + `/${r.bb_hands}`;
         bb.appendChild(sm);
         const isBase = r.key === "all";
-        const tone = isBase ? "" : numTone(r.bb_per_100, base.bb_per_100, TILT_BB_BAND);
-        if (tone) {
+        // Money in the profit and loss colours, as everywhere; the gap to all
+        // hands is the hover, bold once it passes TILT_BB_BAND.
+        signTone(bb, r.bb_per_100);
+        if (!isBase && r.bb_per_100 != null && base.bb_per_100 != null) {
           const gap = r.bb_per_100 - base.bb_per_100;
-          bb.classList.add(`num-${tone}`);
+          if (Math.abs(gap) > TILT_BB_BAND) bb.classList.add("moved-bb");
           bb.title = `${gap > 0 ? "+" : ""}${gap.toFixed(1)} bb/100 from all hands`;
         }
         tr.append(name, n, pct(r.vpip, r.vpip_n, isBase ? null : "vpip"), pct(r.pfr, r.pfr_n, isBase ? null : "pfr"),
@@ -3621,7 +3646,7 @@
       const t = document.createElement("table");
       const head = document.createElement("tr");
       const cols = [["", ""], ["time", "how long the first decision on the street took"], ["n", "decisions in the bucket"],
-        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands · blue when its 95% interval is above the spot at every speed, red when below"],
+        ["what they had", "nutted, strong, marginal, draw, air: the known hands"], ["value", "nutted or strong, of the known hands · blue when its 95% interval is above the spot at every speed, amber when below"],
         ["draw", ""], ["air", ""]];
       if (pool) cols.push(["others, shown", "everyone's hands shown at showdown, the logs' owners left out · coloured as value is"],
         ["owners, own cards", "the logs' owners, whose every card their own log shows · coloured as value is"]);
@@ -3667,13 +3692,6 @@
     if (!pool || pool.error) pb.appendChild(para("why", pool?.error ? `The pool could not be read: ${pool.error}` : "loading…"));
     else {
       pb.appendChild(spotTable(pool.spots, { pool: true }));
-      const found = bulletsInto(document.createElement("ul"), [
-        "**Slow calls** have been stronger than quick ones: more value, fewer draws.",
-        "**A long think before a river bet** has meant value; a snapped one has been the weakest.",
-        "**River calls:** little timing signal.",
-      ]);
-      found.className = "why";
-      pb.appendChild(found);
       const rb = pool.thin?.river_bet;
       if (rb) {
         pb.appendChild(para("why", `Per player the cells are thin: of ${rb.players} players with river bets known, `
@@ -3749,6 +3767,23 @@
   const GB_MIX = [["two_pair+", "two pair+", () => ramp(BLUE)[5]], ["top_pair+", "top pair+", () => ramp(BLUE)[2]],
     ["weak_pair", "weak pair", () => "var(--axis)"], ["draw", "draw", () => ramp(RED)[2]], ["air", "air", () => ramp(RED)[5]]];
   const GB_MIX_OF = Object.fromEntries(GB_MIX.map(([g, text, color]) => [g, { text, color }]));
+  // A row's key as the rest of the page words it: `full_house` → "full house",
+  // `pocket_pair` → "underpair", `srp` → "single-raised", `small` → "⅕–½ pot".
+  const GB_POT = { walk: "walk", limped: "limped", srp: "single-raised", "3bet_pot": "3-bet pot", "4bet_pot": "4-bet pot+",
+    bomb_pot: "bomb pot", double_board: "double board", plo: "PLO" };
+  const GB_TEXTURE = { twotone: "two-tone" };
+  function gbLabel(dim, key) {
+    if (key == null) return "–";
+    const k = String(key);
+    if (dim === "pot_type") return GB_POT[k] ?? k;
+    if (dim.startsWith("made_")) return MADE_LABEL[k] ?? k.replace(/_/g, " ");
+    if (/^(cbet_size|bet_size)_/.test(dim)) return SIZE_LABEL[k] ?? k;
+    if (dim.startsWith("tempo_")) return TEMPO_WORD[k] ?? k;
+    if (dim === "flop_texture") return GB_TEXTURE[k] ?? k;
+    if (dim === "depth") return `${k.replace("-", "–")} bb`;
+    if (dim === "hand_rank") return `top ${k.replace("-", "–")}%`;
+    return k; // seats, lines, hands and names read as they are
+  }
   // [key, header, tip, sort value]: the label column sorts back to the server's order.
   // The seats that post a blind, so folding them every hand costs something.
   const BLIND_SEATS = new Set(["SB", "BB", "BTN/SB"]);
@@ -3757,7 +3792,7 @@
     ["shown", "shown", "hands with their cards known", (c) => c.shown],
     ["net", "net bb", "big blinds won or lost", (c) => c.net_bb],
     ["bb100", "bb/100", "bb won per 100 complete hands; hover a value for its 95% interval", (c) => c.bb_per_100],
-    ["vsfold", "vs folding all", "blinds only: bb/100 better (+) or worse (−) than folding every hand you had a choice in",
+    ["vsfold", "vs folding all", "blinds only: bb/100 better (+) or worse (−) than folding every hand with a choice",
       (c) => (c.keys?.some(k => BLIND_SEATS.has(k)) ? c.bb_per_100_vs_fold : null)],
     ["mix", "made", "", null],
   ];
@@ -3861,6 +3896,7 @@
     const body = $("gb-body");
     if (!d) return;
     const pool = d.player == null;
+    const who = pool ? "the pool" : d.player;
     $("gb-sub").textContent = `${pool ? "the pool" : d.player} · ${d.filter || "all hands"}`;
     if (!d.cells.length) {
       body.replaceChildren(message(d.hidden.cells
@@ -3917,8 +3953,9 @@
       };
       const ci = (v, h) => v == null || h == null ? "" : `95%: ${(v - h).toFixed(1)} to ${(v + h).toFixed(1)} over ${c.bb_hands} complete hands`;
       td(String(c.hands));
-      td(String(c.shown), c.hands ? `${Math.round(100 * c.shown / c.hands)}%` : "");
-      signTone(td(c.net_bb == null ? "–" : (c.net_bb > 0 ? "+" : "") + c.net_bb.toFixed(1)), c.net_bb);
+      td(String(c.shown), c.hands ? `${Math.round(100 * c.shown / c.hands)}%` : "",
+        c.hands ? `${c.shown} of ${c.hands} shown (${Math.round(100 * c.shown / c.hands)}%)` : "");
+      signTone(td(fmtNetCell(c.net_bb)), c.net_bb);
       signTone(td(c.bb_per_100 == null ? "–" : c.bb_per_100.toFixed(1), c.bb_per_100_ci == null ? "" : `±${c.bb_per_100_ci.toFixed(0)}`,
         ci(c.bb_per_100, c.bb_per_100_ci)), c.bb_per_100);
       if (seatAt >= 0) {
@@ -3928,7 +3965,7 @@
           // Folding every hand with a choice would have scored raw − vf.
           const fold = raw - vf;
           td((vf > 0 ? "+" : "") + vf.toFixed(1), ` fold all ${fold.toFixed(0)}`,
-            `you ${raw.toFixed(1)} bb/100 · folding every hand ${fold.toFixed(1)} → `
+            `${who} ${raw.toFixed(1)} bb/100 · folding every hand ${fold.toFixed(1)} → `
             + `${vf >= 0 ? `${vf.toFixed(1)} better` : `${(-vf).toFixed(1)} worse`} than folding`
             + (c.bb_per_100_vs_fold_ci == null ? "" : ` (±${c.bb_per_100_vs_fold_ci.toFixed(0)})`));
           tr.lastChild.classList.add(vf >= 0 ? "up" : "down");
@@ -3953,7 +3990,7 @@
         tr.tabIndex = 0;
         tr.setAttribute("role", "button");
         const what = c.term ? `adds ${c.term} to the spot` : `switches the chart to ${c.player}`;
-        tr.title = `${c.keys.join(" · ")}: ${c.hands} hands · ${what}`;
+        tr.title = `${c.keys.map((k, i) => gbLabel(d.by[i].name, k)).join(" · ")}: ${c.hands} hands · ${what}`;
         tr.addEventListener("click", () => pickGroupRow(c));
         tr.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); pickGroupRow(c); } });
       }
@@ -3967,7 +4004,7 @@
     });
     const tb = document.createElement("tbody");
     if (!two) {
-      for (const c of sorted(d.cells)) tb.appendChild(cellRow(c, c.keys[0], "row"));
+      for (const c of sorted(d.cells)) tb.appendChild(cellRow(c, gbLabel(d.by[0].name, c.keys[0]), "row"));
     } else {
       // Row groups, not a pivot: each first-dimension bucket, the second under it.
       const groups = new Map();
@@ -3977,11 +4014,11 @@
       }
       for (const [label, cells] of groups) {
         const tr = document.createElement("tr"); tr.className = "grp";
-        const td = document.createElement("td"); td.colSpan = GB_COLS.length + 1;
-        td.textContent = label;
+        const td = document.createElement("td"); td.colSpan = cols.length + 1;
+        td.textContent = gbLabel(d.by[0].name, label);
         tr.appendChild(td);
         tb.appendChild(tr);
-        for (const c of sorted(cells)) tb.appendChild(cellRow(c, c.keys[1], "row sub"));
+        for (const c of sorted(cells)) tb.appendChild(cellRow(c, gbLabel(d.by[1].name, c.keys[1]), "row sub"));
       }
     }
     t.appendChild(tb);
@@ -3997,7 +4034,7 @@
       s.title = g;
       foot.appendChild(s);
     }
-    const bits = seatAt >= 0 ? ["vs folding all: how much better (+) or worse (−) than folding every blind you had a choice in"] : [];
+    const bits = seatAt >= 0 ? ["vs folding all: bb/100 better (+) or worse (−) than folding every blind with a choice"] : [];
     if (d.skipped) bits.push(`${d.skipped} hands in no row`);
     if (d.hidden.cells) bits.push(`${d.hidden.cells} rows under ${d.min} hands hidden (${d.hidden.hands} hands)`);
     if (bits.length) foot.append(bits.join(" · "));
@@ -4785,7 +4822,6 @@
     };
     setTileKeys(...copy.tiles);
     $("t-hands").textContent = copy.count(d.total).toLocaleString();
-    $("t-hands").classList.toggle("down", copy.count(d.total) > 0); // chips paid out
     $("t-known").textContent = d.total.won.toLocaleString();
     $("t-cov").textContent = d.players.length;
     const me = d.players.find(r => r.player === d.player);
@@ -4796,6 +4832,7 @@
     setNote(copy.note,
       "A side bet: chips only move between players, so **net** sums to zero."
         + (d.balance ? ` (It is ${signed(d.balance)} off: a payment named someone not dealt in.)` : ""),
+      "**Net bb:** each payment in its own hand's big blind, so across stakes its sign can differ from chips.",
       "Click a count for those hands; a row switches the chart to that player.");
     $("tabletoggle").classList.add("hidden");
     $("table").classList.add("hidden");
@@ -4825,7 +4862,7 @@
         count("paid", r.paid_filter);
         cell(r.paid.chips.toLocaleString(), "dim");
         cell(signed(r.net.chips), r.net.chips > 0 ? "up" : r.net.chips < 0 ? "down" : "");
-        signTone(cell(r.net.bb == null ? "—" : signed(r.net.bb)), r.net.bb);
+        signTone(cell(fmtNetCell(r.net.bb)), r.net.bb);
         const of = cell(r.hands.toLocaleString(), "dim");
         of.title = `${r.bounty_hands} ${copy.hands}${r.bounty_hands === 1 ? "" : "s"} of ${r.hands} dealt in`;
         tr.title = `Switch the chart to ${r.player}`;
@@ -4917,9 +4954,6 @@
     $("t-cov").textContent = fmtPct(d.showdowns ? Math.round(1000 * d.known_showdowns / d.showdowns) / 10 : null);
     const biggest = Math.max(...rows.map(h => h.pot_bb ?? 0), 0);
     $("t-raise").textContent = rows.length ? `${Math.round(biggest)} bb` : "–";
-    // Won or lost: that hand's own net, not the pot's size.
-    const top = rows.find(h => (h.pot_bb ?? 0) === biggest);
-    if (top) signTone($("t-raise"), top.net_bb, top.net_bb);
     const skipped = d.skipped.stack_unknown ? ` · ${d.skipped.stack_unknown} with a stack unknown` : "";
     setRaiseKey("biggest pot flagged", `${rows.length} flagged · ${d.skipped.cards_unknown} showdowns mucked${skipped}`);
   }
@@ -4944,16 +4978,16 @@
     const cells = Object.values(d.cells).filter(c => c.n > 0);
     if (state.color === "net") {
       const max = Math.max(1, ...cells.map(c => Math.abs(c.net_bb)));
-      const B = ramp(BLUE), R = ramp(RED);
+      const G = ramp(GREEN), R = ramp(RED);
       return {
         fill(c) {
           if (c.n === 0) return null;
           const t = Math.sqrt(Math.abs(c.net_bb) / max);
           if (t < 0.05) return "var(--mid)";
           const i = Math.min(6, Math.floor(t * 7));
-          return (c.net_bb > 0 ? B : R)[i];
+          return (c.net_bb > 0 ? G : R)[i];
         },
-        legend: { left: `−${max.toFixed(0)} bb loss`, right: `+${max.toFixed(0)} bb profit`, steps: [...ramp(RED).slice().reverse(), "var(--mid)", ...ramp(BLUE)] },
+        legend: { left: `−${max.toFixed(0)} bb loss`, right: `+${max.toFixed(0)} bb profit`, steps: [...ramp(RED).slice().reverse(), "var(--mid)", ...ramp(GREEN)] },
       };
     }
     if (state.color === "pfr") {
@@ -5307,6 +5341,18 @@
 
   // ---- hand list and replay ------------------------------------------------
   const HAND_LIMIT = 300;
+  // A list view (Session, Review, Tagged) stops at HAND_LIMIT rows until "show
+  // all" is clicked, which holds for that view, player, spot and session only.
+  const listKey = () => [state.by, state.player, state.filter, state.game].join("|");
+  const listCap = () => state.listAll === listKey() ? Infinity : HAND_LIMIT;
+  function moreRows(list, total) {
+    if (total <= listCap()) return;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "more-rows";
+    b.textContent = `show all ${total} · ${total - HAND_LIMIT} more`;
+    b.addEventListener("click", () => { state.listAll = listKey(); render(); });
+    list.appendChild(b);
+  }
 
   // The hands in the spot, or in the spot narrowed by one more `term`.
   async function handRows(term = null, scope = null) {
@@ -5503,7 +5549,7 @@
       list.appendChild(message(hidden ? "every flagged hand here is reviewed" : "nothing flagged in this spot"));
       return;
     }
-    for (const h of rows.slice(0, HAND_LIMIT)) {
+    for (const h of rows.slice(0, listCap())) {
       const v = h.villains[0];
       const row = handRowButton(h, list, $("review-replay"), {
         kind: { text: KIND_LABEL[h.kind], group: h.group, title: flagRule(h.kind, d.thresholds) },
@@ -5514,6 +5560,7 @@
       });
       list.appendChild(reviewedRow(h, row));
     }
+    moreRows(list, rows.length);
   }
 
   // The rule behind each flag on show, so a row reads as "this rule fired", not as
@@ -5575,7 +5622,7 @@
         : d.hands.length ? "no hands played in this spot — turn off Played only" : "no hands in this spot"));
       return;
     }
-    for (const h of rows.slice(0, HAND_LIMIT)) {
+    for (const h of rows.slice(0, listCap())) {
       const f = h.flags[0];
       // A hand they sat out names who played it and who won, in place of their own result.
       const away = h.sat_out ? {
@@ -5590,6 +5637,7 @@
       });
       list.appendChild(reviewedRow(h, row));
     }
+    moreRows(list, rows.length);
   }
 
   // ---- tagged ------------------------------------------------------------------
@@ -5611,14 +5659,13 @@
   }
 
   function renderTaggedTiles(d) {
-    setTileKeys(d.tag ? `tagged ${d.tag}` : "hands tagged", "marked reviewed", "net");
+    setTileKeys(d.tag ? `tagged ${d.tag}` : d.hands.length === 1 ? "hand tagged" : "hands tagged", "marked reviewed", "net");
     const rows = d.hands;
     const net = rows.reduce((s, h) => s + (h.net_bb ?? 0), 0);
     $("t-hands").textContent = rows.length;
     $("t-hands").classList.toggle("attn", rows.length > 0);
     const seen = rows.filter(h => h.reviewed).length;
     $("t-known").textContent = seen;
-    signTone($("t-known"), seen); // done with, in the profit green
     $("t-cov").textContent = rows.length ? fmtBb(net) : "–";
     if (rows.length) signTone($("t-cov"), net, net);
     $("t-raise").textContent = d.tags.filter(t => !t.builtin && t.hands).length;
@@ -5640,7 +5687,8 @@
         : state.filter ? "nothing tagged in this spot" : state.tag ? `no hand of theirs is tagged ${state.tag}` : "nothing tagged yet"));
       return;
     }
-    for (const h of rows.slice(0, HAND_LIMIT)) list.appendChild(reviewedRow(h, handRowButton(h, list, $("review-replay"))));
+    for (const h of rows.slice(0, listCap())) list.appendChild(reviewedRow(h, handRowButton(h, list, $("review-replay"))));
+    moreRows(list, rows.length);
   }
 
   function renderTagChips(d) {
@@ -5732,7 +5780,7 @@
     const noted = all.filter(h => h.note).length;
     const what = state.by === SESSION_VIEW ? "hand" : state.by === TAGGED_VIEW ? "tagged hand" : "flagged hand";
     const order = $("review-sort").value;
-    const head = n > HAND_LIMIT
+    const head = n > listCap()
       ? `${order === "newest" ? "newest" : order === "hand" ? "first" : "top"} ${HAND_LIMIT} of ${n} ${what}s`
       : `${n} ${what}${n === 1 ? "" : "s"}`;
     $("review-count").textContent = [head, seen ? `${seen} reviewed` : "", noted ? `${noted} noted` : ""]
