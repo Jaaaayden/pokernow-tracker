@@ -513,8 +513,9 @@ def facts_by_player(
 ) -> tuple[dict[int, list[Facts]], dict[int, str], list[HandRow]]:
     """Derive every hand and group the resulting facts by canonical player.
     The `play` scope, like `facts_cached`'s default: every caller reads play."""
-    hands = load_hands(conn, game_id, pn_ids)
-    ident = identity_map(conn)
+    with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
+        hands = load_hands(conn, game_id, pn_ids)
+        ident = identity_map(conn)
     grouped: dict[int, list[Facts]] = defaultdict(list)
     aliases: dict[int, str] = {}
     for hand in hands:
@@ -654,10 +655,11 @@ def remembered(conn: sqlite3.Connection, key: tuple, compute, answers: LRU[tuple
 def clear_caches() -> None:
     """Forget every memoized result. For tests, and for anything that edits the
     database behind this module's back."""
-    from . import pool  # pool imports this module
+    from . import pool, tree  # both import this module
     from .review import _REVIEW_CACHE  # review imports this module
 
     pool.clear()
+    tree._TREE_CACHE.clear()
 
     _REPORT_CACHE.clear()
     _GAME_TALLIES.clear()
@@ -816,7 +818,16 @@ def report(
     `predicate` is an optional `Facts -> bool` filter -- this is the Holdem-Manager
     move: restrict to the hands where a player reached some specific spot, then
     report their behaviour within it.
+
+    Every read is made against one snapshot, as in `facts_cached`: `load_hands`
+    is three queries, and a game rebuilt between them reads as hands with no
+    players or actions.
     """
+    with reading(conn):
+        return _report(conn, game_id, min_hands, predicate)
+
+
+def _report(conn: sqlite3.Connection, game_id: str | None, min_hands: int, predicate) -> list[dict]:
     if predicate is not None:
         # A predicate is an arbitrary callable -- not something that can key a cache
         # -- and a spot query is asked once by a person, where the unfiltered one
