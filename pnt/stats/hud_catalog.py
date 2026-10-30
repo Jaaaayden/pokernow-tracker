@@ -31,7 +31,7 @@ def _entry(key: str, label: str, tip: str, opp: str | None, group: str) -> dict:
 def _street(s: str) -> list[dict]:
     p, m, group = _PREV[s], _MARK[s], s.capitalize()
     cbet_tip = (
-        "Continuation bet: they raised preflop and then bet the flop first-in."
+        "Continuation bet: they were the preflop aggressor and bet the flop first-in."
         if s == "flop"
         else f"Continuation bet: they were the {p} aggressor and bet the {s} first-in."
     )

@@ -325,6 +325,9 @@ def snapshot(
         "hand_number": parsed.hand_number,
         "street": street,
         "board": list(parsed.board_runs[0]) if parsed.board_runs else [],
+        # Every board: two on a Double Board hand (or a run-it-twice), so the HUD
+        # can show the second one too. `board` stays the first, which streets follow.
+        "boards": [list(b) for b in parsed.board_runs],
         "bb": parsed.bb,
         "pot": parsed.total_contributed,
         "n_dealt_in": parsed.n_dealt_in,

@@ -113,23 +113,39 @@
     if (!snap) {
       $("flag").hidden = true;
       $("sample").hidden = true;
+      $("huderr").hidden = true;
+      $("huderr").dataset.err = "";
+      state.noteEdit = null;
       $("live").textContent = "";
       setStatus("");
       return;
     }
-    // Another game in this tab, or another tab: nothing on show carries over.
+    // Another game in this tab, or another tab: nothing on show carries over, a
+    // note being typed included -- its box would hold the redraw back for good.
     if (snap.game !== state.game) {
       state.game = snap.game;
       state.sentSpots = [];
       state.rev = -1;
+      state.noteEdit = null;
       closeChart();
     }
     // While the server's pages show the sample (the front page's Data switch), the
-    // cards are still your own database's, with the names masked and no notes, and
-    // the chart below them is the sample's.
+    // cards are still your own database's, with the names masked and no notes. The
+    // chart reads the sample, whose players carry the same "player N" names, so a
+    // card opens none (see demo()).
     // A line of its own: at the end of the status it was cut off at panel width.
     const sample = snap.hudData?.dataset === "sample";
     if ($("sample").hidden === sample) { $("sample").hidden = !sample; fit(); }
+    if (sample && isOpen()) closeChart();
+    // A /hud that failed says so until one succeeds: the status line is
+    // overwritten by the next poll, and the cards would read "–" with no reason.
+    const err = snap.hudError || null;
+    if (err !== $("huderr").dataset.err) {
+      $("huderr").dataset.err = err ?? "";
+      $("huderr").hidden = !err;
+      $("huderr").textContent = err ? `${snap.hudData ? "Stats not updating" : "Stats failed"}: ${err} · retrying every 30 s` : "";
+      fit();
+    }
     setStatus(snap.text || "");
     $("pause").textContent = snap.paused ? "▶" : "⏸";
     $("pause").title = snap.paused ? "resume capture" : "pause capture";
@@ -154,7 +170,13 @@
     paintFlag();
   }
 
-  function setStatus(text) { $("st").textContent = text; $("st").title = text; }
+  // The tab asks /health once, at its start: once /health here says the warm-up
+  // is over (askWarming), its "warming up" is stale.
+  function setStatus(text) {
+    if (!warming) text = text.replace(/ · warming up$/, "");
+    $("st").textContent = text;
+    $("st").title = text;
+  }
 
   $("pause").addEventListener("click", async () => {
     if (state.tabId == null || !state.snap) return;
@@ -214,8 +236,9 @@
   const KEY_SPOT = [
     ["›", "what they did earlier this hand › the spot they are in now"],
     ["≈", "not enough hands in this exact spot: the closest wider one"],
-    ["value · marginal · draw · air", "what they showed up with from here, of the hands shown (n of m)"],
   ];
+  // A line of its own: as a term, it pushed the other rows' text half across.
+  const KEY_SHOWN = "value · marginal · draw · air: what they showed up with from here, of the hands shown (n of m).";
   function paintKey() {
     const box = $("key");
     box.replaceChildren();
@@ -228,7 +251,7 @@
       list(cols().map((c) => [c.label, c.tip])),
       el("p", null, "t / r before a stat: the turn / river one, e.g. tCBet, rXR. Hover any figure for its sample."),
       el("h4", null, "figures"),
-      list([["38 41", "this session, then lifetime in grey"], ["blue", "this session drifting from lifetime"],
+      list([["38.8 41.2", "this session, then lifetime in grey"], ["blue", "this session drifting from lifetime"],
         ["–", "no chance at it yet: unknown, not zero"]]),
       el("h4", null, "chips"),
       list(KEY_CHIPS.map(([cls, label, what]) => {
@@ -237,7 +260,8 @@
         return [dt, what];
       })),
       el("h4", null, "spot line"),
-      list(KEY_SPOT));
+      list(KEY_SPOT),
+      el("p", null, KEY_SHOWN));
   }
   $("keybtn").addEventListener("click", () => {
     const open = $("key").hidden;
@@ -301,15 +325,31 @@
       steps.append(li("In a terminal: ", cmd("pnt service status")), li("Stopped or stuck: ", cmd("pnt service restart")),
         li("Wrong address: fix the server in ⚙."));
     } else {
-      box.append(shut, el("b", null, "Stats still loading."), " A big database's first load after a start can take a minute.");
-      steps.append(li(cmd("pnt service restart")), li(reloadButton()), li("Reload the PokerNow tab."));
+      // Restarting while the server warms up starts the warm-up over: wait first.
+      box.append(shut, el("b", null, "Stats still loading."));
+      steps.append(
+        li(warming ? "Warming up: wait, e.g. a minute for 20k hands." : "Not warming up: ", ...(warming ? [] : [cmd("pnt service restart")])),
+        li("Still nothing: ", reloadButton(), ", then reload the PokerNow tab."));
     }
     box.append(steps);
+  }
+  // Whether the server is still deriving its stats after a start (/health). Asked
+  // while the loading box is up, so its first step can change from wait to restart.
+  let warming = true, warmAsked = 0;
+  async function askWarming() {
+    warmAsked = Date.now();
+    const h = await send({ type: "health" });
+    const now = !!(h.ok && h.data.warming);
+    if (now === warming) return;
+    warming = now;
+    if (stuckOn === "loading") paintStuck("loading");
+    if (state.snap) setStatus(state.snap.text || "");
   }
   setInterval(() => {
     const kind = stuckCase();
     if (kind !== stuckShut) stuckShut = null;
     const show = kind && kind !== stuckShut ? kind : null;
+    if (show === "loading" && Date.now() - warmAsked > 5000) askWarming();
     if (show !== stuckOn) {
       stuckOn = show;
       if (show) paintStuck(show);
@@ -318,10 +358,11 @@
     }
   }, 1000);
 
-  // The settings that used to be the toolbar popup; the toolbar icon opens this panel now.
+  // The settings, the same page the toolbar icon opens off a game tab. Unloaded
+  // when shut, so its status poll stops with it.
   $("gear").addEventListener("click", () => {
     const open = $("settings").hidden;
-    if (open && !$("settings-frame").src) $("settings-frame").src = "popup.html";
+    $("settings-frame").src = open ? "popup.html" : "about:blank";
     $("settings").hidden = !open;
     $("gear").setAttribute("aria-pressed", String(open));
     fit();
@@ -483,10 +524,13 @@
   }
 
   // ----------------------------------------------------------------- cards --
-  // Rates arrive as percentages; bb/100 is a signed number of big blinds, whole
-  // on the card (it runs to three figures) and to one place on hover.
+  // Rates arrive as percentages and print to one place, as the server's pages do
+  // ("24.0", not "24"); bb/100 is a signed number of big blinds, to one place too.
+  // Counts (hands, chips) are whole. "–" is no value.
   const signed = (v, dp) => (v > 0 ? "+" : "") + v.toFixed(dp);
-  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 0) : String(v));
+  const whole = (v) => (v == null ? "–" : String(v));
+  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 1) : k === "hands" ? String(v)
+    : typeof v === "number" ? v.toFixed(1) : String(v));
   // The panel has no room to spell these out, so the hover text does it -- it is
   // the first place a new player meets the acronyms. Which columns, in what
   // order, is chosen on the server's front page and comes with each /hud report;
@@ -500,7 +544,7 @@
       + "far below it means they call far more than they raise." },
     { key: "3bet", label: "3Bet", opp: "3bet", tip: "How often they re-raise someone's open." },
     { key: "fold_to_3bet", label: "F3B", opp: "fold_to_3bet", tip: "Fold to Three-Bet: they opened, someone re-raised, and they folded." },
-    { key: "cbet_flop", label: "CBet", opp: "cbet_flop", tip: "Continuation bet: they raised preflop and then bet the flop first-in." },
+    { key: "cbet_flop", label: "CBet", opp: "cbet_flop", tip: "Continuation bet: they were the preflop aggressor and bet the flop first-in." },
     { key: "wtsd", label: "WTSD", opp: "wtsd", tip: "Went To Showdown: of the flops they saw, how often they were still there at the end." },
     { key: "af_flop", label: "AFq", opp: "af_flop", tip: "Aggression frequency (AFq; a percentage, not the AF ratio) on the flop: of everything they did bar checking, how often "
       + "it was a bet or a raise rather than a call or a fold." },
@@ -542,7 +586,10 @@
     const hud = new Map((state.hud?.seats ?? []).map((s) => [s.pn_id, s]));
     const live = state.live?.players;
     const out = !live ? [...hud.values()].map((s) => ({ ...s, live: null })) : live.map((p) => {
-      const s = hud.get(p.pn_id) || { pn_id: p.pn_id, alias: p.alias, stats: { hands: 0 }, session: hud.size ? { hands: 0 } : null, tags: null };
+      // Not in /hud: a player dealt in for the first time has 0 hands. With no /hud
+      // at all (it failed, or the table has no complete hand yet) nothing is known.
+      const s = hud.get(p.pn_id) || { pn_id: p.pn_id, alias: p.alias, stats: state.hud ? { hands: 0 } : {},
+        session: hud.size ? { hands: 0 } : null, tags: null };
       return { ...s, seat: p.seat, alias: s.alias || p.alias, name: p.name, live: p };
     });
     // One player merged from two accounts can be dealt in twice: each card names
@@ -550,6 +597,15 @@
     for (const r of out) r.twins = r.alias ? out.filter((o) => o !== r && o.alias === r.alias).map((o) => o.seat) : [];
     return out;
   }
+
+  // This game's figures, or null when there are none to show: an older server
+  // sends none, and a PLO or Double Board game's hands are all left out of the
+  // stats (`not_analysed`), so its "0 hands" would read as nothing captured.
+  const sessionOf = (s) => (s.session && !(s.session.hands === 0 && s.session.not_analysed > 0) ? s.session : null);
+  const notAnalysed = (seats) => Math.max(0, ...seats.map((s) => s.session?.not_analysed || 0));
+  // While the pages show the sample the cards are masked, and the chart reads the
+  // sample, where the same "player N" is someone else: no card opens it.
+  const demo = () => state.hud?.dataset === "sample";
 
   function twinChip(s) {
     if (!s.twins?.length) return null;
@@ -590,13 +646,21 @@
     body.replaceChildren();
     const seats = rows().sort((a, b) => a.seat - b.seat);
     const lv = state.live?.hand_number ? state.live : null;
+    // Both boards on a Double Board hand (or a run-it-twice): "2h Qc 5c / 3d Tc Qs".
+    const boards = (lv?.boards?.length > 1 ? lv.boards : [lv?.board || []]).filter((b) => b.length);
     $("live").textContent = lv
-      ? `hand #${lv.hand_number} · ${lv.street}${lv.pot ? ` · pot ${lv.pot}` : ""}${lv.board?.length ? ` · ${lv.board.join(" ")}` : ""}`
+      ? `hand #${lv.hand_number} · ${lv.street}${lv.pot ? ` · pot ${lv.pot}` : ""}`
+        + (boards.length ? ` · ${boards.map((b) => b.join(" ")).join(" / ")}` : "")
+        + (lv.analysed === false ? " · not analysed" : "")
       : "";
+    $("live").title = lv?.analysed === false ? "PLO or Double Board: no stat reads this hand's play" : "";
     // An older server sends lifetime only; the cards then print just that.
-    const hasSession = seats.some((s) => s.session);
+    const hasSession = seats.some(sessionOf);
     // The compact table carries the legend in its own header.
     $("legend").hidden = !hasSession || state.compact;
+    const na = notAnalysed(seats);
+    $("na").hidden = !na;
+    $("na").textContent = na ? `${na} hands here not analysed (PLO / Double Board)${hasSession ? "" : ": lifetime figures only"}` : "";
     if (!seats.length && pending()) {
       // Between hands there is no roster to draw cards from, but the stats are on
       // their way: placeholder cards say so, rather than "no one dealt in yet".
@@ -656,10 +720,11 @@
       into.appendChild(el("span", "skel"));
       return `${tip}\n\nloading: the first stats after a start take a moment`;
     }
-    const st = s.stats || {}, ss = s.session;
+    const st = s.stats || {}, ss = sessionOf(s);
+    const na = k === "hands" ? naText(s) : "";
     if (!ss) {
       into.appendChild(el("span", null, fmt(st[k], k)));
-      return tip;
+      return tip + (k === "hands" && st.hands != null ? `\n\nlifetime: ${whole(st.hands)}` : "") + na;
     }
     const now = el("span", null, fmt(ss[k], k));
     // Drift is a gap in percentage points over a counted sample, so only a rate
@@ -672,7 +737,7 @@
     }
     into.append(now, el("small", "life", fmt(st[k], k)));
     const of = (v, n) => {
-      if (n == null) return v == null ? fmt(v) : `${fmt(v)}%`; // W$SD: a rate with no count sent
+      if (n == null) return v == null ? "–" : `${fmt(v)}%`; // W$SD: a rate with no count sent
       const ci = PNT.ciText(v, n);
       return `${fmt(v)}% of ${n}` + (ci ? `, ${ci}` : "");
     };
@@ -680,10 +745,16 @@
     const bb = (r) => (r[k] == null ? "–" : signed(r[k], 1))
       + (r.bb_per_100_ci != null ? ` ± ${r.bb_per_100_ci.toFixed(1)}` : "");
     return `${tip}\n\n` + (k === "hands"
-      ? `this session: ${fmt(ss[k])} hands · lifetime: ${fmt(st[k])}`
+      ? `this session: ${whole(ss[k])} hands · lifetime: ${whole(st[k])}${na}`
       : k === "bb_per_100"
         ? `this session: ${bb(ss)}\nlifetime: ${bb(st)}`
         : `this session: ${of(ss[k], nOpp)}\nlifetime: ${of(st[k], lOpp)}`);
+  }
+
+  // The hands a PLO or Double Board game left out of the figures, for the hands hover.
+  function naText(s) {
+    const here = s.session?.not_analysed || 0, life = s.stats?.not_analysed || 0;
+    return here || life ? `\nnot analysed (PLO / Double Board): ${here} here, ${life} lifetime` : "";
   }
 
   // Compact: every player in one table, a row each, and nothing else -- the
@@ -721,7 +792,8 @@
       const twin = twinChip(s);
       if (twin) name.appendChild(twin);
       if (row.classList.contains("act") && state.acting) name.appendChild(clockChip());
-      name.title = `${s.alias || s.name || s.pn_id} · seat ${s.seat} · ${s.pn_id}`;
+      // Not the PokerNow ID behind a mask: it names the account.
+      name.title = `${s.alias || s.name || s.pn_id} · seat ${s.seat}` + (demo() ? "" : ` · ${s.pn_id}`);
       // No room for the note itself: the name is underlined, and the note is its hover.
       const note = noteOf(s);
       if (note) {
@@ -753,9 +825,10 @@
     const chip = el("span", "tag tilt", "tilt?");
     const when = s.post_loss_since === 1 ? "on their last hand" : `${s.post_loss_since} hands ago`;
     chip.title = `Lost ${s.post_loss_bb} bb ${when}, this session: inside the post-loss window.`
-      + " Click to see how they play after a big loss.";
+      + (demo() ? "" : " Click to see how they play after a big loss.");
     chip.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (demo()) return;
       pinned = s.alias;
       setFollow(false);
       selectPlayer(s.alias, "", { by: "tilt" }, s.pn_id);
@@ -784,7 +857,10 @@
     const c = el("div", "card");
     c.dataset.alias = s.alias || "";
     c.dataset.pn = s.pn_id;
-    c.title = `seat ${s.seat} · ${s.pn_id}`;
+    const charted = !!s.alias && !demo();
+    if (!charted) c.classList.add("nochart");
+    // Not the PokerNow ID behind a mask: it names the account.
+    c.title = demo() ? `seat ${s.seat}` : `seat ${s.seat} · ${s.pn_id}`;
     if (s.live) {
       if (lv && PNT.actingId(lv, state.acting) === s.pn_id) c.classList.add("act");
       if (s.live.folded) c.classList.add("out");
@@ -793,6 +869,7 @@
     // Who and where.
     const who = el("div", "who");
     const name = el("span", "name", s.alias || s.name || s.pn_id);
+    name.title = s.alias || s.name || (demo() ? "" : s.pn_id); // the whole name, when it is cut short
     name.appendChild(el("small", null, `#${s.seat}`));
     const twin = twinChip(s);
     if (twin) name.appendChild(twin);
@@ -805,7 +882,7 @@
     if (s.live) {
       const pos = el("span", "pos", s.live.position || "");
       pos.title = "Position this hand. Blank when the button or a blind is dead.";
-      const stack = el("span", "stack", fmt(s.live.stack));
+      const stack = el("span", "stack", whole(s.live.stack));
       stack.title = s.live.committed ? `${s.live.committed} in the pot this hand` : "Chips behind, after what they have put in this hand.";
       who.append(pos, stack);
     }
@@ -822,7 +899,7 @@
       chip.title = PNT.tagTitle(tag);
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (!s.alias) return;
+        if (!charted) return;
         pinned = s.alias;
         setFollow(false);
         selectPlayer(s.alias, tag.filter, { by: tag.by, street: tag.street, kind: tag.bet_kind }, s.pn_id);
@@ -837,7 +914,8 @@
     // the row wraps onto more lines when they do not fit.
     const stats = el("div", "stats");
     for (const col of cols()) {
-      const cell = el("span", "stat");
+      // bb/100 runs to "+362.9 -104.3": two cells' room.
+      const cell = el("span", col.key === "bb_per_100" ? "stat wide" : "stat");
       cell.appendChild(el("span", "k", col.label));
       cell.title = figure(s, col, cell);
       stats.appendChild(cell);
@@ -849,7 +927,10 @@
     // line is only the path, which ends in the fold.
     if (s.live) {
       const path = PNT.pathText(s.live);
-      const now = PNT.spotText(s.live);
+      // PLO or Double Board: no history is read for the spot (/live `analysed`).
+      const now = lv?.analysed === false && !s.live.folded
+        ? { text: "not analysed", title: "PLO or Double Board: no stat reads this hand's play" }
+        : PNT.spotText(s.live);
       const spot = el("div", "spot");
       if (path.text) spot.appendChild(el("span", "path", s.live.folded ? path.text : `${path.text} › `));
       if (!s.live.folded || !path.text) spot.append(now.text);
@@ -862,9 +943,9 @@
     // chart stays on them only until the action next moves, then goes back to
     // whoever is to act. With a pin in, the pin moves to them instead -- the 📌
     // in the chart bar is what pins and unpins. A player without an identity
-    // yet has no chart to open.
+    // yet has no chart to open, nor has a masked one (demo()).
     c.addEventListener("click", () => {
-      if (!s.alias) return;
+      if (!charted) return;
       heldAt = moment();
       if (pinned) pinned = s.alias;
       const spot = state.follow && s.live?.resolved ? s.live.resolved.filter : "";

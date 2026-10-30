@@ -92,3 +92,19 @@ def test_betting_between_the_boards_lands_on_its_street():
     river = [(a.pn_id, a.kind, a.amount) for a in h.actions if a.street == E.RIVER]
     assert river == [("BBB", "bet", 30), ("AAA", "call", 30)]
     assert h.players["AAA"].contributed == h.players["BBB"].contributed == 190  # 160 + 30
+
+
+def test_the_live_hand_carries_both_boards(tmp_path):
+    """/live names the second board too, so the HUD can print it beside the first."""
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import ingest_entries
+    from pnt.stats.live import snapshot
+
+    conn = connect(tmp_path / "live.sqlite")
+    turn = LINES.index("Turn (second board): 4♠, 9♠, 3♠ [6♦]") + 1
+    entries = [RawEntry(ord=i, at="2026-09-03T09:28:22Z", entry=t) for i, t in enumerate(LINES[:turn])]
+    ingest_entries(conn, "pgltest_double_board", entries, source="test")
+    snap = snapshot(conn, "pgltest_double_board")
+    assert snap["street"] == "turn" and snap["analysed"] is False
+    assert snap["board"] == ["8d", "Jd", "Qh", "8h"]
+    assert snap["boards"] == [["8d", "Jd", "Qh", "8h"], ["4s", "9s", "3s", "6d"]]

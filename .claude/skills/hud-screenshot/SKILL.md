@@ -15,9 +15,11 @@ the panel outside the extension instead.
 .venv/Scripts/python .claude/skills/hud-screenshot/shoot.py --out <scratchpad>/hud --states loaded,key
 ```
 
-- `--states`: comma list or `all`: `loading`, `between`, `stuck-loading`,
-  `stuck-down`, `stuck-tab`, `waiting`, `empty`, `error`, `loaded`, `update`,
-  `sample`, `key`, `twins`.
+- `--states`: comma list or `all`: `loading`, `between`, `stuck-loading`
+  (still warming up), `stuck-restart` (warm-up over), `stuck-down`, `stuck-tab`,
+  `waiting`, `empty`, `error` (a failed /hud after the next /live), `loaded`,
+  `update`, `sample`, `plo` (a PLO table: no session figures), `double` (two
+  boards), `narrow` (320px, long status), `key`, `twins`.
 - `--server`: defaults to this worktree's port (`.pnt-dev/port`), else 52000. In a
   worktree, start `python scripts/orca_worktree.py serve` first, and never point it at 52000.
 - `--game`: defaults to the hero's latest game. `--height` (default 900).
