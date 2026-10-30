@@ -75,6 +75,33 @@ service_app = typer.Typer(
 )
 app.add_typer(service_app, name="service")
 
+
+def _utf8_output(*streams) -> None:
+    """Never let a suit or an emoji name crash the output.
+
+    Redirected to a file or a pipe on Windows, Python encodes in the ANSI code
+    page with errors=strict, so `pnt misses > out.txt` died on the first ♠. Those
+    get UTF-8; a console already takes Unicode, and anything left unencodable
+    prints as `?` rather than raising.
+    """
+    for stream in streams:
+        if not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            tty = stream.isatty()
+        except (AttributeError, ValueError):
+            tty = False
+        if tty:
+            stream.reconfigure(errors="replace")
+        else:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+@app.callback()
+def _before_any_command() -> None:
+    _utf8_output(sys.stdout, sys.stderr)
+
+
 #: The database chosen on the front page when there is one, so commands run from any
 #: folder reach the same database the server has open.
 DbOpt = typer.Option(
@@ -122,9 +149,10 @@ AnonAliasesOpt = typer.Option(
     None, "--aliases", help="With --anonymize: an alias CSV to carry over (`pnt alias export`)."
 )
 AliasOpt = typer.Option(..., "--alias", help="Name for the player they move to.")
-AliasFileArg = typer.Argument(
-    BUNDLED_LOG_DIR / "aliases.csv", help="The alias CSV. Default: the one in the repo."
-)
+#: Beside the config in ~/.pnt, never the bundled sample's pnt/logs/aliases.csv:
+#: your merges name real people, and that file ships inside the package.
+USER_ALIASES = local_config.PATH.parent / "aliases.csv"
+AliasFileArg = typer.Argument(USER_ALIASES, help="The alias CSV.")
 
 LOG_GLOB = syncmod.LOG_GLOB
 
@@ -885,7 +913,7 @@ def review(
     alias: str,
     db: Path = DbOpt,
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
-    filter_: str = typer.Option(None, "--filter", help="e.g. 'srp,vs=henry'"),
+    filter_: str = typer.Option(None, "--filter", help="e.g. 'srp,vs=alex'"),
     kind: str = typer.Option(
         None, "--kind", help="One flag: " + ", ".join(REVIEW_KINDS)
     ),
@@ -1001,8 +1029,8 @@ def note(
     not a log -- and the mark from `pnt reviewed` is separate: neither command
     touches the other's.
 
-        pnt note pgl41zM3_CKphpnKM1DMIosUT 161 "turn barrel had no fold equity"
-        pnt note pgl41zM3_CKphpnKM1DMIosUT 161 --clear
+        pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 "turn barrel had no fold equity"
+        pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 --clear
         pnt note
     """
     conn = connect(db)
@@ -1046,8 +1074,8 @@ def player_note(
     canonical player's, so it follows them across devices, and a merge appends the
     merged player's note to it rather than dropping it.
 
-        pnt player-note henry "tanks then jams with air; never folds the river"
-        pnt player-note henry --clear
+        pnt player-note alex "tanks then jams with air; never folds the river"
+        pnt player-note alex --clear
         pnt player-note
     """
     conn = connect(db)
@@ -1356,6 +1384,10 @@ def redact(
     if out in sources:
         raise typer.BadParameter(
             f"--out {out} is where the originals live; pick a different folder"
+        )
+    if out == BUNDLED_LOG_DIR.resolve() and not anonymize:
+        raise typer.BadParameter(
+            f"--out {out} ships inside the package; only --anonymize copies go there"
         )
 
     import tempfile
@@ -1677,12 +1709,18 @@ def alias_split(
 
 @alias_app.command("export")
 def alias_export(path: Path = AliasFileArg, db: Path = DbOpt) -> None:
-    """Write every PokerNow ID and its alias to a CSV, so the table can be committed.
+    """Write every PokerNow ID and its alias to a CSV that rebuilds your merges.
 
     Merges and renames are the one thing a re-import cannot rebuild; this file is
     how they survive a fresh database. `pnt alias import` reads it back.
     """
+    if path.resolve() == BUNDLED_ALIASES.resolve():
+        raise typer.BadParameter(
+            f"{path} belongs to the bundled sample and ships with the package; "
+            "pick another path"
+        )
     pairs = export_aliases(connect(db))
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["pn_id", "alias"])
@@ -1854,7 +1892,7 @@ def bluffs(
     alias: str = typer.Argument(None, help="One player; the pool when omitted."),
     pool: bool = typer.Option(False, "--pool", help="The pool too: every player, every hand."),
     db: Path = DbOpt,
-    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,vs=henry'"),
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,vs=alex'"),
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:

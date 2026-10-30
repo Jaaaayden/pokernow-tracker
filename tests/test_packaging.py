@@ -18,6 +18,7 @@ install git+...` actually starts from.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -93,6 +94,65 @@ def test_the_sample_corpus_is_shipped(wheel_contents):
         "[tool.setuptools.package-data] in pyproject.toml"
     )
     assert len(shipped) == len(list((ROOT / "pnt" / "logs").glob("poker_now_log_*.csv")))
+
+
+def test_the_extension_tests_stay_out(wheel_contents):
+    """The node tests sit beside the extension's code and nothing reads them at runtime."""
+    shipped = sorted(p for p in wheel_contents if p.endswith(".test.mjs"))
+    assert not shipped, f"{shipped} ship -- see [tool.setuptools.exclude-package-data]"
+
+
+#: Raw exports, with the real names and PokerNow IDs of the people who were at the
+#: table. The test reads its list from them rather than spelling anyone out here.
+_RAW = sorted((ROOT / "tests" / "fixtures").glob("poker_now_log_*.csv"))
+_SEAT = re.compile(r'"([^"@]+) @ ([A-Za-z0-9_-]{10})"')
+
+#: Real but not in any fixture: the name every example used to reach for.
+_ALSO = {"henry"}
+
+#: Files another branch is clearing of names right now; drop each once it is clean.
+_PENDING = {
+    "pnt/ingest/csv_source.py",
+    "pnt/ingest/importer.py",
+    "pnt/logfmt/hero.py",
+    "pnt/logfmt/tokens.py",
+    "pnt/stats/SPEC.md",
+    "pnt/stats/filters.py",
+    "pnt/stats/groupby.py",
+    "pnt/stats/h2h.py",
+}
+
+
+def _real_strings() -> tuple[set[str], set[str]]:
+    """(names, ids) seen in the raw fixtures. Names are the distinctive ones only:
+    a seat called "500" or "all in" says nothing about who sat in it."""
+    names, ids = set(_ALSO), set()
+    for path in _RAW:
+        ids.add(path.stem.removeprefix("poker_now_log_"))
+        for name, pn_id in _SEAT.findall(path.read_text(encoding="utf-8").replace('""', '"')):
+            ids.add(pn_id)
+            if name.isalpha() and len(name) >= 5:
+                names.add(name.lower())
+    return names, ids
+
+
+def test_no_real_player_ships():
+    """Help text, API docs, comments and the extension's tests all ship. The
+    anonymized sample in pnt/logs is checked by test_sample_logs.py."""
+    names, ids = _real_strings()
+    assert "genericpoker" in names, "the fixtures changed; this test reads them"
+    word = re.compile(r"(?<![a-z0-9_])(" + "|".join(map(re.escape, sorted(names))) + r")(?![a-z0-9_])")
+    hits = []
+    for path in sorted((ROOT / "pnt").rglob("*")):
+        rel = path.relative_to(ROOT).as_posix()
+        if not path.is_file() or rel.startswith("pnt/logs/") or rel in _PENDING:
+            continue
+        if path.suffix not in {".py", ".js", ".mjs", ".html", ".json", ".md", ".sql", ".txt", ".css"}:
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            found = word.findall(line.lower()) + [i for i in ids if i in line]
+            hits += [f"{rel}:{n}: {f}" for f in found]
+    assert not hits, "real names or IDs ship:\n" + "\n".join(hits)
 
 
 def test_the_console_script_is_declared():

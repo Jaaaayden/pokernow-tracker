@@ -47,3 +47,8 @@ testpaths = ["tests"]
 # when the log folder is empty -- a fresh install with an empty database has
 # nothing to show, and the fallback is only a fallback if it ships.
 pnt = ["_commit.txt", "db/*.sql", "server/static/*.html", "server/static/*.js", "extension/*", "extension/icons/*", "logs/*.csv", "logs/*.md"]
+
+[tool.setuptools.exclude-package-data]
+# The extension's node tests sit beside the code they test; nothing reads them at
+# runtime, so an install leaves them out.
+pnt = ["extension/*.test.mjs"]
