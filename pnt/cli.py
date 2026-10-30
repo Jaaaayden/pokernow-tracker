@@ -290,11 +290,18 @@ def import_cmd(
     if not paths and expanded and Path(expanded[0]).parent == BUNDLED_LOG_DIR:
         _announce_sample(folder)
     bundled = any(Path(p).resolve().parent == BUNDLED_LOG_DIR.resolve() for p in expanded)
+    failed = 0
     for path in expanded:
-        if not has_hands(read_csv(path)):
-            typer.echo(f"{Path(path).name}: no hands (joined and left before a deal), skipped")
+        try:
+            if not has_hands(read_csv(path)):
+                typer.echo(f"{Path(path).name}: no hands (joined and left before a deal), skipped")
+                continue
+            s = _import(conn, path, folder)
+        except ValueError as exc:  # no game ID in the name, not a log
+            msg = str(exc)
+            typer.echo(msg if Path(path).name in msg else f"{Path(path).name}: {msg}", err=True)
+            failed += 1
             continue
-        s = _import(conn, path, folder)
         note = "no new entries (pure re-import)" if s["entries_new"] == 0 else ""
         typer.echo(
             f"{Path(path).name}: {s['hands']} hands, "
@@ -306,6 +313,8 @@ def import_cmd(
         _echo_sewn(s["game_id"], s["sewn"])
     if bundled:
         _apply_bundled_aliases(conn)
+    if failed:
+        raise typer.Exit(1)
 
 
 LinksArg = typer.Argument(None, help="Game links or game IDs.")

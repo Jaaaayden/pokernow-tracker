@@ -377,3 +377,37 @@ def test_the_server_sync_survives_a_failed_open(tmp_path, monkeypatch):
     monkeypatch.setattr(server.log_folder, "LOG_DIR", tmp_path / "logs")
     server._sync_loop(stop)
     assert len(opens) == 2
+
+
+def test_a_log_name_without_a_game_id_is_refused_by_import(conn, tmp_path):
+    """Stored under `my game`, it could be neither served (422) nor written back."""
+    from pnt.ingest.importer import import_csv as imp
+
+    bad = tmp_path / "poker_now_log_my game.csv"
+    shutil.copy(HU, bad)
+    with pytest.raises(ValueError, match="game ID"):
+        imp(conn, bad)
+    assert conn.execute("SELECT COUNT(*) FROM raw_entries").fetchone()[0] == 0
+    # A bare ID is a name, and an explicit one wins over the file's.
+    plain = tmp_path / f"{HU_GAME}.csv"
+    shutil.copy(HU, plain)
+    assert imp(conn, plain)["game_id"] == HU_GAME
+    with pytest.raises(ValueError, match="game ID"):
+        imp(conn, plain, game_id="../up")
+
+    db_path = tmp_path / "cli.sqlite"
+    r = CliRunner().invoke(cli.app, ["import", "--db", str(db_path), str(bad), str(MULTIWAY)])
+    assert r.exit_code == 1
+    assert r.exception is None or isinstance(r.exception, SystemExit)
+    assert "poker_now_log_my game.csv: no PokerNow game ID in the file name" in r.output
+    assert "Traceback" not in r.output
+    assert f"{MULTIWAY.name}: 128 hands" in r.output  # the rest still go in
+
+
+def test_remove_empty_spares_games_when_the_name_holds_no_id(conn, folder):
+    empty = folder / "poker_now_log_not an id.csv"
+    empty.write_text(JOINED_AND_LEFT, encoding="utf-8")
+    sync.sync_folder(conn, folder)
+    assert sync.remove_empty(conn, folder) == [empty]
+    assert not empty.exists()
+    assert _count(conn, "hands", HU_GAME) == 188
