@@ -219,7 +219,32 @@ def test_a_failed_restore_of_the_sample_starts_on_your_own_data(server, monkeypa
     monkeypatch.setattr(server, "_sample_current", broken)
     with local_client(server.app) as client:
         assert client.get("/settings/dataset").json()["active"] == "own"
-    assert local_config.get("dataset") is None
+    # For this run only: a passing fault does not switch the sample off for good.
+    assert local_config.get("dataset") == "sample"
+
+    importlib.reload(server)  # the next start, with `_sample_current` its own again
+    with local_client(server.app) as client:
+        assert _wait_for_sample(client)["active"] == "sample"
+
+
+def test_a_restore_whose_build_cannot_start_leaves_no_build_showing(server, monkeypatch):
+    """Failing after the build was announced, it once showed `building` for good."""
+    import threading
+
+    local_config.put("dataset", "sample")
+    importlib.reload(server)
+
+    class NoBuild(threading.Thread):
+        def start(self):
+            if self.name == "sample-build":
+                raise RuntimeError("can't start new thread")
+            super().start()
+
+    monkeypatch.setattr(threading, "Thread", NoBuild)
+    with local_client(server.app) as client:
+        got = client.get("/settings/dataset").json()
+        assert got["active"] == "own" and got["building"] is None
+    assert local_config.get("dataset") == "sample"
 
 
 def test_the_samples_folder_is_never_the_log_folder(server):
