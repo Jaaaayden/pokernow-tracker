@@ -26,7 +26,7 @@ from typing import Self
 from ..db.conn import generation, path_of, reading
 from ..logfmt.parser import position_name
 from . import strength
-from .derive import ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
+from .derive import ANALYSED_SQL, ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
 from .lru import LRU
 from .tilt import annotate
 
@@ -805,6 +805,31 @@ def _refresh_facts(
 
     entry = _FACTS_CACHE[key] = _PlayerFacts(gen, wanted, facts, fresh)
     return entry
+
+
+def not_analysed(conn: sqlite3.Connection, game_id: str | None = None) -> dict[str, int]:
+    """alias -> the hands `report()` leaves out of every stat because their play is
+    never read: PLO and Double Board, which count for money only. Counted as
+    report counts hands, one per seat dealt in. A player with none is absent.
+
+    So a table where every hand was PLO can say "312 hands, not analysed" rather
+    than "0 hands". Remembered per generation, as a rebuild is what changes it."""
+    where = " AND h.game_id = ?" if game_id else ""
+
+    def count() -> dict[str, int]:
+        return {
+            r["alias"]: r["n"]
+            for r in conn.execute(
+                "SELECT p.alias, COUNT(*) AS n FROM hands h"
+                " JOIN hand_players hp ON hp.hand_id = h.hand_id"
+                " JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+                " JOIN players p ON p.player_id = pi.player_id"
+                f" WHERE NOT {ANALYSED_SQL}{where} GROUP BY p.alias",
+                (game_id,) if game_id else (),
+            )
+        }
+
+    return remembered(conn, ("not_analysed", game_id), count)
 
 
 def report(

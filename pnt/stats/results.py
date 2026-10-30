@@ -64,6 +64,10 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
     t = tally(facts)
     r = rates(t) if t.hands else {}
     c = t.counts
+    # VPIP is read only where the preflop was: not on a bomb pot (no preflop
+    # decision) nor on PLO or Double Board (money only, never analysed). Their
+    # `vpip` is False by default, not a 0% anyone played.
+    read = sum(1 for f in facts if f.analysed and not f.bomb_pot)
     row = {
         "key": key,
         "label": label,
@@ -77,10 +81,12 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
         "bb_per_100": r.get("bb_per_100"),
         # Its 95% half-width (SPEC.md, "Confidence intervals"); the chart's tile hover.
         "bb_per_100_ci": r.get("bb_per_100_ci"),
-        # Shares of every hand in the row: how often they put chips in, and how
-        # often they saw a flop. What separates "lost playing it" from "lost the
-        # blind folding it".
-        "vpip_pct": _pct(c["vpip"], t.hands),
+        # How often they put chips in, of the hands whose preflop was read
+        # (`vpip_hands`; None when there are none), and how often they saw a flop,
+        # of every hand. What separates "lost playing it" from "lost the blind
+        # folding it".
+        "vpip_pct": _pct(c["vpip"], read),
+        "vpip_hands": read,
         "saw_flop_pct": _pct(c["wtsd_opp"], t.hands),
         "wtsd": r.get("wtsd"),
         "wsd": r.get("wsd"),

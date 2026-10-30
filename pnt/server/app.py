@@ -69,6 +69,7 @@ from pnt.stats.queries import (
     display_names,
     facts_cached,
     hand_list,
+    not_analysed,
     player_games,
     positional_report,
     remembered,
@@ -1440,6 +1441,10 @@ def hud(game_id: GameId) -> dict:
     `columns` is the stats chosen on the front page (`/settings/hud`), in order,
     each with its label, hover text and `_opp` key; `hands` comes before them.
 
+    `not_analysed` on `stats` and `session` is the hands left out of them because
+    their play is never read (PLO, Double Board: money only), so a PLO table's
+    `session` reads `{"hands": 0, "not_analysed": 312}` rather than a bare 0.
+
     Always your own database (`capture_db`), even while the pages show the
     sample; `dataset` says which one the pages -- and the panel's chart -- read.
     While they show the sample, the cards are for showing to others: each
@@ -1464,14 +1469,15 @@ def hud(game_id: GameId) -> dict:
 
     by_alias = {r["player"]: r for r in report(conn)}
     by_session = {r["player"]: r for r in report(conn, game_id=game_id)}
+    skipped, skipped_here = not_analysed(conn), not_analysed(conn, game_id)
     tag_pool = pool_for(conn)  # lifetime tags, judged against the lifetime pool
     notes = player_notes(conn) if masks is None else {}
 
     def shown(r) -> str | None:
         return r["alias"] if masks is None else masks.get(r["pn_id"], f"seat {r['seat']}")
 
-    def figures(rows: dict, r) -> dict:
-        got = rows.get(r["alias"], {"hands": 0})
+    def figures(rows: dict, r, skipped: dict[str, int]) -> dict:
+        got = {**rows.get(r["alias"], {"hands": 0}), "not_analysed": skipped.get(r["alias"], 0)}
         return got if masks is None or "player" not in got else {**got, "player": shown(r)}
 
     return {
@@ -1484,9 +1490,9 @@ def hud(game_id: GameId) -> dict:
                 "alias": shown(r),
                 # Lifetime stats across every game and every merged identity --
                 # not just this session.
-                "stats": figures(by_alias, r),
+                "stats": figures(by_alias, r, skipped),
                 # The same figures over this game only.
-                "session": figures(by_session, r),
+                "session": figures(by_session, r, skipped_here),
                 # Lifetime tags; a seat with no identity yet has none.
                 "tags": tags_for(
                     facts_cached(conn, r["alias"]) if r["alias"] else [], tag_pool, r["alias"]),

@@ -197,6 +197,41 @@ def test_game_filters_and_results_rows():
             pred = parse_filter(r["filter"])
             assert sum(pred(f) for f in [*plo, *double, *bomb]) == r["hands"], r["key"]
     assert "walk" not in pots or pots["walk"] == 0
+    # No preflop read on any of them: no VPIP, rather than a 0% nobody played.
+    vpip = {r["key"]: (r["vpip_pct"], r["vpip_hands"]) for r in rows}
+    assert vpip["plo"] == vpip["double"] == vpip["bomb"] == (None, 0)
+
+
+def test_a_plo_table_says_its_hands_are_not_analysed(tmp_path, monkeypatch):
+    """The HUD's stats leave PLO out; /hud says how many hands that is, and /live
+    resolves no Hold'em spot for a PLO hand in progress."""
+    import importlib
+
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import ingest_entries, rebuild_game
+    from pnt.server import app as app_module
+    from pnt.stats.queries import not_analysed
+    from tests.conftest import local_client
+
+    path = tmp_path / "api.sqlite"
+    monkeypatch.setenv("PNT_DB", str(path))
+    importlib.reload(app_module)
+    conn = connect(path)
+    done = _plo_entries(3)
+    live = [t.replace("{n}", "4") for t in PLO_SHOWDOWN[:9]]  # hand 4, on the flop
+    ingest_entries(conn, GAME, done + [RawEntry(ord=len(done) + i, at="t", entry=t) for i, t in enumerate(live)], "test")
+    rebuild_game(conn, GAME)
+    assert not_analysed(conn, GAME) == {"A": 4, "B": 4}  # the live one is stored, incomplete
+    conn.close()
+
+    client = local_client(app_module.app)
+    hud = client.get(f"/hud/{GAME}").json()
+    for seat in hud["seats"]:
+        assert seat["session"] == {"hands": 0, "not_analysed": 4}, seat
+        assert seat["stats"]["hands"] == 0 and seat["stats"]["not_analysed"] == 4
+    now = client.get(f"/live/{GAME}").json()
+    assert now["hand_number"] == 4 and now["analysed"] is False
+    assert all(p["resolved"] is None for p in now["players"])
 
 
 def test_the_nit_board_and_the_session_list(tmp_path, monkeypatch):

@@ -23,7 +23,7 @@ from ..logfmt.parser import (
     parse,
     position_name,
 )
-from .derive import HandAction, HandPlayerRow, HandRow
+from .derive import HandAction, HandPlayerRow, HandRow, is_analysed
 from .lru import LRU
 from .nodes import nodes_for, resolve, street_of_board
 from .queries import facts_cached, identity_map
@@ -256,12 +256,17 @@ def snapshot(
     before the first hand ends. It is there between hands too.
 
     With `masks` (pn_id -> a name to show), each player's alias and name are their
-    mask, or their seat without one; spots still resolve against who they are."""
+    mask, or their seat without one; spots still resolve against who they are.
+
+    `analysed` is False on a PLO or Double Board hand, whose play no stat reads:
+    every `resolved` is then None rather than Hold'em history passed off as the
+    spot's."""
     parsed = live_hand(conn, game_id)
     if parsed is None:
         return {"game_id": game_id, "hand": None, "previous": previous_hand(conn, game_id)}
 
     row = hand_row(parsed)
+    analysed = is_analysed(row)
     street = current_street(parsed)
     who = to_act(parsed)
     paths = nodes_for(row, pending_for=who)
@@ -282,7 +287,7 @@ def snapshot(
         path = paths.get(pid, [])
         node = path[-1] if path else None
         resolved = None
-        if alias and not p.folded and path:
+        if alias and not p.folded and path and analysed:
             resolved = resolve(
                 facts_cached(conn, alias), path, min_hands=min_hands, board=row.board, min_known=min_known,
             )
@@ -319,6 +324,7 @@ def snapshot(
         "pot": parsed.total_contributed,
         "n_dealt_in": parsed.n_dealt_in,
         "positions_known": labelled,
+        "analysed": analysed,
         "to_act": who,
         "hero": hero,
         "players": players,

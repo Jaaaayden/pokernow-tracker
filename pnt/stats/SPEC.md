@@ -2267,7 +2267,12 @@ reads hands, not facts, and counts their money. Whatever the scope, such a
 fact's `hole_cards` is None and its `pot_level` 0: no card reader sees it, and
 no pot-type term describes it. Its cards are in `cards`, which only the hand
 lists print. No all-in equity and no voluntary-show class either
-(`ANALYSED_SQL`). A bomb pot on one board is analysed: no preflop decision, so
+(`ANALYSED_SQL`). Where a `play` figure would read as a count, the hands left
+out are said, not hidden: `/hud` carries `not_analysed` (`queries.not_analysed`,
+per seat dealt in) beside each seat's `stats` and `session` hands, so a PLO
+table reads "0 hands, 312 not analysed"; `/live` says `analysed: false` on such
+a hand and resolves no spot for it, since Hold'em history is not its spot.
+A bomb pot on one board is analysed: no preflop decision, so
 no preflop rate counts it, `pot_level` 0 (neither a walk nor a limp), and its
 postflop play counts like any other. Results gives it a row.
 
@@ -2538,7 +2543,7 @@ to the spot's total: the same hand count, and the same net to the exact fraction
 
 | Table | Rows | Filter each row adds |
 |---|---|---|
-| **Pot type** | walk, limped, single-raised, 3-bet pot, 4-bet pot+ | `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` |
+| **Pot type** | walk, limped, single-raised, 3-bet pot, 4-bet pot+; then bomb pot, double board and PLO, each only when there is one | `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` · `holdem,!double_board,bomb_pot` · `holdem,double_board` · `plo` |
 | ↳ **role**, raised pots only | PFA, caller / other | `<pot>,pfa` · `<pot>,!pfa` |
 | **Position** | each seat `position=` names, in preflop acting order, blinds last; then dead button | `position=<seat>` · `dead_button` |
 | **In position after the flop** | in position, out of position, no flop | none · none · `!saw_flop` |
@@ -2548,9 +2553,13 @@ bb/100 is made of everywhere: each complete hand's net over its own big blind.
 **`net_bb`** is that sum; **`bb_per_100`** is it over **`bb_hands`**, the
 complete hands with a known big blind. **`hands`** counts every hand. An
 incomplete hand is therefore in a row's `hands` and in none of its bb figures --
-the rule in "Money", unchanged. The other columns: `vpip_pct` and `saw_flop_pct`
-are shares of the row's hands, so "lost it playing" can be told from "lost the
-blind folding"; `wtsd` and `wsd` are the stat rows' own.
+the rule in "Money", unchanged. The other columns: `saw_flop_pct` is a share of
+the row's hands, and `vpip_pct` a share of its **`vpip_hands`**, the hands whose
+preflop was read -- every hand but a bomb pot (no preflop decision), PLO and
+Double Board (money only, never analysed) -- so "lost it playing" can be told
+from "lost the blind folding"; `vpip_pct` is None on a row with no such hand (the
+bomb pot, double board and PLO rows) rather than a 0% nobody played. `wtsd` and
+`wsd` are the stat rows' own.
 
 **The worst row.** In each table, the lowest bb/100 among the rows standing on
 at least **100 hands with a known result** (`WORST_MIN_HANDS`) is marked
