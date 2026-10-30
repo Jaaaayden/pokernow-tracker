@@ -16,7 +16,8 @@
   .head { position: sticky; top: 0; z-index: 2; background: #141413; display: flex; flex-wrap: wrap;
     align-items: center; gap: 2px 6px; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.1); }
   .head b { font-weight: 600; }
-  .head .st { color: #c3c2b7; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
+  /* The status takes what room is left, cut short with an ellipsis before a button wraps. */
+  .head .st { color: #c3c2b7; flex: 1 1 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   /* The 🚩 greys out until the hand is flagged, so a glance says which it is. */
   .head .flag { white-space: nowrap; font-variant-numeric: tabular-nums; filter: grayscale(1); opacity: .7; }
   .head .flag:hover { opacity: 1; }
@@ -30,6 +31,9 @@
   .update { padding: 5px 8px; background: rgba(57,135,229,.18); border-bottom: 1px solid rgba(57,135,229,.5); }
   .update b { color: #7fb2ef; }
   .update code { font: 10.5px ui-monospace, Consolas, monospace; background: rgba(255,255,255,.1); padding: 0 4px; border-radius: 3px; }
+  /* A /hud that failed: kept until one succeeds, not only in the status line. */
+  .huderr { padding: 5px 8px; color: #ff8a65; background: rgba(255,138,101,.08); border-bottom: 1px solid rgba(255,138,101,.5);
+    overflow-wrap: anywhere; }
 
   .settings { border-bottom: 1px solid rgba(255,255,255,.1); }
   .settings iframe { display: block; width: 100%; height: 360px; border: 0; background: #1a1a19; }
@@ -43,7 +47,7 @@
      panel can be dragged narrow and still fit a stats row of four. */
   .card { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.07); cursor: pointer; }
   .card:hover { background: rgba(255,255,255,.03); }
-  .card.skeleton { cursor: default; }
+  .card.skeleton, .card.nochart { cursor: default; }
   .card.skeleton:hover { background: none; }
   .card.sel { background: rgba(57,135,229,.18); }
   .card.out > * { opacity: .45; }
@@ -87,10 +91,11 @@
   td.name .tag.tilt { margin-left: 4px; }
 
   /* As many stats as were chosen on the front page, wrapping onto more lines.
-     A cell fits a 5-letter label beside "38.8 39.8" or "+363 +333". */
+     A cell fits a 5-letter label beside "38.8 39.8"; bb/100 ("+362.9 -104.3") takes two. */
   .stats { margin-top: 3px; display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
     gap: 1px 4px; font-variant-numeric: tabular-nums; }
   .stat { white-space: nowrap; }
+  .stat.wide { grid-column: span 2; }
   .stat .k { color: #898781; font-size: 9px; margin-right: 3px; }
   .stat .drift { color: #86b6ef; }
   .stat small.life { color: #898781; margin-left: 2px; font-size: 9px; }
@@ -176,7 +181,8 @@
     <span class="live" id="live"></span>
   </div>
   <div class="update" id="update" hidden></div>
-  <div class="update" id="sample" hidden>Showing the <b>sample</b>: names masked, notes hidden. Switch under Files on the front page.</div>
+  <div class="update" id="sample" hidden><b>Demo mode</b>: names masked, notes and chart off. Switch under Files.</div>
+  <div class="huderr" id="huderr" role="status" hidden></div>
   <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
   <div class="key" id="key" hidden></div>
   <div class="stuck" id="stuck" role="status" hidden></div>
@@ -185,6 +191,7 @@
     <div class="legend" id="legend" hidden
       title="Each figure: this game first, then every game on record in grey. A blue session figure is 10+ points from lifetime on at least 10 chances, with lifetime outside the session's 95% range.">
       this session · <span style="color:#898781">lifetime</span> · <span class="drift">blue</span> = drifting</div>
+    <div class="legend" id="na" hidden title="PLO and Double Board hands count for money only: no stat reads their play."></div>
     <div id="body"><div class="empty dots">waiting for the first hand</div></div>
     <div class="chart" id="chart" hidden>
       <div class="bar">

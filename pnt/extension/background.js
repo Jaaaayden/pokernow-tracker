@@ -31,7 +31,10 @@ const modeOf = (v) => (v === "float" || !chrome.sidePanel ? "float" : "panel");
 
 async function settings() {
   const s = await chrome.storage.sync.get(DEFAULTS);
-  let server = (s.server || DEFAULTS.server).replace(/\/+$/, "");
+  let server = String(s.server || DEFAULTS.server).replace(/\/+$/, "");
+  // Saved before the settings checked it: "127.0.0.1:52000" with no scheme would
+  // make the chart's URL relative to the extension and its origin unreadable.
+  if (!/^https?:\/\//i.test(server)) server = `http://${server}`;
   if (RETIRED_SERVERS.includes(server)) {
     server = DEFAULTS.server;
     await chrome.storage.sync.set({ server });
