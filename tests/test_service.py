@@ -304,6 +304,34 @@ def test_file_log_config_is_timestamped_and_leaves_uvicorn_alone():
     assert uvicorn_config.LOGGING_CONFIG == before
 
 
+def test_the_trackers_own_lines_reach_the_log_with_a_time(tmp_path):
+    """Only uvicorn's loggers were set up, so every `pnt.*` info line was dropped
+    and a warning came out bare, through Python's last resort."""
+    import logging
+    import logging.config
+
+    pytest.importorskip("uvicorn")
+    out = tmp_path / "server.log"
+    config = svc._file_log_config()
+    config["handlers"]["default"]["stream"] = out.open("w", encoding="utf-8")
+    try:
+        logging.config.dictConfig(config)
+        logging.getLogger("pnt.server.app").info("imported a log")
+        logging.getLogger("pnt.ingest.sync").warning("could not import a log")
+    finally:
+        config["handlers"]["default"]["stream"].close()
+        for name in ("pnt", "uvicorn", "uvicorn.error", "uvicorn.access"):
+            logger = logging.getLogger(name)
+            logger.handlers.clear()
+            logger.propagate = True
+            logger.setLevel(logging.NOTSET)
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert "INFO" in lines[0] and lines[0].endswith(" imported a log")
+    assert "WARNING" in lines[1] and lines[1].endswith(" could not import a log")
+    assert all(line[:4].isdigit() for line in lines)  # a timestamp first
+
+
 def test_run_refuses_a_missing_database(tmp_path, monkeypatch):
     """Rather than serve an empty database it just created."""
     monkeypatch.setattr(svc, "LOG_FILE", tmp_path / "server.log")
