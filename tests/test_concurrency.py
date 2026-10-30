@@ -77,6 +77,70 @@ def test_writing_owns_its_transaction(tmp_path):
 
 
 
+def test_a_rebuild_that_read_first_cannot_commit_older_lines_last(tmp_path, monkeypatch):
+    """Two tabs on one table: A reads half the game and parses slowly, while B adds
+    the rest and rebuilds. A commits last, and once stored its half (157 hands of
+    312 in the review's repro) until something rebuilt the game again."""
+    import threading
+
+    from conftest import HU
+
+    from pnt.ingest import importer
+    from pnt.ingest.csv_source import read_csv
+
+    entries = read_csv(HU)
+    half = len(entries) // 2
+    path = tmp_path / "t.sqlite"
+    connect(path).close()
+
+    real_parse = importer.parse
+    a_read, b_done = threading.Event(), threading.Event()
+
+    def slow_parse(es, gid):
+        if threading.current_thread().name == "A" and not b_done.is_set():
+            a_read.set()  # A has read the raw lines; B overtakes it here
+            assert b_done.wait(30)
+        return real_parse(es, gid)
+
+    monkeypatch.setattr(importer, "parse", slow_parse)
+
+    def a():
+        c = connect(path)
+        importer.ingest_entries(c, "g", entries[:half], "a")
+        importer.rebuild_game(c, "g")
+        c.close()
+
+    def b():
+        assert a_read.wait(30)
+        c = connect(path)
+        importer.ingest_entries(c, "g", entries[half:], "b")
+        importer.rebuild_game(c, "g")
+        c.close()
+        b_done.set()
+
+    threads = [threading.Thread(target=a, name="A"), threading.Thread(target=b, name="B")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    monkeypatch.setattr(importer, "parse", real_parse)
+
+    conn = connect(path)
+    raced = conn.execute("SELECT COUNT(*) FROM hands").fetchone()[0]
+    importer.rebuild_game(conn, "g")
+    assert raced == conn.execute("SELECT COUNT(*) FROM hands").fetchone()[0] == 188
+    conn.close()
+
+
+def test_rebuilding_a_game_with_no_lines_writes_nothing(tmp_path):
+    from pnt.ingest import importer
+
+    conn = connect(tmp_path / "t.sqlite")
+    assert importer.rebuild_game(conn, "nosuchgame")["hands"] == 0
+    assert conn.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 0
+    conn.close()
+
+
 def test_migration_waits_for_one_already_under_way(tmp_path, monkeypatch):
     """The server's sync and warm-up threads both migrate at start. One that saw a
     column missing must wait for the other's ALTER and then find it there, not

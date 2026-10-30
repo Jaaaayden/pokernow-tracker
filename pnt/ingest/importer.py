@@ -493,62 +493,93 @@ def needs_parse_rebuild(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def _raw_print(conn: sqlite3.Connection, game_id: str) -> tuple:
+    """What the stored raw lines of a game are, in brief. Lines are only ever added
+    (or the game deleted whole), so any change moves the count, the ends, or both."""
+    return tuple(
+        conn.execute(
+            "SELECT COUNT(*), MIN(ord), MAX(ord) FROM raw_entries WHERE game_id = ?", (game_id,)
+        ).fetchone()
+    )
+
+
+def _derive_game(entries: list[RawEntry], game_id: str):
+    result = parse(entries, game_id)
+    guess = infer_hero(result.hands)
+    hero_pn_id = guess.pn_id if guess.confident else None
+    if hero_pn_id:
+        apply_hero_cards(result.hands, hero_pn_id)
+    return result, guess, hero_pn_id
+
+
+def _store_derived(conn: sqlite3.Connection, game_id: str, entries: list[RawEntry], result, hero_pn_id) -> None:
+    """Replace a game's derived rows with `result`, inside the caller's transaction."""
+    conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
+    conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
+    conn.execute(
+        "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id, parsed_with)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(game_id) DO UPDATE SET started_at=excluded.started_at,"
+        " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, variant=excluded.variant,"
+        " hero_pn_id=excluded.hero_pn_id, parsed_with=excluded.parsed_with",
+        (
+            game_id,
+            entries[0].at,
+            result.blinds.get("sb"),
+            result.blinds.get("bb"),
+            result.blinds.get("ante", 0),
+            result.hands[0].variant if result.hands else "nlhe",
+            hero_pn_id,
+            PARSE_VERSION,
+        ),
+    )
+    for hand in result.hands:
+        for p in hand.players.values():
+            resolve_identity(conn, p.pn_id, p.name, hand.ts)
+        _insert_hand(conn, hand)
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO parse_misses (game_id, ord, entry, reason)"
+        " VALUES (?, ?, ?, ?)",
+        [(game_id, o, e, r) for o, e, r in result.misses],
+    )
+    bump_generation(conn)
+    # Stamped in the same transaction: a cache keyed on it can never see new
+    # hands under an old stamp.
+    conn.execute(
+        "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
+        (GENERATION_KEY, game_id),
+    )
+
+
 def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
     """Re-derive every hand of a game from its stored raw entries.
 
     Destroys and recreates all layer-2 rows for the game inside one transaction,
     so a partial failure leaves the previous derivation intact.
+
+    What is stored is derived from the raw lines as they are when it commits. The
+    parse runs before the write lock, to keep the lock short; if lines arrived in
+    between (two tabs on one table, `pnt import` beside the server), it runs again
+    under the lock. Otherwise a rebuild that read first but committed last would
+    leave the game derived from the older lines, with nothing to set it right.
+
+    A game with no raw lines is left alone: no games row is written for it.
     """
     entries = read_raw(conn, game_id)
-    result = parse(entries, game_id)
-
-    guess = infer_hero(result.hands)
-    hero_pn_id = guess.pn_id if guess.confident else None
-    if hero_pn_id:
-        apply_hero_cards(result.hands, hero_pn_id)
-
-    started_at = entries[0].at if entries else None
+    seen = (len(entries), entries[0].ord, entries[-1].ord) if entries else (0, None, None)
+    result, guess, hero_pn_id = _derive_game(entries, game_id)
 
     with writing(conn):  # single transaction, write lock taken up front
-        conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
-        conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
-        conn.execute(
-            "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id, parsed_with)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            " ON CONFLICT(game_id) DO UPDATE SET started_at=excluded.started_at,"
-            " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, hero_pn_id=excluded.hero_pn_id,"
-            " parsed_with=excluded.parsed_with",
-            (
-                game_id,
-                started_at,
-                result.blinds.get("sb"),
-                result.blinds.get("bb"),
-                result.blinds.get("ante", 0),
-                result.hands[0].variant if result.hands else "nlhe",
-                hero_pn_id,
-                PARSE_VERSION,
-            ),
-        )
-        for hand in result.hands:
-            for p in hand.players.values():
-                resolve_identity(conn, p.pn_id, p.name, hand.ts)
-            _insert_hand(conn, hand)
-
-        conn.executemany(
-            "INSERT OR REPLACE INTO parse_misses (game_id, ord, entry, reason)"
-            " VALUES (?, ?, ?, ?)",
-            [(game_id, o, e, r) for o, e, r in result.misses],
-        )
-        bump_generation(conn)
-        # Stamped in the same transaction: a cache keyed on it can never see new
-        # hands under an old stamp.
-        conn.execute(
-            "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
-            (GENERATION_KEY, game_id),
-        )
-    # Its own transaction, after the rebuild's: the hand strength of every shown
-    # holding, so grading the game never waits on a board (stats/strength.py).
-    strength.warm(conn, game_id)
+        if _raw_print(conn, game_id) != seen:
+            entries = read_raw(conn, game_id)
+            result, guess, hero_pn_id = _derive_game(entries, game_id)
+        if entries:
+            _store_derived(conn, game_id, entries, result, hero_pn_id)
+    if entries:
+        # Its own transaction, after the rebuild's: the hand strength of every shown
+        # holding, so grading the game never waits on a board (stats/strength.py).
+        strength.warm(conn, game_id)
 
     return {
         "game_id": game_id,
