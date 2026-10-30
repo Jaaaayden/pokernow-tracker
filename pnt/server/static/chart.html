@@ -517,7 +517,7 @@
   .tip .big { font-size: 18px; font-weight: 600; }
   .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
   .tip .row b { color: var(--ink); font-weight: 500; }
-  .err { color: #d03b3b; margin: 12px 0; }
+  .err { color: var(--down); margin: 12px 0; }
   .hidden { display: none !important; }
   /* A load that failed after a tab switch: nothing of the last view stays up. */
   body.stale :is(.tiles, #note, #groupby), body.stale #card > :not(.card-head), body.stale #card .card-head > :not(h2) { display: none; }
@@ -1710,7 +1710,7 @@
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+        throw new Error("the running server is older than this page: run `pnt service restart`");
       }
       throw new Error(body.detail || `${r.status} ${r.statusText}`);
     }
@@ -1899,7 +1899,7 @@
         } else {
           data = await viewJson(`/players/${player}/review?` + q);
           if (!("counts" in data)) {
-            throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+            throw new Error("the running server is older than this page: run `pnt service restart`");
           }
           if (live()) state.review = { key, data };
         }
@@ -1951,7 +1951,7 @@
         data = await viewJson(`/players/${player}/range?` + q);
         const probe = data.cells ? Object.values(data.cells)[0] : data.classes?.[0];
         if (probe && !("hand_ids" in probe)) {
-          throw new Error("the running server is older than this page (no hand ids in its data): restart `pnt service` (or `pnt serve`)");
+          throw new Error("the running server is older than this page (no hand ids in its data): run `pnt service restart`");
         }
       }
       if (!live()) return;
@@ -1961,7 +1961,7 @@
       loadStrip(live);
     } catch (e) {
       if (!live()) return;
-      $("err").textContent = String(e.message || e);
+      $("err").textContent = pntPage.firstLine(e.message || e);
       $("err").classList.remove("hidden");
       // The strip above the card still describes the spot before this one.
       $("strip").classList.add("hidden");
@@ -2028,7 +2028,7 @@
       : [{ hands: [] }, { hands: [] }, { hands: [] }];
     if (!live()) return null;
     if (hands.hands.length && !("reviewed" in hands.hands[0])) {
-      throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+      throw new Error("the running server is older than this page: run `pnt service restart`");
     }
     const flags = new Map();
     for (const r of review.hands) {
@@ -2494,7 +2494,7 @@
       }
     } catch (e) {
       if (seq !== handsSeq) return;
-      list.replaceChildren(message(String(e.message || e), "err"));
+      list.replaceChildren(message(pntPage.firstLine(e.message || e), "err"));
     }
     $("hands").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
@@ -2664,7 +2664,7 @@
     if (!fe || fe.error || !fe.streets) {
       wrap.appendChild(message(fe?.error
         ? `fold equity: ${fe.error}`
-        : "fold equity: the running server is older than this page: restart `pnt service` (or `pnt serve`)", "err"));
+        : "fold equity: the running server is older than this page: run `pnt service restart`", "err"));
       return;
     }
     const street = d.street;
@@ -3853,7 +3853,7 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) {
         if (r.status === 404 && body.detail === "Not Found") {
-          throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+          throw new Error("the running server is older than this page: run `pnt service restart`");
         }
         // A dimension from the URL this scope does not have, before its catalog is known.
         if (r.status === 400 && !retried && !known && (state.gb || state.gb2)) {
@@ -3871,7 +3871,7 @@
       if (ctl !== gb.ctl || e.name === "AbortError") return;
       gb.key = null; // asked again next time
       gb.data = null;
-      $("gb-body").replaceChildren(message(String(e.message || e), "err"));
+      $("gb-body").replaceChildren(message(pntPage.firstLine(e.message || e), "err"));
     } finally {
       if (ctl === gb.ctl) $("gb-body").classList.remove("loading");
     }
@@ -4097,7 +4097,7 @@
     if (!quiet) $("card-title").textContent = building;
     try {
       const data = await viewJson(`/players/${encodeURIComponent(state.player)}/tree?` + q);
-      if (!("roots" in data)) throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+      if (!("roots" in data)) throw new Error("the running server is older than this page: run `pnt service restart`");
       if (live()) state.tree = { key, data };
       return data;
     } finally {
@@ -4377,7 +4377,7 @@
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {
       if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+        throw new Error("the running server is older than this page: run `pnt service restart`");
       }
       throw new Error(body.detail || `${r.status} ${r.statusText}`);
     }
@@ -5389,7 +5389,7 @@
     const body = await sendJson(`/players/${encodeURIComponent(state.player)}/hands?` + q, { signal: handsCtl.signal });
     // Checked before caching, so a stale answer is never memoized for the session.
     if (body.hands.length && !("ip" in body.hands[0])) {
-      throw new Error("the running server is older than this page: restart `pnt service`");
+      throw new Error("the running server is older than this page: run `pnt service restart`");
     }
     // A load since this was asked may mean new hands: these rows are kept for
     // this list only, not for the next one.
@@ -5425,7 +5425,7 @@
       renderHandRows(want ? rows.filter(r => want.has(r.hand_id)) : rows);
     } catch (e) {
       if (seq !== handsSeq) return;
-      list.replaceChildren(message(String(e.message || e), "err"));
+      list.replaceChildren(message(pntPage.firstLine(e.message || e), "err"));
     }
     $("hands").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
@@ -5829,7 +5829,7 @@
   }
 
   function showErr(e) {
-    $("err").textContent = String(e.message || e);
+    $("err").textContent = pntPage.firstLine(e.message || e);
     $("err").classList.remove("hidden");
   }
 
