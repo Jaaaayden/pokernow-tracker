@@ -241,7 +241,10 @@ def previous_hand(conn: sqlite3.Connection, game_id: str) -> dict | None:
     return None if n is None else {"hand_number": n, "flagged": is_flagged(conn, game_id, n)}
 
 
-def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_known: int = 5) -> dict:
+def snapshot(
+    conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_known: int = 5,
+    masks: dict[str, str] | None = None,
+) -> dict:
     """The `/live/{game}` payload: the hand in progress, everyone's node, and the
     closest spot with data behind it for everyone still in.
 
@@ -250,7 +253,10 @@ def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_kno
 
     `previous` is the newest hand whose ending line has arrived -- the one the
     HUD's 🚩 flags for manual review -- and whether it is flagged already, or None
-    before the first hand ends. It is there between hands too."""
+    before the first hand ends. It is there between hands too.
+
+    With `masks` (pn_id -> a name to show), each player's alias and name are their
+    mask, or their seat without one; spots still resolve against who they are."""
     parsed = live_hand(conn, game_id)
     if parsed is None:
         return {"game_id": game_id, "hand": None, "previous": previous_hand(conn, game_id)}
@@ -272,6 +278,7 @@ def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_kno
     players = []
     for pid, p in sorted(parsed.players.items(), key=lambda kv: kv[1].seat):
         alias = ident.get(pid, (None, None))[1]
+        shown = alias if masks is None else masks.get(pid, f"seat {p.seat}")
         path = paths.get(pid, [])
         node = path[-1] if path else None
         resolved = None
@@ -282,8 +289,8 @@ def snapshot(conn: sqlite3.Connection, game_id: str, min_hands: int = 1, min_kno
         players.append(
             {
                 "pn_id": pid,
-                "alias": alias,
-                "name": p.name,
+                "alias": shown,
+                "name": p.name if masks is None else shown,
                 "seat": p.seat,
                 "position": (
                     position_name(p.seats_from_button, parsed.n_dealt_in)

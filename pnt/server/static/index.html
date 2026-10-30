@@ -330,7 +330,7 @@
         <button type="button" data-which="own" aria-pressed="true">Your hands</button>
         <button type="button" data-which="sample" aria-pressed="false">Sample</button>
       </div>
-      <p class="note" id="f-data-note">Sample: anonymized games for trying the pages. Live games still save to your database.</p>
+      <p class="note" id="f-data-note">Sample: anonymized games for trying the pages; the HUD masks names. Live games still save to your database.</p>
     </div>
     <div class="row">
       <label for="f-hero">You</label>
@@ -823,7 +823,7 @@
     for (const b of document.querySelectorAll("#files .seg button")) {
       b.setAttribute("aria-pressed", b.dataset.which === d.active);
     }
-    $("f-data-note").textContent = `Sample: ${d.games} anonymized games for trying the pages. `
+    $("f-data-note").textContent = `Sample: ${d.games} anonymized games for trying the pages; the HUD masks names. `
       + "Live games still save to your database.";
   }
 

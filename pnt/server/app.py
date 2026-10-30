@@ -92,7 +92,7 @@ from pnt.update import EXTENSION_DIR, extension_build
 DB_PATH = Path(os.environ.get("PNT_DB", "pokernow.sqlite"))
 #: The front page's Data switch: on, the pages show the bundled sample, built into
 #: a database of its own (pnt/ingest/sample.py); DB_PATH stays yours, and capture
-#: keeps writing there. Never saved: every start is back on your own data.
+#: keeps writing there. Saved as config.json's `dataset`, so a restart keeps it.
 SAMPLE_ON = False
 #: The sample's database while SAMPLE_ON (`sample.database()`, read on the switch).
 SAMPLE_PATH: Path | None = None
@@ -146,6 +146,7 @@ def _sync_loop(stop: threading.Event) -> None:
     conn = None
     opened = None
     skip: dict[str, tuple[int, int]] = {}
+    warned = False
     try:
         while True:
             try:
@@ -155,12 +156,18 @@ def _sync_loop(stop: threading.Event) -> None:
                 if conn is None:
                     opened = DB_PATH
                     conn = capture_db()  # your logs, even while the pages show the sample
-                out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
-                for s in out.imported:
-                    if s["entries_new"]:
-                        log.info("imported %s: %d new entries", s["file"], s["entries_new"])
-                for path, why in out.failed.items():
-                    log.warning("could not import %s: %s", path, why)
+                if _sample_folder(log_folder.LOG_DIR):
+                    if not warned:
+                        log.warning("not syncing %s: it is the bundled sample's folder", log_folder.LOG_DIR)
+                    warned = True
+                else:
+                    warned = False
+                    out = sync.sync_folder(conn, log_folder.LOG_DIR, skip)
+                    for s in out.imported:
+                        if s["entries_new"]:
+                            log.info("imported %s: %d new entries", s["file"], s["entries_new"])
+                    for path, why in out.failed.items():
+                        log.warning("could not import %s: %s", path, why)
             except Exception:
                 log.exception("log folder sync failed")
                 if conn is not None and conn.in_transaction:
@@ -305,8 +312,12 @@ def _warm_hero(conn: sqlite3.Connection, between) -> None:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    from pnt import local_config
+
     stop = threading.Event()
     worker = None
+    if local_config.get("dataset") == "sample":  # switched on before the last stop
+        write_dataset(DatasetRequest(which="sample"))
     threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
@@ -708,7 +719,7 @@ def _save_log(conn: sqlite3.Connection, game_id: str) -> None:
     is (~40 ms for an 8,500-line game). Never fails the request -- the database
     already has the lines, and a CSV open in Excel must not stop capture.
     """
-    if not SAVE_LOGS:
+    if not SAVE_LOGS or _sample_folder(log_folder.LOG_DIR):
         return
     try:
         # A log deleted since the last save means the game is to go, not to be
@@ -1431,8 +1442,11 @@ def hud(game_id: GameId) -> dict:
 
     Always your own database (`capture_db`), even while the pages show the
     sample; `dataset` says which one the pages -- and the panel's chart -- read.
+    While they show the sample, the cards are for showing to others: each
+    `alias` is a mask (`_masks`) and `note` is null.
     """
     conn = capture_db()
+    masks = _masks(conn, game_id)
     columns = _hud_columns(conn)
     latest = conn.execute(
         "SELECT hand_id FROM hands WHERE game_id = ? ORDER BY ord DESC LIMIT 1",
@@ -1451,7 +1465,15 @@ def hud(game_id: GameId) -> dict:
     by_alias = {r["player"]: r for r in report(conn)}
     by_session = {r["player"]: r for r in report(conn, game_id=game_id)}
     tag_pool = pool_for(conn)  # lifetime tags, judged against the lifetime pool
-    notes = player_notes(conn)
+    notes = player_notes(conn) if masks is None else {}
+
+    def shown(r) -> str | None:
+        return r["alias"] if masks is None else masks.get(r["pn_id"], f"seat {r['seat']}")
+
+    def figures(rows: dict, r) -> dict:
+        got = rows.get(r["alias"], {"hands": 0})
+        return got if masks is None or "player" not in got else {**got, "player": shown(r)}
+
     return {
         "game_id": game_id,
         "columns": columns,
@@ -1459,12 +1481,12 @@ def hud(game_id: GameId) -> dict:
             {
                 "seat": r["seat"],
                 "pn_id": r["pn_id"],
-                "alias": r["alias"],
+                "alias": shown(r),
                 # Lifetime stats across every game and every merged identity --
                 # not just this session.
-                "stats": by_alias.get(r["alias"], {"hands": 0}),
+                "stats": figures(by_alias, r),
                 # The same figures over this game only.
-                "session": by_session.get(r["alias"], {"hands": 0}),
+                "session": figures(by_session, r),
                 # Lifetime tags; a seat with no identity yet has none.
                 "tags": tags_for(
                     facts_cached(conn, r["alias"]) if r["alias"] else [], tag_pool, r["alias"]),
@@ -1477,8 +1499,33 @@ def hud(game_id: GameId) -> dict:
             }
             for r in seated
         ],
-        "dataset": "sample" if SAMPLE_ON else "own",
+        "dataset": "sample" if masks is not None else "own",
     }
+
+
+# ---- masked names ----------------------------------------------------------------
+# While the pages show the sample, the HUD is being shown to someone -- a demo, a
+# screen recording -- so its cards keep your reads but not who they are about.
+
+
+def _masks(conn: sqlite3.Connection, game_id: str) -> dict[str, str] | None:
+    """pn_id -> "player N", numbered in the order they first sat down in this game,
+    or None while the pages show your own data. A seat keeps its mask from hand to
+    hand, and two accounts merged into one player share one."""
+    if not SAMPLE_ON:
+        return None
+    named: dict[str, str] = {}
+    out = {}
+    for r in conn.execute(
+        "SELECT hp.pn_id, p.alias FROM hand_players hp JOIN hands h ON h.hand_id = hp.hand_id"
+        " LEFT JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+        " LEFT JOIN players p ON p.player_id = pi.player_id"
+        " WHERE h.game_id = ? GROUP BY hp.pn_id ORDER BY MIN(h.ord), hp.pn_id",
+        (game_id,),
+    ):
+        who = r["alias"] or r["pn_id"]
+        out[r["pn_id"]] = named.setdefault(who, f"player {len(named) + 1}")
+    return out
 
 
 # ------------------------------------------------------------- HUD columns ---
@@ -1665,7 +1712,22 @@ def _log_dir(text: str) -> Path:
     path = _full_path(text)
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"no folder at {path}")
+    if _sample_folder(path):
+        raise HTTPException(
+            status_code=400,
+            detail="that is the bundled sample's folder: to try the sample, switch Data to Sample instead",
+        )
     return path.resolve()
+
+
+def _sample_folder(path: Path) -> bool:
+    """Whether `path` is the bundled sample's own folder (pnt/logs). Never a log
+    folder: synced, its anonymized copies of real games land in your database beside
+    the games they copy, and live capture would save real names into it."""
+    try:
+        return path.expanduser().resolve() == samplemod.LOG_DIR.resolve()
+    except OSError:
+        return False
 
 
 @app.get("/settings/paths")
@@ -1765,6 +1827,9 @@ def _enter_sample(path: Path) -> None:
 
 def _leave_sample() -> None:
     global SAMPLE_ON, _sample_wanted
+    from pnt import local_config
+
+    local_config.put("dataset", None)
     _sample_wanted = False
     if SAMPLE_ON:
         SAMPLE_ON = False
@@ -1827,13 +1892,17 @@ def write_dataset(req: Annotated[DatasetRequest, Body()]) -> dict:
     The first switch to the sample builds its database (~/.pnt/sample-*.sqlite),
     and so does the first after an update changes the sample: the answer then
     carries `building`, and the switch happens when the build is done. Capture, the
-    log folder and the HUD stay on your own database throughout.
+    log folder and the HUD stay on your own database throughout. Kept for the next
+    start too, until switched back.
     """
     global _sample_building, _sample_wanted, _sample_error
+    from pnt import local_config
+
     with _sample_lock:
         if req.which == "own":
             _leave_sample()
             return _dataset()
+        local_config.put("dataset", "sample")
         _sample_wanted, _sample_error = True, None
         if SAMPLE_ON or _sample_building is not None:
             return _dataset()
@@ -1933,7 +2002,8 @@ def live(
     A postflop spot is narrowed to boards like this one while at least `known`
     shown hands survive the narrowing.
     """
-    return snapshot(capture_db(), game_id, min_hands=min_hands, min_known=min_known)
+    conn = capture_db()
+    return snapshot(conn, game_id, min_hands=min_hands, min_known=min_known, masks=_masks(conn, game_id))
 
 
 class MergeRequest(BaseModel):

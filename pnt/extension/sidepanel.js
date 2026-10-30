@@ -125,7 +125,8 @@
       closeChart();
     }
     // While the server's pages show the sample (the front page's Data switch), the
-    // cards are still your own database's, but the chart below them is the sample's.
+    // cards are still your own database's, with the names masked and no notes, and
+    // the chart below them is the sample's.
     // A line of its own: at the end of the status it was cut off at panel width.
     const sample = snap.hudData?.dataset === "sample";
     if ($("sample").hidden === sample) { $("sample").hidden = !sample; fit(); }
@@ -797,8 +798,9 @@
     if (twin) name.appendChild(twin);
     who.appendChild(name);
     if (c.classList.contains("act") && state.acting) who.appendChild(clockChip());
-    // A player without an identity yet has nowhere to keep a note.
-    const pen = s.alias ? el("button", "pen", "✎") : null;
+    // A player without an identity yet has nowhere to keep a note, nor has one
+    // behind a mask (app.py, `_masks`).
+    const pen = s.alias && state.hud?.dataset !== "sample" ? el("button", "pen", "✎") : null;
     if (pen) who.appendChild(pen);
     if (s.live) {
       const pos = el("span", "pos", s.live.position || "");
