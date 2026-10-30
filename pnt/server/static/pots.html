@@ -50,13 +50,8 @@
   ul.note li { margin: 2px 0; }
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 12px 12px; }
   .card.loading { opacity: .45; transition: opacity .15s; }
-  .err { color: #d03b3b; margin: 12px 0; }
+  .err { color: var(--down); margin: 12px 0; }
   .muted { color: var(--muted); }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
-    margin-bottom: 12px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
-  .crumb .go a + a { margin-left: 14px; }
 
   /* --- the headline figures --- */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px;
@@ -165,10 +160,7 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a id="reviewlink" href="/chart?by=review">hand review &rsaquo;</a>
-      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a>
-      <a id="statslink" href="/stats.html">stats &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="pots" aria-label="pages"></nav>
   <h1>Biggest pots <small id="subtitle">the hands worth remembering</small></h1>
 
   <div class="controls">
@@ -178,22 +170,21 @@
       <button data-days="30" aria-pressed="false">30 days</button>
       <button data-days="all" aria-pressed="false">all</button>
     </span>
-    <label for="minpot">Pot over</label>
+    <label for="minpot">Pot at least (chips)</label>
     <input id="minpot" type="number" min="0" step="100" value="2000">
     <label for="player">Player</label>
     <select id="player"><option value="">everyone</option></select>
     <button class="primary" id="apply">Apply</button>
     <span class="seg" id="unitseg" role="group" aria-label="Unit">
-      <button data-unit="chips" aria-pressed="true">chips</button>
-      <button data-unit="bb" aria-pressed="false">bb</button>
+      <button data-unit="bb" aria-pressed="true">bb</button>
+      <button data-unit="chips" aria-pressed="false">chips</button>
     </span>
     <button id="hands-split" aria-pressed="false" title="list on the left, replay on the right">Side by side</button>
   </div>
 
   <ul class="note">
-    <li>Every pot over the bar in the window, biggest first. <b>Click a row to replay it.</b></li>
-    <li><b>Pot:</b> what sat in the middle, without uncalled bets or 7-2 bounties.</li>
-    <li>Blinds move between games, so <b>bb</b> compares fairer than chips.</li>
+    <li>Every pot at least the bar in the window, biggest first. <b>Click a row to replay it.</b></li>
+    <li><b>Pot:</b> what sat in the middle, e.g. without uncalled bets or 7-2 bounties.</li>
   </ul>
   <div class="err hidden" id="err"></div>
 
@@ -211,53 +202,53 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const theme = new URLSearchParams(location.search).get("theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  pntPage.nav();
+  const theme = pntPage.theme;
   const { pretty, cardsEl, when } = pntReplay;
 
   const DAYS = ["1", "7", "30", "all"];
-  // `open`: the hand_id of the pot on replay, kept across a change of unit.
-  const state = { days: "7", minPot: 2000, player: "", unit: "chips", data: null, open: null };
+  // `widened`: the default window was empty (the sample's games are old), so the
+  // page opened on all time instead and says so. `open`: the hand_id of the pot
+  // on replay, kept across a change of unit.
+  const state = { days: "7", minPot: 2000, player: "", unit: "bb", data: null, widened: null, daysChosen: false, open: null };
 
   const readUrl = () => {
     const q = new URLSearchParams(location.search);
     state.days = DAYS.includes(q.get("days")) ? q.get("days") : "7";
+    state.daysChosen = DAYS.includes(q.get("days"));
     const min = parseInt(q.get("min"), 10);
     state.minPot = Number.isFinite(min) && min >= 0 ? min : 2000;
     state.player = q.get("player") || "";
-    state.unit = q.get("unit") === "bb" ? "bb" : "chips";
+    state.unit = q.get("unit") === "chips" ? "chips" : "bb";
   };
   const writeUrl = () => {
     const q = new URLSearchParams();
     if (state.days !== "7") q.set("days", state.days);
     if (state.minPot !== 2000) q.set("min", state.minPot);
     if (state.player) q.set("player", state.player);
-    if (state.unit !== "chips") q.set("unit", state.unit);
+    if (state.unit !== "bb") q.set("unit", state.unit);
     if (theme) q.set("theme", theme);
     history.replaceState(null, "", "?" + q.toString());
-    const t = new URLSearchParams(theme ? { theme } : {});
-    const p = new URLSearchParams(t);
-    if (state.player) p.set("player", state.player);
-    $("reviewlink").href = "/chart?by=review&" + p;
-    $("allinlink").href = "/allin.html?" + p;
-    $("statslink").href = "/stats.html?" + t;
+    const who = state.player ? { player: state.player } : {};
+    for (const [id, path] of [["chartlink", "/chart"], ["allinlink", "/allin.html"], ["tendencieslink", "/tendencies.html"]]) {
+      $(id).href = pntPage.href(path, who);
+    }
   };
 
   const chips = (v) => v == null ? "–" : Math.round(v).toLocaleString();
   const signed = (v) => v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v).toLocaleString();
-  const signedBb = (v) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+  const signedBb = (v) => pntPage.signed(v);
+  const bb = (v) => v == null ? "–" : `${Number(v).toFixed(1)}bb`;
   // A row's money in the chosen unit. bb is per-hand: a hand with no big blind on
   // record can only be shown in chips, so it says so rather than inventing one.
   const money = (row, chipsKey, bbKey) =>
     state.unit === "bb" ? (row[bbKey] == null ? "–" : signedBb(row[bbKey])) : signed(row[chipsKey]);
 
   async function getJson(url) {
-    const r = await fetch(url);
+    const r = await fetch(url, { headers: { accept: "application/json" } });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
-      }
+      if (r.status === 404 && body.detail === "Not Found") throw new Error(pntPage.OLD_SERVER);
       throw new Error(body.detail || `${r.status} ${r.statusText}`);
     }
     return r.json();
@@ -266,7 +257,7 @@
   async function loadPlayers() {
     const rows = await getJson("/players");
     const sel = $("player");
-    for (const p of rows) {
+    for (const p of [...rows].sort((a, b) => pntPage.byName(a.alias, b.alias))) {
       const o = document.createElement("option");
       o.value = p.alias; o.textContent = p.alias;
       sel.appendChild(o);
@@ -288,6 +279,15 @@
     try {
       const data = await getJson("/pots?" + q);
       if (seq !== loadSeq) return;
+      // Nothing at all in the default window, e.g. the sample, whose games are
+      // old: open on all time rather than on four zeros.
+      if (!data.hands && !state.daysChosen && state.days !== "all") {
+        state.widened = state.days;
+        state.days = "all";
+        document.querySelectorAll("[data-days]").forEach(x => x.setAttribute("aria-pressed", x.dataset.days === "all"));
+        writeUrl();
+        return load();
+      }
       state.data = data;
       render();
     } catch (e) {
@@ -320,14 +320,16 @@
   function render(keep = false) {
     const d = state.data;
     const word = WINDOW_WORD[state.days];
-    $("subtitle").textContent = `over ${chips(d.min_pot)} ${word}` + (d.player ? ` · ${d.player}` : "");
+    $("subtitle").textContent = `${chips(d.min_pot)}+ chips ${word}` + (d.player ? ` · ${d.player}` : "")
+      + (state.widened && state.days === "all" ? ` · nothing ${WINDOW_WORD[state.widened]}, so all time` : "");
     // Pot volume: the chips that went into these pots, each pot once. The same
     // buy-ins go round many pots, so it is far more than anyone won or lost.
     const bbVol = d.chips_bb == null ? null : `${short(d.chips_bb)} bb`;
-    const avg = d.over ? `${chips(d.chips / d.over)} a pot` : null;
+    const avg = !d.over ? null : state.unit === "bb" && d.chips_bb != null ? `${bb(d.chips_bb / d.over)} a pot`
+      : `${chips(d.chips / d.over)} a pot`;
     $("tiles").replaceChildren(
       tile("big", chips(d.biggest), "biggest pot", "the largest single pot in the window"),
-      tile("over", d.over.toLocaleString(), `pots over ${chips(d.min_pot)}`, "how many cleared the bar"),
+      tile("over", d.over.toLocaleString(), `pots of ${chips(d.min_pot)}+ chips`, "how many reached the bar"),
       tile("vol", state.unit === "bb" && bbVol ? bbVol : chips(d.chips), "pot volume, not money won",
         "every chip that went into these pots, each pot once (a run twice or a chop is one pot)."
         + " The same buy-ins go round many pots, so this is far more than anyone won.",
@@ -345,7 +347,7 @@
       const p = document.createElement("p");
       p.className = "muted";
       p.textContent = d.hands
-        ? `no pot reached ${chips(d.min_pot)} ${word} — ${d.hands.toLocaleString()} hands looked at`
+        ? `no pot reached ${chips(d.min_pot)} ${word} · ${d.hands.toLocaleString()} hands looked at`
         : `no hands ${word}`;
       list.appendChild(p);
       return;
@@ -353,7 +355,7 @@
     if (d.over > d.pots.length) {
       const p = document.createElement("p");
       p.className = "muted";
-      p.textContent = `the ${d.pots.length} biggest of ${d.over.toLocaleString()} pots over the bar`;
+      p.textContent = `the ${d.pots.length} biggest of ${d.over.toLocaleString()} pots at the bar or over`;
       p.style.margin = "0 0 6px";
       list.appendChild(p);
     }
@@ -372,9 +374,9 @@
       b.appendChild(s); return s;
     };
 
-    const pot = span("pot", state.unit === "bb" && h.pot_bb != null ? `${h.pot_bb}bb` : chips(h.pot));
+    const pot = span("pot", state.unit === "bb" && h.pot_bb != null ? bb(h.pot_bb) : chips(h.pot));
     const other = document.createElement("small");
-    other.textContent = state.unit === "bb" ? chips(h.pot) : (h.pot_bb != null ? `${h.pot_bb}bb` : "");
+    other.textContent = state.unit === "bb" ? chips(h.pot) : (h.pot_bb != null ? bb(h.pot_bb) : "");
     pot.appendChild(other);
     span("when", when(h.ts), [h.game_id, `#${h.hand_number}`, h.ts].filter(Boolean).join(" · "));
 
@@ -402,7 +404,7 @@
         who.append(sep, `${h.loser} `, net(lost, "net", "net_bb"));
       }
     } else {
-      who.textContent = "—";
+      who.textContent = "–";
     }
     who.title = h.seats.map(s =>
       `${s.player} ${s.net > 0 ? "+" : ""}${s.net.toLocaleString()}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
@@ -493,6 +495,8 @@
   document.querySelectorAll("[data-days]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-days]").forEach(x => x.setAttribute("aria-pressed", x === b));
     state.days = b.dataset.days;
+    state.daysChosen = true;
+    state.widened = null;
     writeUrl(); load();
   }));
   document.querySelectorAll("[data-unit]").forEach(b => b.addEventListener("click", () => {

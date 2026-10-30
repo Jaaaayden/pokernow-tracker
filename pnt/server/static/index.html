@@ -130,7 +130,7 @@
     border: 1px solid var(--ring); border-radius: 10px; box-shadow: 0 10px 32px rgba(0,0,0,.28); }
   .pv-float .bar { display: flex; align-items: baseline; gap: 8px; padding: 7px 8px 7px 14px; border-bottom: 1px solid var(--ring); }
   .pv-float .bar b { font-weight: 600; }
-  .pv-float .sample { flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
+  .pv-float .pv-who { flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pv-float .shut { font: inherit; color: var(--ink-2); background: none; border: 1px solid transparent;
     border-radius: 5px; padding: 0 6px; cursor: pointer; }
@@ -203,11 +203,10 @@
 </head>
 <body>
 <main>
+  <nav class="pnt-nav" id="crumb" data-page="home" aria-label="pages"></nav>
   <div class="update hidden" id="update"></div>
   <h1>PokerNow Tracker</h1>
-  <p class="sub">A queryable database of every hand, keyed to stable player identity. The
-    stats are derived when you ask for them, never stored — so a definition can change
-    and the history still answers to it.</p>
+  <p class="sub">Every hand, by the player behind each name; every stat worked out when you ask.</p>
 
   <div class="banner hidden" id="sample-banner" role="status">
     <span><b>Sample data</b> — anonymized games, not yours. Live games still save to your database.</span>
@@ -235,7 +234,7 @@
     </div>
     <a class="card" href="/pots.html">
       <h2>Biggest pots &rarr;</h2>
-      <p>The pots that actually mattered this week &mdash; over 2,000 chips in the last 7 days, biggest first, with the replay a click away.</p>
+      <p>Pots of 2,000+ chips in the last 7 days, biggest first, with the replay a click away.</p>
     </a>
     <a class="card" href="/allin.html">
       <h2>All-in EV →</h2>
@@ -279,7 +278,7 @@
   <aside class="pv-float hidden" id="hud-pv" aria-labelledby="hud-pv-h">
     <div class="bar">
       <b id="hud-pv-h">HUD preview</b>
-      <span class="sample" id="hud-pv-who"></span>
+      <span class="pv-who" id="hud-pv-who"></span>
       <button type="button" class="shut" id="hud-pv-shut" title="close (Esc)" aria-label="close the preview">✕</button>
     </div>
     <div class="pv" id="hud-pv-body"></div>
@@ -355,15 +354,15 @@
     <p class="status" id="f-status" role="status"></p>
   </section>
 
-  <p class="path">port 52000, chosen to stay out of the way of anything else you run
-    locally — 8000 and 8080 are the contested ones. Change it with
-    <code>pnt service install --port N</code>, and set the same address in the
-    extension's popup.</p>
+  <p class="path">Port <span id="port">52000</span>. To change it: <code>pnt service install --port N</code>,
+    then the same address in the extension's popup.</p>
 </main>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
+  pntPage.nav();
+  $("port").textContent = location.port || (location.protocol === "https:" ? "443" : "80");
   const fact = (v, k, hue) => {
     const d = document.createElement("div");
     d.className = "fact " + hue;
@@ -579,7 +578,9 @@
   const PV_HANDS = { key: "hands", label: "hands", tip: "Hands they were dealt into. Every rate here is over some subset of these.", opp: null };
   // The side panel's own formatting and drift rule, copied: see sidepanel.js.
   const signed = (v, dp) => (v > 0 ? "+" : "") + v.toFixed(dp);
-  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 0) : String(v));
+  // One decimal on rates and bb/100, as every page prints them; hands a count.
+  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 1)
+    : k === "hands" ? pntPage.int(v) : typeof v === "number" ? v.toFixed(1) : String(v));
   const DRIFT_POINTS = 10, DRIFT_MIN_OPP = 10;
   // Wilson 95% range as fractions; mirrors queries.wilson (spot.js carries the same).
   function wilson(p, n, z = 1.96) {
@@ -663,10 +664,10 @@
     if (!pv.open) return;
     const cols = [PV_HANDS, ...keys.map((k) => hud.byKey.get(k))];
     const body = $("hud-pv-body");
-    $("hud-pv-who").textContent = pv.rows?.length ? "sample: " + pv.rows.map((r) => r.alias).join(", ")
+    $("hud-pv-who").textContent = pv.rows?.length ? "showing " + pv.rows.map((r) => r.alias).join(", ")
       : pv.rows || pv.error ? "" : "loading…";
     if (pv.error) {
-      body.replaceChildren(node("div", "empty", "could not load the sample: " + pv.error));
+      body.replaceChildren(node("div", "empty", "could not load the preview: " + pv.error));
     } else if (pv.rows && !pv.rows.length) {
       body.replaceChildren(node("div", "empty", "no hands yet: the cards fill in once there are some"));
     } else {
@@ -757,7 +758,7 @@
     const out = await r.json().catch(() => ({}));
     // No such route: the page is newer than the server still running.
     if (r.status === 404 && out.detail === "Not Found") {
-      throw new Error("the running server is older than this page: run `pnt service restart`");
+      throw new Error(pntPage.OLD_SERVER);
     }
     if (!r.ok) throw new Error(out.detail || `HTTP ${r.status}`);
     return out;
