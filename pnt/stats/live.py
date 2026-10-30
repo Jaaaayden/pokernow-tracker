@@ -183,7 +183,8 @@ def to_act(parsed: ParsedHand) -> str | None:
     """Who the action is on, or None when that cannot be said with confidence.
 
     None also stands for "nobody": the street is closed and the next card is due,
-    everyone but one has folded, or every live player is all in. Guessing wrong
+    everyone but one has folded, or every live player but at most one is all in
+    with nothing left to call. Guessing wrong
     would point the HUD at the wrong player's spot, so any doubt is None.
     """
     players = parsed.players
@@ -218,6 +219,12 @@ def to_act(parsed: ParsedHand) -> str | None:
             return (p.seats_from_button - 1) % slots
 
     ordered = sorted(live, key=rank)
+    committed = street_committed(parsed, street)
+    target = max(committed.get(p.pn_id, 0) for p in unfolded)
+    if len(live) == 1 and committed.get(live[0].pn_id, 0) >= target:
+        # Everyone else is all in and nothing is left to call: the board runs
+        # out with no decision for anyone.
+        return None
     voluntary = [a for a in parsed.actions if a.street == street and not a.is_forced]
     if not voluntary:
         return ordered[0].pn_id
@@ -225,8 +232,6 @@ def to_act(parsed: ParsedHand) -> str | None:
     if last is None or last.seats_from_button is None:
         return None
     last_rank = rank(last)
-    committed = street_committed(parsed, street)
-    target = max(committed.get(p.pn_id, 0) for p in unfolded)
     acted = {a.pn_id for a in voluntary}
     around = [p for p in ordered if rank(p) > last_rank] + [p for p in ordered if rank(p) < last_rank]
     for p in around:

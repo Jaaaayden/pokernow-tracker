@@ -13,7 +13,7 @@ from pnt.logfmt.parser import parse
 from pnt.stats import queries as q
 from pnt.stats.live import current_street, hand_row, live_hand, snapshot, to_act
 from pnt.stats.queries import load_hands
-from tests.conftest import HU, HU_GAME, MULTIWAY_GAME, STRADDLE, STRADDLE_GAME
+from tests.conftest import HU, HU_GAME, MULTIWAY, MULTIWAY_GAME, STRADDLE, STRADDLE_GAME, THREE
 
 CHRIS = "5NARaPRkSp"
 GP = "gpP9uUffpu"
@@ -66,6 +66,25 @@ def test_to_act_follows_hand_18_line_by_line():
     # River: gp bets -> Chris; Chris calls -> closed; the show and the end line.
     assert got[14:17] == [("river", GP), ("river", CHRIS), ("river", None)]
     assert got[-1][1] is None
+
+
+@pytest.mark.parametrize("path, game, number", [
+    (THREE, "pglSdQtyFGypDbrqD5IhXXlYz", 18),  # heads-up all in preflop, called
+    (MULTIWAY, MULTIWAY_GAME, 20),  # three in, one with chips left
+])
+def test_nobody_is_to_act_on_an_all_in_run_out(path, game, number):
+    """Once everyone but one is all in and the bet is matched, the board runs out
+    with no decision for anyone: the one stack left is not to act."""
+    entries, start, end = _hand_entries(path, game, number)
+    flop = next(i for i in range(start, end) if entries[i].entry.startswith("Flop"))
+    before = parse(entries[start:flop], game).hands[-1]
+    assert to_act(before) is None, "the call closed the preflop action"
+    for cut in range(flop + 1, end + 1):
+        hand = parse(entries[start:cut], game).hands[-1]
+        assert to_act(hand) is None, entries[cut - 1].entry
+    # Before the all-in was called, the caller had a decision.
+    jam = next(i for i in range(start, flop) if " all in" in entries[i].entry)
+    assert to_act(parse(entries[start:jam + 1], game).hands[-1]) is not None
 
 
 def test_to_act_is_none_when_a_live_player_has_no_position(parsed_all):
