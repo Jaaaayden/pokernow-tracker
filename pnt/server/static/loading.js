@@ -6,6 +6,9 @@
  * reads as working, not frozen; past SLOW_MS a box says what to try, in order.
  * A request that cannot reach the server at all says so at once. Each clears
  * itself when the requests do.
+ *
+ * It also holds what every page shares (window.pntPage, at the end): the one
+ * nav, the Sample banner, ?theme, and the number formats.
  */
 (() => {
   "use strict";
@@ -243,8 +246,10 @@
     int: (v) => (ok(v) ? Number(v).toLocaleString() : DASH),
     // A rate in percent, one decimal: 29.0%.
     pct: (v) => (ok(v) ? Number(v).toFixed(1) + "%" : DASH),
-    // bb/100 and other signed figures, one decimal: +38.4.
-    signed: (v, dp = 1) => (ok(v) ? (v > 0 ? "+" : "") + Number(v).toFixed(dp) : DASH),
+    // bb/100 and other signed figures, one decimal: +38.4, +7,407.5.
+    signed: (v, dp = 1) => (ok(v)
+      ? (v > 0 ? "+" : "") + Number(v).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
+      : DASH),
     // Names in the order a person reads them: player 2 before player 10.
     byName: (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }),
     // A page newer than the server answers 404 Not Found on a route it added.

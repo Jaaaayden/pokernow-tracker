@@ -276,8 +276,7 @@
   const unitKey = (k) => state.unit === "bb" ? `${k}_bb` : k;
   const money = (v) => {
     if (v == null) return "–";
-    const sign = v > 0 ? "+" : "";
-    return state.unit === "bb" ? sign + v.toFixed(1) : sign + Math.round(v).toLocaleString();
+    return state.unit === "bb" ? pntPage.signed(v) : pntPage.signed(Math.round(v), 0);
   };
   const value = (row, key) => {
     if (key === "hands" || key === "equity_avg") return row[key];
