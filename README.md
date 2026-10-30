@@ -82,13 +82,13 @@ The tracker turns a player's numbers into plain advice, with the count behind ev
 claim, judged against the rest of the table:
 
 ```
-henry  FISH  11697 hands
+alex  FISH  11697 hands
   FOLDS RIVER            53.4% of 1787  Folded to a river bet 53.4% of the time (954 of 1787; pool 38.8%). Bet the river.
   INELASTIC VS 3BET       9.6% of 375   Opened and folded to a 3-bet only 9.6% of the time (36 of 375; pool 21.7%). 3-bet for value only, and bigger.
   LIMP-RERAISE = STRONG  68.4% of 19    Limp-reraised with a top-15% hand 13 of 19 shown times (68.4%). Fold to their limp-reraise without a big hand.
   DONKS                  29.8% of 2259  Led into the aggressor on 29.8% of flops (674 of 2259; pool 20.9%). Expect leads; raise them.
   7-2 ALL-IN-PRE ×2       100% of 2     Jammed preflop with 7-2 2 times (shown), raised it 8 times in all.
-  (4BETS LIGHT)           9.2% of 76    one session only: gone without the 158-hand game pglzFVbBserr08eucOqQP7K7d (52 sessions in all)
+  (4BETS LIGHT)           9.2% of 76    one session only: gone without the 158-hand game pgl0SRigqsUoGxAlO8pw_Im_N (52 sessions in all)
 ```
 
 Each player gets an archetype (FISH, MANIAC, STATION, LAG, NIT, or what their habits
@@ -115,9 +115,9 @@ bluffs, missed value, failed bluffs, suckouts and coolers. Each row comes with t
 context needed to judge it:
 
 ```
-x #267  Missed bluff     pot   20bb  20bb pot checked down on the river: K-high vs K-high (henry)
+x #267  Missed bluff     pot   20bb  20bb pot checked down on the river: K-high vs K-high (alex)
     | he checks back every king here -- bet 1/3 and he folds everything worse
-  #85   Postflop cooler  pot  166bb  set into set (harry) on the flop, all in on the flop, 4% to win, lost 81bb
+  #85   Postflop cooler  pot  166bb  set into set (drew) on the flop, all in on the flop, 4% to win, lost 81bb
 ```
 
 ![Hand review side by side: flagged hands with notes on the left, the replay on the right](docs/images/review.png)
@@ -135,12 +135,12 @@ is skipped. `pnt review <you>` · [guide](docs/guide.md#hand-review)
 
 ### Range charts for any spot
 
-Ask "what does chris raise the river with when he didn't raise preflop?" and get a
+Ask "what does blake raise the river with when he didn't raise preflop?" and get a
 13×13 chart or a made-hand breakdown built from his showdowns, with coverage stated
 up front, so you know how much of the range is missing:
 
 ```bash
-pnt range chris --filter "raised_bet_river,!pfa" --by made
+pnt range blake --filter "raised_bet_river,!pfa" --by made
 ```
 
 ```
@@ -157,7 +157,7 @@ two_pair                    2   11.1    2     53.0
 top_pair                    1    5.6    1      5.0
 ```
 
-![What chris had made when he raised the river: almost all two pair or better](docs/images/range-made.png)
+![What blake had made when he raised the river: almost all two pair or better](docs/images/range-made.png)
 
 17 of the 18 he showed were two pair or better, and not one was a draw or air: fold
 one pair to it. The 25 that were never shown are the raises that got a fold, so
@@ -176,16 +176,16 @@ The **Tree** view is every spot a player reached, seat first, with what they cho
 there. Click a spot, or one colour of its bar, and its exact filter goes into the
 Spot box: `BTN → facing open → call` is one click, not a filter to write.
 
-![Spot tree: henry on the button, each decision with its fold, call and raise mix](docs/images/tree.png)
+![Spot tree: alex on the button, each decision with its fold, call and raise mix](docs/images/tree.png)
 ![Legend: fold, check, call or limp, bet or raise](docs/images/tree-legend.png)
 
 **Group by** splits any spot into rows (position, pot type, flop holding, and a
 second split under it), each with hands, shown, net bb and bb/100, and on the blinds **vs folding
-all**: bb/100 against folding every blind. Henry's big blind is −107 bb/100 raw, and vs fold
+all**: bb/100 against folding every blind. Alex's big blind is −107 bb/100 raw, and vs fold
 says whether that's a leak or just the blind. **Pool** swaps in everyone's hands, and
 clicking a row narrows the spot to it.
 
-![Group by position for henry, with bb/100 and its range per seat](docs/images/groupby.png)
+![Group by position for alex, with bb/100 and its range per seat](docs/images/groupby.png)
 
 **Made hands › Streets** shows how flop holdings turned into river holdings, and for
 your own hands, where each flop holding ended up. [guide](docs/guide.md#the-chart-page)
@@ -193,11 +193,11 @@ your own hands, where each flop holding ended up. [guide](docs/guide.md#the-char
 ### Estimated ranges
 
 Showdowns miss the hands that folded. **Estimate** fills that gap from frequencies:
-henry opens 25.7% of the time from the button (`position=BTN,unopened=raise`), so the
+alex opens 25.7% of the time from the button (`position=BTN,unopened=raise`), so the
 chart fades everything outside the top 25.7%, adjusted by what he has actually shown
 (here, more suited gappers and connectors).
 
-![Henry's button opens, with the classes outside the estimated range faded](docs/images/estimate-grid.png)
+![Alex's button opens, with the classes outside the estimated range faded](docs/images/estimate-grid.png)
 
 **Board** puts that range on a flop and cuts it at his next action's rate. On
 `Ah7c2d` he c-bets 42.5%: betting only his best hands would be 100% value, but what
@@ -228,11 +228,11 @@ the money went in:
 
 ![All-in EV per player: actual, adjusted and the luck by street](docs/images/allin-table.png)
 
-Luis is +900bb on his all-ins, but by equity he'd be down 230bb: the deck gave him
-1,130bb. Chris gets it in ahead (56% equity on average) and is 645bb short of what
+Casey is +900bb on his all-ins, but by equity he'd be down 230bb: the deck gave him
+1,130bb. Blake gets it in ahead (56% equity on average) and is 645bb short of what
 that was worth. Click a player to draw their actual and adjusted lines over time:
 
-![Luis's actual and adjusted all-in results over time, with each hand below](docs/images/allin-luis.png)
+![Casey's actual and adjusted all-in results over time, with each hand below](docs/images/allin-luis.png)
 
 `pnt allin` · [guide](docs/guide.md#all-in-ev)
 
@@ -243,9 +243,9 @@ the table, sized against each other so the outliers stand out, with one click to
 replay:
 
 ```
- 12,872   322bb  2026-10-16T02:57 jayden +7,556 vs luis -5,316      Qc 5s 8c 2c Jc
- 10,806   270bb  2026-10-16T03:43 luis +5,473 vs henry -5,333       Kc 3s 3d 6s Ts
-  7,920   198bb  2026-10-16T03:20 luis +4,280 vs jayden -3,640      4h Jd Qd 4s 3h
+ 12,872   322bb  2026-10-16T02:57 sam +7,556 vs casey -5,316      Qc 5s 8c 2c Jc
+ 10,806   270bb  2026-10-16T03:43 casey +5,473 vs alex -5,333       Kc 3s 3d 6s Ts
+  7,920   198bb  2026-10-16T03:20 casey +4,280 vs sam -3,640      4h Jd Qd 4s 3h
 ```
 
 ![Biggest pots of the last 7 days](docs/images/pots.png)
@@ -271,7 +271,7 @@ constantly. The players page shows every name each ID has used, so you can merge
 the ones you recognise:
 
 ```
-harry    <-  bread, Woolball (har), wool, wool ball, fish
+drew    <-  bagel, Moonpie (dr), moon, moon pie, guppy
 ```
 
 Before you confirm a merge, the page shows exactly what it will move, and every
@@ -388,26 +388,26 @@ pnt sync                                     # match the log folder: new logs in
 pnt backfill -f links.txt                    # download old games by link into the log folder
 pnt stats                                    # every player, most hands first
 pnt stats --filter "tag=cooler"              # any spot, including hands you tagged
-pnt positions genericpoker                   # one player, split by position
-pnt range chris --filter "raised_bet_river"  # what they had in a spot
-pnt sizing henry --street flop --kind cbet   # what each bet size is made of
+pnt positions riley                          # one player, split by position
+pnt range blake --filter "raised_bet_river"  # what they had in a spot
+pnt sizing alex --street flop --kind cbet    # what each bet size is made of
 pnt tags                                     # archetype and exploit tags
-pnt tags henry --filter "players>=4"         # judged on the hands in a spot
-pnt review jayden                            # hands to review
+pnt tags alex --filter "players>=4"          # judged on the hands in a spot
+pnt review sam                               # hands to review
 pnt note <game_id> 161 "turn barrel was bad" # write down what went wrong in one hand
-pnt player-note henry "jams light"           # and what you know about a player
+pnt player-note alex "jams light"            # and what you know about a player
 pnt allin                                    # all-in EV: actual vs adjusted
-pnt timing henry                             # what their snap, normal and tank decisions held
+pnt timing alex                              # what their snap, normal and tank decisions held
 pnt pots                                     # biggest pots in the last 7 days
-pnt winnings henry                           # red line, blue line, and each session
-pnt h2h henry                                # money between henry and each opponent
-pnt shows henry                              # what they showed without being asked
+pnt winnings alex                            # red line, blue line, and each session
+pnt h2h alex                                 # money between alex and each opponent
+pnt shows alex                               # what they showed without being asked
 pnt bounties                                 # the 7-2 leaderboard
 pnt leaks                                    # your own leaks (experimental)
 pnt hero Sam                                 # who "you" are, if the guess is wrong
 pnt alias list                               # the player names you can query
-pnt alias merge onlybluffs genericpoker      # one person, two devices
-pnt redact --out pnt/logs                    # copies you can publish
+pnt alias merge riley2 riley                 # one person, two devices
+pnt redact --out shared                      # copies without your unshown cards
 pnt where                                    # which database, log folder and extension, and why
 pnt update                                   # the latest code; the extension follows on its own
 ```

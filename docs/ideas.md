@@ -210,7 +210,7 @@ In a short-handed home game, most hands are blind-vs-button.
 ## 5. Head-to-head money flow
 
 **At the table:** "who am I actually losing to" and "who pays whom" in a nine-person
-pool. Stats against one villain already exist (`vs=henry` on any page). What is
+pool. Stats against one villain already exist (`vs=alex` on any page). What is
 missing is the money between two players, and the matrix.
 
 **Data:**

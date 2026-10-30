@@ -65,8 +65,9 @@ pinned in [`pnt/stats/SPEC.md`](../pnt/stats/SPEC.md). That file is the artifact
   The front page's *Files* panel writes it; the server, the background task and the
   CLI's defaults all read it, so a choice made once reaches every part.
 - **The alias table** is the one thing a re-import cannot rebuild, which is why
-  it is exported to [`pnt/logs/aliases.csv`](../pnt/logs/aliases.csv) and kept in
-  the repo.
+  `pnt alias export` writes it to `~/.pnt/aliases.csv` (beside the config) for
+  `pnt alias import` to restore. [`pnt/logs/aliases.csv`](../pnt/logs/aliases.csv)
+  is the anonymized sample's own table, and export refuses to write there.
 
 ### Identity merges and their undo
 
@@ -75,8 +76,8 @@ merge deletes the source player row: that list is the only record of what was
 behind it. `POST /aliases/split` takes it back. A merge followed by its undo
 restores every number exactly, which `test_identity_api.py` asserts.
 
-Merging cannot be automated. The names one ID has shown (`harry <- bread, Woolball
-(har), wool, wool ball, fish`) are not related by any string comparison, so the
+Merging cannot be automated. The names one ID has shown (`drew <- bagel, Moonpie
+(dr), moon, moon pie, guppy`) are not related by any string comparison, so the
 players page shows the evidence and leaves the decision to a person.
 
 ## Parser: what to know before you touch it
@@ -282,7 +283,7 @@ refuses to point at the folder they live in.
 
 ```bash
 pytest -q
-node --test pnt/extension/normalize.test.mjs pnt/extension/pager.test.mjs pnt/extension/spot.test.mjs
+node --test pnt/extension/*.test.mjs
 ```
 
 The Python suite is organized around invariants rather than examples:
@@ -318,5 +319,6 @@ The Python suite is organized around invariants rather than examples:
   refuses it *without* consulting `busy_timeout`. Every write therefore goes through
   `writing()`, which takes the lock up front with `BEGIN IMMEDIATE`.
 
-The three node test files cover the extension: response normalization, backwards
-paging, and the follow rules in `spot.js`.
+The node test files cover the extension: response normalization, backwards
+paging, the follow rules in `spot.js` and the table watcher. They stay out of the
+wheel.
