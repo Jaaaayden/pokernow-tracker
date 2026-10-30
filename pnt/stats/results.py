@@ -64,10 +64,9 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
     t = tally(facts)
     r = rates(t) if t.hands else {}
     c = t.counts
-    # VPIP is read only where the preflop was: not on a bomb pot (no preflop
-    # decision) nor on PLO or Double Board (money only, never analysed). Their
-    # `vpip` is False by default, not a 0% anyone played.
-    read = sum(1 for f in facts if f.analysed and not f.bomb_pot)
+    # VPIP is the stat rows' own: over the hands with a preflop decision
+    # (`vpip_opp`), so a walk, a bomb pot (no preflop decision) and PLO or Double
+    # Board (money only, never analysed) are out of it. See SPEC.md, "Preflop".
     row = {
         "key": key,
         "label": label,
@@ -81,12 +80,12 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
         "bb_per_100": r.get("bb_per_100"),
         # Its 95% half-width (SPEC.md, "Confidence intervals"); the chart's tile hover.
         "bb_per_100_ci": r.get("bb_per_100_ci"),
-        # How often they put chips in, of the hands whose preflop was read
-        # (`vpip_hands`; None when there are none), and how often they saw a flop,
-        # of every hand. What separates "lost playing it" from "lost the blind
-        # folding it".
-        "vpip_pct": _pct(c["vpip"], read),
-        "vpip_hands": read,
+        # How often they put chips in, of the hands where they had a preflop
+        # decision (`vpip_hands`; None when there are none), and how often they
+        # saw a flop, of every hand. What separates "lost playing it" from "lost
+        # the blind folding it".
+        "vpip_pct": _pct(c["vpip"], c["vpip_opp"]),
+        "vpip_hands": c["vpip_opp"],
         "saw_flop_pct": _pct(c["wtsd_opp"], t.hands),
         "wtsd": r.get("wtsd"),
         "wsd": r.get("wsd"),

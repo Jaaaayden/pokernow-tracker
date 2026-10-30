@@ -2555,12 +2555,14 @@ bb/100 is made of everywhere: each complete hand's net over its own big blind.
 complete hands with a known big blind. **`hands`** counts every hand. An
 incomplete hand is therefore in a row's `hands` and in none of its bb figures --
 the rule in "Money", unchanged. The other columns: `saw_flop_pct` is a share of
-the row's hands, and `vpip_pct` a share of its **`vpip_hands`**, the hands whose
-preflop was read -- every hand but a bomb pot (no preflop decision), PLO and
-Double Board (money only, never analysed) -- so "lost it playing" can be told
-from "lost the blind folding"; `vpip_pct` is None on a row with no such hand (the
-bomb pot, double board and PLO rows) rather than a 0% nobody played. `wtsd` and
-`wsd` are the stat rows' own.
+the row's hands, and `vpip_pct` is the stat rows' VPIP ("Preflop"): a share of
+the row's **`vpip_hands`**, the hands with a preflop decision (`vpip_opp`), so
+the same label is the same number on Results, the stats page and the HUD. That
+leaves out a walk, a bomb pot (no preflop decision), PLO and Double Board
+(money only, never analysed); `vpip_pct` is None on a row with no decision (the
+walk, bomb pot, double board and PLO rows) rather than a 0% nobody played. It is
+what tells "lost it playing" from "lost the blind folding". `wtsd` and `wsd` are
+the stat rows' own.
 
 **The worst row.** In each table, the lowest bb/100 among the rows standing on
 at least **100 hands with a known result** (`WORST_MIN_HANDS`) is marked
