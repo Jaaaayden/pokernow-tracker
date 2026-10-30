@@ -681,7 +681,10 @@ def _date_term(term: str) -> Predicate | None:
         m = _DAYS.fullmatch(value)
         if m is None or int(m.group(1)) < 1:
             raise ValueError(f"bad span {value!r} for last: use a number of days, e.g. last:7d")
-        cut = _day_start(_today() - timedelta(days=int(m.group(1)) - 1))
+        try:
+            cut = _day_start(_today() - timedelta(days=int(m.group(1)) - 1))
+        except OverflowError:  # back past the year 1
+            raise ValueError(f"span {value!r} for last: reaches back past any date") from None
     else:
         try:
             if not _DATE.fullmatch(value):

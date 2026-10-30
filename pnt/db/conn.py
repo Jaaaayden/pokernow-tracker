@@ -12,22 +12,30 @@ DEFAULT_DB = Path("pokernow.sqlite")
 
 
 def connect(path: str | Path = DEFAULT_DB, *, init: bool = True) -> sqlite3.Connection:
-    """Open the tracker database, creating the schema if needed."""
+    """Open the tracker database, creating the schema if needed.
+
+    A file that will not open as one (not a database, corrupt) raises
+    sqlite3.DatabaseError with the connection closed, so the file can be deleted:
+    Windows refuses while any handle is left open on it."""
     conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    # WAL lets the HUD read while an import writes -- the two consumers of this
-    # file are meant to run at the same time.
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    # Stated rather than inherited from sqlite3.connect's default, because it is
-    # load-bearing: `writing()` relies on a blocked writer waiting here instead of
-    # failing. A rebuild holds the lock for a fraction of a second, so this is slack.
-    conn.execute("PRAGMA busy_timeout = 15000")
-    if init:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-        _migrate(conn)
-        conn.commit()
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        # WAL lets the HUD read while an import writes -- the two consumers of this
+        # file are meant to run at the same time.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        # Stated rather than inherited from sqlite3.connect's default, because it is
+        # load-bearing: `writing()` relies on a blocked writer waiting here instead of
+        # failing. A rebuild holds the lock for a fraction of a second, so this is slack.
+        conn.execute("PRAGMA busy_timeout = 15000")
+        if init:
+            conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+            _migrate(conn)
+            conn.commit()
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 

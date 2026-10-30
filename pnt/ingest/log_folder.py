@@ -11,13 +11,12 @@ else ~/Downloads/pokernow-logs. Read once, at import -- so the CLI also takes
 from __future__ import annotations
 
 import os
-import re
 import sqlite3
 import threading
 from pathlib import Path
 
 from .. import local_config
-from .csv_source import RawEntry, has_hands, read_csv
+from .csv_source import GAME_ID, RawEntry, has_hands, read_csv
 
 DEFAULT_LOG_DIR = Path.home() / "Downloads" / "pokernow-logs"
 #: Set for good outside this program, so nothing here may override it.
@@ -36,13 +35,6 @@ _locks_guard = threading.Lock()
 def _lock_for(path: Path) -> threading.Lock:
     with _locks_guard:
         return _locks.setdefault(path.resolve(), threading.Lock())
-
-
-#: Every PokerNow game ID fits this, and it is the only shape allowed near a file
-#: name: an ID with `..` or a slash in it would put the log outside the folder. The
-#: extension reads IDs from the URL with the same pattern; the server checks it on
-#: the way in, and this is the last line of defence.
-GAME_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def log_path(folder: Path, game_id: str) -> Path:

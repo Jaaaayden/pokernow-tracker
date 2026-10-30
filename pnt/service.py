@@ -118,6 +118,7 @@ def run_server(db: Path, host: str, port: int, **uvicorn_options) -> None:
     import uvicorn
 
     sock = bind(host, port)
+    uvicorn_options.setdefault("log_config", _log_config())
     # What uvicorn.run does, but serving on our socket instead of binding its own.
     config = uvicorn.Config("pnt.server.app:app", host=host, port=port, **uvicorn_options)
     server = uvicorn.Server(config)
@@ -206,11 +207,23 @@ def _open_log(path: Path | None = None) -> TextIO:
     return open(path, "a", encoding="utf-8", buffering=1)  # the caller closes it
 
 
-def _file_log_config() -> dict:
-    """uvicorn's own logging, timestamped and without colour codes: it goes to a file."""
+def _log_config() -> dict:
+    """uvicorn's own logging, with the tracker's beside it.
+
+    Without the `pnt` logger, every `pnt.*` line -- a log imported, the database
+    switched, the sample shown -- went nowhere, and a warning came out bare, through
+    Python's last-resort handler, with no time on it. It shares uvicorn's handler, so
+    its lines land where uvicorn's do and look the same."""
     from uvicorn.config import LOGGING_CONFIG
 
     config = copy.deepcopy(LOGGING_CONFIG)
+    config["loggers"]["pnt"] = {"handlers": ["default"], "level": "INFO", "propagate": False}
+    return config
+
+
+def _file_log_config() -> dict:
+    """`_log_config`, timestamped and without colour codes: it goes to a file."""
+    config = _log_config()
     for formatter in config["formatters"].values():
         formatter["fmt"] = "%(asctime)s " + formatter["fmt"]
         formatter["use_colors"] = False

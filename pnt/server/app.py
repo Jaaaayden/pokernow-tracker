@@ -318,7 +318,11 @@ async def _lifespan(_app: FastAPI):
     stop = threading.Event()
     worker = None
     if local_config.get("dataset") == "sample":  # switched on before the last stop
-        write_dataset(DatasetRequest(which="sample"))
+        try:
+            write_dataset(DatasetRequest(which="sample"))
+        except Exception:  # never worth a server that cannot start: the HUD needs it
+            log.exception("could not show the sample again; the pages show your own data")
+            _leave_sample()
     threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
@@ -405,9 +409,14 @@ async def _writes_from_here_only(request: Request, call_next):
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
-#: A PokerNow game ID, as `log_folder.GAME_ID`: the one shape allowed near a file name.
+#: A PokerNow game ID, as `csv_source.GAME_ID`: the one shape allowed near a file name.
 GAME_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 GameId = Annotated[str, FastApiPath(pattern=GAME_ID_PATTERN)]
+#: The largest integer SQLite stores. A bigger one in a path would reach the
+#: database as an OverflowError, a 500; bounded here it is a 422.
+SQLITE_MAX_INT = 2**63 - 1
+#: A row's number in a path: a hand's id or number, a saved spot's id.
+RowNumber = Annotated[int, FastApiPath(ge=0, le=SQLITE_MAX_INT)]
 
 
 def db():
@@ -434,7 +443,7 @@ def _db_for(capture: bool):
 class Entry(BaseModel):
     entry: str
     at: str
-    order: int
+    order: int = Field(ge=0, le=SQLITE_MAX_INT)
 
 
 class IngestRequest(BaseModel):
@@ -706,7 +715,11 @@ def ingest(req: IngestRequest) -> dict:
 
 @app.post("/rebuild/{game_id}")
 def rebuild(game_id: GameId) -> dict:
+    """Re-derive a stored game. 404 for one with no lines stored: there is nothing
+    to derive, and a games row written for it would be a game of nothing."""
     conn = capture_db()
+    if not conn.execute("SELECT 1 FROM raw_entries WHERE game_id = ? LIMIT 1", (game_id,)).fetchone():
+        raise HTTPException(status_code=404, detail=f"no lines stored for game {game_id!r}")
     out = rebuild_game(conn, game_id)
     _save_log(conn, game_id)
     return out
@@ -733,6 +746,8 @@ def _save_log(conn: sqlite3.Connection, game_id: str) -> None:
             sync.record_file(conn, path, game_id)
     except (OSError, ValueError, csv.Error, sqlite3.Error) as exc:  # locked, unwritable, malformed
         log.warning("could not save the log for %s to %s: %s", game_id, log_folder.LOG_DIR, exc)
+    except Exception:  # anything else is a bug, but the lines are stored: still not a 500
+        log.exception("could not save the log for %s to %s", game_id, log_folder.LOG_DIR)
 
 
 @app.get("/stats", response_model=None)
@@ -760,6 +775,8 @@ def stats(
     if "text/html" in request.headers.get("accept", ""):
         return _page("stats.html")
     conn = db()
+    if split and not all(t.strip() for t in split):
+        raise HTTPException(status_code=400, detail="an empty split term: give each split a filter, e.g. 'position=SB'")
     if split:
         from pnt.stats.queries import split_report
 
@@ -861,8 +878,12 @@ def pots(
             window = float(days)
         except ValueError:
             window = 0.0
-        if not window > 0:
-            raise HTTPException(status_code=422, detail=f"days must be a number over 0 or 'all', not {days!r}")
+        # A century at most: further back than that is before any date a window can
+        # count to (`inf`, `1e10`), and `?days=all` already means all of history.
+        if not 0 < window <= 36500:
+            raise HTTPException(
+                status_code=422, detail=f"days must be a number over 0 and up to 36500, or 'all', not {days!r}"
+            )
     try:
         return big_pots(
             db(),
@@ -1199,7 +1220,7 @@ def _tag_pool(conn: sqlite3.Connection, filter: str | None, game: str | None):
 
 
 @app.get("/hands/{hand_id}")
-def hand(hand_id: int) -> dict:
+def hand(hand_id: RowNumber) -> dict:
     """Full replay of one hand -- for spot-checking a stat you do not believe."""
     conn = db()
     h = conn.execute(
@@ -1269,7 +1290,7 @@ class ReviewedRequest(BaseModel):
 
 
 @app.post("/hands/{hand_id}/reviewed")
-def set_reviewed(hand_id: int, req: Annotated[ReviewedRequest, Body()]) -> dict:
+def set_reviewed(hand_id: RowNumber, req: Annotated[ReviewedRequest, Body()]) -> dict:
     """Mark one hand as reviewed, or clear the mark.
 
     Stored under the hand's (game_id, hand_number) -- see `_hand_key` -- so the
@@ -1303,7 +1324,7 @@ class FlagRequest(BaseModel):
 
 @app.post("/games/{game_id}/hands/{hand_number}/flag")
 def write_flag(
-    game_id: GameId, hand_number: int, req: Annotated[FlagRequest, Body()], capture: CaptureOpt = False,
+    game_id: GameId, hand_number: RowNumber, req: Annotated[FlagRequest, Body()], capture: CaptureOpt = False,
 ) -> dict:
     """Flag one hand for manual review, or clear the flag.
 
@@ -1333,7 +1354,7 @@ class NoteRequest(BaseModel):
 
 
 @app.post("/hands/{hand_id}/note")
-def write_note(hand_id: int, req: Annotated[NoteRequest, Body()]) -> dict:
+def write_note(hand_id: RowNumber, req: Annotated[NoteRequest, Body()]) -> dict:
     """Write down what went wrong in one hand, or clear the note.
 
     Keyed like the mark, and addressed by `hand_id` for the same reason. Setting a
@@ -1863,11 +1884,7 @@ def _build_sample(path: Path) -> None:
         _sample_error = f"could not build the sample: {exc}"
     else:
         for old in samplemod.stale():
-            for p in (old, old.with_name(old.name + "-wal"), old.with_name(old.name + "-shm")):
-                try:
-                    p.unlink(missing_ok=True)
-                except OSError:
-                    pass  # still open somewhere: the next build tidies it
+            _unlink_sample_db(old)  # one still open somewhere is left: the next build tidies it
         with _sample_lock:
             if _sample_wanted:
                 _enter_sample(path)
@@ -1875,14 +1892,31 @@ def _build_sample(path: Path) -> None:
         _sample_building = None
 
 
+def _unlink_sample_db(path: Path) -> None:
+    """Delete a sample database with its WAL files, as far as Windows allows."""
+    for p in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass  # still open somewhere
+
+
 def _sample_current(path: Path) -> bool:
+    """Whether the sample's database at `path` is built for the bundled files as
+    they are now. One that will not open (cut short by a crash, a bad disk) is
+    deleted, so the switch builds it again instead of failing on it at every start."""
     if not path.is_file():
         return False
-    conn = connect(path)
     try:
-        return samplemod.is_current(conn)
-    finally:
-        conn.close()
+        conn = connect(path)
+        try:
+            return samplemod.is_current(conn)
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        log.warning("the sample's database %s will not open (%s); building it again", path, exc)
+        _unlink_sample_db(path)  # a build into it would only fail the same way
+    return False
 
 
 @app.get("/settings/dataset")
@@ -2056,7 +2090,7 @@ def split(req: Annotated[SplitRequest, Body()]) -> dict:
         n = split_identities(db(), req.pn_ids, req.alias)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"moved": n, "alias": req.alias, "pn_ids": req.pn_ids}
+    return {"moved": n, "alias": req.alias.strip(), "pn_ids": req.pn_ids}
 
 
 @app.post("/aliases/rename")
@@ -2645,7 +2679,7 @@ class SpotPatch(BaseModel):
     filter: str | None = None
     pinned: bool | None = None
     #: Its place in `GET /spots`, from 0. Pinned spots still list first.
-    ord: int | None = Field(None, ge=0)
+    ord: int | None = Field(None, ge=0, le=SQLITE_MAX_INT)
 
 
 def _spot_error(exc: Exception) -> HTTPException:
@@ -2676,7 +2710,7 @@ def save_spot(req: Annotated[SpotRequest, Body()]) -> dict:
 
 
 @app.patch("/spots/{spot_id}")
-def edit_spot(spot_id: int, req: Annotated[SpotPatch, Body()]) -> dict:
+def edit_spot(spot_id: RowNumber, req: Annotated[SpotPatch, Body()]) -> dict:
     """Rename, re-filter, pin or move one spot; a field left out is left alone.
     404 on an unknown id, 400 as `POST /spots`."""
     from pnt.db.userdata import list_spots, reorder_spots, update_spot
@@ -2696,7 +2730,7 @@ def edit_spot(spot_id: int, req: Annotated[SpotPatch, Body()]) -> dict:
 
 
 @app.delete("/spots/{spot_id}")
-def remove_spot(spot_id: int) -> dict:
+def remove_spot(spot_id: RowNumber) -> dict:
     """Forget one saved spot. 404 when there is none with that id."""
     from pnt.db.userdata import delete_spot
 
@@ -2748,13 +2782,13 @@ def tag_list() -> list[dict]:
 
 
 @app.get("/games/{game_id}/hands/{hand_number}/tags")
-def hand_tags(game_id: GameId, hand_number: int) -> dict:
+def hand_tags(game_id: GameId, hand_number: RowNumber) -> dict:
     """One hand's tags, by the log's own name for it, as the flag is addressed."""
     return _hand_tags(db(), game_id, hand_number)
 
 
 @app.post("/games/{game_id}/hands/{hand_number}/tags")
-def add_hand_tag(game_id: GameId, hand_number: int, req: Annotated[TagRequest, Body()]) -> dict:
+def add_hand_tag(game_id: GameId, hand_number: RowNumber, req: Annotated[TagRequest, Body()]) -> dict:
     """Tag one hand; tagging it again is a no-op. Returns the hand's tags. 400 on
     a tag that cannot be one, 404 on a hand the log does not have."""
     from pnt.db.userdata import add_tag
@@ -2769,7 +2803,7 @@ def add_hand_tag(game_id: GameId, hand_number: int, req: Annotated[TagRequest, B
 
 
 @app.delete("/games/{game_id}/hands/{hand_number}/tags/{tag}")
-def remove_hand_tag(game_id: GameId, hand_number: int, tag: str) -> dict:
+def remove_hand_tag(game_id: GameId, hand_number: RowNumber, tag: str) -> dict:
     """Take one tag off a hand; one it did not carry is a no-op. Returns the
     hand's tags."""
     from pnt.db.userdata import remove_tag

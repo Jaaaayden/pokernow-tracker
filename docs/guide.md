@@ -67,6 +67,10 @@ The rules that keep this safe:
   before the first deal. Live capture and `pnt backfill` no longer write them, and
   sync and `pnt import` skip them. `pnt sync --remove-empty` deletes the ones already
   in the folder, along with any game they put in the database.
+- A second download of the same export, `poker_now_log_<id> (1).csv`, is the same
+  game, so its hands are not counted twice.
+- A row that is cut off or malformed is skipped and noted in the server log. The
+  rest of the file is still imported, and so are the files after it.
 
 ### Backfill: old games by link
 
