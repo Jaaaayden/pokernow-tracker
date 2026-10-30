@@ -189,6 +189,80 @@ def test_a_broken_file_is_reported_once(conn, folder):
     assert sync.sync_folder(conn, folder, skip).failed == {}
 
 
+def test_a_second_download_of_an_export_is_the_same_game(conn, folder):
+    """A browser saves it as `... (1).csv`; read as game `X (1)`, every hand counted twice."""
+    shutil.copy(HU, folder / HU.name.replace(".csv", " (1).csv"))
+    shutil.copy(HU, folder / HU.name.replace(".csv", "(2).csv"))  # Firefox's spelling
+
+    out = sync.sync_folder(conn, folder)
+    assert out.failed == {}
+    assert {s["game_id"] for s in out.imported} == {HU_GAME, MULTIWAY_GAME}
+    assert conn.execute("SELECT COUNT(DISTINCT game_id) FROM hands").fetchone()[0] == 2
+    assert _count(conn, "hands", HU_GAME) == 188
+
+    # Each copy is on record, so deleting the original leaves the game to the copies.
+    (folder / HU.name).unlink()
+    assert sync.sync_folder(conn, folder).removed == {}
+    assert _count(conn, "hands", HU_GAME) == 188
+
+
+def test_a_log_name_without_a_game_id_is_reported_not_imported(conn, folder):
+    bad = folder / "poker_now_log_not an id!.csv"
+    shutil.copy(HU, bad)
+    out = sync.sync_folder(conn, folder)
+    assert "game ID" in out.failed[str(bad)]
+    assert {s["game_id"] for s in out.imported} == {HU_GAME, MULTIWAY_GAME}
+
+
+def test_a_cut_off_file_does_not_hold_up_the_rest_of_the_folder(conn, folder):
+    """A short last row once raised TypeError out of every pass, for good."""
+    first = folder / "poker_now_log_aaaBroken.csv"  # sorts ahead of the good logs
+    text = HU.read_text(encoding="utf-8")
+    first.write_text(text[: len(text) * 2 // 3], encoding="utf-8")
+    skip: dict = {}
+
+    out = sync.sync_folder(conn, folder, skip)
+    assert out.failed == {}
+    assert {s["game_id"] for s in out.imported} == {"aaaBroken", HU_GAME, MULTIWAY_GAME}
+    # What was whole of the cut-off copy is in, and nothing out of place.
+    rows = read_csv(first)
+    stored = [r[0] for r in conn.execute("SELECT ord FROM raw_entries WHERE game_id = 'aaaBroken' ORDER BY ord")]
+    assert stored == [r.ord for r in rows]
+    assert set(stored) <= {r.ord for r in read_csv(HU)}
+
+
+def test_a_file_the_import_trips_on_does_not_hold_up_the_rest(conn, folder, monkeypatch):
+    real = sync.import_file
+
+    def flaky(conn, path, *a, **k):
+        if path.name == HU.name:
+            raise KeyError("a parser bug")
+        return real(conn, path, *a, **k)
+
+    monkeypatch.setattr(sync, "import_file", flaky)
+    out = sync.sync_folder(conn, folder, {})
+    assert str(folder / HU.name) in out.failed
+    assert [s["game_id"] for s in out.imported] == [MULTIWAY_GAME]
+
+
+def test_the_stamp_recorded_is_the_one_read(conn, folder, monkeypatch):
+    """A write landing while the file is imported must still read as a change."""
+    real = sync.rebuild_game
+
+    def rebuild_then_append(conn, gid):
+        out = real(conn, gid)
+        if gid == HU_GAME:
+            with (folder / HU.name).open("a", encoding="utf-8") as fh:
+                fh.write("\n")  # the file moves on under the import
+        return out
+
+    monkeypatch.setattr(sync, "rebuild_game", rebuild_then_append)
+    sync.sync_folder(conn, folder)
+    monkeypatch.setattr(sync, "rebuild_game", real)
+    again = sync.sync_folder(conn, folder)
+    assert [s["game_id"] for s in again.imported] == [HU_GAME]
+
+
 def test_cli_import_puts_folder_files_on_record(tmp_path, folder):
     db_path = tmp_path / "cli.sqlite"
     runner = CliRunner()
