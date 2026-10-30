@@ -271,7 +271,6 @@ same keys as `faced_bet` — and are:
 
 | Fact | Definition | Notes |
 |---|---|---|
-| **faced_level[street]** | How many bets and raises the street had when they first faced one: 1 a bet, 2 a raise, 3 a re-raise | The bettor who is raised first faces level 2 |
 | **faced_bet_pot[street]** | The latest bet or raise in front of them then, measured as its maker's own size: `bet_pot` for a bet, `raise_pot` for a raise | The size of what they faced, not the price of calling it -- the rule `faced_cbet_size` already follows |
 | **faced_bet_size[street]** | The size bucket of that same bet or raise | |
 | **faced_bet_action[street]** | `fold`, `call` or `raise`, exactly one | A caller who later re-raises a re-raise answered with `call` |
@@ -2969,7 +2968,7 @@ that finds exactly them: `<spot>,<term>` reproduces the cell on any page.
 | Dimension | Buckets, in order | Term | Not applicable (skipped) |
 |---|---|---|---|
 | **position** | each seat `position=` names, in Results' seat order | `position=BTN` | dead button |
-| **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` | never |
+| **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot, bomb_pot, double_board, plo | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` · `holdem,!double_board,bomb_pot` · `holdem,double_board` · `plo` (the last two only reach a list in the `money` or `every` scope) | a hand none of them matches; every hand Group by reads matches one |
 | **players_flop** | 2, 3+ | `players_flop=2` · `players_flop>=3` | no flop dealt |
 | **depth** | <40, 40–100, 100–200, 200+ bb | the "Stack-depth splits" terms | `eff_bb` unknown |
 | **vs** | each opponent, by name | `vs=henry` | no opponent left |
@@ -3276,7 +3275,9 @@ still the table's.
 ## Known judgement calls
 
 These are choices, not facts. They are listed so they can be revisited without
-archaeology.
+archaeology. The numbers run across the whole document, so other sections and
+the code can cite one by number alone: 16-18 are under "Tags", 19-27
+under "Hand review", and this list goes on from 28 after 15.
 
 1. **BB walks are excluded from VPIP/PFR denominators.** Rule 3 above.
 2. **A checked-through street clears the aggressor**, so no c-bet opportunity
@@ -3379,7 +3380,7 @@ archaeology.
 29. **A blocker is under a fifth of the pot.** No button makes one, so the edge
     is a judgement value; a fifth keeps the one-blind poke into a big pot apart
     from the ⅓-pot bet, which is a real sizing and not a blocker.
-30. **The facing-a-bet sizes are the first decision only.** `faced_level`,
+30. **The facing-a-bet sizes are the first decision only.**
     `faced_bet_pot`, `faced_bet_size` and `faced_bet_action` describe the first
     time the player faced a bet on the street, as `fold_to_cbet_opp` does for
     c-bets, so each is one answer per street and the by-size table counts each
