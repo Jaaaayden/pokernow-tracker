@@ -2769,8 +2769,11 @@ at 50). Pooled across players, VPIP is 70.2% in hands 1-10 after a loss, 70.0% i
 11-20, and 67.3% in 21-30, against 67.6% overall.
 
 The filter terms are `post_loss`, `hands_since_loss`, `session_hand` and
-`session_hour`. A row nobody annotated (one derived on its own, like the all-in
-population) has no session context, and every one of them is False on it.
+`session_hour`. A row nobody annotated (one derived on its own) has no session
+context, and every one of them is False on it -- so every list a spot filters
+reads annotated rows: the Review and Bad beats lists number the session over
+every hand the player played, and the all-in lists take theirs from the
+player's (or the pool's) annotated facts.
 
 **The report**, over one player's hands in a spot:
 

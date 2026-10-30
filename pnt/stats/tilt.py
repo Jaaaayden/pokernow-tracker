@@ -11,7 +11,7 @@ filter terms like any other, and `tilt_report` is a handful of filtered tallies.
 A session is a `game_id`. A loss in one game never carries into the next: a night's
 sleep is the cure the window stands for.
 
-`annotate` runs wherever a player's hands are listed (`queries.facts_for`,
+`annotate` runs wherever a player's hands are listed (`queries.facts_for`, `review_rows`,
 `facts_cached`, `facts_by_player`, `fold_equity.pool_facts`), before any spot
 filter, so the context is the player's whole session rather than the hands left
 after filtering. See SPEC.md, "Session dynamics".
