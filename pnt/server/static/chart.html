@@ -524,6 +524,8 @@
   .crumb a:hover { text-decoration: underline; }
   .crumb .go a + a { margin-left: 14px; }
   .hidden { display: none !important; }
+  /* A load that failed after a tab switch: nothing of the last view stays up. */
+  body.stale :is(.tiles, #note, #groupby), body.stale #card > :not(.card-head), body.stale #card .card-head > :not(h2) { display: none; }
 
   /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
      The four classes are one diverging scale, strongest claim to weakest: value
@@ -800,11 +802,12 @@
   /* Beside the grid the card is about 450px: the side figures (shown %, ±, fold
      all) go to the hover, headers wrap and cells tighten, so every column fits. */
   @container (max-width: 620px) {
-    .gb-body :is(th, td) { padding: 5px 5px; }
-    .gb-body th { white-space: normal; vertical-align: bottom; }
-    .gb-body td small { display: none; }
-    .gb-body td.mix { width: auto; min-width: 56px; }
-    .gb-body td.lab { max-width: 9em; }
+    .gb .gb-body table { font-size: 13px; }
+    .gb .gb-body :is(th, td) { padding: 5px 4px; }
+    .gb .gb-body th, .gb .gb-body th.sort { white-space: normal; vertical-align: bottom; }
+    .gb .gb-body td small { display: none; }
+    .gb .gb-body td.mix { width: auto; min-width: 40px; }
+    .gb .gb-body td.lab { max-width: 8em; }
   }
   .gb-body.loading { opacity: .45; transition: opacity .15s; }
   .gb table { margin-top: 8px; }
@@ -842,9 +845,10 @@
   #tree { --tr-fold: #b4b2a9; --tr-check: #e1e0d9; --tr-call: #6da7ec; --tr-raise: #b93a39; --tind: 16px;
     display: flex; flex-direction: column; gap: 8px; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) #tree { --tr-fold: #6b6a65; --tr-check: #44433f; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+    :root:not([data-theme="light"]) #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e66e6d; }
   }
-  :root[data-theme="dark"] #tree { --tr-fold: #6b6a65; --tr-check: #44433f; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+  /* Dark: fold a light grey, check a dark one, far enough apart to tell in the legend. */
+  :root[data-theme="dark"] #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e66e6d; }
   #tree .tbase code { color: var(--ink); }
   #tree .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
   #tree .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
@@ -1873,6 +1877,13 @@
     viewCtl.abort();
     viewCtl = new AbortController();
     const view = state.by;
+    // The side panels' requests go with the views that asked for them: one still
+    // on its way when they are left is cancelled, and asked again on the way back.
+    if (!GB_VIEWS.includes(view) && gb.ctl && $("gb-body").classList.contains("loading")) {
+      gb.ctl.abort(); gb.ctl = null; gb.key = null;
+      $("gb-body").classList.remove("loading");
+    }
+    if (!estOn() && est.ctl && !est.data && !est.err) { est.ctl.abort(); est.ctl = null; est.key = null; }
     if (!quiet) $("card").classList.add("loading");
     $("err").classList.add("hidden");
     state.handRows = null; // the hand set may have grown or changed
@@ -1960,6 +1971,12 @@
       $("err").classList.remove("hidden");
       // The strip above the card still describes the spot before this one.
       $("strip").classList.add("hidden");
+      // So would the tiles and card, if the tab changed: hide what belongs to the
+      // last view and title the card with this one. A render brings them back.
+      if (state.dataView !== view) {
+        document.body.classList.add("stale");
+        $("card-title").textContent = TITLE[view] || "";
+      }
     } finally {
       if (live()) $("card").classList.remove("loading");
     }
@@ -1971,7 +1988,7 @@
   async function loadGames(quiet, live) {
     const player = state.player;
     if (quiet || state.games?.player !== player) {
-      const rows = await getJson(`/players/${encodeURIComponent(player)}/games`);
+      const rows = await viewJson(`/players/${encodeURIComponent(player)}/games`);
       if (!live()) return false;
       state.games = { player, rows };
     }
@@ -2106,15 +2123,16 @@
   // list it brings back is the row. A hand that ended before the flop has no
   // made hand to name, and lists by its ids.
   const madeTerm = (c) => c.class === "no_board" ? null : `made=${c.class}`;
+  // Each card's title starts with its tab's word, so the two read as one.
   const TITLE = {
-    preflop: "Starting hands", made: "What they had made", sizing: "What they had, by bet size",
-    lines: "What they had, by line",
+    preflop: "Preflop: starting hands", made: "Made hands: what they had made", sizing: "Sizing: what they had, by bet size",
+    lines: "Lines: what they had, by line",
     review: "Hands to review", beats: "Bad beats", session: "Session",
-    bluffs: "Value against bluffs, by kind of aggression",
-    strength: "Strength by street",
-    results: "Big blinds won and lost",
-    tilt: "After a big loss, and through the night",
-    timing: "How long they took, and what they had",
+    bluffs: "Value:bluff, by kind of aggression",
+    strength: "Slowplays: strength by street",
+    results: "Results: big blinds won and lost",
+    tilt: "Tilt: after a big loss, and through the night",
+    timing: "Timing: how long they took, and what they had",
     shows: "Shown without being asked",
     bounties: "7-2 bounties",
     nit: "Nit Game",
@@ -2431,7 +2449,7 @@
   const BV_NOTE = [
     "**Shown hands only**, each read on the street it bet or raised.",
     "A bluff that got folds is never shown, so every ratio leans to value; **folded** counts the bets that got there.",
-    "**Your own rows** are near complete: all your cards are known.",
+    "**A log owner's rows** are near complete: their own log shows every card of theirs.",
     "**Ratio:** value against bluffs and semi-bluffs; marginal hands are neither.",
   ];
 
@@ -2444,6 +2462,8 @@
     const q = new URLSearchParams();
     if (state.filter) q.set("filter", state.filter);
     const data = await viewJson(pool ? "/bluffs?" + q : `/players/${encodeURIComponent(state.player)}/bluffs?` + q);
+    // A size row in the words Sizing uses ("⅕–½ pot"), not the server's own.
+    for (const r of data.rows || []) if (r.kind === "size" && SIZE_LABEL[r.size]) r.label = SIZE_LABEL[r.size];
     if (live()) (state.bluffs ??= new Map()).set(key, data);
     return data;
   }
@@ -2451,7 +2471,7 @@
   // The pool's hands behind one row, or one class of it, in the drill-down list,
   // each with the player who took the line where a review row puts its flag.
   async function openPoolHands(title, key, cls) {
-    const seq = ++handsSeq;
+    const seq = nextHands();
     state.poolHands = [title, key, cls];
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
@@ -2464,7 +2484,7 @@
       const q = new URLSearchParams({ category: key });
       if (cls) q.set("cls", cls);
       if (state.filter) q.set("filter", state.filter);
-      const body = await getJson("/bluffs/hands?" + q);
+      const body = await sendJson("/bluffs/hands?" + q, { signal: handsCtl.signal });
       if (seq !== handsSeq) return;
       let rows = body.hands;
       if (state.handSort === "pot") rows = [...rows].sort((a, b) => (b.pot ?? -1) - (a.pot ?? -1));
@@ -3109,9 +3129,16 @@
       "W$SD": "won at showdown, of the showdowns",
     };
 
-    for (const table of d.tables) {
+    // No hands: one line, not three tables of empty rows.
+    if (!d.hands) wrap.appendChild(message("no hands in this spot"));
+    for (const table of d.hands ? d.tables : []) {
       const block = document.createElement("div");
       const h = document.createElement("h3"); h.textContent = table.title;
+      if (!table.rows.length) {
+        block.append(h, message("no hands in this spot"));
+        wrap.appendChild(block);
+        continue;
+      }
       const t = document.createElement("table");
       const head = document.createElement("tr");
       COLS.forEach((c) => {
@@ -3474,7 +3501,7 @@
     setRaiseKey(`losses of ${d.big_loss_bb}+ bb`, `${d.sessions} session${d.sessions === 1 ? "" : "s"}`);
     setNote(`**Big loss:** one hand that lost ${d.big_loss_bb}+ bb. The window is their next ${d.window} hands that session; a new loss restarts it.`,
       `**Hour bands** need a timestamp: ${d.clock.known} of ${d.clock.n} hands have one.`,
-      "Every figure shows its n. Click a row to add it to the spot and list its hands.");
+      "Click a row to add it to the spot and list its hands.");
     $("tabletoggle").classList.add("hidden"); // this view is a table already
     $("table").classList.add("hidden");
 
@@ -3866,7 +3893,7 @@
       sel.value = value;
     };
     fill($("gb-by"), dims.map(d => [d.name, d.label]), a);
-    fill($("gb-by2"), [["", "—"], ...dims.filter(d => d.name !== a).map(d => [d.name, d.label])], b);
+    fill($("gb-by2"), [["", "–"],...dims.filter(d => d.name !== a).map(d => [d.name, d.label])], b);
     $("gb-street").value = state.gbStreet;
     $("gb-min").value = state.gbMin || "";
     document.querySelectorAll("[data-gbscope]").forEach(x => {
@@ -4569,6 +4596,7 @@
     // The view was switched and its data is still loading: what is held is the
     // last view's, in that view's shape. The load renders when it lands.
     if (!d || state.dataView !== view) return;
+    document.body.classList.remove("stale");
     $("bluffs").classList.toggle("hidden", view !== "bluffs");
     if (view === "bluffs") { renderBluffs(d); return; }
     const review = isListView(view);
@@ -5364,7 +5392,7 @@
     const q = new URLSearchParams({ games });
     if (filter) q.set("filter", filter);
     const asked = loadSeq;
-    const body = await getJson(`/players/${encodeURIComponent(state.player)}/hands?` + q);
+    const body = await sendJson(`/players/${encodeURIComponent(state.player)}/hands?` + q, { signal: handsCtl.signal });
     // Checked before caching, so a stale answer is never memoized for the session.
     if (body.hands.length && !("ip" in body.hands[0])) {
       throw new Error("the running server is older than this page: restart `pnt service`");
@@ -5378,10 +5406,14 @@
   // Bumped by every open and close of the list: a cell clicked after another, or
   // the list closed by a new spot or view, outdates the rows still being fetched.
   let handsSeq = 0;
+  // And its controller: the rows a newer open, a close or a change of view
+  // outdates are cancelled, not left holding one of the browser's connections.
+  let handsCtl = new AbortController();
+  const nextHands = () => { handsCtl.abort(); handsCtl = new AbortController(); return ++handsSeq; };
   // `ids` picks rows out of the spot's hands; `term` instead lists the spot
   // narrowed by that filter term, so the list is what the term finds.
   async function openHands(title, ids, term = null, scope = null) {
-    const seq = ++handsSeq;
+    const seq = nextHands();
     $("hands").classList.remove("hidden");
     $("hands-title").textContent = title;
     $("hands-count").textContent = "";
@@ -5965,7 +5997,7 @@
   }
 
   function closeHands() {
-    handsSeq++;
+    nextHands();
     pntReplay.cancel($("replay"));
     $("hands").classList.add("hidden");
     $("hand-rows").replaceChildren();
