@@ -184,8 +184,8 @@ def to_act(parsed: ParsedHand) -> str | None:
 
     None also stands for "nobody": the street is closed and the next card is due,
     everyone but one has folded, or every live player but at most one is all in
-    with nothing left to call. Guessing wrong
-    would point the HUD at the wrong player's spot, so any doubt is None.
+    with nothing left to call. Guessing wrong would point the HUD at the wrong
+    player's spot, so any doubt is None.
     """
     players = parsed.players
     unfolded = [p for p in players.values() if not p.folded]

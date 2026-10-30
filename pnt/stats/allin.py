@@ -284,7 +284,12 @@ def allin_report(
     `skipped` rides on every row so a page needs no second request for it.
     """
     rows, skipped, _ = allin_rows(conn, game_id)
-    rows = _apply(rows, lambda: play_facts(load_hands(conn, game_id)), predicate)
+
+    def pool() -> Iterable[Facts]:  # one game at a time: a session never spans two
+        for g in sorted({r.game_id for r in rows}):
+            yield from play_facts(load_hands(conn, g))
+
+    rows = _apply(rows, pool, predicate)
     ident = identity_map(conn)
     grouped: dict[int, list[AllInRow]] = defaultdict(list)
     aliases: dict[int, str] = {}
