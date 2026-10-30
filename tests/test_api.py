@@ -462,6 +462,32 @@ def test_hand_replay_names_every_player(client):
     assert body["hand"]["bb_effective"]
 
 
+def test_hand_replay_says_what_came_back_uncalled(client):
+    """A bet nobody called comes back: `uncalled` is what each player put in less
+    what stayed in the pot, so the replay can take it out of the pot it shows."""
+    from pnt.db.conn import connect
+
+    conn = connect(Path(os.environ["PNT_DB"]))
+    ids = [r[0] for r in conn.execute(
+        "SELECT hp.hand_id FROM hand_players hp JOIN (SELECT hand_id, pn_id, SUM(amount) AS put"
+        " FROM actions GROUP BY hand_id, pn_id) s USING (hand_id, pn_id)"
+        " WHERE s.put > hp.contributed LIMIT 3"
+    )]
+    conn.close()
+    assert ids, "the fixtures hold raises nobody called"
+    for hid in [*ids, 1]:
+        body = client.get(f"/hands/{hid}").json()
+        put: dict[str, int] = {}
+        for a in body["actions"]:
+            put[a["pn_id"]] = put.get(a["pn_id"], 0) + a["amount"]
+        for p in body["players"]:
+            assert p["uncalled"] == put.get(p["pn_id"], 0) - p["contributed"] >= 0
+        returned = sum(p["uncalled"] for p in body["players"])
+        assert returned > 0 or hid not in ids
+        # What is left in the pot is what was collected from it.
+        assert sum(put.values()) - returned == sum(p["contributed"] for p in body["players"])
+
+
 def test_player_stats_endpoint(client):
     """What the chart page's postflop strip reads: one player, inside a spot."""
     all_hands = client.get("/players/genericpoker/stats").json()

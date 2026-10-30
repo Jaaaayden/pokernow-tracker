@@ -1237,6 +1237,18 @@ def hand(hand_id: RowNumber) -> dict:
             (hand_id,),
         )
     ]
+    actions = [
+        dict(r)
+        for r in conn.execute("SELECT * FROM actions WHERE hand_id = ? ORDER BY seq", (hand_id,))
+    ]
+    # The chips handed back when nobody called all of a bet: everything a player
+    # put in, less what stayed in the pot (`contributed`). The replay takes it out
+    # of the pot it shows once the betting closes.
+    put_in: dict[str, int] = {}
+    for a in actions:
+        put_in[a["pn_id"]] = put_in.get(a["pn_id"], 0) + a["amount"]
+    for p in players:
+        p["uncalled"] = max(0, put_in.get(p["pn_id"], 0) - p["contributed"])
     return {
         "hand": dict(h),
         "players": players,
@@ -1254,12 +1266,7 @@ def hand(hand_id: RowNumber) -> dict:
                 (hand_id,),
             )
         },
-        "actions": [
-            dict(r)
-            for r in conn.execute(
-                "SELECT * FROM actions WHERE hand_id = ? ORDER BY seq", (hand_id,)
-            )
-        ],
+        "actions": actions,
         # Shown after the hand ended -- never part of `players[].hole_cards`.
         "voluntary_shows": [
             dict(r)
