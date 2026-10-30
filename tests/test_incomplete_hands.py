@@ -86,3 +86,18 @@ def test_the_hand_still_counts_for_everything_else(tmp_path):
     facts = facts_for(conn, alias)
     assert aggregate(facts)["hands"] == len(facts)
     assert aggregate(facts)["hands"] > len([f for f in facts if f.complete])
+
+
+def test_a_hand_cut_before_the_river_is_no_showdown(tmp_path):
+    """Two players still in on a flop the log stopped at did not show down: the
+    log stopped. Cut on the river, the showdown was due and counts."""
+    from pnt.stats.derive import derive
+
+    cut = next(h for h in load_hands(_db(tmp_path), TRUNCATED_GAME) if not h.complete)
+    river = ("2c", "3d", "4h", "5s", "9c")
+    for n, showdown in ((3, False), (4, False), (5, True)):
+        hand = dataclasses.replace(cut, board=river[:n], saw_flop=True, went_to_showdown=True)
+        live = [f for f in derive(hand) if not hand.players[f.pn_id].folded and f.saw_flop]
+        assert live and all(f.wtsd is showdown for f in live), n
+    done = dataclasses.replace(cut, board=river[:3], saw_flop=True, went_to_showdown=True, complete=True)
+    assert any(f.wtsd for f in derive(done)), "a complete hand is read as recorded"

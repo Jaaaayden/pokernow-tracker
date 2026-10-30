@@ -1055,8 +1055,10 @@ def derive(hand: HandRow, every_game: bool = False) -> list[Facts]:
         f.saw_flop = hand.saw_flop and pid not in folded_preflop
         f.wtsd_opp = f.saw_flop
         # Showdown = two or more players still live at the end (never inferred from
-        # `shows` lines -- see SPEC.md).
-        f.wtsd = f.saw_flop and hand.went_to_showdown and not p.folded
+        # `shows` lines -- see SPEC.md). A log cut off before the river shows the
+        # live players at no showdown: it just stopped.
+        f.wtsd = (f.saw_flop and hand.went_to_showdown and not p.folded
+                  and (hand.complete or len(hand.board) == 5))
         f.wsd = f.wtsd and p.collected > 0
         f.won_pot = p.collected > 0
     if not analysed and not every_game:

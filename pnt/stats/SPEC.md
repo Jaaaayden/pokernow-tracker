@@ -2303,7 +2303,9 @@ rate with no opportunities: unknown is not zero.
 
 Everything else about such a hand is real and still counts. The players folded,
 bet, called and reached showdown exactly as recorded, so VPIP, PFR, 3-bet, c-bet
-and WTSD all include it. Only the ledger is short.
+and WTSD all include it. Only the ledger is short. One reading needs the end: a
+log cut on the flop or turn with two players still in shows two players at no
+showdown, so `wtsd` there needs the river dealt; cut on the river, it counts.
 
 `hands` therefore counts every hand, while the bb/100 denominator may be smaller.
 Re-importing the finished export repairs the hand and it rejoins.
