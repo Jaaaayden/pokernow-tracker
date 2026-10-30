@@ -672,6 +672,7 @@ def clear_caches() -> None:
 
     _REPORT_CACHE.clear()
     _GAME_TALLIES.clear()
+    _GAME_NOT_ANALYSED.clear()
     _FACTS_CACHE.clear()
     _REVIEW_CACHE.clear()
     _ANSWERS.clear()
@@ -816,27 +817,63 @@ def _refresh_facts(
     return entry
 
 
+#: Per (database, game): each PokerNow ID's count of hands not analysed in that
+#: game, with the game's `derived_gen` stamp, as `_GAME_TALLIES` keeps tallies. The
+#: HUD asks for the lifetime count on every /hud, and live capture rebuilds a game
+#: at every hand's end: kept per game, that costs the one game rebuilt.
+_GAME_NOT_ANALYSED: LRU[tuple[str, str], tuple[int, dict[str, int]]] = LRU()
+
+
+def _not_analysed_in(conn: sqlite3.Connection, game_id: str) -> dict[str, int]:
+    """pn_id -> its hands in `game_id` that are not analysed."""
+    return {
+        r["pn_id"]: r["n"]
+        for r in conn.execute(
+            "SELECT hp.pn_id, COUNT(*) AS n FROM hands h"
+            " JOIN hand_players hp ON hp.hand_id = h.hand_id"
+            f" WHERE h.game_id = ? AND NOT {ANALYSED_SQL} GROUP BY hp.pn_id",
+            (game_id,),
+        )
+    }
+
+
 def not_analysed(conn: sqlite3.Connection, game_id: str | None = None) -> dict[str, int]:
     """alias -> the hands `report()` leaves out of every stat because their play is
     never read: PLO and Double Board, which count for money only. Counted as
-    report counts hands, one per seat dealt in. A player with none is absent.
+    report counts hands, one per seat dealt in. A player with none is absent, and
+    so is a PokerNow ID with no player.
 
     So a table where every hand was PLO can say "312 hands, not analysed" rather
-    than "0 hands". Remembered per generation, as a rebuild is what changes it."""
-    where = " AND h.game_id = ?" if game_id else ""
+    than "0 hands". Remembered per generation, as a rebuild is what changes it,
+    and counted per game underneath, so a rebuild re-counts only its game."""
 
     def count() -> dict[str, int]:
-        return {
-            r["alias"]: r["n"]
-            for r in conn.execute(
-                "SELECT p.alias, COUNT(*) AS n FROM hands h"
-                " JOIN hand_players hp ON hp.hand_id = h.hand_id"
-                " JOIN player_identities pi ON pi.pn_id = hp.pn_id"
-                " JOIN players p ON p.player_id = pi.player_id"
-                f" WHERE NOT {ANALYSED_SQL}{where} GROUP BY p.alias",
-                (game_id,) if game_id else (),
-            )
-        }
+        path = path_of(conn)
+        with reading(conn):  # the stamps, the counts and the names from one snapshot
+            stamps = _game_stamps(conn, game_id) if path else None
+            if stamps is None:  # nothing to key a game's count on: count them all
+                where = " WHERE game_id = ?" if game_id else ""
+                gids = [r[0] for r in conn.execute(
+                    f"SELECT DISTINCT game_id FROM hands{where}", (game_id,) if game_id else ()
+                )]
+                per_game = [_not_analysed_in(conn, gid) for gid in gids]
+            else:
+                per_game = []
+                for gid, stamp in stamps.items():
+                    hit = _GAME_NOT_ANALYSED.get((path, gid))
+                    if hit is None or hit[0] != stamp:
+                        hit = _GAME_NOT_ANALYSED[path, gid] = (stamp, _not_analysed_in(conn, gid))
+                    per_game.append(hit[1])
+                if game_id is None:  # a game deleted since is forgotten with it
+                    _GAME_NOT_ANALYSED.prune(lambda k: k[0] == path and k[1] not in stamps)
+            ident = identity_map(conn)
+        out: dict[str, int] = {}
+        for counts in per_game:
+            for pn_id, n in counts.items():
+                who = ident.get(pn_id)
+                if who is not None:
+                    out[who[1]] = out.get(who[1], 0) + n
+        return out
 
     return remembered(conn, ("not_analysed", game_id), count)
 

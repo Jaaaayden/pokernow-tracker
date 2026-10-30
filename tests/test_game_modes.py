@@ -234,6 +234,57 @@ def test_a_plo_table_says_its_hands_are_not_analysed(tmp_path, monkeypatch):
     assert all(p["resolved"] is None for p in now["players"])
 
 
+def _not_analysed_by_sql(conn, game_id=None):
+    """The whole-database count `not_analysed` made before it was kept per game."""
+    from pnt.stats.derive import ANALYSED_SQL
+
+    where = " AND h.game_id = ?" if game_id else ""
+    return {
+        r[0]: r[1]
+        for r in conn.execute(
+            "SELECT p.alias, COUNT(*) FROM hands h"
+            " JOIN hand_players hp ON hp.hand_id = h.hand_id"
+            " JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+            " JOIN players p ON p.player_id = pi.player_id"
+            f" WHERE NOT {ANALYSED_SQL}{where} GROUP BY p.alias",
+            (game_id,) if game_id else (),
+        )
+    }
+
+
+def test_not_analysed_is_counted_per_game_and_recounts_only_a_rebuilt_one(tmp_path, monkeypatch):
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import import_csv, ingest_entries, merge_players, rebuild_game
+    from pnt.stats import queries
+    from tests.conftest import HU
+
+    conn = connect(tmp_path / "na.sqlite")
+    import_csv(conn, HU)  # Hold'em: nothing left out
+    other = GAME + "_two"
+    ingest_entries(conn, GAME, _plo_entries(3), "test")
+    ingest_entries(conn, other, _plo_entries(5), "test")
+    for gid in (GAME, other):
+        rebuild_game(conn, gid)
+
+    assert queries.not_analysed(conn) == _not_analysed_by_sql(conn) == {"A": 8, "B": 8}
+    for gid in (GAME, other):
+        assert queries.not_analysed(conn, gid) == _not_analysed_by_sql(conn, gid)
+
+    counted = []
+    real = queries._not_analysed_in
+    monkeypatch.setattr(queries, "_not_analysed_in", lambda c, gid: counted.append(gid) or real(c, gid))
+    rebuild_game(conn, other)
+    assert queries.not_analysed(conn) == {"A": 8, "B": 8}
+    assert counted == [other]
+
+    # A merge regroups the same per-game counts, with nothing counted again.
+    counted.clear()
+    merge_players(conn, "B", "A")
+    assert queries.not_analysed(conn) == _not_analysed_by_sql(conn) == {"A": 16}
+    assert counted == []
+    conn.close()
+
+
 def test_the_nit_board_and_the_session_list(tmp_path, monkeypatch):
     import importlib
 
