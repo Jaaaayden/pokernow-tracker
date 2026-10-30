@@ -213,10 +213,11 @@
   const $ = (id) => document.getElementById(id);
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  const { pretty, cardsEl } = pntReplay;
+  const { pretty, cardsEl, when } = pntReplay;
 
   const DAYS = ["1", "7", "30", "all"];
-  const state = { days: "7", minPot: 2000, player: "", unit: "chips", data: null };
+  // `open`: the hand_id of the pot on replay, kept across a change of unit.
+  const state = { days: "7", minPot: 2000, player: "", unit: "chips", data: null, open: null };
 
   const readUrl = () => {
     const q = new URLSearchParams(location.search);
@@ -249,9 +250,6 @@
   // record can only be shown in chips, so it says so rather than inventing one.
   const money = (row, chipsKey, bbKey) =>
     state.unit === "bb" ? (row[bbKey] == null ? "–" : signedBb(row[bbKey])) : signed(row[chipsKey]);
-
-  const WHEN = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  const when = (ts) => { const d = new Date(ts); return isNaN(d) ? (ts || "") : WHEN.format(d); };
 
   async function getJson(url) {
     const r = await fetch(url);
@@ -317,7 +315,9 @@
 
   const WINDOW_WORD = { "1": "in the last 24 hours", "7": "in the last 7 days", "30": "in the last 30 days", all: "ever recorded" };
 
-  function render() {
+  // `keep`: a change of unit, which redraws the rows and tiles but leaves the
+  // replay on show (redrawn in the new unit) and its row pressed.
+  function render(keep = false) {
     const d = state.data;
     const word = WINDOW_WORD[state.days];
     $("subtitle").textContent = `over ${chips(d.min_pot)} ${word}` + (d.player ? ` · ${d.player}` : "");
@@ -337,7 +337,10 @@
 
     const list = $("rows");
     list.replaceChildren();
-    resetReplay(d.pots.length > 0);
+    if (!keep || !d.pots.some(h => h.hand_id === state.open)) {
+      state.open = null;
+      resetReplay(d.pots.length > 0);
+    }
     if (!d.pots.length) {
       const p = document.createElement("p");
       p.className = "muted";
@@ -360,7 +363,7 @@
 
   function potRow(h, top, list) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "pot-row"; b.setAttribute("aria-pressed", "false");
+    b.type = "button"; b.className = "pot-row"; b.setAttribute("aria-pressed", h.hand_id === state.open);
     // Every pot is read against the biggest one in the window.
     b.style.setProperty("--share", `${Math.max(2, Math.round(100 * h.pot / top))}%`);
     const span = (cls, text, title) => {
@@ -436,7 +439,8 @@
 
     b.addEventListener("click", () => {
       list.querySelectorAll(".pot-row").forEach(x => x.setAttribute("aria-pressed", x === b));
-      pntReplay.show($("replay"), h.hand_id);
+      state.open = h.hand_id;
+      pntReplay.show($("replay"), h.hand_id, { unit: state.unit });
     });
     return b;
   }
@@ -494,7 +498,9 @@
   document.querySelectorAll("[data-unit]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("[data-unit]").forEach(x => x.setAttribute("aria-pressed", x === b));
     state.unit = b.dataset.unit;
-    writeUrl(); if (state.data) render();
+    writeUrl();
+    if (state.data) render(true);
+    pntReplay.setUnit($("replay"), state.unit);
   }));
 
   readUrl();
