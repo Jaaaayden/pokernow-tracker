@@ -404,15 +404,19 @@ def tree_for(
     hit = _TREE_CACHE.get(key) if cacheable else None
     if hit is not None and hit[0] == gen:
         return hit[1]
-    with reading(conn):
-        facts = facts_cached(conn, alias, game_id)
-        if predicate is not None:
-            facts = [f for f in facts if predicate(f)]
-        if predicate is not None and len(facts) <= 5000:
-            hands = load_hands(conn, game_id, hand_ids=[f.hand_id for f in facts])
-        else:
-            hands = load_hands(conn, game_id, identities_of(conn, alias))
-    out = build_tree(hands, facts, alias, max_depth=max_depth, min_hands=min_hands, texture=texture)
-    if cacheable:
-        _TREE_CACHE[key] = (gen, out)
-    return out
+    with _TREE_CACHE.making(key):
+        hit = _TREE_CACHE.get(key) if cacheable else None
+        if hit is not None and hit[0] == gen:
+            return hit[1]
+        with reading(conn):
+            facts = facts_cached(conn, alias, game_id)
+            if predicate is not None:
+                facts = [f for f in facts if predicate(f)]
+            if predicate is not None and len(facts) <= 5000:
+                hands = load_hands(conn, game_id, hand_ids=[f.hand_id for f in facts])
+            else:
+                hands = load_hands(conn, game_id, identities_of(conn, alias))
+        out = build_tree(hands, facts, alias, max_depth=max_depth, min_hands=min_hands, texture=texture)
+        if cacheable:
+            _TREE_CACHE[key] = (gen, out)
+        return out

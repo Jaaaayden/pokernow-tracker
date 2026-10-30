@@ -940,9 +940,12 @@ def _review_base(conn: sqlite3.Connection, alias: str, game_id: str | None) -> _
     key = (path, alias, game_id)
     hit = _REVIEW_CACHE.get(key) if cacheable else None
     if hit is None or hit[0] != gen:
-        hit = (gen, _build_review_base(conn, alias, game_id))
-    if cacheable:
-        _REVIEW_CACHE[key] = hit
+        with _REVIEW_CACHE.making(key):
+            hit = _REVIEW_CACHE.get(key) if cacheable else None
+            if hit is None or hit[0] != gen:
+                hit = (gen, _build_review_base(conn, alias, game_id))
+                if cacheable:
+                    _REVIEW_CACHE[key] = hit
     return hit[1]
 
 
