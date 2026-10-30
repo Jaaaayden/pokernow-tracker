@@ -153,4 +153,105 @@
 
   setInterval(() => { if (out.size || down || ui?.kind) paint(); }, 1000);
   document.addEventListener("DOMContentLoaded", paint);
+
+  // ---- What every page shares: the nav, the sample banner, the theme, and the
+  // number formats. Exposed as window.pntPage for the page's own script.
+  const theme = new URLSearchParams(location.search).get("theme");
+  const THEME = theme === "light" || theme === "dark" ? theme : null;
+  if (THEME) document.documentElement.dataset.theme = THEME;
+  // `path` with `params` and the page's ?theme, which every link carries along.
+  const href = (path, params) => {
+    const q = new URLSearchParams(params || {});
+    if (THEME) q.set("theme", THEME);
+    const s = q.toString();
+    return s ? path + (path.includes("?") ? "&" : "?") + s : path;
+  };
+
+  // One list, one order, on every page. [key, path, label]; each link's id is
+  // `<key>link`, which the pages set to carry their spot or player along.
+  const PAGES = [
+    ["home", "/", "tracker"],
+    ["stats", "/stats.html", "stats"],
+    ["chart", "/chart", "range chart"],
+    ["pots", "/pots.html", "biggest pots"],
+    ["allin", "/allin.html", "all-in EV"],
+    ["tendencies", "/tendencies.html", "tendencies"],
+    ["players", "/players.html", "players"],
+  ];
+  // :where() keeps these at no specificity, so a page's own rule wins.
+  const PAGE_CSS = `
+  :where(.pnt-nav) { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 0 0 12px; font-size: 13px; }
+  :where(.pnt-nav) a { color: var(--accent, #3987e5); text-decoration: none; }
+  :where(.pnt-nav) a:hover { text-decoration: underline; }
+  :where(.pnt-nav) a[aria-current=page] { color: var(--ink, #fff); font-weight: 600; }
+  :where(.pnt-sample) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 12px;
+    padding: 6px 12px; border-radius: 8px; font-size: 13px; color: var(--ink, #fff);
+    border: 1px solid var(--accent, #3987e5); background: color-mix(in srgb, var(--accent, #3987e5) 10%, transparent); }
+  :where(.pnt-sample) a { color: var(--accent, #3987e5); }`;
+  let pageStyled = false;
+  function pageStyle() {
+    if (pageStyled) return;
+    pageStyled = true;
+    const s = document.createElement("style");
+    s.textContent = PAGE_CSS;
+    document.head.appendChild(s);
+  }
+
+  // Fills <nav class="pnt-nav" id="crumb" data-page="..."> once; the page's
+  // script calls it first thing, so its links are there to set.
+  function nav() {
+    const box = document.getElementById("crumb");
+    if (!box || box.childElementCount) return box;
+    pageStyle();
+    const here = box.dataset.page;
+    for (const [key, path, label] of PAGES) {
+      const a = el("a", label);
+      a.id = key + "link";
+      a.href = href(path);
+      if (key === here) a.setAttribute("aria-current", "page");
+      box.append(a);
+    }
+    return box;
+  }
+
+  // While the pages show the sample, every page says so, not just the front one
+  // (it has a banner of its own, with the switch on it).
+  async function sampleBanner() {
+    if (EMBED || document.getElementById("sample-banner")) return;
+    try {
+      const r = await realFetch("/settings/dataset");
+      if (!r.ok || (await r.json()).active !== "sample") return;
+    } catch { return; }
+    pageStyle();
+    const b = el("div");
+    b.className = "pnt-sample";
+    b.id = "pnt-sample";
+    b.setAttribute("role", "status");
+    const back = el("a", "back to your hands ›");
+    back.href = href("/") + "#files-h";
+    b.append(el("b", "Sample data"), " anonymized games, not yours.", back);
+    const at = document.getElementById("crumb");
+    if (at) at.after(b);
+    else (document.querySelector("main") || document.body).prepend(b);
+  }
+
+  const DASH = "–";
+  const ok = (v) => v != null && Number.isFinite(Number(v));
+  window.pntPage = {
+    theme: THEME, href, nav, DASH,
+    // A count with thousands separators.
+    int: (v) => (ok(v) ? Number(v).toLocaleString() : DASH),
+    // A rate in percent, one decimal: 29.0%.
+    pct: (v) => (ok(v) ? Number(v).toFixed(1) + "%" : DASH),
+    // bb/100 and other signed figures, one decimal: +38.4.
+    signed: (v, dp = 1) => (ok(v) ? (v > 0 ? "+" : "") + Number(v).toFixed(dp) : DASH),
+    // Names in the order a person reads them: player 2 before player 10.
+    byName: (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }),
+    // A page newer than the server answers 404 Not Found on a route it added.
+    OLD_SERVER: "the running server is older than this page: run `pnt service restart`",
+    // The first line of a server error: an unknown filter term's long list of
+    // every term stays in the API and the CLI; the ? Filters panel has it here.
+    firstLine: (text) => String(text ?? "").split("\n")[0],
+  };
+  document.addEventListener("DOMContentLoaded", () => { nav(); sampleBanner(); });
 })();

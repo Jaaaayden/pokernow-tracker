@@ -515,11 +515,6 @@
   .tip .row { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
   .tip .row b { color: var(--ink); font-weight: 500; }
   .err { color: #d03b3b; margin: 12px 0; }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
-    margin-bottom: 12px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
-  .crumb .go a + a { margin-left: 14px; }
   .hidden { display: none !important; }
 
   /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
@@ -577,7 +572,7 @@
     html, body { overflow-x: hidden; }
     body { font-size: 12px; }
     main { padding: 8px 8px 32px; }
-    .crumb { font-size: 11px; margin-bottom: 6px; }
+    .pnt-nav { font-size: 11px; margin-bottom: 6px; gap: 2px 10px; }
     h1 { font-size: 14px; margin-bottom: 8px; }
     h1 small { font-size: 11px; margin-left: 4px; }
 
@@ -885,17 +880,14 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
-      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a>
-      <a id="potslink" href="/pots.html">biggest pots &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="chart" aria-label="pages"></nav>
   <h1>Range chart <small id="subtitle">what a player had in a spot, from the hands where it was shown</small></h1>
 
   <div class="controls">
     <label for="player">Player</label>
     <select id="player"></select>
     <label for="filter">Spot</label>
-    <input id="filter" type="text" placeholder="e.g. 3bet_pot,vs=player 3,last:7d · every term under ? Filters" spellcheck="false">
+    <input id="filter" type="text" placeholder="e.g. 3bet_pot,vs=NAME,last:7d · every term under ? Filters" spellcheck="false">
     <button class="primary" id="apply">Apply</button>
     <button id="clear" title="back to all hands">Clear</button>
     <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
@@ -1099,6 +1091,7 @@
   const RED  = ["#fbd9d8","#f6b6b5","#ef9291","#e66e6d","#e34948","#b93a39","#8f2d2c"];
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  pntPage.nav(); // the shared nav (loading.js), so crumbLinks has its links to set
   const dark = () => document.documentElement.dataset.theme
     ? document.documentElement.dataset.theme === "dark"
     : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -1633,6 +1626,7 @@
     $("statslink").href = link("/stats.html", "filter");
     $("allinlink").href = link("/allin.html", "filter", "player");
     $("potslink").href = link("/pots.html", "player");
+    $("tendencieslink").href = link("/tendencies.html", "player");
   };
   // A tree click is the one change that pushes a history entry (writeUrl(true)):
   // the browser's Back returns to the tree, scrolled where it was. The entry it

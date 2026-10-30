@@ -227,7 +227,10 @@ def _script_of(html: str) -> str:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-@pytest.mark.parametrize("name", ["filter-help.js", "replay.js", "chart.html"])
+@pytest.mark.parametrize("name", [
+    "filter-help.js", "replay.js", "loading.js", "chart.html", "index.html", "stats.html",
+    "players.html", "allin.html", "pots.html", "tendencies.html",
+])
 def test_the_pages_scripts_parse(tmp_path, name):
     text = (STATIC / name).read_text("utf-8")
     path = Path(tmp_path / (name + ".js"))

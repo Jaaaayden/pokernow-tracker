@@ -120,6 +120,32 @@ def test_filter_is_validated_not_silently_ignored(client):
     assert "unknown filter term" in r.json()["detail"]
 
 
+def test_an_unknown_term_says_the_nearest_on_its_first_line(client):
+    """Pages print the first line only; the list of every term follows it for the
+    API and the CLI, and the ? Filters panel has it on the page."""
+    detail = client.get("/stats", params={"filter": "cbet_flp"}).json()["detail"]
+    first, rest = detail.split("\n", 1)
+    assert first.startswith("unknown filter term: 'cbet_flp'; did you mean cbet_flop")
+    assert "Known flags" in rest
+
+
+def test_every_filter_help_example_works_on_this_data(client):
+    """filter-help.js shows each vocabulary example, with a vs= one naming the
+    player who has the most hands here (its example() function): every one of
+    them must be a filter the server takes on real data, not just in the parser."""
+    players = client.get("/players").json()
+    someone = max(players, key=lambda p: p["hands"])["alias"]
+    examples = [
+        t["example"].split("=", 1)[0] + "=" + someone if t["term"].startswith("vs") else t["example"]
+        for g in client.get("/filters").json()["groups"] for t in g["terms"]
+    ]
+    other = next(p["alias"] for p in players if p["alias"] != someone)
+    r = client.post("/counts", json={"player": other, "terms": examples})
+    assert r.status_code == 200, r.json()
+    refused = [t for t, n in r.json()["counts"].items() if n is None]
+    assert not refused, refused
+
+
 BIG = 99999999999999999999  # over 2**63: SQLite raised OverflowError on it, a 500
 
 
@@ -575,6 +601,20 @@ def test_every_page_loads_the_loading_signal_first(client):
         head = html[: html.index("</head>")]
         assert '<script src="/loading.js"></script>' in head, page
         assert head.index("/loading.js") < min(i for i in (head.find("<script>"), len(head)) if i >= 0), page
+
+
+def test_every_page_has_the_one_nav(client):
+    """One list in loading.js, in one order; each page names itself as current."""
+    script = client.get("/loading.js").text
+    order = ["/stats.html", "/chart", "/pots.html", "/allin.html", "/tendencies.html", "/players.html"]
+    at = [script.index(f'"{path}"') for path in order]
+    assert at == sorted(at)
+    for page, key in (("/", "home"), ("/stats.html", "stats"), ("/chart", "chart"), ("/pots.html", "pots"),
+                      ("/allin.html", "allin"), ("/tendencies.html", "tendencies"), ("/players.html", "players")):
+        html = client.get(page, headers={"accept": "text/html"}).text
+        assert f'<nav class="pnt-nav" id="crumb" data-page="{key}"' in html, page
+        assert f'["{key}", ' in script, key
+        assert "pntPage.nav()" in html, page
 
 
 def test_the_front_door_links_every_page(client):

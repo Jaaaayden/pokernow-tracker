@@ -30,6 +30,7 @@ brackets (SPEC.md, "Filter language").
 
 from __future__ import annotations
 
+import difflib
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, date, datetime, time, timedelta
@@ -899,8 +900,8 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("double_board", "double_board", "Double Board was dealt: hand lists and Results only"),
     )),
     ("Opponent", (
-        ("vs=NAME", "vs=player 3", "played against that player"),
-        ("vs!=NAME", "vs!=player 3", "not against that player"),
+        ("vs=NAME", "vs=alex", "played against that player"),
+        ("vs!=NAME", "vs!=alex", "not against that player"),
     )),
     ("Your tags", (
         ("tag=TAG", "tag=river-bluff", "hands you tagged, e.g. tag=cooler|study · tag=flagged the 🚩 ones"),
@@ -1170,8 +1171,10 @@ def _compile_term(
         if pred is not None:
             return pred, family
 
+    # The first line is the whole answer on a page (the ? Filters panel lists every
+    # term there); the list after it is for the API and the CLI.
     raise ValueError(
-        f"unknown filter term: {term!r}. "
+        f"unknown filter term: {term!r}{_did_you_mean(term)}\n"
         f"Known flags: {', '.join(sorted(FLAGS))}; "
         f"position=<POS>; fold_street=<street>; vs=<player>; tag=<tag>; hand=<class>; "
         f"since:YYYY-MM-DD, before:YYYY-MM-DD or last:Nd; "
@@ -1184,6 +1187,26 @@ def _compile_term(
         f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
         f"!flag, !(...); or flop=/turn=/river=/board= with a texture tag"
     )
+
+
+@lru_cache(maxsize=1)
+def _term_names() -> tuple[str, ...]:
+    """Every term name the vocabulary documents, each street written in."""
+    out: set[str] = set()
+    for _, terms in VOCABULARY:
+        for term, _, _ in terms:
+            for s in STREETS:
+                name = re.split(r"[!<>=:]", term.replace("<street>", s).lstrip("!"), maxsplit=1)[0]
+                if name and "<" not in name:
+                    out.add(name)
+    return tuple(sorted(out))
+
+
+def _did_you_mean(term: str) -> str:
+    """`; did you mean fold_to_cbet_flop?` for a near miss, else nothing."""
+    name = re.split(r"[!<>=:]", term.lstrip("!"), maxsplit=1)[0].strip().lower()
+    near = difflib.get_close_matches(name, _term_names(), n=3, cutoff=0.6) if name else []
+    return f"; did you mean {' or '.join(near)}?" if near else ""
 
 
 #: What makes a `|` segment a term of its own rather than a value of the one
