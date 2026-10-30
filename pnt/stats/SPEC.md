@@ -2436,8 +2436,8 @@ equity    = expected / pot                           share of the whole pot
 |---|---|
 | **Population** | Complete hands that reached showdown with at least one all-in action, where every unfolded player's cards are known. One row per (hand, unfolded player). A hand with a mucked live hand is *counted* as `skipped.cards_unknown`, never silently dropped. Folded players have no row: they have no claim on the pot |
 | **Decision point** | The street of the last voluntary action -- where the betting stopped. The board is the first run's cards dealt by then: 0, 3, 4 or 5. A run-it-twice second board repeats that prefix, so the first run is what everyone saw when they committed |
-| **Pots** | Layered from `contributed` (which already excludes uncalled returns): the distinct amounts the live players put in are the layers, each open to the live players who reached it. Every chip is in some pot, a folded player's included; Σ pots = `pot` by construction. A layer only one player reached is folded into the pot below it -- see judgement call 15 |
-| **Method** | `exact` when two or fewer cards are to come (990 boards after a flop all-in, 44 after a turn one, 1 on the river); `sampled` preflop, 50,000 deals from a generator seeded by the cards and pots, so the same hand always gets the same answer and its error stays under a quarter of a percent |
+| **Pots** | Layered from `contributed` (which already excludes uncalled returns): the distinct amounts the live players put in are the layers, each open to the live players who reached it. Every chip is in some pot, a folded player's included; Σ pots = `pot` by construction. A layer only one live player reached is folded into the pot below it when every chip in it is that player's own (an overpay nobody returned); one a folded player also paid into is a side pot of its own, which its one player always wins -- see judgement call 15 |
+| **Method** | `exact` when two or fewer cards are to come (990 boards after a flop all-in, 44 after a turn one, 1 on the river); `sampled` preflop, 50,000 deals from a generator seeded by the cards and pots, so the same hand always gets the same answer; its standard error is about 0.2% of the pot, a few chips on the biggest pots |
 
 Because `actual` is the same `net` every other view prints, the two lines on the page
 differ only where the deck did something: **within one hand the `diff`s sum to zero.**
@@ -3318,15 +3318,25 @@ archaeology.
     bounties are in both `actual` and `adjusted`, so `diff` is pure variance.
 14. **Preflop equity is sampled, not enumerated.** 1.7 million boards heads-up is
     fifteen seconds of pure Python per hand; 50,000 seeded deals is half a second
-    and reproducible, with an error smaller than a single chip on any pot in the
-    corpus. Every row says which it was.
-15. **Chips only one player could win go with the pot below.** PokerNow sometimes
+    and reproducible, with a standard error of about 0.2% of the pot: under a chip
+    on most pots, a few chips on the biggest (AA against KK for 2,000 is 1,634.6
+    sampled against 1,638.9 exact). Every row says which it was.
+15. **A caller's unreturned overpay goes with the pot below.** PokerNow sometimes
     lets a caller put in a few chips more than the all-in and returns nothing: in
     hand #73 of `pgl8vNV4WURe` the caller put in 915 against 910, and the winner
     collected all 1,945. Treated as a side pot of 5 that only the caller could win,
     the hand would show a 5-chip gap on a river all-in, where there is no gap to
     have. It is paid where PokerNow paid it. The one other river gap in the
     database is the odd chip of a chopped pot, which is real and half a chip.
+    Only a layer whose every chip came from its one live player is merged. When
+    a player who later folded also paid into it -- two deep stacks bet past a
+    short all-in, then one gave up -- it is a real side pot: the short stack
+    could never win it, so it stays its own pot, won by the one player left in
+    it. Merging those handed the short stack a share of chips it could never
+    win: 5 of 1,357 all-in showdowns in the author's database have such a pot
+    (#195 of `pglAxUBh5ntTOy1R-Cg4_w7ja`: 734 chips, half of them a folded
+    player's), and on the 2 decided on the flop it moved `expected` by 16 to 53
+    chips.
 28. **A raise is sized after the call, against the pot the call would make.**
     `raise_pot = (amount − to_call) / (pot_before + to_call)`. Checked against
     the 1,419 postflop raises that were not all in across the bundled logs

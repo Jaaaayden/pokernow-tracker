@@ -70,6 +70,25 @@ def test_chips_nobody_else_could_win_go_with_the_pot_below():
     assert pots == [(300, ("a", "b", "c")), (420, ("b", "c"))]
 
 
+def test_a_side_pot_a_folded_player_paid_into_stays_its_own():
+    """A is all in for 100; B and C bet on, and C folds the turn. The 400 above
+    A's 100 is a real side pot, half of it C's: A can never win it, so it is not
+    folded into the main pot (pglAxUBh5ntTOy1R-Cg4_w7ja #195 was like this)."""
+    pots = side_pots({"A": 100, "B": 300, "C": 300}, ["A", "B"])
+    assert pots == [(300, ("A", "B")), (400, ("B",))]
+    got, *_ = expected_collected(["2c3d", "AsAh"], ["Ac", "Ad", "Kh", "Kd", "Qs"], [(300, (0, 1)), (400, (1,))])
+    assert got == [0.0, 700.0]
+    got, *_ = expected_collected(["AsAh", "2c3d"], ["Ac", "Ad", "Kh", "Kd", "Qs"], [(300, (0, 1)), (400, (1,))])
+    assert got == [300.0, 400.0], "the short stack's best case is the main pot"
+
+
+def test_an_overpay_with_a_folded_player_below_still_merges():
+    """The overpay quirk with a folder in the hand: the 5 only `b` put in above
+    `a`'s all-in is `b`'s alone, so it still goes with the pot below."""
+    pots = side_pots({"a": 910, "b": 915, "folder": 50}, ["a", "b"])
+    assert pots == [(1875, ("a", "b"))]
+
+
 def test_a_short_stack_makes_a_main_pot_and_a_side_pot():
     pots = side_pots({"a": 100, "b": 300, "c": 300}, ["a", "b", "c"])
     assert pots == [(300, ("a", "b", "c")), (400, ("b", "c"))]

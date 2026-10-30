@@ -78,6 +78,19 @@ def test_side_pots_name_each_winner_and_stake():
     assert side["boards"][0]["losers"] == [{"pn_id": "B", "hand": "pair of nines", "lost": 150}]
 
 
+def test_a_side_pot_a_folder_paid_into_goes_to_its_one_player():
+    # C is all in for 100 and best; A and B bet on and B folded. A's side pot is
+    # A's whatever the cards, with no loser shown: B's 200 there was folded away.
+    s = summary(
+        [_p("A", "AsQd", 300, 400), _p("B", None, 300, 0, folded=True), _p("C", "KsKd", 100, 300)],
+        [BOARD],
+    )
+    main, side = s["pots"]
+    assert (main["chips"], side["chips"]) == (300, 400)
+    assert [w["pn_id"] for w in main["boards"][0]["winners"]] == ["C"]
+    assert side["boards"][0]["winners"][0]["pn_id"] == "A" and side["boards"][0]["losers"] == []
+
+
 def test_run_it_twice_splits_the_pot_by_board():
     second = ["Kh", "9c", "9h", "As", "Ad"]
     s = summary([_p("A", "KsKd", 100, 100), _p("B", "AcQd", 100, 100)], [BOARD, second])
