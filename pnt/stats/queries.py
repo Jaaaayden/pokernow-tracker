@@ -26,7 +26,16 @@ from typing import Self
 from ..db.conn import generation, path_of, reading
 from ..logfmt.parser import position_name
 from . import strength
-from .derive import ANALYSED_SQL, ANSWERS, SIZE_BUCKETS, Facts, HandAction, HandPlayerRow, HandRow, derive
+from .derive import (
+    ANALYSED_SQL,
+    ANSWERS,
+    SIZE_BUCKETS,
+    Facts,
+    HandAction,
+    HandPlayerRow,
+    HandRow,
+    derive,
+)
 from .lru import LRU
 from .tilt import annotate
 

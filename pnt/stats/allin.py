@@ -35,7 +35,14 @@ from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
 from .cards import board_at
 from .derive import ANALYSED_SQL, Facts, HandRow
 from .equity import cache_key, expected_collected, side_pots
-from .queries import display_names, facts_cached, identities_of, identity_map, load_hands, play_facts
+from .queries import (
+    display_names,
+    facts_cached,
+    identities_of,
+    identity_map,
+    load_hands,
+    play_facts,
+)
 
 STREETS = (PREFLOP, FLOP, TURN, RIVER)
 
