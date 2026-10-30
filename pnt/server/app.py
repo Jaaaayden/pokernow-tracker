@@ -513,7 +513,7 @@ def players_page() -> HTMLResponse:
 def chart() -> HTMLResponse:
     """The range chart page. One static file; all data comes from /players/{alias}/range.
 
-    Query parameters (`?player=henry&filter=opener,srp&by=made&color=size`) seed
+    Query parameters (`?player=alex&filter=opener,srp&by=made&color=size`) seed
     the page state, so a bookmark -- or an extension iframe -- lands on a
     specific player and spot.
     """
@@ -878,7 +878,7 @@ def pots(
 @app.get("/players/{alias:path}/allin")
 def player_allin(
     alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'vs=henry'")] = None,
+    filter: Annotated[str | None, Query(description="e.g. 'vs=alex'")] = None,
     game: str | None = None,
 ) -> dict:
     """One player's all-in showdowns, oldest first: the rows behind their two lines."""
@@ -893,7 +893,7 @@ def player_allin(
 @app.get("/players/{alias:path}/review")
 def player_review(
     alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=alex'")] = None,
     game: str | None = None,
 ) -> dict:
     """One player's flagged hands, newest first: the mistakes worth a replay and the
@@ -1015,7 +1015,7 @@ def _spot_facts(
     """
     if conn is None:
         conn = db()
-    # The name map is what lets `vs=henry` name a person rather than an ID.
+    # The name map is what lets `vs=alex` name a person rather than an ID.
     pred = _predicate(conn, filter)
     try:
         # Cached: every tab of the chart asks for the same player's hands, and
@@ -1128,7 +1128,7 @@ def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
 @app.get("/players/{alias:path}/flagged")
 def player_flagged(
     alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=alex'")] = None,
     game: str | None = None,
 ) -> dict:
     """The hands of one player's you flagged for manual review, newest first.
@@ -2142,7 +2142,7 @@ def pool_lines(
 @app.get("/players/{alias:path}/bluffs")
 def player_bluffs(
     alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=alex'")] = None,
     game: str | None = None,
 ) -> dict:
     """One player's value:bluff by kind of aggression: bets by size, check-raises,
@@ -2492,7 +2492,7 @@ def tendencies_report(
 @app.get("/players/{alias:path}/timing")
 def player_timing(
     alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=henry'")] = None,
+    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=alex'")] = None,
     game: str | None = None,
 ) -> dict:
     """How long one player's first decision on each street took, and what their

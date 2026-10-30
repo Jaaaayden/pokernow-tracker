@@ -6,7 +6,7 @@ const { normalize } = createRequire(import.meta.url)("./normalize.js");
 
 const csvLike = [
   { entry: '-- ending hand #3 --', at: "2026-08-10T08:29:52.078Z", order: 178635059207801 },
-  { entry: '"Chris @ 5NARaPRkSp" calls 30', at: "2026-08-10T08:29:52.078Z", order: 178635059207800 },
+  { entry: '"Alex @ aB3dE5fG7h" calls 30', at: "2026-08-10T08:29:52.078Z", order: 178635059207800 },
 ];
 
 test("bare array with the CSV's own fields passes through, sorted by order", () => {
@@ -14,7 +14,7 @@ test("bare array with the CSV's own fields passes through, sorted by order", () 
   assert.equal(r.ok, true);
   assert.deepEqual(r.shape, { list: "array", entry: "entry", at: "at", order: "order", synthesized_order: false });
   assert.deepEqual(r.entries.map((e) => e.order), [178635059207800, 178635059207801]);
-  assert.equal(r.entries[0].entry, '"Chris @ 5NARaPRkSp" calls 30');
+  assert.equal(r.entries[0].entry, '"Alex @ aB3dE5fG7h" calls 30');
 });
 
 test("{logs: [...]} envelope with msg/createdAt and no order synthesizes the CSV formula", () => {
@@ -57,10 +57,10 @@ test("an empty page is ok and empty", () => {
 // share a millisecond, so only `created_at` knows which came first.
 const live = {
   logs: [
-    { at: "2026-09-11T09:34:22.848Z", created_at: "178911926284800", msg: '"Dee @ kCN0-Qy2Mz" bets 69' },
-    { at: "2026-09-11T09:34:18.574Z", created_at: "178911925857400", msg: '"Lee @ FQN9hzhzP_" checks' },
+    { at: "2026-09-11T09:34:22.848Z", created_at: "178911926284800", msg: '"Dee @ Zx9-Yw8Vu7" bets 69' },
+    { at: "2026-09-11T09:34:18.574Z", created_at: "178911925857400", msg: '"Lee @ Qr4_St5Uv6" checks' },
     { at: "2026-09-11T09:34:15.185Z", created_at: "178911925518501", msg: "Turn: 5♥, 3♥, 6♠ [5♦]" },
-    { at: "2026-09-11T09:34:15.185Z", created_at: "178911925518500", msg: '"Lee @ FQN9hzhzP_" calls 20' },
+    { at: "2026-09-11T09:34:15.185Z", created_at: "178911925518500", msg: '"Lee @ Qr4_St5Uv6" calls 20' },
   ],
   infos: { min: null, max: null },
 };
@@ -70,7 +70,7 @@ test("pokernow.com's live envelope uses created_at as the CSV order", () => {
   assert.equal(r.ok, true);
   assert.deepEqual(r.shape, { list: "logs", entry: "msg", at: "at", order: "created_at", synthesized_order: false });
   assert.deepEqual(r.entries.map((e) => e.order), [178911925518500, 178911925518501, 178911925857400, 178911926284800]);
-  assert.equal(r.entries[0].entry, '"Lee @ FQN9hzhzP_" calls 20', "the call precedes the turn it closed");
+  assert.equal(r.entries[0].entry, '"Lee @ Qr4_St5Uv6" calls 20', "the call precedes the turn it closed");
   assert.equal(r.entries[3].at, "2026-09-11T09:34:22.848Z");
 });
 

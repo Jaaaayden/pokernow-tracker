@@ -885,7 +885,7 @@ def review(
     alias: str,
     db: Path = DbOpt,
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
-    filter_: str = typer.Option(None, "--filter", help="e.g. 'srp,vs=henry'"),
+    filter_: str = typer.Option(None, "--filter", help="e.g. 'srp,vs=alex'"),
     kind: str = typer.Option(
         None, "--kind", help="One flag: " + ", ".join(REVIEW_KINDS)
     ),
@@ -1001,8 +1001,8 @@ def note(
     not a log -- and the mark from `pnt reviewed` is separate: neither command
     touches the other's.
 
-        pnt note pgl41zM3_CKphpnKM1DMIosUT 161 "turn barrel had no fold equity"
-        pnt note pgl41zM3_CKphpnKM1DMIosUT 161 --clear
+        pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 "turn barrel had no fold equity"
+        pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 --clear
         pnt note
     """
     conn = connect(db)
@@ -1046,8 +1046,8 @@ def player_note(
     canonical player's, so it follows them across devices, and a merge appends the
     merged player's note to it rather than dropping it.
 
-        pnt player-note henry "tanks then jams with air; never folds the river"
-        pnt player-note henry --clear
+        pnt player-note alex "tanks then jams with air; never folds the river"
+        pnt player-note alex --clear
         pnt player-note
     """
     conn = connect(db)
@@ -1854,7 +1854,7 @@ def bluffs(
     alias: str = typer.Argument(None, help="One player; the pool when omitted."),
     pool: bool = typer.Option(False, "--pool", help="The pool too: every player, every hand."),
     db: Path = DbOpt,
-    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,vs=henry'"),
+    filter_: str = typer.Option(None, "--filter", help="The spot, e.g. 'srp,vs=alex'"),
     game: str = typer.Option(None, "--game", help="Restrict to one game_id."),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:

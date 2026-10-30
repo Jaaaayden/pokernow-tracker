@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS players (
 );
 
 -- Many PokerNow IDs -> one person. IDs are stable per browser/device and survive
--- quit/rejoin and renames within and across games (gpP9uUffpu appears as
--- "genericpoker" in one session and "500" in another), but the SAME human on a
+-- quit/rejoin and renames within and across games (one ID can appear as
+-- "alex" in one session and "500" in another), but the SAME human on a
 -- second device gets a different ID -- which is what this table exists for.
 -- Merging two people is one UPDATE here; because no stat is stored, nothing
 -- needs recomputing afterwards.
