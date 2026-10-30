@@ -140,6 +140,24 @@ def test_session_terms_read_the_whole_session(db):
     assert late["hands"], "the fixture's all-ins are not all in the first 50 hands"
 
 
+def test_the_pool_filter_reads_only_the_all_in_players_hands(db, monkeypatch):
+    """The same report as deriving every hand of each game, from fewer hands."""
+    names = display_names(db)
+    exprs = ("session_hand>=50", "session_hour>=1", "!post_loss", "post_loss", "vs=Chris", "limped")
+    narrow = {e: al.allin_report(db, predicate=parse_filter(e, names)) for e in exprs}
+    real = al.load_hands
+    narrowed = []
+
+    def whole_games(conn, game_id=None, pn_ids=None, **kw):
+        narrowed.append(pn_ids is not None)
+        return real(conn, game_id, **kw)
+
+    monkeypatch.setattr(al, "load_hands", whole_games)
+    for e in exprs:
+        assert al.allin_report(db, predicate=parse_filter(e, names)) == narrow[e], e
+    assert any(narrowed)
+
+
 def test_the_hand_list_is_oldest_first_and_names_the_villains(db):
     body = al.allin_hand_list(db, "genericpoker")
     hands = body["hands"]
