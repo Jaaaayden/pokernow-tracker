@@ -713,12 +713,23 @@ def _tally_by_id(hands: Iterable[HandRow]) -> dict[str, Tally]:
     return out
 
 
+def _whole_hands(conn: sqlite3.Connection, game_id: str | None) -> list[HandRow]:
+    """`load_hands`, its three queries against one snapshot, so a rebuild landing
+    between them cannot leave a game's hands with no players or actions. The
+    snapshot ends with the reads; deriving the hands needs none."""
+    with reading(conn):
+        return load_hands(conn, game_id)
+
+
 def _tallies(conn: sqlite3.Connection, game_id: str | None) -> list[dict[str, Tally]]:
-    """Per-game tallies, oldest game first, derived only where a game's stamp moved."""
+    """Per-game tallies, oldest game first, derived only where a game's stamp moved.
+
+    A game rebuilt after its stamp was read is tallied from its new hands under
+    the old stamp: the stamp has moved, so the next call derives it again."""
     path = path_of(conn)
     stamps = _game_stamps(conn, game_id) if path else None
     if stamps is None:
-        return [_tally_by_id(load_hands(conn, game_id))]
+        return [_tally_by_id(_whole_hands(conn, game_id))]
     out = []
     for gid, stamp in stamps.items():
         hit = _GAME_TALLIES.get((path, gid))
@@ -726,7 +737,7 @@ def _tallies(conn: sqlite3.Connection, game_id: str | None) -> list[dict[str, Ta
             with _GAME_TALLIES.making((path, gid)):
                 hit = _GAME_TALLIES.get((path, gid))
                 if hit is None or hit[0] != stamp:
-                    hit = _GAME_TALLIES[path, gid] = (stamp, _tally_by_id(load_hands(conn, gid)))
+                    hit = _GAME_TALLIES[path, gid] = (stamp, _tally_by_id(_whole_hands(conn, gid)))
         out.append(hit[1])
     if game_id is None:  # a game deleted since is forgotten with it
         _GAME_TALLIES.prune(lambda k: k[0] == path and k[1] not in stamps)
@@ -890,15 +901,11 @@ def report(
     move: restrict to the hands where a player reached some specific spot, then
     report their behaviour within it.
 
-    Every read is made against one snapshot, as in `facts_cached`: `load_hands`
+    Each game's hands are read against one snapshot (`_whole_hands`): `load_hands`
     is three queries, and a game rebuilt between them reads as hands with no
-    players or actions.
+    players or actions. Only the reads: a snapshot held across a cold derivation,
+    a minute on a big database, would keep WAL from checkpointing all that time.
     """
-    with reading(conn):
-        return _report(conn, game_id, min_hands, predicate)
-
-
-def _report(conn: sqlite3.Connection, game_id: str | None, min_hands: int, predicate) -> list[dict]:
     if predicate is not None:
         # A predicate is an arbitrary callable -- not something that can key a cache
         # -- and a spot query is asked once by a person, where the unfiltered one
