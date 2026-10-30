@@ -108,6 +108,17 @@ def test_split_rejects_an_unknown_id_and_a_taken_alias(client):
     assert "already exists" in r.json()["detail"]
 
 
+def test_split_takes_a_name_by_the_rules_of_rename(client):
+    """Stripped, and never blank: `"   "` once became a player."""
+    a, b = (p["alias"] for p in client.get("/players").json()[:2])
+    one = client.post("/aliases/merge", json={"source": a, "target": b}).json()["pn_ids"]
+    r = client.post("/aliases/split", json={"pn_ids": one, "alias": "   "})
+    assert r.status_code == 400 and "empty" in r.json()["detail"]
+    r = client.post("/aliases/split", json={"pn_ids": one, "alias": " bob "})
+    assert r.status_code == 200 and r.json()["alias"] == "bob"
+    assert "bob" in {p["alias"] for p in client.get("/players").json()}
+
+
 def test_rename_round_trips_and_guards_collisions(client):
     assert client.post("/aliases/rename", json={"old": "HSJ", "new": " Zay "}).status_code == 200
     aliases = {p["alias"] for p in client.get("/players").json()}

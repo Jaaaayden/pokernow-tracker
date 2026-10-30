@@ -191,6 +191,10 @@ def split_identities(conn: sqlite3.Connection, pn_ids: list[str], alias: str) ->
     """
     if not pn_ids:
         raise ValueError("no identities given")
+    # The rules of `rename_player`: what a player is called is stripped, and never blank.
+    alias = alias.strip()
+    if not alias:
+        raise ValueError("the new player's name cannot be empty")
     with writing(conn):
         rows = conn.execute(
             "SELECT pn_id, player_id FROM player_identities"

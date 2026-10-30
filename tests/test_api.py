@@ -120,6 +120,45 @@ def test_filter_is_validated_not_silently_ignored(client):
     assert "unknown filter term" in r.json()["detail"]
 
 
+BIG = 99999999999999999999  # over 2**63: SQLite raised OverflowError on it, a 500
+
+
+@pytest.mark.parametrize(
+    "method, url, body",
+    [
+        ("get", "/pots?days=inf", None),
+        ("get", "/pots?days=nan", None),
+        ("get", "/pots?days=1e10", None),
+        ("get", f"/hands/{BIG}", None),
+        ("post", f"/hands/{BIG}/reviewed", {"reviewed": True}),
+        ("post", f"/hands/{BIG}/note", {"note": "x"}),
+        ("post", f"/games/{HU_GAME}/hands/{BIG}/flag", {"flagged": True}),
+        ("get", f"/games/{HU_GAME}/hands/{BIG}/tags", None),
+        ("patch", f"/spots/{BIG}", {"name": "x"}),
+        ("delete", f"/spots/{BIG}", None),
+        ("post", "/ingest", {"game_id": "g", "entries": [{"entry": "x", "at": "y", "order": 2**70}]}),
+        ("get", "/stats?split=", None),
+        ("get", "/stats?split=srp&split=%20", None),
+        ("get", "/stats?filter=last:99999999d", None),
+    ],
+)
+def test_out_of_range_input_is_a_4xx_not_a_500(client, method, url, body):
+    kwargs = {"json": body} if body is not None else {}
+    r = getattr(client, method)(url, **kwargs)
+    assert r.status_code in (400, 422), (r.status_code, r.text)
+
+
+def test_rebuilding_a_game_with_no_lines_is_a_404_that_writes_nothing(client):
+    from pnt.db.conn import connect
+    from pnt.server import app as app_module
+
+    assert client.post("/rebuild/nosuchgame1").status_code == 404
+    conn = connect(app_module.DB_PATH)
+    assert conn.execute("SELECT 1 FROM games WHERE game_id = 'nosuchgame1'").fetchone() is None
+    conn.close()
+    assert client.post(f"/rebuild/{HU_GAME}").json()["hands"] == 188
+
+
 def test_filter_narrows_results(client):
     everything = {r["player"]: r for r in client.get("/stats").json()}
     threebet = {r["player"]: r for r in client.get("/stats", params={"filter": "3bet"}).json()}
