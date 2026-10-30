@@ -80,8 +80,8 @@ def resolve_identity(conn: sqlite3.Connection, pn_id: str, name: str, seen_at: s
 
     New IDs get their own player. Deciding that two IDs are the same human is a
     judgement call, so it stays manual (`pnt alias merge`) rather than guessing
-    from display names -- this dataset contains ``hsj`` and ``HSJ`` on different
-    IDs, and also one ID that presents as both ``genericpoker`` and ``500``.
+    from display names -- this dataset contains ``kai`` and ``KAI`` on different
+    IDs, and also one ID that presents as both ``tablebot`` and ``500``.
     """
     row = conn.execute(
         "SELECT player_id FROM player_identities WHERE pn_id = ?", (pn_id,)

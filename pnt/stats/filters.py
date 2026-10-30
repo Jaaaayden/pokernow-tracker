@@ -15,7 +15,7 @@ flop half pot, c-bet the turn, overbet the river" is::
     opener,open_bb>=4,srp,cbet_flop=medium,cbet_turn,bet_river=overbet
 
 The pot and the opposition are terms too: `pot>=500` keeps the hands whose final
-pot reached 500 chips, and `vs=henry` the hands played against henry.
+pot reached 500 chips, and `vs=alex` the hands played against alex.
 `jam_river` keeps river all-ins, the spot for reading bluffs against value, and
 `called_jam` the other side of it. `line_flop=xr` is a flop check-raise, and
 `made_flop>=set,line_flop=x*` the sets that checked the flop -- a slowplay.
@@ -1048,7 +1048,7 @@ def parse_filter(
       ``raise_bb<=2.5``      this player's own preflop raise-to
       ``bet_river>=1``       this player's first river bet, as a fraction of the pot
       ``pot>=500``           the final pot was at least 500 chips; ``pot_bb>=50`` in blinds
-      ``vs=henry``           henry was still in when this player last acted; ``vs!=`` negates
+      ``vs=alex``           alex was still in when this player last acted; ``vs!=`` negates
       ``jam_river``          bet or raised all-in on the river; also ``jam``, ``faced_jam_<street>``
                              and ``called_jam_<street>``, preflop included
       ``cbet_flop=medium``   a flop c-bet in that size bucket; also bet_<street>= and

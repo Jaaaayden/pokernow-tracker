@@ -371,7 +371,7 @@ def group(
         per_dim = []
         for i, d in enumerate(chosen):
             raw = _buckets(d, f, ctx)
-            # Several spellings of one bucket (`vs`: Henry, henry) are one cell,
+            # Several spellings of one bucket (`vs`: Alex, alex) are one cell,
             # shown under the first spelling met.
             idents = []
             for b in raw:

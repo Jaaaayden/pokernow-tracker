@@ -624,7 +624,7 @@ unit := "(" conj ")" | "!(" conj ")" | term
 | `(srp,position=BTN)\|(3bet_pot,position=SB)` | either bracket |
 | `!(srp,position=BTN)` | every hand the bracket does not match |
 | `position=BTN\|CO` | `position=BTN` or `position=CO` |
-| `vs!=henry\|luis` | `vs!=henry` and `vs!=luis`: against neither |
+| `vs!=alex\|blake` | `vs!=alex` and `vs!=blake`: against neither |
 | `3bet_pot\|position=BTN` | either term |
 | `eff_bb<40\|eff_bb>=200` | either comparison |
 
@@ -656,7 +656,7 @@ unit := "(" conj ")" | "!(" conj ")" | term
    display name or PokerNow ID is that player, even when a flag has the same name.
    Without a name map, which only internal callers omit, every operator-free
    segment after `vs=` is a name. Brackets make a term of it either way:
-   `vs=henry|(won)`. A tag can be any word, so the other way round: a flag after
+   `vs=alex|(won)`. A tag can be any word, so the other way round: a flag after
    `tag=` is always the flag (`tag=study|won`), and `tag=study|tag=won` names the tag.
 7. **An unknown value raises**, which the server answers with a 400: `position=XYZ`,
    `position=`, `faced_open=jam`, `fold_street=showdown`. A segment after a key that
@@ -2289,8 +2289,8 @@ Board, told apart from run-it-twice by its `(second board)` lines). `plo` and
 `double_board` find hands only in the hand lists and Results.
 
 `contributed` subtracts uncalled bets because chips returned to you were never at
-risk. Verified against hand #187 of the sample log: Chris posts SB 5, raises to 30,
-opponent folds, 20 is returned, he collects 20 — net **+10**, which is the
+risk. Verified against hand #187 of the sample log: a player posts SB 5, raises to 30,
+opponent folds, 20 is returned, they collect 20 — net **+10**, which is the
 opponent's big blind and nothing else.
 
 **Incomplete hands are excluded from bb/100, and only from bb/100.** A log that
@@ -2524,7 +2524,7 @@ Judgement calls:
    them is not a pair. Folding happens through the identity map at read time, so
    a merge or a split re-answers on the next request.
 5. **The chart filter names the opponent only when it names nobody else.**
-   `vs=` matches a display name or a raw ID, ignoring case, so `hsj` and `HSJ`
+   `vs=` matches a display name or a raw ID, ignoring case, so `kai` and `KAI`
    are one term for two people. Then a player with one PokerNow ID is named by
    that ID (`vs=<pn_id>`); one with several, sharing a name, gets `filter: null`,
    since a filter cannot say "this ID or that one". A name with a comma would
@@ -2971,7 +2971,7 @@ that finds exactly them: `<spot>,<term>` reproduces the cell on any page.
 | **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot, bomb_pot, double_board, plo | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` · `holdem,!double_board,bomb_pot` · `holdem,double_board` · `plo` (the last two only reach a list in the `money` or `every` scope) | a hand none of them matches; every hand Group by reads matches one |
 | **players_flop** | 2, 3+ | `players_flop=2` · `players_flop>=3` | no flop dealt |
 | **depth** | <40, 40–100, 100–200, 200+ bb | the "Stack-depth splits" terms | `eff_bb` unknown |
-| **vs** | each opponent, by name | `vs=henry` | no opponent left |
+| **vs** | each opponent, by name | `vs=alex` | no opponent left |
 | **player** | each player (pool only) | none: the cell names its `player` | never |
 | **line_\<street\>** | each line, most hands first | `line_flop=xc` | did not act on the street |
 | **made_\<street\>** | the `MADE_GROUPS`, strongest first, with `pair` opened into its leaves | `made_flop=top_pair`; the `trips` group is `made_flop=set\|trips` | cards unknown, no such board, or folded before it |

@@ -111,16 +111,7 @@ _SEAT = re.compile(r'"([^"@]+) @ ([A-Za-z0-9_-]{10})"')
 _ALSO = {"henry"}
 
 #: Files another branch is clearing of names right now; drop each once it is clean.
-_PENDING = {
-    "pnt/ingest/csv_source.py",
-    "pnt/ingest/importer.py",
-    "pnt/logfmt/hero.py",
-    "pnt/logfmt/tokens.py",
-    "pnt/stats/SPEC.md",
-    "pnt/stats/filters.py",
-    "pnt/stats/groupby.py",
-    "pnt/stats/h2h.py",
-}
+_PENDING: set[str] = set()
 
 
 def _real_strings() -> tuple[set[str], set[str]]:

@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 #: the way in, and `log_folder.log_path` is the last line of defence.
 GAME_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
-#: `poker_now_log_pgl41zM3_CKphpnKM1DMIosUT.csv` -> `pgl41zM3_CKphpnKM1DMIosUT`.
+#: `poker_now_log_pgl051Pj7uqrht2HJB-JPZlcd.csv` -> `pgl051Pj7uqrht2HJB-JPZlcd`.
 #: A browser saves a second download of the same export as `... (1).csv` (Chrome,
 #: Edge) or `...(1).csv` (Firefox): the same game, so the copy number is no part of
 #: the ID. Read as an ID of its own, every hand in it would be counted twice.

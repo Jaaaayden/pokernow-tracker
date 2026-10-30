@@ -3,7 +3,7 @@
 ``Your hand is 5♦, 8♣`` carries no name, so on a downloaded log there is nothing
 directly linking hero's hole cards to a player ID. But at showdown the same cards
 appear again attached to a name -- hand #188 of the sample log shows
-``genericpoker`` holding exactly ``5♦, 8♣``.
+``tablebot`` holding exactly ``5♦, 8♣``.
 
 Inference is by elimination plus voting, which makes it self-validating:
 

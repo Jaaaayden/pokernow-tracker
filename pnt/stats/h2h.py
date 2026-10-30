@@ -1,7 +1,7 @@
 """Head to head: the money between two players, and who pays whom across the pool.
 
-`vs=henry` already restricts any stat to the hands played against one villain.
-What it cannot say is how many chips went from you to henry. This module settles
+`vs=alex` already restricts any stat to the hands played against one villain.
+What it cannot say is how many chips went from you to alex. This module settles
 every hand into transfers between pairs of players and sums them:
 
 - **One winner** -- every heads-up finish, and most multiway ones -- is exact:
@@ -259,7 +259,7 @@ def vs_filters(names: Mapping[str, str], key: Callable[[str], str]) -> dict[str,
     """Person key -> the chart filter for the hands played against them.
 
     `vs=` matches a display name or a raw id, ignoring case. That names a person
-    when nobody else answers to the same text; `hsj` and `HSJ` are two people one
+    when nobody else answers to the same text; `kai` and `KAI` are two people one
     term cannot tell apart. Then a person with a single PokerNow ID is named by
     the ID, and one with several gets None -- the filter language has no OR. A
     comma would split the term in two, so a name with one is not used either.
