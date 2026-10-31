@@ -6,26 +6,7 @@
 <title>Stats</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d;
-  }
+  /* The palette is loading.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: none; margin: 0; padding: 20px clamp(12px, 2vw, 28px) 48px; }
@@ -181,8 +162,14 @@
     ["probe", "Probe", "probe", LATER],
     ["fold_to_probe", "F2P", "fold_to_probe", LATER],
     ["float", "Float", "float"],
+    ["check_raise", "Check-Raise", "check_raise"],
     ["af", "AFq", "af"],
   ];
+  // The HUD's short label where it differs from the header here (hud_catalog.py;
+  // turn and river ones start t and r there), so a HUD reader finds the column.
+  const HUD_LABEL = { cbet: "CBet", fold_to_cbet: "FCB", raise_cbet: "RCB", donk: "Donk", probe: "Prob",
+    float: "Flt", check_raise: "XR", bb_per_100: "bb100" };
+  const hudLabel = (k, s) => HUD_LABEL[k] && `HUD: ${k === "bb_per_100" ? "" : { flop: "", turn: "t", river: "r" }[s]}${HUD_LABEL[k]}.`;
   // The core columns the table opens with; "All stats" shows the rest.
   const SIMPLE = new Set(["hands", "vpip", "pfr", "3bet", "fold_to_3bet", "wtsd", "wsd", "bb_per_100",
     "bb_per_100_ci", "cbet", "fold_to_cbet", "raise_cbet", "donk", "af"]);
@@ -190,7 +177,7 @@
   const OPP_NOUN = {
     cbet: "c-bet chances", fold_to_cbet: "c-bets faced", donk: "lead chances",
     delayed_cbet: "delayed c-bet chances", probe: "probe chances", fold_to_probe: "probes faced",
-    float: "float chances",
+    float: "float chances", check_raise: "checks that faced a bet",
     af: "bets, raises, calls and folds",
     vpip: "preflop decisions", "3bet": "3-bet chances", fold_to_3bet: "opens that were 3-bet",
     wtsd: "flops seen",
@@ -223,6 +210,8 @@
       ? "Float. They called the preflop raise, the raiser checked the flop to them, "
       : `Float. They called on the ${PREV[s]}, its aggressor checked the ${s} to them, `)
       + "and they bet. High means a check-raise from that aggressor has a bet to raise.",
+    check_raise: (s) => `Check-raise. They checked the ${s}, someone bet, and they raised. Over every `
+      + `${s} check of theirs that faced a bet.`,
     af: (s) => `Aggression Frequency. Of everything they did on the ${s} bar checking, how often `
       + `it was a bet or a raise rather than a call or a fold. Counts actions, not hands, and `
       + `is the one column here that does not depend on who the aggressor was.`,
@@ -311,9 +300,7 @@
   let notes = new Map();
   async function loadNotes() {
     try {
-      const r = await fetch("/players", { headers: { accept: "application/json" } });
-      if (!r.ok) return;
-      notes = new Map((await r.json()).filter(p => p.notes).map(p => [p.alias, p.notes]));
+      notes = new Map((await pntPage.getJson("/players")).filter(p => p.notes).map(p => [p.alias, p.notes]));
       if (state.rows.length) render();
     } catch { /* no marks */ }
   }
@@ -354,10 +341,11 @@
     const s = state.street;
     // vs fold only reads on a blind's row, so only the position split has it.
     const shown = (k) => k === "bb_per_100_vs_fold" ? state.split === "position" : state.all || SIMPLE.has(k);
+    const tip = (...parts) => parts.filter(Boolean).join(" ");
     const base = BASE.filter(([k]) => shown(k)).map(([k, h, kind, opp]) =>
-      [k, h, kind, opp, BASE_TIP[k] && [BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — ")]);
+      [k, h, kind, opp, BASE_TIP[k] && tip([BASE_TIP[k][0], BASE_TIP[k][1]].filter(Boolean).join(" — "), hudLabel(k, s))]);
     const post = POSTFLOP.filter(([k, , , streets]) => shown(k) && (!streets || streets.includes(s)))
-      .map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, HEAD_TIP[k]?.(s)]);
+      .map(([k, h, opp]) => [`${k}_${s}`, h, "pct", `${opp}_${s}`, tip(HEAD_TIP[k]?.(s), hudLabel(k, s))]);
     const sizes = state.sizes
       ? SIZES.map(([b, h]) => [`size:${b}`, h, "pct", null,
           `Their ${s} c-bets of this size, as a share of all their ${s} c-bets.`])
@@ -382,25 +370,8 @@
     return v.toFixed(1) + "%";
   };
 
-  // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
-  // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
-  // "Confidence intervals"); the HUD's spot.js carries the same copy.
-  function wilson(p, n, z = 1.96) {
-    if (!(n > 0) || p == null) return null;
-    const z2 = z * z;
-    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
-    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
-    return [Math.max(0, centre - half), Math.min(1, centre + half)];
-  }
-
-  // A rate in percent over n chances, as hover text: "± 8.6 pts (95%: 31.2–48.5%)".
-  // Wilson is lopsided near 0% and 100%, so the range is printed beside the ±.
-  function ciText(pct, n) {
-    const ci = pct == null ? null : wilson(pct / 100, n);
-    if (!ci) return "";
-    const [lo, hi] = ci.map((x) => 100 * x);
-    return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
-  }
+  // A rate's 95% range as hover text (loading.js, the same as the chart's).
+  const { ciText } = pntPage;
 
   // Every rate carries the sample it came from, so a 100% off two hands reads as
   // one, and the 95% range that sample allows. Display only: tags keep their own
@@ -436,12 +407,7 @@
     const q = new URLSearchParams({ min_hands: min });
     if (filter) q.set("filter", filter);
     for (const term of split) q.append("split", term);
-    const r = await fetch("/stats?" + q, { headers: { accept: "application/json" } });
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      throw new Error(body.detail || `${r.status} ${r.statusText}`);
-    }
-    return r.json();
+    return pntPage.getJson("/stats?" + q);
   }
   const withTerm = (term) => [state.filter, term].filter(Boolean).join(",");
   const OLD_SERVER = pntPage.OLD_SERVER;
@@ -510,7 +476,7 @@
     };
     for (const [key, header, , , tip] of cols) {
       const base = BASE_TIP[key];
-      if (base) row(header, base[0], base[1]);
+      if (base) row(header, base[0], [base[1], hudLabel(key, state.street)].filter(Boolean).join(" "));
       else row(header, "", tip || `Their ${state.street} c-bets at this size.`);
     }
     row("blank (–)", "", "Not that they never did it: they never faced the spot at all. "
