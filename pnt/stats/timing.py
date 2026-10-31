@@ -300,7 +300,7 @@ def pool_rows(
     game_id: str | None = None,
     predicate: Callable[[Facts], bool] | None = None,
 ) -> list[Timed]:
-    """`fold_equity.pool_facts` for the pool's report, one game at a time and kept
+    """`queries.pool_facts` for the pool's report, one game at a time and kept
     to `Timed`. The whole database's Facts at once is about 400 MB, which the
     phone's 1 GB VM swaps on for minutes; a game's session facts never read
     another game's rows, so the answer is the same."""

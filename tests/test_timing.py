@@ -274,8 +274,7 @@ def test_every_row_reproduces_from_its_filter(db):
 
 
 def test_the_pool_splits_owners_from_shown_hands(db):
-    from pnt.stats.fold_equity import pool_facts
-    from pnt.stats.queries import display_names
+    from pnt.stats.queries import display_names, pool_facts
     from pnt.stats.timing import owners, timing_report
 
     facts = pool_facts(db)

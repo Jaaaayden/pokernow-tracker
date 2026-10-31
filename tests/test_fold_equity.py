@@ -19,8 +19,15 @@ from pnt.db.conn import connect
 from pnt.ingest.importer import import_csv
 from pnt.stats.derive import ANSWERS, SIZE_BUCKETS, derive
 from pnt.stats.filters import parse_filter
-from pnt.stats.fold_equity import MIN_SAMPLE, break_even, fold_equity, pool_facts
-from pnt.stats.queries import aggregate, display_names, facts_by_player, facts_for, report
+from pnt.stats.fold_equity import MIN_SAMPLE, break_even, fold_equity
+from pnt.stats.queries import (
+    aggregate,
+    display_names,
+    facts_by_player,
+    facts_for,
+    pool_facts,
+    report,
+)
 from tests.conftest import ALL_LOGS, local_client
 from tests.test_lines import _hand
 

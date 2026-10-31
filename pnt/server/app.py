@@ -53,7 +53,6 @@ from pnt.server import annotations
 from pnt.stats import strength
 from pnt.stats.allin import allin_hand_list, allin_report
 from pnt.stats.bluffs import CATEGORY, bluff_value, members
-from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
 from pnt.stats.filters import date_key, parse_filter, vocabulary
 from pnt.stats.fold_equity import fold_equity
@@ -69,6 +68,7 @@ from pnt.stats.queries import (
     hand_list,
     not_analysed,
     player_games,
+    pool_facts,
     remembered,
     report,
     sat_out_list,
@@ -2092,7 +2092,7 @@ def player_bluffs(
 
 def _pool_spot(conn: sqlite3.Connection, filter: str | None, game: str | None) -> list[Facts]:
     pred = _predicate(conn, filter)
-    facts = bluff_pool_facts(conn, game)
+    facts = pool_facts(conn, game)
     return [f for f in facts if pred(f)] if pred is not None else facts
 
 

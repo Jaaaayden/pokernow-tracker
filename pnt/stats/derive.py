@@ -32,6 +32,12 @@ from .cards import board_at
 POSTFLOP_STREETS = (FLOP, TURN, RIVER)
 PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
 
+def pct(num: int, den: int) -> float | None:
+    """`num` as a percent of `den` to one decimal; None on an empty denominator.
+    Every rate and share the stats print goes through this one rounding."""
+    return round(100.0 * num / den, 1) if den else None
+
+
 VOLUNTARY_COMMIT = {"call", "bet", "raise"}
 AGGRESSIVE = {"bet", "raise"}
 

@@ -23,12 +23,10 @@ is where the bluffs are. Read `coverage` first.
 
 from __future__ import annotations
 
-import sqlite3
 from collections import defaultdict
 from fractions import Fraction
 
-from .derive import POSTFLOP_STREETS, Facts
-from .queries import load_hands, play_facts
+from .derive import POSTFLOP_STREETS, Facts, pct
 from .strength import TIERS, tier_at
 
 #: How hands are grouped: by their own line, or by the whole street's sequence.
@@ -111,10 +109,6 @@ def _rated_on(segments: tuple[str, ...], streets: tuple[str, ...], mode: str) ->
     return None
 
 
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
-
-
 def _money(rows: list[Facts]) -> dict:
     """Net won in big blinds, and per 100 hands, by the bb/100 rule: complete hands
     with a known big blind only. See SPEC.md, "Money"."""
@@ -150,7 +144,7 @@ def _summary(segments: tuple[str, ...], streets: tuple[str, ...], rows: list[Fac
         terms = tier_terms(tier, on) if on else None
         tiers[tier] = {
             "n": counts[tier],
-            "pct": _pct(counts[tier], known),
+            "pct": pct(counts[tier], known),
             "filter": f"{base},{terms}" if terms and base else (terms if terms else None),
         }
     return {
@@ -161,7 +155,7 @@ def _summary(segments: tuple[str, ...], streets: tuple[str, ...], rows: list[Fac
         **_money(rows),
         "shown": shown,
         "known": known,
-        "coverage": _pct(known, len(rows)),
+        "coverage": pct(known, len(rows)),
         "rated_on": on,
         "tiers": tiers,
         "draw_heavy": tiers["draw"]["pct"],
@@ -274,20 +268,9 @@ def line_breakdown(
         "hands": len(facts),
         "shown": shown_all,
         "known": known_all,
-        "coverage": _pct(known_all, len(facts)),
+        "coverage": pct(known_all, len(facts)),
         **_money(facts),
         "groups": groups,
         "hidden": {"groups": hidden_groups, "hands": hidden_hands},
         "tree": line_tree(facts, mode, min_n) if street is None else None,
     }
-
-
-def pool_facts(conn: sqlite3.Connection, game_id: str | None = None) -> list[Facts]:
-    """Every player's Facts on every hand: the pool `GET /lines` groups.
-
-    Derived afresh, since the per-player cache holds a handful of players and this
-    is all of them. A row is one player's view of one hand, so a heads-up hand is
-    two rows, one from each seat -- the pool's ``xB`` and ``Xb`` are the same
-    streets read from opposite chairs.
-    """
-    return play_facts(load_hands(conn, game_id))

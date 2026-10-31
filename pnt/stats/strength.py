@@ -33,7 +33,7 @@ import threading
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 
-from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from ..logfmt.events import FLOP, PREFLOP, RIVER, STREET_INDEX, TURN
 from .cards import VALUE_RANK, Card, board_at, hand_class, hand_pct, made_at, parse_cards
 
 #: Preflop strength by `hand_pct`: at or under the first cutoff is `strong`, at
@@ -63,7 +63,6 @@ TIERS = ("nutted", "strong", "marginal", "draw", "air")
 _TIER_OF_STRENGTH = {"strong": "strong", "medium": "marginal", "weak": "marginal", "draw": "draw", "air": "air"}
 
 #: The postflop streets, in order, and the board cards each has.
-_STREET_ORDER = {PREFLOP: 0, FLOP: 1, TURN: 2, RIVER: 3}
 
 
 # ------------------------------------------------------------ the measure ---
@@ -238,7 +237,7 @@ def _known_on(f, street: str) -> bool:
     the hands a `made_<street>` term can speak for."""
     if f.hole_cards is None or board_at(f.board, street) is None:
         return False
-    return f.fold_street is None or _STREET_ORDER.get(f.fold_street, 9) >= _STREET_ORDER[street]
+    return f.fold_street is None or STREET_INDEX.get(f.fold_street, 9) >= STREET_INDEX[street]
 
 
 def tier_of(f, street: str) -> str | None:

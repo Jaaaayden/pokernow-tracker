@@ -38,10 +38,9 @@ from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import anonymize as anon
 from .logfmt import redact as rd
 from .stats.allin import allin_report
-from .stats.bluffs import bluff_value, pool_facts
+from .stats.bluffs import bluff_value
 from .stats.filters import parse_filter
 from .stats.fold_equity import fold_equity
-from .stats.fold_equity import pool_facts as fold_pool_facts
 from .stats.lines import DEFAULT_MIN as LINES_MIN
 from .stats.lines import MODES as LINES_MODES
 from .stats.lines import TIERS, line_breakdown
@@ -51,6 +50,7 @@ from .stats.queries import (
     facts_by_player,
     facts_for,
     identities_of,
+    pool_facts,
     positional_report,
     report,
 )
@@ -1997,7 +1997,7 @@ def foldeq(
                 facts = [f for f in facts if pred(f)]
             results.append((alias, fold_equity(facts)))
         if pool or not alias:
-            results.append(("pool", fold_equity(fold_pool_facts(conn, game, pred))))
+            results.append(("pool", fold_equity(pool_facts(conn, game, pred))))
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     if as_json:

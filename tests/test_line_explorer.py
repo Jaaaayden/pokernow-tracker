@@ -27,10 +27,9 @@ from pnt.stats.lines import (
     MODES,
     TIERS,
     line_breakdown,
-    pool_facts,
     tier_at,
 )
-from pnt.stats.queries import display_names, facts_for, load_hands, report
+from pnt.stats.queries import display_names, facts_for, load_hands, pool_facts, report
 from pnt.stats.strength import HS_CUTS
 from tests.conftest import ALL_LOGS, EDGE_LOGS, HU_GAME, local_client
 

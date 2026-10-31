@@ -28,7 +28,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from .cards import hand_class, hand_pct, street_of_board
-from .derive import POSTFLOP_STREETS, TEMPO_CUTS, Facts
+from .derive import POSTFLOP_STREETS, TEMPO_CUTS, Facts, pct
 from .queries import wilson
 from .slowplay import SLOWPLAY, strong_column
 from .strength import HS_CUTS, PREFLOP_STRENGTH, strength_at  # noqa: F401 -- re-exported
@@ -242,10 +242,6 @@ def strength(f: Facts) -> str | None:
     return "air" if s == "draw" else s
 
 
-def _pct(hits: int, n: int) -> float | None:
-    return round(100.0 * hits / n, 1) if n else None
-
-
 def _tag(
     id: str,
     label: str,
@@ -264,7 +260,7 @@ def _tag(
         "tip": tip,
         "n": n,
         "hits": hits,
-        "pct": _pct(hits, n),
+        "pct": pct(hits, n),
         "filter": filter,
         "by": by,
         **extra,
@@ -421,7 +417,7 @@ def profile(facts: list[Facts] | Counter) -> dict:
 
     def m(name: str) -> dict:
         hits, n = c[f"{name}.hits"], c[f"{name}.n"]
-        return {"hits": hits, "n": n, "pct": _pct(hits, n), "own_n": c[f"{name}.own.n"]}
+        return {"hits": hits, "n": n, "pct": pct(hits, n), "own_n": c[f"{name}.own.n"]}
 
     opp, vpip, pfr = c["vpip_opp"], c["vpip"], c["pfr"]
     streets = Counter({k.rsplit(".", 1)[1]: v for k, v in c.items() if k.startswith("size_tell.street.") and v > 0})
@@ -429,8 +425,8 @@ def profile(facts: list[Facts] | Counter) -> dict:
     return {
         "hands": c["hands"],
         "vpip_opp": opp,
-        "vpip": _pct(vpip, opp),
-        "pfr": _pct(pfr, opp),
+        "vpip": pct(vpip, opp),
+        "pfr": pct(pfr, opp),
         "vpip_excess": round(c["vpip_excess"] / opp, 1) if opp else None,
         "pfr_excess": round(c["pfr_excess"] / opp, 1) if opp else None,
         "pfr_ratio": round(pfr / vpip, 2) if vpip else None,

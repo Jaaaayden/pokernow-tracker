@@ -22,17 +22,13 @@ from collections import defaultdict
 from statistics import mean, median, multimode
 
 from .cards import ALL_CLASSES, MADE_LEAVES, grid_labels, hand_class, leaf_of, made_hand
-from .derive import POSTFLOP_STREETS, SIZE_BUCKETS, Facts
+from .derive import POSTFLOP_STREETS, SIZE_BUCKETS, Facts, pct
 
 SIZING_KINDS = ("cbet", "bet", "faced_cbet")
 
 
 def _bb(f: Facts) -> float | None:
     return f.net / f.bb_size if f.bb_size else None
-
-
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
 
 
 def size_stats(values: list[float]) -> dict | None:
@@ -256,15 +252,15 @@ def sizing_tells(facts: list[Facts], street: str, kind: str = "cbet") -> dict:
     blocks = []
     for size in order:
         rows = groups.get(size, [])
-        block: dict = {"size": size, "n": len(rows), "pct": _pct(len(rows), len(pool))}
+        block: dict = {"size": size, "n": len(rows), "pct": pct(len(rows), len(pool))}
         shown = rows
         if kind == "faced_cbet":
             folded = sum(1 for f in rows if f.fold_to_cbet.get(street))
             raised = sum(1 for f in rows if f.raise_cbet.get(street))
             block |= {
-                "fold": _pct(folded, len(rows)),
-                "call": _pct(len(rows) - folded - raised, len(rows)),
-                "raise": _pct(raised, len(rows)),
+                "fold": pct(folded, len(rows)),
+                "call": pct(len(rows) - folded - raised, len(rows)),
+                "raise": pct(raised, len(rows)),
             }
             shown = [f for f in rows if not f.fold_to_cbet.get(street)]
             block["continued"] = len(shown)
