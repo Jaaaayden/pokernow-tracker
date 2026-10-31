@@ -45,7 +45,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from ..logfmt.events import PREFLOP, RIVER, STREET_ORDER
 from .cards import (
     DEALT,
     DRAW_DETAILS,
@@ -56,7 +56,7 @@ from .cards import (
     parse_cards,
     street_of_board,
 )
-from .derive import ANALYSED_SQL
+from .derive import ANALYSED_SQL, pct
 from .equity import rank7
 from .queries import display_names, facts_cached, identities_of
 from .tags import strength_at
@@ -72,7 +72,6 @@ CONTEXT_LABELS = {
     "showdown": "reached showdown, showed after",
 }
 
-_STREET_ORDER = (PREFLOP, FLOP, TURN, RIVER)
 
 #: `Facts.pot_level` as a word, as the filter terms read it: 0 is a bomb pot.
 POT_TYPES = ("limped", "srp", "3bet", "4bet", "other")
@@ -125,7 +124,7 @@ def _read_on(context: str, fold_street: str | None, board: tuple[str, ...]) -> s
     last = street_of_board(board)
     if context != "folded" or fold_street not in DEALT:
         return last
-    return min(fold_street, last, key=_STREET_ORDER.index)
+    return min(fold_street, last, key=STREET_ORDER.index)
 
 
 def _first_run(board_json: str | None) -> tuple[str, ...]:
@@ -135,10 +134,6 @@ def _first_run(board_json: str | None) -> tuple[str, ...]:
 
 def _empty_classes() -> dict[str, int]:
     return {c: 0 for c in CLASSES}
-
-
-def _pct(k: int, n: int) -> float | None:
-    return round(100.0 * k / n, 1) if n else None
 
 
 def _winners(conn: sqlite3.Connection, hand_ids: list[str]) -> dict[str, list[tuple[str, str | None]]]:
@@ -266,14 +261,14 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
             "pot_level": levels.get(r["hand_id"]),
             "pot": pot_type(levels.get(r["hand_id"])),
         })
-    out["coverage"] = round(100.0 * out["two_card"] / out["shows"], 1) if out["shows"] else None
-    out["air_pct"] = _pct(out["classes"]["air"], out["two_card"])
-    out["strong_pct"] = _pct(out["classes"]["strong"], out["two_card"])
+    out["coverage"] = pct(out["two_card"], out["shows"])
+    out["air_pct"] = pct(out["classes"]["air"], out["two_card"])
+    out["strong_pct"] = pct(out["classes"]["strong"], out["two_card"])
     for row in out["rows"]:
         if row["vs"]:
             fv["known"] += 1
             fv[row["vs"]["result"]] += 1
-    fv["ahead_pct"] = _pct(fv["ahead"], fv["known"])
+    fv["ahead_pct"] = pct(fv["ahead"], fv["known"])
     return out
 
 

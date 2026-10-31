@@ -6,29 +6,7 @@
 <title>Biggest pots</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39; --bar: rgba(42,120,214,0.10);
-    --violet: #7353c4; --amber: #a86a0c; --teal: #1b7d86;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
-      --violet: #a690f2; --amber: #e3a54c; --teal: #4fc0c9;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d; --bar: rgba(57,135,229,0.16);
-    --violet: #a690f2; --amber: #e3a54c; --teal: #4fc0c9;
-  }
+  /* The palette is loading.js's; the replay's own rules are replay.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   /* The chart's width: side by side, the replay needs the room. */
@@ -78,7 +56,7 @@
      against it at a glance. Painted behind the text, never over it. */
   .pot-row::before {
     content: ""; position: absolute; inset: 0 auto 0 0; width: var(--share, 0%);
-    background: var(--bar); z-index: 0;
+    background: color-mix(in srgb, var(--accent) 12%, transparent); z-index: 0;
   }
   .pot-row > * { position: relative; z-index: 1; }
   .pot-row:hover, .pot-row[aria-pressed=true] { background: var(--mid); }
@@ -96,37 +74,18 @@
     color: var(--muted); white-space: nowrap; }
   .pot-row .tag.allin { border-color: var(--accent); color: var(--accent); }
   .pot-row .tag.short { border-color: var(--down); color: var(--down); }
-  .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
-  .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .replay .who { color: var(--ink-2); margin: 0 0 6px; }
-  .replay .street { margin-top: 10px; }
-  .replay .street > b { text-transform: capitalize; }
-  .replay .street > span { color: var(--muted); margin-left: 8px; }
-  .replay ol { margin: 4px 0 0; padding-left: 22px; }
-  .replay li.forced { color: var(--muted); }
   .hidden { display: none !important; }
   @media (max-width: 620px) {
     .pot-row { gap: 1px 10px; font-size: 12px; padding: 6px 2px; }
     .pot-row .pot { font-size: 14px; }
     .pot-row .tags { margin-left: 0; }
-    .replay { font-size: 11px; }
   }
-  /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
-     list on the left, the replay sticking beside it as the page scrolls. A
-     narrow list keeps the pot, when, who won it and a short log's warning; the
-     replay has the board and the rest. With no pots, or on a phone until a pot
-     is picked, the list has the whole width. */
+  /* Side by side (pntPage.sideBySide has the rest): the list on the left, the
+     replay sticking beside it as the page scrolls. A narrow list keeps the pot,
+     when, who won it and a short log's warning; the replay has the board and
+     the rest. */
   #hand-pair:not(.split) { max-width: 1280px; }
-  #hand-pair.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0 12px; align-items: start; }
-  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
-  #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
-    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
-  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
-  @media (max-width: 620px) {
-    #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
-    #hand-pair.split > .replay[data-empty] { display: none; }
-  }
+  #hand-pair.split { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
   /* Side by side on a wide screen, a pot is one dense line -- pot, when, who
      won it from whom, the board, the tags that change how it reads -- so the
      replay has room. A second board runs after a slash; the street and table
@@ -236,23 +195,12 @@
   };
 
   const chips = (v) => v == null ? "–" : Math.round(v).toLocaleString();
-  const signed = (v) => v == null ? "–" : (v > 0 ? "+" : "") + Math.round(v).toLocaleString();
-  const signedBb = (v) => pntPage.signed(v);
   const bb = (v) => v == null ? "–" : `${Number(v).toFixed(1)}bb`;
-  // A row's money in the chosen unit. bb is per-hand: a hand with no big blind on
-  // record can only be shown in chips, so it says so rather than inventing one.
-  const money = (row, chipsKey, bbKey) =>
-    state.unit === "bb" ? (row[bbKey] == null ? "–" : signedBb(row[bbKey])) : signed(row[chipsKey]);
-
-  async function getJson(url) {
-    const r = await fetch(url, { headers: { accept: "application/json" } });
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      if (r.status === 404 && body.detail === "Not Found") throw new Error(pntPage.OLD_SERVER);
-      throw new Error(body.detail || `${r.status} ${r.statusText}`);
-    }
-    return r.json();
-  }
+  // A row's money in the chosen unit, signed. bb is per-hand: a hand with no big
+  // blind on record has none to show, so it reads "–" rather than inventing one.
+  const money = (row, chipsKey, bbKey) => state.unit === "bb" ? pntPage.signed(row[bbKey])
+    : pntPage.signed(row[chipsKey] == null ? null : Math.round(row[chipsKey]), 0);
+  const { getJson } = pntPage;
 
   async function loadPlayers() {
     const rows = await getJson("/players");
@@ -378,7 +326,7 @@
     const other = document.createElement("small");
     other.textContent = state.unit === "bb" ? chips(h.pot) : (h.pot_bb != null ? bb(h.pot_bb) : "");
     pot.appendChild(other);
-    span("when", when(h.ts), [h.game_id, `#${h.hand_number}`, h.ts].filter(Boolean).join(" · "));
+    span("when", when(h.ts), [h.game_id, `#${h.hand_number}`, when(h.ts)].filter(Boolean).join(" · "));
 
     // Who it went to. A chopped pot has no winner to name, so it says so rather
     // than crowning whoever came out a blind ahead.
@@ -407,7 +355,7 @@
       who.textContent = "–";
     }
     who.title = h.seats.map(s =>
-      `${s.player} ${s.net > 0 ? "+" : ""}${s.net.toLocaleString()}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
+      `${s.player} ${money(s, "net", "net_bb")}${s.hole_cards ? " " + pretty(s.hole_cards) : ""}`
     ).join("\n");
 
     const board = span("board", h.board.length ? cardsEl(h.board) : "no flop",
@@ -447,39 +395,11 @@
     return b;
   }
 
-  // ---- side by side ------------------------------------------------------
-  // The chart's switch and key, so one choice holds on every page. Split, the
-  // pane is there with a placeholder whenever there are pots to pick, so the
-  // first pick does not shove the list aside.
-  const LAYOUT_KEY = "pnt.reviewLayout";
-  let split = true;
-  try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
-  function resetReplay(shown) {
-    const box = $("replay");
-    pntReplay.cancel(box);
-    if (split && shown) {
-      box.classList.remove("hidden");
-      box.dataset.empty = ""; // pntReplay.show clears it
-      const p = document.createElement("p");
-      p.className = "muted"; p.textContent = "click a pot to replay it";
-      box.replaceChildren(p);
-    } else {
-      box.classList.add("hidden");
-    }
-  }
-  function applyLayout() {
-    $("hand-pair").classList.toggle("split", split);
-    $("hands-split").setAttribute("aria-pressed", split);
-  }
-  $("hands-split").addEventListener("click", () => {
-    split = !split;
-    try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
-    applyLayout();
-    // A replay on show stays, even when a re-render has unpressed its row.
-    const box = $("replay");
-    if (box.classList.contains("hidden") || "empty" in box.dataset) resetReplay(!!state.data?.pots.length);
+  // ---- side by side (pntPage.sideBySide) ---------------------------------
+  const resetReplay = pntPage.sideBySide({
+    pair: $("hand-pair"), toggle: $("hands-split"), replay: $("replay"),
+    empty: "click a pot to replay it", has: () => !!state.data?.pots.length,
   });
-  applyLayout();
 
   // ---- controls ----------------------------------------------------------
   function apply() {

@@ -24,6 +24,7 @@ from pnt.stats.queries import display_names, facts_by_player
 from tests.conftest import ALL_LOGS
 
 CHART = Path(__file__).resolve().parents[1] / "pnt" / "server" / "static" / "chart.html"
+REPLAY = CHART.with_name("replay.js")
 NODE = shutil.which("node")
 
 CONSTS = ["PRESETS", "LINES", "SIZES", "POT_TYPES", "DEPTHS", "SPR_LOW", "EFF_TERM", "ACTION_ROWS",
@@ -74,6 +75,8 @@ def previews() -> dict[str, list[str]]:
     script = "\n".join([
         'let box = "";',
         "const $ = () => ({ get value() { return box; } });",
+        # SIZES takes its words from replay.js's SIZE_LABEL.
+        _block(REPLAY.read_text("utf-8"), "SIZE_LABEL").strip(),
         *(_block(page, n) for n in CONSTS),
         *(_function(page, n) for n in HELPERS),
         HARNESS,

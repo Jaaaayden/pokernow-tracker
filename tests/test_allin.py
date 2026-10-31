@@ -112,6 +112,23 @@ def test_the_report_sums_its_rows_under_the_players_alias(db):
     assert al.allin_report(db, min_hands=10**6) == []
 
 
+def test_two_unidentified_ids_stay_two_players(db):
+    """No identity row (a stray source: a rebuild writes one for every seat):
+    each ID is its own row, as in report(), never one stand-in for both."""
+    from pnt.stats.queries import clear_caches
+
+    rows, _, _ = al.allin_rows(db)
+    by_id: dict[str, int] = defaultdict(int)
+    for r in rows:
+        by_id[r.pn_id] += 1
+    lone = sorted(by_id)[:2]
+    db.execute("DELETE FROM player_identities WHERE pn_id IN (?, ?)", lone)
+    db.commit()
+    clear_caches()
+    report = {r["player"]: r["hands"] for r in al.allin_report(db)}
+    assert {pn: report.get(pn) for pn in lone} == {pn: by_id[pn] for pn in lone}
+
+
 def test_a_spot_filter_narrows_the_report(db):
     everything = {r["player"]: r for r in al.allin_report(db)}
     vs = al.allin_report(db, predicate=parse_filter("vs=Chris", display_names(db)))

@@ -76,6 +76,14 @@ def test_a_bomb_pot_counts_in_no_preflop_rate():
     assert f["AAA"].bet_size.get("flop") and f["AAA"].hole_cards is None  # unknown, not hidden
 
 
+def test_a_bomb_pot_post_is_not_a_blind():
+    """Everyone's share of a bomb pot is forced, and nobody's live blind (SPEC.md,
+    "Squeeze and cold-call", `posted_blind`)."""
+    f = derive(hand_row(_parsed(double=False).hands[0]))
+    assert not any(x.posted_blind for x in f)
+    assert all(x.posted == 30 for x in f)
+
+
 def test_double_board_counts_for_money_only():
     """Two boards are past every rule here: money and the hand lists, like PLO."""
     h = hand_row(_parsed().hands[0])
@@ -345,6 +353,10 @@ def test_card_terms_on_a_list_with_plo_answer_rather_than_crash(tmp_path, monkey
     counts = client.post("/counts", json={"player": "A", "games": "every", "terms": ["plo", "holdem"]}).json()
     assert counts["counts"] == {"plo": 3, "holdem": 0}
     assert client.post("/counts", json={"player": "A", "terms": ["plo"]}).json()["counts"] == {"plo": 0}
+    # The pool's counts (no player) take the scope too; they read `play` whatever was asked.
+    pool = client.post("/counts", json={"games": "every", "terms": ["plo", "holdem"]}).json()["counts"]
+    assert pool["plo"] >= 3 and pool["holdem"] == 0
+    assert client.post("/counts", json={"terms": ["plo"]}).json()["counts"] == {"plo": 0}
 
 
 def test_tree_names_a_bomb_pot():

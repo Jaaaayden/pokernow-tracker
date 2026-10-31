@@ -7,11 +7,35 @@
  * A request that cannot reach the server at all says so at once. Each clears
  * itself when the requests do.
  *
- * It also holds what every page shares (window.pntPage, at the end): the one
- * nav, the Sample banner, ?theme, and the number formats.
+ * It also holds what every page shares (window.pntPage, at the end): the
+ * palette, the one nav, the Sample banner, ?theme, the number formats, getJson,
+ * the Wilson interval and the list-and-replay layout.
  */
 (() => {
   "use strict";
+  // The palette, light and dark, before the page's own <style>: every page but
+  // the chart (which keeps its own) reads these. :where() holds them at no
+  // specificity, so a page that sets one of its own still wins. --violet,
+  // --amber and --teal are the extra hues a page's headline tiles use.
+  const PALETTE = `
+  :where(:root) {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
+    --up: #1f7a4d; --down: #b93a39; --violet: #7353c4; --amber: #a86a0c; --teal: #1b7d86;
+  }
+  @media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) { DARK } }
+  :where(:root[data-theme="dark"]) { DARK }`.replaceAll("DARK", `
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
+    --up: #4cc38a; --down: #e66e6d; --violet: #a690f2; --amber: #e3a54c; --teal: #4fc0c9;`);
+  {
+    const s = document.createElement("style");
+    s.id = "pnt-palette";
+    s.textContent = PALETTE;
+    (document.head || document.documentElement).prepend(s);
+  }
   const PILL_MS = 2000, SLOW_MS = 20000;
   // Requests nobody is waiting on: the native file picker, which waits on a
   // person, and the chart's chip counts, badges that fill in behind the page.
@@ -238,10 +262,118 @@
     else (document.querySelector("main") || document.body).prepend(b);
   }
 
+  // A page newer than the server answers 404 Not Found on a route it added.
+  const OLD_SERVER = "the running server is older than this page: run `pnt service restart`";
+
+  // GET (or `init`'s method) a JSON route; a failure throws the server's own
+  // words: its `detail`, each message of a 422's list, or the old-server line.
+  async function getJson(url, init = {}) {
+    const r = await fetch(url, { ...init, headers: { accept: "application/json", ...init.headers } });
+    if (r.ok) return r.json();
+    const body = await r.json().catch(() => ({}));
+    if (r.status === 404 && body.detail === "Not Found") throw new Error(OLD_SERVER);
+    const detail = Array.isArray(body.detail) ? body.detail.map((d) => d.msg || String(d)).join("; ") : body.detail;
+    throw new Error(detail || `${r.status} ${r.statusText}`);
+  }
+
+  // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
+  // fractions; null with no chances. Mirrors queries.wilson (SPEC.md,
+  // "Confidence intervals"); the HUD's spot.js and the chart carry the same copy.
+  function wilson(p, n, z = 1.96) {
+    if (!(n > 0) || p == null) return null;
+    const z2 = z * z;
+    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
+    return [Math.max(0, centre - half), Math.min(1, centre + half)];
+  }
+
+  // A rate in percent over n chances, as hover text: "± 8.6 pts (95%: 31.2–48.5%)".
+  // Wilson is lopsided near 0% and 100%, so the range is printed beside the ±.
+  function ciText(pct, n) {
+    const ci = pct == null ? null : wilson(pct / 100, n);
+    if (!ci) return "";
+    const [lo, hi] = ci.map((x) => 100 * x);
+    return `± ${((hi - lo) / 2).toFixed(1)} pts (95%: ${lo.toFixed(1)}–${hi.toFixed(1)}%)`;
+  }
+
+  // A line of text in a <p>: "loading…", "no hands", an error (cls "err").
+  function message(text, cls = "muted") {
+    const p = el("p", text);
+    p.className = cls;
+    return p;
+  }
+
+  // ---- A hand list beside its replay (All-in, Biggest pots), as the chart
+  // has it and under the chart's switch and key, so one choice holds on every
+  // page. Split, the replay pane is there with a placeholder whenever there are
+  // hands to pick, so the first pick does not shove the list aside. Each page
+  // sets its own grid columns on `#hand-pair.split`; the rest is here.
+  const LAYOUT_KEY = "pnt.reviewLayout";
+  // The defaults sit at no specificity, under the page's own; the rules that
+  // must beat the page's grid columns (no replay, a phone's empty pane) do not.
+  const PAIR_CSS = `
+  :where(.replay) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
+  :where(#hand-pair.split) { display: grid; gap: 0 12px; align-items: start; }
+  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
+  #hand-pair.split > .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
+    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 620px) {
+    #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
+    #hand-pair.split > .replay[data-empty] { display: none; }
+    :where(.replay) { font-size: 11px; }
+  }`;
+  // `pair` holds the list and `replay`; `toggle` is the Side by side button;
+  // `empty` the placeholder's words; `has()` whether there are hands to pick.
+  // Returns reset(shown): clear the replay, to its placeholder when split and
+  // `shown`, else hidden.
+  function sideBySide({ pair, toggle, replay, empty, has }) {
+    let split = true;
+    try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
+    if (!document.getElementById("pnt-pair-css")) {
+      const s = el("style", PAIR_CSS);
+      s.id = "pnt-pair-css";
+      document.head.prepend(s);
+    }
+    function reset(shown = true) {
+      window.pntReplay?.cancel(replay);
+      if (split && shown) {
+        replay.classList.remove("hidden");
+        replay.dataset.empty = ""; // pntReplay.show clears it
+        replay.replaceChildren(message(empty));
+      } else {
+        replay.classList.add("hidden");
+      }
+    }
+    function apply() {
+      pair.classList.toggle("split", split);
+      toggle.setAttribute("aria-pressed", split);
+    }
+    toggle.addEventListener("click", () => {
+      split = !split;
+      try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
+      apply();
+      // A replay on show stays, even when a re-render has unpressed its row.
+      if (replay.classList.contains("hidden") || "empty" in replay.dataset) reset(has());
+    });
+    apply();
+    return reset;
+  }
+
+  // A time in the viewer's own time zone, the year only when it is not this
+  // one: "Oct 30, 03:12 AM". The one formatter for every time a page prints.
+  const WHEN = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const WHEN_Y = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const when = (ts) => {
+    const d = new Date(ts);
+    if (!ts || isNaN(d)) return ts || "";
+    return (d.getFullYear() === new Date().getFullYear() ? WHEN : WHEN_Y).format(d);
+  };
+
   const DASH = "–";
   const ok = (v) => v != null && Number.isFinite(Number(v));
   window.pntPage = {
-    theme: THEME, href, nav, DASH,
+    theme: THEME, href, nav, DASH, OLD_SERVER, getJson, wilson, ciText, message, sideBySide, when,
     // A count with thousands separators.
     int: (v) => (ok(v) ? Number(v).toLocaleString() : DASH),
     // A rate in percent, one decimal: 29.0%.
@@ -252,8 +384,6 @@
       : DASH),
     // Names in the order a person reads them: player 2 before player 10.
     byName: (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }),
-    // A page newer than the server answers 404 Not Found on a route it added.
-    OLD_SERVER: "the running server is older than this page: run `pnt service restart`",
     // The first line of a server error: an unknown filter term's long list of
     // every term stays in the API and the CLI; the ? Filters panel has it here.
     firstLine: (text) => String(text ?? "").split("\n")[0],

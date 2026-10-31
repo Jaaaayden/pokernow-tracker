@@ -41,7 +41,7 @@ Agent(subagent_type="general-purpose", model="sonnet", isolation="worktree",
 - **Files:** the ones to touch, and the ones to leave alone (another worker's slice).
 - **Base:** "run `git fetch origin && git rebase origin/main` and confirm HEAD is `<sha>` before writing code". Workers have started on stale commits before.
 - **Setup:** `python scripts/orca_worktree.py setup`. After that, use only that worktree's `.venv`, port and `.pnt-dev`. Follow AGENTS.md's worktree rules.
-- **Hotspots:** insert next to related code, never at the end of `app.py`, `cli.py`, `chart.html`'s view blocks or the TITLE/VIEWS lines, or SPEC.md sections. Check that a new helper's name isn't taken (`pool_facts` exists three times).
+- **Hotspots:** insert next to related code, never at the end of `app.py`, `cli.py`, `chart.html`'s view blocks or the TITLE/VIEWS lines, or SPEC.md sections. Check that a new helper's name isn't taken (`grep -rn "def <name>" pnt`).
 - **Gate:** `python scripts/orca_worktree.py check` passes. Commit in AGENTS.md's style. Don't push; you merge.
 - **Report back:** branch, commit SHAs, check output, files touched, anything left undone, and whether `pnt rebuild` is needed.
 

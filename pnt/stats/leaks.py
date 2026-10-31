@@ -37,7 +37,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from ..db.userdata import get_setting
-from .derive import Facts
+from .derive import Facts, pct
 from .filters import parse_filter
 from .fold_equity import MIN_SAMPLE, break_even, fold_equity
 from .queries import facts_cached, identity_map, rates, tally, wilson
@@ -110,10 +110,6 @@ NOTE = (
     "bettors bluff that size often enough: against a pool that under-bluffs, folding more is right, "
     "so a fold leak there overstates."
 )
-
-
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
 
 
 #: The settings key (`db.userdata`) naming the hero by `player_id`, chosen with
@@ -217,7 +213,7 @@ def _rate_leak(
     hit_pred = parse_filter(hit)
     hits = sum(1 for f in opps if hit_pred(f))
     n = len(opps)
-    value = _pct(hits, n)
+    value = pct(hits, n)
     band = _band(key, lo, hi, facts)
     side = _side(value, band)
     ci = wilson(hits, n)
@@ -293,7 +289,7 @@ def _defense_leaks(facts: list[Facts], total_bb: int, overall: dict) -> list[dic
                 continue
             be = row["break_even"]
             band = (round(max(0.0, be - UNDERFOLD), 1), round(min(100.0, be + OVERFOLD), 1))
-            value = _pct(row["folds"], n)
+            value = pct(row["folds"], n)
             side = _side(value, band)
             ci = wilson(row["folds"], n)
             leak = {

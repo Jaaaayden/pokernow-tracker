@@ -19,9 +19,9 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from ..db.conn import generation, path_of, reading
-from ..logfmt.events import FLOP, PREFLOP, RIVER, TURN
+from ..logfmt.events import FLOP, PREFLOP, STREET_INDEX
 from ..logfmt.parser import position_name
-from .derive import Facts, HandRow
+from .derive import Facts, HandRow, pct
 from .filters import DECISIONS
 from .lru import LRU
 from .nodes import Node, decision_of, decisions, label_of, nodes_for, players_term, texture_terms
@@ -51,7 +51,6 @@ _SPOT = {
 #: The order a player can meet the postflop spots in within one street: a lead
 #: they check comes before the c-bet they then face. No other two share a street.
 _KIND_ORDER = {k: i for i, k in enumerate(_SPOT)}
-_STREET_ORDER = {PREFLOP: 0, FLOP: 1, TURN: 2, RIVER: 3}
 
 _POT_TERM = {0: "bomb_pot", 1: "limped", 2: "srp", 3: "3bet_pot"}
 _POT_WORDS = {"limped": "limped", "srp": "SRP", "3bet_pot": "3-bet pot", "4bet_pot": "4-bet pot", "bomb_pot": "bomb pot"}
@@ -93,7 +92,7 @@ def _rank(key: Key) -> tuple[int, int]:
     kind, at = key
     if kind == "preflop":
         return (0, int(at))
-    return (_STREET_ORDER[str(at)], _KIND_ORDER[kind])
+    return (STREET_INDEX[str(at)], _KIND_ORDER[kind])
 
 
 def seat_of(f: Facts) -> str | None:
@@ -253,10 +252,6 @@ def _overmatch(root: _T, steps: list[tuple[Node, Key, str]], extras: tuple[str, 
     walk(root, 0, None, (), False)
 
 
-def _pct(n: int, d: int) -> float | None:
-    return round(100.0 * n / d, 1) if d else None
-
-
 def _order(key: Key | None) -> tuple[str, ...]:
     """The decisions at `key` in display order, for sorting its children."""
     if key is None:
@@ -276,7 +271,7 @@ def _out(t: _T, min_hands: int) -> dict:
             rows.append({
                 "decision": d,
                 "hands": c,
-                "pct": _pct(c, n),
+                "pct": pct(c, n),
                 "filter": ",".join([*base, *decision_terms(t.key, d)]),
             })
     order = _order(t.key)

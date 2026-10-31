@@ -185,14 +185,21 @@
     return { text: [...way, ...steps].join(" · "), title: title.join("\n") };
   }
 
-  /** The hover text of a tag chip: the evidence, then the count it rests on. */
+  /** The hover text of a tag chip: the evidence, then the count it rests on --
+   * unless the evidence already gives it ("(30 of 226 shown)", "2 times"), when
+   * a line saying it again would only repeat it, or call decisions "hands".
+   * Only those count forms (tags.py's tips): the n of "25%" is no count. */
   function tagTitle(tag) {
     if (!tag) return "";
     const n = tag.n ?? 0;
-    const count = tag.hits != null && tag.hits !== n ? `${tag.hits} of ${n}` : `${n} hands`;
+    const tip = tag.tip || tag.label || "";
+    const said = new RegExp(
+      `\\bof ${n}(?!\\d|\\.\\d)|(^|[^\\d.-])${n} (times|hands|(preflop )?decisions)\\b`,
+    ).test(tag.tip || "");
+    const count = said ? "" : tag.hits != null && tag.hits !== n ? `${tag.hits} of ${n}` : `${n} hands`;
     const c = tag.carried_by;
     const streaky = c ? `One session only: gone without a ${c.hands}-hand game (${c.sessions} sessions in all).` : "";
-    return [tag.tip || tag.label || "", count, streaky].filter(Boolean).join("\n");
+    return [tip, count, streaky].filter(Boolean).join("\n");
   }
 
   /** The chips in the order a card shows them: the archetype first, then the

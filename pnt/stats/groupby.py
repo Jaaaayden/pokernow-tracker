@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import product
 
+from ..logfmt.events import STREET_INDEX
 from ..logfmt.parser import position_name
 from .cards import (
     DRAW_DETAILS,
@@ -29,12 +30,11 @@ from .cards import (
     leaf_of,
     made_at,
 )
+from .derive import POSTFLOP_STREETS as STREETS
 from .derive import SIZE_BUCKETS, TEMPO_BUCKETS, Facts
 from .queries import Tally, rates
 from .results import POT_TYPES, SEAT_ORDER
 from .strength import TIERS, tier_of
-
-STREETS = ("flop", "turn", "river")
 
 Bucket = str
 #: A dimension's buckets for one hand: one, several (`vs`), or None, not applicable.
@@ -131,15 +131,12 @@ for _g, _leaves in MADE_GROUPS.items():
         MADE_BUCKETS[_g] = _leaves
 _BUCKET_OF_LEAF = {leaf: b for b, leaves in MADE_BUCKETS.items() for leaf in leaves}
 
-_STREET_ORDER = {"preflop": 0, **{s: i + 1 for i, s in enumerate(STREETS)}}
-
-
 def made_leaf(f: Facts, street: str) -> str | None:
     """Their made hand on `street`'s board, gated as a `made_<street>` term gates
     it: cards known, the board got there, and they had not folded before it."""
     if f.hole_cards is None:
         return None
-    if f.fold_street is not None and _STREET_ORDER[f.fold_street] < _STREET_ORDER[street]:
+    if f.fold_street is not None and STREET_INDEX[f.fold_street] < STREET_INDEX[street]:
         return None
     mh = made_at(f.hole_cards, f.board, street)
     return None if mh is None else leaf_of(mh)

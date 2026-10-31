@@ -46,6 +46,40 @@ def server(tmp_path, monkeypatch):
     local_config.put("dataset", None)
 
 
+def test_the_sample_version_reads_the_files_bytes(tmp_path, monkeypatch):
+    """Swapping two stand-ins' names changes no size: hashing names and sizes kept
+    the old sample's database. The bytes decide."""
+    import os
+
+    bundled = tmp_path / "bundled"
+    bundled.mkdir()
+    log = bundled / THREE.name
+    shutil.copy(THREE, log)
+    aliases = bundled / "aliases.csv"
+    aliases.write_text("pn_id,alias\naaaaaaaaaa,player 3\n", encoding="utf-8")
+    monkeypatch.setattr(samplemod, "LOG_DIR", bundled)
+    monkeypatch.setattr(samplemod, "ALIASES", aliases)
+    before = samplemod.version()
+    assert samplemod.version() == before  # unchanged files: the same, from the cache
+    stat = aliases.stat()
+    aliases.write_text("pn_id,alias\naaaaaaaaaa,player 5\n", encoding="utf-8")
+    os.utime(aliases, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))  # a write moves it
+    assert aliases.stat().st_size == stat.st_size
+    assert samplemod.version() != before
+
+
+def test_the_sample_is_built_beside_the_config(monkeypatch):
+    """Not in the real ~/.pnt: a worktree's or a test's server (PNT_CONFIG pointed
+    elsewhere) would build there and tidy away the live server's sample."""
+    from pathlib import Path
+
+    # conftest points PNT_CONFIG at a temp folder before pnt is imported. Not compared
+    # with the variable itself: conftest is imported under two names, and the second
+    # import points it at another temp folder after sample.py has read it.
+    assert samplemod.HOME.name.startswith("pnt-config-")
+    assert samplemod.HOME != Path.home() / ".pnt"
+
+
 def _hands(path) -> int:
     conn = connect(path)
     try:

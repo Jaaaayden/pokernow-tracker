@@ -199,9 +199,9 @@ went between you. Open a player's row on the players page for a **Head to head**
 table: one row per opponent, biggest money either way first, with the hands you
 played together, the big blinds you won from them (negative is lost), showdowns,
 and each side's failed bluffs into the other. The last column opens your chart
-on `vs=<opponent>` and says how many hands it will find. `pnt h2h` with no name,
-or `GET /h2h`, is the same for every pair at once: each cell is what the row's
-player won from the column's.
+on `vs=<opponent>` and says how many hands it will find. `pnt h2h` with no name
+is the same for every pair at once: each cell is what the row's player won from
+the column's.
 
 A hand with one winner settles exactly: every loser's chips went to them. With
 several winners (a chop, a side pot) each loser's loss is split by what each
@@ -795,7 +795,7 @@ data supports, and then the fun ones.
 
 The rules, the thresholds, and the hands these games play on purpose (7-2 is
 never evidence of a bad call) are in [`SPEC.md`](../pnt/stats/SPEC.md),
-"Tags". `GET /players/{alias}/tags` returns the same as JSON.
+"Tags". `pnt tags --json` prints the same as JSON.
 
 ### Tendencies
 
@@ -816,7 +816,7 @@ pnt leaks                # your top three leaks, then every stat outside its ban
 pnt leaks --all          # every stat judged, inside its band or not
 ```
 
-The same rules turned on yourself, in the terminal and at `GET /leaks` only.
+The same rules turned on yourself, in the terminal only.
 It needs a log that names its owner, or a pick with `pnt hero`. Twelve of your
 stats (VPIP, PFR, 3-bet, ATS, fold to steal, flop c-bet, fold to flop c-bet, WTSD,
 W$SD, WWSF, turn probe and flop float) are held against a band of ordinary values,
@@ -931,8 +931,7 @@ well. Clear the 🚩 to take a hand off the list.
 A flag is the third thing on a hand, next to the mark and the note, and it is
 independent of both. Marking a flagged hand reviewed keeps it on the list, so
 **Hide reviewed** works there the same way it does on the other lists. Flags
-survive `pnt rebuild`. `GET /players/{alias}/flagged` returns the list,
-`GET /flagged` returns every flag, and
+survive `pnt rebuild`. `GET /tagged?tag=flagged` returns the list, and
 `POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one.
 
 ### Tagging hands

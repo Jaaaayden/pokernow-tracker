@@ -57,8 +57,8 @@ Parallel branches collide where everyone appends:
 So:
 - `git fetch origin && git rebase origin/main` before you start and again before the PR.
 - Insert next to related code rather than at the end of the file.
-- Check that a new helper's name isn't already taken in another module (three
-  modules define `pool_facts`).
+- Check that a new helper's name isn't already taken in another module
+  (`grep -rn "def <name>" pnt`); copies drift, as `pool_facts` and `_pct` did.
 
 ## Commits and PRs
 

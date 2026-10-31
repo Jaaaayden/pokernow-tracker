@@ -141,14 +141,6 @@ def update_spot(
     return get_spot(conn, spot_id)
 
 
-def rename_spot(conn: sqlite3.Connection, spot_id: int, name: str) -> dict:
-    return update_spot(conn, spot_id, name=name)
-
-
-def pin_spot(conn: sqlite3.Connection, spot_id: int, pinned: bool = True) -> dict:
-    return update_spot(conn, spot_id, pinned=pinned)
-
-
 def delete_spot(conn: sqlite3.Connection, spot_id: int) -> bool:
     """Remove a saved spot. True if there was one; deleting it twice is a no-op."""
     with writing(conn):
@@ -200,10 +192,10 @@ def normalise_tag(tag: str) -> str:
     return out
 
 
-def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
-    """Raise unless the database has that hand, derived or still only raw lines --
-    the check a flag makes (`review._require_logged`), for the same reason: a hand
-    can be tagged seconds after it ends, before the rebuild reaches it."""
+def require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
+    """Raise unless the database has that hand, derived or still only raw lines. A
+    hand is flagged or tagged seconds after it ends, often before the rebuild that
+    derives it, so `hands` alone would refuse it."""
     if conn.execute(
         "SELECT 1 FROM hands WHERE game_id = ? AND hand_number = ?", (game_id, hand_number)
     ).fetchone() is not None:
@@ -217,9 +209,14 @@ def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) ->
 
 def add_tag(conn: sqlite3.Connection, game_id: str, hand_number: int, tag: str) -> str:
     """Tag one hand. Returns the tag as stored. Idempotent: tagging again keeps the
-    first time. Raises ValueError on a bad tag, or a hand the log does not have."""
+    first time. Raises ValueError on a bad tag, `flagged` (the 🚩's, set by flagging
+    the hand), or a hand the log does not have."""
     tag = normalise_tag(tag)
-    _require_logged(conn, game_id, hand_number)
+    if tag == FLAGGED_TAG:
+        # Refused here, not only by the server: `tag_resolver` reads `tag=flagged`
+        # as the flags, so a row stored under the name would never be found.
+        raise ValueError(f"{FLAGGED_TAG} is the 🚩: flag the hand instead")
+    require_logged(conn, game_id, hand_number)
     with writing(conn):
         conn.execute(
             "INSERT INTO hand_tags (game_id, hand_number, tag, tagged_at) VALUES (?, ?, ?, ?)"

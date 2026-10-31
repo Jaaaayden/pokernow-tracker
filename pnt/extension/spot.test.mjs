@@ -242,6 +242,40 @@ test("a tag chip's hover text is the evidence and the count behind it", () => {
     "Showed air 6.9% (shown).\n19 of 276\nOne session only: gone without a 74-hand game (11 sessions in all).");
 });
 
+test("a tip that already gives its count is not followed by it again", () => {
+  const fun = { label: "7-2 ALL-IN-PRE ×2", kind: "fun", n: 2, hits: 2,
+    tip: "Jammed preflop with 7-2 2 times (shown), raised it 7 times in all." };
+  assert.equal(tagTitle(fun), fun.tip, "not a closing \"2 hands\"");
+  const exploit = { label: "NO BLUFF", kind: "exploit", n: 226, hits: 30,
+    tip: "Showed air 13.3% of the time (30 of 226 shown; pool 23.3%)." };
+  assert.equal(tagTitle(exploit), exploit.tip);
+  const arch = { label: "LAG", kind: "archetype", n: 812, hits: 812, tip: "Loose (812 preflop decisions)." };
+  assert.equal(tagTitle(arch), arch.tip, "decisions are not hands");
+  // The count's digits inside another figure do not count as saying it.
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Showed air 6.9% (shown)." }),
+    "Showed air 6.9% (shown).\n3 of 9");
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Folded 19 times." }), "Folded 19 times.\n3 of 9");
+  assert.equal(tagTitle({ kind: "fun", n: 2, hits: 2, tip: "Raised 7-2 3 times." }), "Raised 7-2 3 times.\n2 hands",
+    "the 2 of a hand's name is not a count");
+});
+
+test("only a count form says the count: a rate with the same digits does not", () => {
+  assert.equal(tagTitle({ kind: "exploit", n: 25, hits: 6, tip: "Folded 25% of the time." }),
+    "Folded 25% of the time.\n6 of 25");
+  assert.equal(tagTitle({ kind: "archetype", n: 25, hits: 25, tip: "Raises 25 points more." }),
+    "Raises 25 points more.\n25 hands");
+  // tags.py's wordings that do give it.
+  const light = { kind: "exploit", n: 77, hits: 7, tip: "Called light in 7 of 77 shown hands." };
+  assert.equal(tagTitle(light), light.tip);
+  const jams = { kind: "fun", n: 2, hits: 2, tip: "Shown jamming 7-2 preflop 2 times; raised it 5 times in all." };
+  assert.equal(tagTitle(jams), jams.tip);
+  const balanced = { kind: "archetype", n: 400, hits: 400, tip: "No exploit stands out over 400 hands." };
+  assert.equal(tagTitle(balanced), balanced.tip);
+  const pre = { kind: "exploit", n: 90, hits: 9, tip: "Jammed preflop 9 times in 90 preflop decisions (10%)." };
+  assert.equal(tagTitle(pre), pre.tip);
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Folded (3 of 9)." }), "Folded (3 of 9).");
+});
+
 test("the archetype chip comes first, then the rest in the order sent", () => {
   const moved = [tags[1], tags[0], ...tags.slice(2)];
   assert.deepEqual(tagChips(moved).map((t) => t.id), ["fish", "no_bluff", "folds_river", "limper", "fun_72"]);

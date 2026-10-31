@@ -29,7 +29,7 @@ Grep each symbol across `pnt/`, `tests/` and `docs/`. The usual paths:
 | Schema, or what ingest stores | Every stored game. The user must run `pnt rebuild`, so say so in the PR |
 | An `app.py` helper or middleware | Every route that uses it, plus the write-header and Host tests in `test_api.py` |
 
-Watch for aliases: three modules define `pool_facts`, and `app.py` imports them under other names.
+Watch for aliases: `app.py` imports some helpers under other names, so grep for the function and for its import.
 
 Write one table row per reader: reader, how it uses the symbol, what would break, and how you'll prove it doesn't.
 

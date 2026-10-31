@@ -14,7 +14,8 @@
  *
  * So one sync pass fetches the newest page above the cursor and, while pages come
  * back full, asks for `before_at=<oldest line so far>`. It stops at a short page:
- * nothing older is left above the cursor. A page that adds nothing does not stop
+ * nothing older is left above the cursor (or an empty one, where "full" was a
+ * guess: see MIN_FULL). A page that adds nothing does not stop
  * it. Stored lines say only that *some* history is stored -- a walk cut short by a
  * reload stores the newest pages and none below them -- so the walk jumps to the
  * oldest line the server holds for the game and carries on below it. When the
@@ -26,6 +27,12 @@
   "use strict";
 
   const PAGE_SIZE = 50;
+  // PokerNow could lower its page size, and then every page would look short: a
+  // poll would stop after one, and a burst bigger than the new size (a laptop
+  // asleep, a paused tab) would be skipped for good, the cursor past it. So a
+  // page as big as the biggest seen so far also counts as full, from this size
+  // up: smaller pages are a quiet table's polls, which must stay one request.
+  const MIN_FULL = 20;
 
   // Re-fetch this much below the cursor on every pass: 2 s in created_at units.
   // /ingest dedupes, so it costs a few repeated lines and guards the cursor's edge.
@@ -40,9 +47,10 @@
   }
 
   /**
-   * One sync pass. Mutates `state` = {cursor, walk}:
+   * One sync pass. Mutates `state` = {cursor, walk, biggest}:
    *   cursor  newest created_at at or below which everything is stored (0 = nothing yet)
    *   walk    the unfinished pass, or null
+   *   biggest the most lines a page has held so far (see MIN_FULL)
    *
    * Resumable: when a request throws (a 429, a network error), `state.walk` keeps its
    * place and the next call continues from it. Restarting at the newest page would
@@ -80,7 +88,8 @@
       walk.before = entries[0].order;
       if (onPage) await onPage({ pages, fresh, added });
 
-      if (size < PAGE_SIZE) break;
+      state.biggest = Math.max(state.biggest || 0, size);
+      if (size < PAGE_SIZE && (size < MIN_FULL || size < state.biggest)) break;
       if (added === 0) {
         // Everything here is stored: skip the rest of the stored stretch and go on
         // below it. Assumes that stretch has no hole in it, which holds for what
@@ -99,7 +108,7 @@
     return { pages, fresh };
   }
 
-  const api = { sync, RateLimited, PAGE_SIZE, OVERLAP };
+  const api = { sync, RateLimited, PAGE_SIZE, MIN_FULL, OVERLAP };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);

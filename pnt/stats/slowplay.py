@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from .cards import MADE_LEAVES
-from .derive import POSTFLOP_STREETS, Facts
+from .derive import POSTFLOP_STREETS, Facts, pct
 
 # The filter's own reading of a holding on a street -- cards known, the board got
 # there, not folded on an earlier street -- so a row cannot disagree with the
@@ -114,10 +114,6 @@ def _cell_terms(street: str, key: str) -> str:
     return out
 
 
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
-
-
 def _row(leaf: str, made_term: str, street: str, hands: list[Facts], all_in: list[Facts]) -> dict:
     """One row: the hands that made `leaf` (or the floor and up, for the total) and
     acted on the street, split into the columns."""
@@ -130,7 +126,7 @@ def _row(leaf: str, made_term: str, street: str, hands: list[Facts], all_in: lis
         "leaf": leaf,
         "n": n,
         "slowplay": slow,
-        "slowplay_pct": _pct(slow, n),
+        "slowplay_pct": pct(slow, n),
         "filter": f"{made_term},line_{street}=*",
         # Already all in from an earlier street: they made the hand, but had no
         # decision to make with it, so they are counted here and in no column.
@@ -140,7 +136,7 @@ def _row(leaf: str, made_term: str, street: str, hands: list[Facts], all_in: lis
         "cells": {
             key: {
                 "n": len(rows),
-                "pct": _pct(len(rows), n),
+                "pct": pct(len(rows), n),
                 "filter": f"{made_term},{_cell_terms(street, key)}",
                 "hand_ids": [f.hand_id for f in rows],
             }
@@ -213,7 +209,7 @@ def slowplay(facts: Iterable[Facts], street: str, floor: str = DEFAULT_FLOOR) ->
         "floor": floor,
         "hands": hands,
         "known": known,
-        "coverage": _pct(known, hands),
+        "coverage": pct(known, hands),
         # The spot filters behind `hands` and `known`, so the tiles reproduce too.
         "hands_filter": f"action_{street}=*",
         "known_filter": f"made_{street}>=high_card",
@@ -235,7 +231,7 @@ def all_streets(facts: Iterable[Facts], floor: str = DEFAULT_FLOOR) -> dict:
     slow = sum(t["total"]["slowplay"] for t in tables.values())
     return {
         "streets": tables,
-        "all_streets": {"n": n, "slowplay": slow, "slowplay_pct": _pct(slow, n)},
+        "all_streets": {"n": n, "slowplay": slow, "slowplay_pct": pct(slow, n)},
     }
 
 
@@ -275,10 +271,10 @@ def made_on(facts: Iterable[Facts], floor: str = DEFAULT_FLOOR) -> dict:
             ranked = sorted(lines.items(), key=lambda kv: (-len(kv[1]), kv[0]))
             out[street] = {
                 "n": len(rows),
-                "pct": _pct(len(rows), n),
+                "pct": pct(len(rows), n),
                 "hand_ids": [f.hand_id for f in rows],
                 "lines": [
-                    {"line": line, "n": len(hs), "pct": _pct(len(hs), len(rows)), "hand_ids": [f.hand_id for f in hs]}
+                    {"line": line, "n": len(hs), "pct": pct(len(hs), len(rows)), "hand_ids": [f.hand_id for f in hs]}
                     for line, hs in ranked
                 ],
             }

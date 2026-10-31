@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable
 
 from .cards import MADE_GROUPS, MADE_LEAVES, leaf_of, made_at
-from .derive import Facts
+from .derive import Facts, pct
 from .filters import parse_filter
 
 #: The holding groups, strongest first: (key, label, the `made_<street>` operator
@@ -85,10 +85,6 @@ def _net_bb(facts: Iterable[Facts]) -> float:
     return round(sum(f.net / f.bb_size for f in facts if f.complete and f.bb_size), 1)
 
 
-def _pct(n: int, d: int) -> float | None:
-    return round(100.0 * n / d, 1) if d else None
-
-
 def _cell(facts: list[Facts], filt: str) -> dict:
     return {"hands": len(facts), "net_bb": _net_bb(facts), "filter": filt}
 
@@ -129,7 +125,7 @@ def shown_matrix(facts: Iterable[Facts]) -> dict:
         seen = sum(1 for f in flops if group_at(f, "flop") == row["flop"])
         row["saw_flop"] = seen
         row["saw_flop_filter"] = _term("flop", row["flop"])
-        row["reach_river_pct"] = _pct(row["hands"], seen)
+        row["reach_river_pct"] = pct(row["hands"], seen)
     out["saw_flop"] = len(flops)
     return out
 
@@ -149,10 +145,10 @@ def hero_funnel(facts: Iterable[Facts]) -> dict:
             hit = [f for f in left if pred(f)]
             left = [f for f in left if not pred(f)]
             paths.append({"key": key, "label": plabel, **_cell(hit, f"{base},{terms}"),
-                          "pct": _pct(len(hit), len(mine))})
+                          "pct": pct(len(hit), len(mine))})
         # A log cut short ends none of these ways: no term says it, so no filter.
         paths.append({"key": "other", "label": "log cut short", "hands": len(left),
-                      "net_bb": _net_bb(left), "filter": None, "pct": _pct(len(left), len(mine))})
+                      "net_bb": _net_bb(left), "filter": None, "pct": pct(len(left), len(mine))})
         rows.append({"flop": g, "label": label, **_cell(mine, base), "paths": paths})
     return {
         "flops": len(flops),

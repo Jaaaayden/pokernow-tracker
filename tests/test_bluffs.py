@@ -12,10 +12,10 @@ from typer.testing import CliRunner
 
 from pnt import cli
 from pnt.server import app as server
-from pnt.stats.bluffs import CATEGORY, CLASSES, bluff_value, members, pool_facts, ratio_text
+from pnt.stats.bluffs import CATEGORY, CLASSES, bluff_value, members, ratio_text
 from pnt.stats.derive import derive
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import display_names, facts_for, report
+from pnt.stats.queries import display_names, facts_for, pool_facts, report
 from tests.conftest import local_client
 from tests.test_lines import _hand
 

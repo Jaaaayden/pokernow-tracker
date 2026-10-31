@@ -92,18 +92,89 @@ def _missing_columns(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Add any missing columns. Idempotent, and safe on a fresh database.
+    """Add any missing columns, and bring indexes and `imports` up to date.
+    Idempotent, and safe on a fresh database.
 
     Two connections can migrate at once -- the server's sync and warm-up threads
     both open one at start, as can `pnt import` beside the server -- so the check
     and the ALTER run under the write lock: the second waits, then finds the
     columns there. The usual call has nothing missing and takes no lock.
     """
-    if not _missing_columns(conn):
+    if _missing_columns(conn):
+        with writing(conn):
+            for table, column, decl in _missing_columns(conn):
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    _tidy_indexes(conn)
+
+
+#: One `imports` row per (game, source), which `ingest_entries` updates in place.
+IMPORTS_INDEX = "idx_imports_game_source"
+
+#: An index schema.sql no longer makes: the UNIQUE (game_id, hand_number) index
+#: starts with game_id and serves every lookup by game, so this one only cost
+#: each rebuild a second index to write.
+DROPPED_INDEX = "idx_hands_game"
+
+
+def _index_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?", (name,)
+    ).fetchone() is not None
+
+
+def _indexes_tidy(conn: sqlite3.Connection) -> bool:
+    return _index_exists(conn, IMPORTS_INDEX) and not _index_exists(conn, DROPPED_INDEX)
+
+
+def _tidy_indexes(conn: sqlite3.Connection) -> None:
+    """Fold `imports` to one row per (game, source) and index the pair, and drop
+    DROPPED_INDEX. Once per database, and only reads when there is nothing to do.
+
+    A read-only file is left as it is rather than refused: neither step changes
+    what a reader sees, and the next connection that can write makes them.
+    """
+    if _indexes_tidy(conn):
         return
-    with writing(conn):
-        for table, column, decl in _missing_columns(conn):
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    try:
+        with writing(conn):
+            if _indexes_tidy(conn):
+                return  # another connection got here first
+            _one_import_row_per_source(conn)
+            conn.execute(f"DROP INDEX IF EXISTS {DROPPED_INDEX}")
+    except sqlite3.OperationalError as exc:
+        if not (exc.sqlite_errorname or "").startswith("SQLITE_READONLY"):
+            raise
+
+
+def _one_import_row_per_source(conn: sqlite3.Connection) -> None:
+    """Fold `imports` down to one row per (game, source), then index that pair.
+    Inside the caller's write transaction.
+
+    It used to gain a row on every extension poll, empty ones included: 79k rows
+    on a few months' play, which nothing reads back. Each source's latest row
+    stays, holding the latest call's time and offer and the new lines the source
+    has added in all. The unique index cannot be built while two rows share a pair.
+    """
+    if _index_exists(conn, IMPORTS_INDEX):
+        return
+    shared = conn.execute(
+        "SELECT 1 FROM imports GROUP BY game_id, source HAVING COUNT(*) > 1 LIMIT 1"
+    ).fetchone()
+    if shared:
+        conn.execute(
+            "CREATE TEMP TABLE _imports_kept (import_id INTEGER PRIMARY KEY, n_new INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO _imports_kept SELECT MAX(import_id), SUM(n_new)"
+            " FROM imports GROUP BY game_id, source"
+        )
+        conn.execute("DELETE FROM imports WHERE import_id NOT IN (SELECT import_id FROM _imports_kept)")
+        conn.execute(
+            "UPDATE imports SET n_new ="
+            " (SELECT k.n_new FROM _imports_kept k WHERE k.import_id = imports.import_id)"
+        )
+        conn.execute("DROP TABLE _imports_kept")
+    conn.execute(f"CREATE UNIQUE INDEX {IMPORTS_INDEX} ON imports(game_id, source)")
 
 
 #: Key in `meta` set once a database's browser-copy games are merged
@@ -173,7 +244,9 @@ def _merge_copy_game(conn: sqlite3.Connection, copy: str, base: str) -> None:
     # The copy's file is a file of the base game: a sync that finds it unchanged
     # skips it, and deleting it counts toward deleting the base game.
     conn.execute("UPDATE log_files SET game_id = ? WHERE game_id = ?", (base, copy))
-    conn.execute("UPDATE imports SET game_id = ? WHERE game_id = ?", (base, copy))
+    # One row per (game, source): where the base already has the source, it stands.
+    conn.execute("UPDATE OR IGNORE imports SET game_id = ? WHERE game_id = ?", (base, copy))
+    conn.execute("DELETE FROM imports WHERE game_id = ?", (copy,))
     # What you marked, flagged and tagged on the copy's hands: the same hands, by
     # the log's own numbers. Where the base has the same mark, it stands.
     for table in _HAND_KEYED_USER_TABLES:

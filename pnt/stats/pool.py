@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from ..db.conn import generation, path_of, reading
 from .derive import Facts, derive
 from .lru import LRU
-from .queries import _game_stamps, identity_map, load_hands
+from .queries import _game_stamps, identity_map, load_hands, player_key
 from .tags import RuleBase, baseline, counts
 from .tilt import annotate
 
@@ -32,9 +32,6 @@ _GAME_COUNTS: LRU[tuple[str, str], tuple[int, dict[str, Counter]]] = LRU()
 #: Per (database, game scope): (generation, the Pool). Capped: the HUD asks for
 #: every table it sits at, and an evening's games would otherwise stay forever.
 _POOL: LRU[tuple[str, str | None], tuple[int | None, Pool]] = LRU(32)
-#: Pools built over a filtered spot, newest last: (database, generation, game, filter).
-_SPOT_MAX = 8
-_SPOT_POOLS: LRU[tuple, Pool] = LRU(_SPOT_MAX)
 
 
 @dataclass
@@ -128,7 +125,7 @@ def _count_pool(
         players: dict[str, Counter] = defaultdict(Counter)
         for per_game in _game_counts(conn, game, own, between):
             for pn, c in per_game.items():
-                players[ident.get(pn, (-1, pn))[1]].update(c)
+                players[player_key(ident, pn)[1]].update(c)
     pool = Pool(game or "lifetime", dict(players), own)
     if path:
         _POOL[path, game] = (gen, pool)
@@ -137,21 +134,12 @@ def _count_pool(
 
 def pool_from_facts(
     grouped: Mapping[str, list[Facts]], own: Collection[tuple[str, str]] = (), scope: str = "spot",
-    key: tuple | None = None,
 ) -> Pool:
-    """A pool over facts already in hand, by alias: a filtered spot's. `key`, when
-    given, remembers the last few so a spot's tags do not re-count every player."""
-    hit = _SPOT_POOLS.get(key) if key is not None else None
-    if hit is not None:
-        return hit
-    pool = Pool(scope, {a: counts(fs, own) for a, fs in grouped.items() if fs}, frozenset(own))
-    if key is not None:
-        _SPOT_POOLS[key] = pool
-    return pool
+    """A pool over facts already in hand, by alias: a filtered spot's."""
+    return Pool(scope, {a: counts(fs, own) for a, fs in grouped.items() if fs}, frozenset(own))
 
 
 def clear() -> None:
     """Forget every remembered pool and count. For tests."""
     _GAME_COUNTS.clear()
     _POOL.clear()
-    _SPOT_POOLS.clear()

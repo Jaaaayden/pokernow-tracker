@@ -27,22 +27,16 @@ back to the hands behind it. See SPEC.md, "Fold equity by bet size".
 
 from __future__ import annotations
 
-import sqlite3
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from statistics import mean, median
 
-from .derive import ANSWERS, POSTFLOP_STREETS, SIZE_BUCKETS, Facts
-from .queries import load_hands, play_facts
+from .derive import ANSWERS, POSTFLOP_STREETS, SIZE_BUCKETS, Facts, pct
 
 #: Below this many bets (or bets faced) a row is still reported, but not judged:
 #: a 100% fold rate off two bets says nothing about the next one. The views only
 #: highlight a positive edge or an over-fold on a row with at least this many.
 #: The smallest sample the exploit tags fire on (SPEC.md, "Tags").
 MIN_SAMPLE = 10
-
-
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
 
 
 def break_even(size: float) -> float:
@@ -93,7 +87,7 @@ def _row(
         "folds": counts["fold"],
         "calls": counts["call"],
         "raises": counts["raise"],
-        **{a: _pct(counts[a], n) for a in ANSWERS},
+        **{a: pct(counts[a], n) for a in ANSWERS},
         # Pot fractions: 0.5 is half the pot. None on an empty bucket. The median
         # is what a view prints as the bucket's size: a jam into a small pot can
         # carry the overbet bucket's mean to five pots.
@@ -220,19 +214,3 @@ def fold_equity(facts: Iterable[Facts], with_ids: bool = False) -> dict:
             },
         }
     return {"hands": len(facts), "min_sample": MIN_SAMPLE, "streets": streets}
-
-
-def pool_facts(
-    conn: sqlite3.Connection,
-    game_id: str | None = None,
-    predicate: Callable[[Facts], bool] | None = None,
-) -> list[Facts]:
-    """Every (hand, player) row in the database, or in one game, inside a spot.
-
-    The whole table's betting rather than one player's: the bets everybody made
-    and the bets everybody faced. Derived afresh, like a filtered `report()` -- a
-    predicate cannot key a cache, and this is asked by a person, not on a timer.
-    """
-    # The session facts first, so a spot like `post_loss` reads whole sessions.
-    facts = play_facts(load_hands(conn, game_id))
-    return [f for f in facts if predicate(f)] if predicate is not None else facts

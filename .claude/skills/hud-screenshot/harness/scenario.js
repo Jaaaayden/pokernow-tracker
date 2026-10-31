@@ -1,8 +1,17 @@
 // Screenshot harness: ?s=<state> puts the panel in one state. Loaded after sidepanel.js.
 (async () => {
   const s = new URLSearchParams(location.search).get("s") || "loaded";
+  // A first install: no columns kept from an earlier /hud. Cleared before
+  // sidepanel.js reads it, by loading the page once more.
+  if (s === "fresh" && localStorage.getItem("pnt-cols")) {
+    localStorage.removeItem("pnt-cols");
+    location.reload();
+    return;
+  }
   const conf = JSON.parse(document.getElementById("harness-conf").textContent);
-  document.body.style.width = s === "narrow" ? "320px" : "400px";
+  document.body.style.width = s === "narrow" || s === "compact" ? "320px" : "400px";
+  // Compact is remembered in the shared profile: only `compact` leaves it on.
+  if ((localStorage.getItem("pnt-compact") === "1") !== (s === "compact")) document.getElementById("compact").click();
   const live = await fetch("live.json").then((r) => r.json());
   const hud = await fetch("hud.json").then((r) => r.json());
   const text = `connected · ${conf.hands} hands in db`;
@@ -21,7 +30,7 @@
   if (s === "between") __push({ ...warming, liveData: between, hudData: null });
   if (s === "stuck-loading" || s === "stuck-restart") __push({ ...warming, liveData: between, hudData: null });
   if (s === "stuck-down") __push({ ...base, text: "tracker not reachable", trackerDown: true, liveData: null, hudData: null });
-  if (s === "stuck-tab") __push(null);
+  if (s === "stuck-tab" || s === "nogame") __push(null);
   if (s === "waiting") __push({ ...base, liveData: null, hudData: null });
   if (s === "empty") __push({ ...base, liveData: live, hudData: null, hudEmpty: true });
   if (s === "error") {
@@ -30,7 +39,13 @@
     // The next /live: the status line moves on, the error line stays.
     __push({ ...base, text: "capturing · 3 new · 9:41:07 PM", liveData: live, hudData: null, hudError: "harness: HTTP 500" });
   }
-  if (s === "loaded" || s === "update") __push({ ...base, liveData: live, hudData: hud });
+  if (s === "loaded" || s === "update" || s === "compact") __push({ ...base, liveData: live, hudData: hud });
+  if (s === "fresh") __push({ ...warming, liveData: between, hudData: null });
+  if (s === "settings") {
+    __push({ ...base, liveData: live, hudData: hud });
+    await tick();
+    document.getElementById("gear").click();
+  }
   if (s === "sample") __push({ ...base, liveData: live, hudData: { ...hud, dataset: "sample" } });
   if (s === "plo") {
     __push({ ...base, liveData: { ...live, analysed: false, players: live.players.map((p) => ({ ...p, resolved: null })) },

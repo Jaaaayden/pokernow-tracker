@@ -78,7 +78,7 @@ def rank7(cards: Sequence[Card]) -> tuple[int, ...]:
     groups = sorted(counts.items(), key=lambda kv: (-kv[1], -kv[0]))
     (v0, n0), *rest = groups
     if n0 == 4:
-        kicker = max(v for v in counts if v != v0)
+        kicker = max((v for v in counts if v != v0), default=0)  # 0: four cards, no kicker
         return (7, v0, kicker)
     if n0 == 3 and rest and rest[0][1] >= 2:
         return (6, v0, rest[0][0])
@@ -93,7 +93,7 @@ def rank7(cards: Sequence[Card]) -> tuple[int, ...]:
         return (3, v0, *kickers)
     if n0 == 2 and rest and rest[0][1] == 2:
         v1 = rest[0][0]
-        kicker = max(v for v in counts if v not in (v0, v1))
+        kicker = max((v for v in counts if v not in (v0, v1)), default=0)
         return (2, v0, v1, kicker)
     if n0 == 2:
         kickers = sorted((v for v in counts if v != v0), reverse=True)[:3]

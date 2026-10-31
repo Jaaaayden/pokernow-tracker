@@ -363,13 +363,6 @@ Some updates change what is stored for each hand. When the restart (or the new `
 `pnt rebuild` once: it re-reads every stored log, so nothing needs importing
 again. The update that added think times (the chart's **Timing** view) is one.
 
-On a Mac set up before the background server came to macOS, run `pnt service
-install --db <full path to pokernow.sqlite>` once to get it.
-
-On Windows, run `pnt service install` once after this update: the background
-server now runs at normal priority, so HUD answers no longer queue behind the
-browser. `pnt update` keeps the task as it was installed.
-
 Installed before `pnt update` existed? Update by hand this one time, then reload
 the extension at `chrome://extensions`:
 
@@ -430,7 +423,7 @@ every command uses too, from any folder; `--db` still overrides it.
 The server at `127.0.0.1:52000` answers every page and the HUD from one JSON API,
 which your own scripts can read too. The choice of database and log folder lives in
 `~/.pnt/config.json`, outside the database, so the background task, `pnt serve` and
-the CLI all open the same one. Routes added in this round:
+the CLI all open the same one. Some of its routes:
 
 | Route | Returns |
 |---|---|
@@ -441,7 +434,7 @@ the CLI all open the same one. Routes added in this round:
 | `GET /players/{alias}/tree` | The spot tree, each node with its decision mix and filter |
 | `GET /players/{alias}/streets` | Flop holding against river holding |
 | `GET /players/{alias}/estimate`, `/board` | The estimated range, and its breakdown on a board |
-| `GET /tendencies`, `GET /leaks` | Your tags as others see them, the regulars' common tags, your leaks |
+| `GET /tendencies` | Your tags as others see them, and the regulars' common tags |
 | `GET /players/{alias}/timing`, `GET /timing` | Timing tells, for one player or the pool |
 | `GET` / `POST /spots`, `DELETE /spots/{id}` | Saved spots |
 | `GET /tags`, `GET /tagged`, `/games/{game}/hands/{n}/tags` | Hand tags: list, find, add, remove |
@@ -458,7 +451,7 @@ filter is taken. [architecture.md](docs/architecture.md) has the rest.
 | [`docs/privacy.md`](docs/privacy.md) | What is stored, where it goes, and what each extension permission is for |
 | [`docs/findings.md`](docs/findings.md) | The PokerNow log format: identity, ordering, amounts, line vocabulary, traps |
 | [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Every stat, tag and review flag, defined exactly |
-| [`docs/ideas.md`](docs/ideas.md) | Analysis not built yet, ranked by value per effort, with the data each would use |
+| [`docs/ideas.md`](docs/ideas.md) | The analysis backlog, all built, and the ideas left out and why |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |
 | [`pnt/logs/README.md`](pnt/logs/README.md) | The bundled sample corpus |
 

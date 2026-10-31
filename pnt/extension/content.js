@@ -16,7 +16,8 @@
  * their history with hands behind it. A rebuild, which re-derives the whole
  * game, waits for the hand to end: the live view needs none.
  *
- * Both go out in the status report, which the background worker keeps per tab.
+ * Both go out with the status report when they change (report()), and the
+ * background worker keeps them per tab.
  * The side panel (sidepanel.js) draws them beside the page rather than over it,
  * and sends back the one thing it needs from here: pause and resume.
  */
@@ -24,6 +25,14 @@
   "use strict";
   const GAME = (location.pathname.match(/\/games\/([A-Za-z0-9_-]+)/) || [])[1];
   if (!GAME) return;
+  // Once per page. The worker injects this script into open game tabs after an
+  // update, and a tab still loading then gets the manifest's copy as well: the
+  // second one stops here. One orphaned by a reload stands aside (orphaned()):
+  // each copy keeps its own extension context, so the test is the first copy's.
+  const alive = globalThis.__pntContent;
+  if (alive?.()) return;
+  const runtime = chrome.runtime;
+  globalThis.__pntContent = () => !!runtime?.id;
 
   const HUD_EVERY_MS = 30_000;
   // Between history pages. PokerNow answers a burst of /log requests with HTTP 429.
@@ -49,10 +58,10 @@
     sync: { cursor: 0, walk: null }, // see pager.js
     offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
     lastError: null, lastPoll: null, shape: null, envelopeOk: null,
-    hud: null, hudAt: 0, hudEmpty: false, hudError: null, trackerDown: false, paused: false,
+    hud: null, hudJson: null, hudAt: 0, hudSlow: false, hudEmpty: false, hudError: null, trackerDown: false, paused: false,
     live: null, liveInserted: -1,
     statusText: "starting…",
-    rev: 0,             // bumped whenever hud or live changes, so the panel redraws only then
+    rev: 0,             // bumped whenever hud or live changes: the panel redraws, and the payloads go out, only then
     backoffMs: 0,
     rebuiltAt: 0,       // `inserted` at the last rebuild
     rebuiltTime: 0,
@@ -88,20 +97,37 @@
     return r;
   }
 
-  const report = () => send({
-    type: "status",
-    status: {
-      game: GAME, polls: state.polls, offered: state.offered, inserted: state.inserted,
-      errors: state.errors, lastError: state.lastError, lastPoll: state.lastPoll,
-      shape: state.shape, envelopeOk: state.envelopeOk, pages: state.pages,
-      history: state.sync.walk ? "loading" : state.sync.cursor ? "complete" : "not loaded",
-      seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
-      live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
-      text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live, hudEmpty: state.hudEmpty,
-      hudError: state.hudError, trackerDown: state.trackerDown,
-      tableActing: state.tableActing, tableActingPn: actingPn(), tableActingAt: state.tableActingAt,
-    },
-  });
+  // The status goes out several times a poll; the /hud and /live payloads, much
+  // the bigger part, only when `rev` has moved since the worker last took them
+  // (background.js keeps the two apart, under `status:` and `data:`).
+  let sentRev = -1;
+  async function report() {
+    const rev = state.rev;
+    const data = rev !== sentRev ? { rev, hudData: state.hud, liveData: state.live } : undefined;
+    if (data) sentRev = rev; // at once: the next report may go before this one is answered
+    const r = await send({
+      type: "status",
+      status: {
+        game: GAME, polls: state.polls, offered: state.offered, inserted: state.inserted,
+        errors: state.errors, lastError: state.lastError, lastPoll: state.lastPoll,
+        shape: state.shape, envelopeOk: state.envelopeOk, pages: state.pages,
+        history: state.sync.walk ? "loading" : state.sync.cursor ? "complete" : "not loaded",
+        seats: state.hud ? state.hud.seats.length : 0, paused: state.paused,
+        live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
+        text: state.statusText, hudEmpty: state.hudEmpty, hudError: state.hudError, trackerDown: state.trackerDown,
+        tableActing: state.tableActing, tableActingPn: actingPn(), tableActingAt: state.tableActingAt,
+      },
+      data,
+    });
+    if (data && !r.ok && sentRev === rev) sentRev = -1; // lost: the next report carries them
+    // The worker no longer holds them (it drops a tab's on a load that left
+    // this script running): sent again at once, or the panel waits for ever.
+    if (!data && r.ok && r.data?.held === false && sentRev === rev) {
+      sentRev = -1;
+      return report();
+    }
+    return r;
+  }
 
   // `#3 "Name @ ID" (1000)` per seat. A name may hold anything, " @ " and quotes
   // included; the ID's charset is known, so the match ends on it (tokens.py).
@@ -311,9 +337,30 @@
     check();
   }
 
+  // A /hud the server is still working on: the worker gave up waiting (its own
+  // limit, background.js SLOW_MS) or was stopped mid-call by Chrome. Not a
+  // failure: the server finishes and keeps it. Nor asked again for HUD_EVERY_MS,
+  // a hand end's rebuild included: each ask starts the same work over beside
+  // the first, and on a cold database they would pile up.
+  const SLOW = /tracker busy|message port closed/i;
+
   async function refreshHud() {
+    if (state.hudSlow && Date.now() - state.hudAt < HUD_EVERY_MS) return;
     const r = await tracker({ type: "hud", game_id: GAME });
     state.hudAt = Date.now();
+    // The port closed because the extension was reloaded: the next poll retires.
+    if (!r.ok && orphaned()) return;
+    state.hudSlow = !r.ok && SLOW.test(r.error || "");
+    if (state.hudSlow) {
+      // Stats are on their way: no "failed" box beside "still loading".
+      if (state.hudError || state.hudEmpty) {
+        state.hudError = null;
+        state.hudEmpty = false;
+        state.rev += 1;
+      }
+      setStatus("stats still loading");
+      return;
+    }
     // A table with no complete hand yet has no stats to wait for, and a /hud that
     // failed has none coming: the panel tells both apart from a first /hud still
     // on its way (`hudEmpty`, `hudError`), so neither shimmers for ever.
@@ -325,6 +372,11 @@
       changed();
     }
     if (!r.ok) { setStatus(empty ? "waiting for the first hand" : r.error); return; }
+    // The same figures again (the 30 s refresh of a quiet table) are no news: a
+    // new `rev` would redraw every card and close the tooltip being read.
+    const json = JSON.stringify(r.data);
+    if (json === state.hudJson) return;
+    state.hudJson = json;
     state.hud = r.data;
     changed();
   }

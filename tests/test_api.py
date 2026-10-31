@@ -320,18 +320,6 @@ def test_hud_endpoint_keys_by_pn_id_not_seat(client):
             assert {"id", "label", "kind", "tip", "n", "hits", "pct", "filter", "by"} <= set(t)
 
 
-def test_player_tags_endpoint(client):
-    body = client.get("/players/genericpoker/tags").json()
-    assert body["player"] == "genericpoker" and body["filter"] is None
-    assert {"archetype", "tags", "profile"} <= set(body)
-    assert body["archetype"] is not None, "421 hands is enough for an archetype"
-    assert body["tags"][0] == body["archetype"]
-    spot = client.get("/players/genericpoker/tags", params={"filter": "srp"}).json()
-    assert spot["filter"] == "srp" and spot["profile"]["hands"] < body["profile"]["hands"]
-    assert client.get("/players/genericpoker/tags", params={"filter": "nope"}).status_code == 400
-    assert client.get("/players/ghost/tags").status_code == 404
-
-
 def test_hand_replay(client):
     rows = client.get("/stats").json()
     assert rows
@@ -659,10 +647,6 @@ def test_marking_a_hand_reviewed_round_trips_and_reaches_the_review(client):
     out = client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": True}).json()
     assert out["reviewed"] and out["reviewed_at"]
     assert (out["game_id"], out["hand_number"]) == (flagged["game_id"], flagged["hand_number"])
-    assert client.get("/reviewed").json() == [
-        {"game_id": out["game_id"], "hand_number": out["hand_number"], "reviewed_at": out["reviewed_at"]}
-    ]
-    assert client.get("/reviewed", params={"game": "nosuchgame"}).json() == []
 
     again = client.get("/players/genericpoker/review").json()
     same_hand = lambda h: (h["game_id"], h["hand_number"]) == (out["game_id"], out["hand_number"])
@@ -672,40 +656,39 @@ def test_marking_a_hand_reviewed_round_trips_and_reaches_the_review(client):
 
     cleared = client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": False}).json()
     assert cleared["reviewed"] is False and cleared["reviewed_at"] is None
-    assert client.get("/reviewed").json() == []
+    assert not any(h["reviewed"] for h in client.get("/players/genericpoker/review").json()["hands"])
 
 
 def test_flagging_a_hand_round_trips_and_lands_on_manual_review(client):
     """The HUD's flag writes by (game_id, hand_number); the hand then shows on the
     player's Manual review list, and as `flagged` on every other list."""
-    assert client.get("/players/genericpoker/flagged").json()["hands"] == []
+    flagged = lambda **params: client.get(
+        "/tagged", params={"tag": "flagged", "player": "genericpoker", **params}).json()["hands"]
+    assert flagged() == []
     hand = client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"][0]
     assert hand["flagged"] is False and hand["flagged_at"] is None
 
     out = client.post(f"/games/{HU_GAME}/hands/{hand['hand_number']}/flag", json={"flagged": True}).json()
     assert out["flagged"] and out["flagged_at"]
-    assert client.get("/flagged").json() == [
-        {"game_id": HU_GAME, "hand_number": hand["hand_number"], "flagged_at": out["flagged_at"]}
-    ]
     previous = client.get(f"/live/{HU_GAME}").json()["previous"]
     assert previous["flagged"] == (previous["hand_number"] == hand["hand_number"])
 
-    listed = client.get("/players/genericpoker/flagged").json()["hands"]
+    listed = flagged()
     assert [h["hand_id"] for h in listed] == [hand["hand_id"]]
     assert listed[0]["flagged"] and listed[0]["flagged_at"] == out["flagged_at"]
     # A mark and a note ride along, as on every list.
     client.post(f"/hands/{hand['hand_id']}/reviewed", json={"reviewed": True})
     client.post(f"/hands/{hand['hand_id']}/note", json={"note": "turn sizing?"})
-    again = client.get("/players/genericpoker/flagged").json()["hands"][0]
+    again = flagged()[0]
     assert again["reviewed"] and again["note"] == "turn sizing?" and again["flagged"]
     # A spot the hand is not in leaves it off.
-    assert client.get("/players/genericpoker/flagged", params={"filter": "pot>=99999999"}).json()["hands"] == []
+    assert flagged(filter="pot>=99999999") == []
     review = client.get("/players/genericpoker/review").json()["hands"]
     assert review and all("flagged" in h for h in review)
 
     cleared = client.post(f"/games/{HU_GAME}/hands/{hand['hand_number']}/flag", json={"flagged": False}).json()
     assert cleared == {"game_id": HU_GAME, "hand_number": hand["hand_number"], "flagged": False, "flagged_at": None}
-    assert client.get("/players/genericpoker/flagged").json()["hands"] == []
+    assert flagged() == []
     # Unflagging keeps the mark and the note: three separate judgements.
     kept = next(h for h in client.get("/players/genericpoker/hands", params={"game": HU_GAME}).json()["hands"]
                 if h["hand_id"] == hand["hand_id"])
@@ -731,11 +714,6 @@ def test_noting_a_hand_round_trips_and_reaches_the_review(client):
     out = client.post(f"/hands/{flagged['hand_id']}/note", json={"note": " raise the flop "}).json()
     assert out["note"] == "raise the flop" and out["noted_at"]
     assert (out["game_id"], out["hand_number"]) == (flagged["game_id"], flagged["hand_number"])
-    assert client.get("/notes").json() == [
-        {"game_id": out["game_id"], "hand_number": out["hand_number"],
-         "note": out["note"], "noted_at": out["noted_at"]}
-    ]
-    assert client.get("/notes", params={"game": "nosuchgame"}).json() == []
 
     again = client.get("/players/genericpoker/review").json()
     same_hand = lambda h: (h["game_id"], h["hand_number"]) == (out["game_id"], out["hand_number"])
@@ -746,11 +724,12 @@ def test_noting_a_hand_round_trips_and_reaches_the_review(client):
     # The mark comes and goes; the note does not go with it.
     client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": True})
     client.post(f"/hands/{flagged['hand_id']}/reviewed", json={"reviewed": False})
-    assert client.get("/notes").json()[0]["note"] == out["note"]
+    kept = client.get("/players/genericpoker/review").json()
+    assert kept["noted"] == again["noted"] and kept["reviewed"] == 0
 
     cleared = client.post(f"/hands/{flagged['hand_id']}/note", json={"note": "  "}).json()
     assert cleared["note"] is None and cleared["noted_at"] is None
-    assert client.get("/notes").json() == []
+    assert client.get("/players/genericpoker/review").json()["noted"] == 0
 
 
 def test_noting_an_unknown_hand_is_a_404(client):
@@ -859,10 +838,16 @@ def test_an_extension_from_before_the_header_is_told_to_reload(client):
         ("null", 403),
         ("chrome-extension://abcdefghijklmnop", 200),
         ("http://127.0.0.1:52000", 200),  # the server's own pages
+        ("http://localhost:52000", 403),  # a page of the same server is addressed as its Host
+        ("http://127.0.0.1:3000", 403),  # another local server's page
+        ("https://127.0.0.1:52000", 403),
     ],
 )
 def test_writes_from_a_foreign_origin_are_refused(client, origin, status):
-    r = client.post("/ingest", json={"game_id": "origin-probe", "entries": []}, headers={"origin": origin})
+    from fastapi.testclient import TestClient
+
+    here = TestClient(client.app, base_url="http://127.0.0.1:52000", headers={"x-pnt": "1"})
+    r = here.post("/ingest", json={"game_id": "origin-probe", "entries": []}, headers={"origin": origin})
     assert r.status_code == status
 
 

@@ -9,7 +9,7 @@ const { normalize } = require("./normalize.js");
 const T0 = Date.parse("2026-09-11T09:00:00.000Z");
 
 /** A fake /log with exactly the behaviour probed on pokernow.com. */
-function fakePokerNow(n, { ignoreBefore = false } = {}) {
+function fakePokerNow(n, { ignoreBefore = false, pageSize = PAGE_SIZE } = {}) {
   const lines = [];
   const server = {
     requests: [],
@@ -26,7 +26,7 @@ function fakePokerNow(n, { ignoreBefore = false } = {}) {
       const c = (l) => Number(l.created_at);
       const logs = lines
         .filter((l) => (after == null || c(l) > after) && (ignoreBefore || before == null || c(l) < before))
-        .slice(-PAGE_SIZE)
+        .slice(-pageSize)
         .reverse(); // newest first
       const { entries } = normalize({ logs, infos: { min: null, max: null } });
       return { entries, size: logs.length };
@@ -170,4 +170,28 @@ test("it pauses between requests, never before the first", async () => {
   let pauses = 0;
   const r = await sync({ cursor: 0, walk: null }, { ...ioFor(server, store()), pause: async () => { pauses++; } });
   assert.equal(pauses, r.pages - 1);
+});
+
+test("a smaller page size than 50 still walks back over a burst", async () => {
+  // PokerNow lowers its pages to 25: they all look short against 50.
+  const { server, lines } = fakePokerNow(60, { pageSize: 25 });
+  const db = store();
+  const state = { cursor: 0, walk: null };
+  await sync(state, ioFor(server, db));
+  assert.deepEqual(sorted(db.orders), ordersOf(lines), "the first load walks the whole game");
+  server.add(70); // a laptop asleep: more than a page between polls
+  await sync(state, ioFor(server, db));
+  assert.deepEqual(sorted(db.orders), ordersOf(lines), "no gap below the newest page");
+});
+
+test("a quiet table's small pages stay one request, whatever the biggest seen", async () => {
+  const { server } = fakePokerNow(8);
+  const db = store();
+  const state = { cursor: 0, walk: null };
+  await sync(state, ioFor(server, db));
+  assert.equal(server.requests.length, 1, "8 lines: under MIN_FULL, no walk back");
+  server.requests.length = 0;
+  server.add(5);
+  await sync(state, ioFor(server, db));
+  assert.equal(server.requests.length, 1);
 });

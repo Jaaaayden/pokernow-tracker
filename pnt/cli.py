@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import glob as globlib
-import importlib.util
 import json
 import os
 import subprocess
@@ -38,10 +37,9 @@ from .ingest.log_folder import LOG_DIR, SAVE_LOGS, log_path, write_log
 from .logfmt import anonymize as anon
 from .logfmt import redact as rd
 from .stats.allin import allin_report
-from .stats.bluffs import bluff_value, pool_facts
+from .stats.bluffs import bluff_value
 from .stats.filters import parse_filter
 from .stats.fold_equity import fold_equity
-from .stats.fold_equity import pool_facts as fold_pool_facts
 from .stats.lines import DEFAULT_MIN as LINES_MIN
 from .stats.lines import MODES as LINES_MODES
 from .stats.lines import TIERS, line_breakdown
@@ -51,6 +49,7 @@ from .stats.queries import (
     facts_by_player,
     facts_for,
     identities_of,
+    pool_facts,
     positional_report,
     report,
 )
@@ -225,18 +224,35 @@ def _apply_bundled_aliases(conn) -> None:
     typer.echo(f"merged {moved} sample identity row(s) per {BUNDLED_ALIASES.name}")
 
 
-def _import(conn, path: str, folder: Path) -> dict:
+def _import(conn, path: str, folder: Path, entries: list | None = None) -> dict:
     """`import_csv`, and a file read from the log folder goes on record.
 
     On record is what makes deleting that file later remove its game (`pnt sync`).
     Files from anywhere else are not: deleting a Downloads copy once it is imported
-    must not take the game with it.
+    must not take the game with it. `entries`: the file, if the caller read it.
     """
-    s = import_csv(conn, path)
+    s = import_csv(conn, path, entries=entries)
     p = Path(path)
     if p.resolve().parent == folder.resolve():
         syncmod.record_file(conn, p, s["game_id"])
     return s
+
+
+def _log_folder(log_dir: Path | None) -> Path:
+    """The log folder a command fills the database from: --log-dir, else LOG_DIR.
+
+    Never the bundled sample's own folder, which the server refuses too
+    (`sample.is_sample_folder`): read as a log folder, its anonymized copies of real
+    games go on record in your database beside the games they copy."""
+    folder = log_dir or LOG_DIR
+    if samplemod.is_sample_folder(folder):
+        raise typer.BadParameter(
+            f"{folder} is the bundled sample's folder, not a log folder. To try the"
+            " sample, use `pnt setup --sample` on a new database, or switch Data to"
+            " Sample on the front page",
+            param_hint="--log-dir" if log_dir else "the log folder (PNT_LOG_DIR or the front page)",
+        )
+    return folder
 
 
 def _expand(paths: list[str] | None, folder: Path, sample: bool = False) -> list[str]:
@@ -252,6 +268,8 @@ def _expand(paths: list[str] | None, folder: Path, sample: bool = False) -> list
         expanded = []
         for pat in paths:
             for p in globlib.glob(pat) or [pat]:
+                if not Path(p).exists():
+                    raise typer.BadParameter(f"no file or folder at {p}")
                 expanded.extend(_logs_in(Path(p)) if Path(p).is_dir() else [p])
     else:
         expanded = _logs_in(folder)
@@ -284,19 +302,20 @@ def import_cmd(
     corpus instead, for trying the tracker out. Without it an empty folder is an
     error: a fresh install starts with no one else's hands.
     """
-    conn = connect(db)
-    folder = log_dir or LOG_DIR
+    folder = _log_folder(log_dir)
     expanded = _expand(paths, folder, sample=sample)
+    conn = connect(db)
     if not paths and expanded and Path(expanded[0]).parent == BUNDLED_LOG_DIR:
         _announce_sample(folder)
     bundled = any(Path(p).resolve().parent == BUNDLED_LOG_DIR.resolve() for p in expanded)
     failed = 0
     for path in expanded:
         try:
-            if not has_hands(read_csv(path)):
+            entries = read_csv(path)
+            if not has_hands(entries):
                 typer.echo(f"{Path(path).name}: no hands (joined and left before a deal), skipped")
                 continue
-            s = _import(conn, path, folder)
+            s = _import(conn, path, folder, entries)
         except ValueError as exc:  # no game ID in the name, not a log
             msg = str(exc)
             typer.echo(msg if Path(path).name in msg else f"{Path(path).name}: {msg}", err=True)
@@ -360,7 +379,7 @@ def backfill(
     Games already in the folder are skipped; `--refresh` fetches them again and adds
     only lines the file lacks, e.g. your hole cards after a first run without a cookie.
     """
-    folder = log_dir or LOG_DIR
+    folder = _log_folder(log_dir)
     raw = list(links or [])
     if from_file:
         raw += [
@@ -500,12 +519,12 @@ def setup(
     `--sample` loads the bundled, anonymized sample corpus into it instead, for
     trying the tracker out.
     """
+    folder = _log_folder(log_dir)
     db = db.resolve()
     fresh = not db.exists()
     connect(db).close()
     typer.echo(f"{'created' if fresh else 'using'} database: {db}")
 
-    folder = log_dir or LOG_DIR
     logs = _logs_in(folder)
     bundled = not logs and sample
     if bundled:
@@ -515,7 +534,17 @@ def setup(
         typer.echo(f"importing {len(logs)} log(s) from {Path(logs[0]).parent}")
         conn = connect(db)
         for path in logs:
-            s = _import(conn, path, folder)
+            # As `pnt import` and the sync do: a log with no hand would only make
+            # an empty game, and one that is not a log is named, not a traceback.
+            try:
+                entries = read_csv(path)
+                if not has_hands(entries):
+                    typer.echo(f"  {Path(path).name}: no hands (joined and left before a deal), skipped")
+                    continue
+                s = _import(conn, path, folder, entries)
+            except ValueError as exc:
+                typer.echo(f"  {Path(path).name}: could not import: {exc}", err=True)
+                continue
             typer.echo(f"  {Path(path).name}: {s['hands']} hands, {s['parse_misses']} parse misses")
         if bundled:
             _apply_bundled_aliases(conn)
@@ -707,7 +736,7 @@ def sync(
     knew about go with them.
     """
     conn = connect(db)
-    folder = log_dir or LOG_DIR
+    folder = _log_folder(log_dir)
     emptied = syncmod.remove_empty(conn, folder) if remove_empty and folder.is_dir() else []
     for path in emptied:
         typer.echo(f"{path.name}: no hands, deleted")
@@ -801,7 +830,10 @@ def stats(
 ) -> None:
     """Per-player stats. Rates show `--` when the denominator is empty."""
     conn = connect(db)
-    pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
+    try:
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--filter") from exc
     rows = report(conn, game_id=game, min_hands=min_hands, predicate=pred)
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
@@ -822,7 +854,10 @@ def positions(
 ) -> None:
     """One player's stats broken down by position."""
     conn = connect(db)
-    rows = positional_report(conn, alias, pool=not split_by_size)
+    try:
+        rows = positional_report(conn, alias, pool=not split_by_size)
+    except ValueError as exc:  # an unknown alias
+        raise typer.BadParameter(str(exc), param_hint="ALIAS") from exc
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
     else:
@@ -844,7 +879,10 @@ def allin(
     every run after it is instant. Running this once also warms the page.
     """
     conn = connect(db)
-    pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
+    try:
+        pred = parse_filter(filter_, display_names(conn), tag_resolver(conn)) if filter_ else None
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--filter") from exc
     rows = allin_report(conn, game_id=game, min_hands=min_hands, predicate=pred)
     if as_json:
         typer.echo(json.dumps(rows, indent=2))
@@ -1377,6 +1415,8 @@ def redact(
     """
     folder = log_dir or LOG_DIR
     expanded = _expand(paths, folder)
+    if aliases is not None and not aliases.is_file():
+        raise typer.BadParameter(f"no alias file at {aliases}", param_hint="--aliases")
 
     if audit:
         leaks = [line for p in expanded for line in rd.audit(Path(p))]
@@ -1445,8 +1485,6 @@ def serve(
     Lasts until the terminal closes. To keep it running in the background instead,
     use `pnt service install`.
     """
-    if importlib.util.find_spec("uvicorn") is None:  # pragma: no cover
-        raise typer.BadParameter("server extras not installed. Run: pip install -e '.[server]'")
     # A second server on the port would split requests with the first (see
     # svc.bind): usually the background service, which is already doing this job.
     busy = f"error: something already answers on http://{host}:{port}. "
@@ -1510,6 +1548,8 @@ def service_install(
     typer.echo(f"  database:    {db.resolve()}")
     typer.echo(f"  interpreter: {interpreter}")
     typer.echo(f"  log:         {svc.LOG_FILE}")
+    if not svc.loopback(host):
+        typer.echo("\n" + svc.exposed_warning(host, port), err=True)
     # macOS guards these folders per program, and the agent's Python is not the
     # Terminal that may already have been allowed in. Refused, it can neither read
     # the exports nor save live-captured logs there.
@@ -1679,7 +1719,10 @@ def alias_merge(source: str, target: str, db: Path = DbOpt) -> None:
     rows *is* the merge.
     """
     conn = connect(db)
-    moved = merge_players(conn, source, target)
+    try:
+        moved = merge_players(conn, source, target)
+    except ValueError as exc:  # an unknown alias, or merging one into itself
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"moved {len(moved)} identity row(s) from {source!r} to {target!r}")
     if moved:
         # Printed because the merge cannot be undone without them: the source
@@ -1997,7 +2040,7 @@ def foldeq(
                 facts = [f for f in facts if pred(f)]
             results.append((alias, fold_equity(facts)))
         if pool or not alias:
-            results.append(("pool", fold_equity(fold_pool_facts(conn, game, pred))))
+            results.append(("pool", fold_equity(pool_facts(conn, game, pred))))
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     if as_json:
@@ -2414,7 +2457,8 @@ def timing(
     logs' owners' own cards apart from everyone else's shown hands. Hands stored
     before this version have no times until `pnt rebuild`.
     """
-    from .stats.timing import owners, pool_rows, timing_report
+    from .stats.pool import owners
+    from .stats.timing import pool_rows, timing_report
 
     conn = connect(db)
     names = display_names(conn)
