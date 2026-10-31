@@ -246,13 +246,9 @@ def test_lines_endpoints(client):
     river = client.get("/players/genericpoker/lines", params={"mode": "action", "street": "river", "min": 1}).json()
     assert river["streets"] == ["river"] and river["hidden"]["groups"] == 0
 
-    pool = client.get("/lines", params={"min": 1}).json()
-    assert pool["player"] is None and pool["hands"] > body["hands"]
-    assert "hand_ids" not in pool["groups"][0]
 
     assert client.get("/players/ghost/lines").status_code == 404
     assert client.get("/players/genericpoker/lines", params={"filter": "nope"}).status_code == 400
-    assert client.get("/lines", params={"filter": "nope"}).status_code == 400
     assert client.get("/players/genericpoker/lines", params={"mode": "sideways"}).status_code == 422
     assert client.get("/players/genericpoker/lines", params={"street": "preflop"}).status_code == 422
     assert client.get("/players/genericpoker/lines", params={"min": 0}).status_code == 422

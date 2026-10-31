@@ -152,40 +152,6 @@ def test_one_game(db):
         assert out["hands"] == len(facts_for(db, hero, HU_GAME))
 
 
-def test_leaks_endpoint(tmp_path, monkeypatch):
-    pytest.importorskip("fastapi")
-    import importlib
-
-    monkeypatch.setenv("PNT_DB", str(tmp_path / "api.sqlite"))
-    from pnt.server import app as app_module
-
-    importlib.reload(app_module)
-    conn = connect(tmp_path / "api.sqlite")
-    for path in ALL_LOGS:
-        import_csv(conn, path)
-    expect = leaks(conn)
-    conn.execute("UPDATE games SET hero_pn_id = NULL WHERE game_id != ?", (HU_GAME,))
-    conn.commit()
-    one = leaks(conn)
-    conn.close()
-    client = local_client(app_module.app)
-
-    body = client.get("/leaks").json()
-    assert body["hero"] == one["hero"]
-    assert [r["key"] for r in body["ranked"]] == [r["key"] for r in one["ranked"]]
-    assert expect["hero"]
-
-    conn = connect(tmp_path / "api.sqlite")
-    conn.execute("UPDATE games SET hero_pn_id = NULL")
-    conn.commit()
-    conn.close()
-    from pnt.stats.queries import clear_caches
-
-    clear_caches()
-    r = client.get("/leaks")
-    assert r.status_code == 200 and r.json()["hero"] is None and r.json()["top"] == []
-
-
 def test_leaks_cli(db, tmp_path):
     from typer.testing import CliRunner
 
@@ -260,7 +226,6 @@ def test_hero_settings_endpoint(tmp_path, monkeypatch):
     put = client.put("/settings/hero", json={"player": other}).json()
     assert put["hero"] == put["chosen"] == other and put["guess"] == guess
     assert client.get("/tendencies").json()["hero"] == other
-    assert client.get("/leaks").json()["hero"] == other
     assert client.put("/settings/hero", json={"player": "nobody by this name"}).status_code == 404
     assert client.get("/settings/hero").json()["chosen"] == other
     back = client.put("/settings/hero", json={"player": None}).json()

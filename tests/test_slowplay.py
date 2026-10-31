@@ -363,15 +363,10 @@ def test_slowplay_endpoints(client):
                 hands = client.get("/players/genericpoker/hands", params={"filter": c["filter"]}).json()["hands"]
                 assert sorted(h["hand_id"] for h in hands) == sorted(c["hand_ids"])
 
-    pool = client.get("/slowplay", params={"street": "flop", "floor": "two_pair"}).json()
-    assert pool["players"] and pool["total"]["n"] == sum(r["n"] for r in pool["players"])
-    assert client.get("/slowplay", params={"min": 10**6}).json()["players"] == []
-
     url = "/players/genericpoker/slowplay"
     assert client.get(url, params={"street": "preflop"}).status_code == 422
     assert client.get(url, params={"floor": "pair"}).status_code == 400
     assert client.get(url, params={"filter": "made_flop=nuts"}).status_code == 400
-    assert client.get("/slowplay", params={"floor": "pair"}).status_code == 400
     assert client.get("/players/ghost/slowplay").status_code == 404
 
 

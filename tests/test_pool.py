@@ -154,8 +154,5 @@ def test_the_api_says_how_each_tag_was_judged(tmp_path, monkeypatch):
     seats = client.get(f"/hud/{HU_GAME}").json()["seats"]
     exploits = [t for s in seats for t in s["tags"]["tags"] if t["kind"] == "exploit"]
     assert all(t["basis"] in ("pool", "fixed") for t in exploits)
-    body = client.get("/players/genericpoker/tags").json()
-    assert body["pool"] and body["pool"]["players"] >= 2
-    spot = client.get("/players/genericpoker/tags", params={"filter": "srp"}).json()
-    assert spot["pool"]["scope"] == "spot: srp"
+    assert all(s["tags"]["pool"]["players"] >= 2 for s in seats)
     assert "table" in client.get("/tendencies").json()

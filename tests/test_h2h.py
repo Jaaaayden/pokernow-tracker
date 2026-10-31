@@ -240,8 +240,15 @@ def client(tmp_path, monkeypatch):
     return local_client(app_module.app)
 
 
+def _pool() -> dict:
+    """The pool matrix `pnt h2h` prints, on the client's database."""
+    from pnt.server import app as app_module
+
+    return pool_h2h(app_module.db(), None)
+
+
 def test_endpoints_and_the_chart_drill(client):
-    pool = client.get("/h2h").json()
+    pool = _pool()
     assert len(pool["players"]) >= 2
     alias = pool["players"][0]["player"]
     body = client.get(f"/players/{alias}/h2h").json()
@@ -254,12 +261,12 @@ def test_endpoints_and_the_chart_drill(client):
 
 
 def test_a_name_with_a_slash_reaches_h2h(client):
-    pool = client.get("/h2h").json()
+    pool = _pool()
     alias = pool["players"][0]["player"]
     assert client.post("/aliases/rename", json={"old": alias, "new": "9/2"}).status_code == 200
     r = client.get("/players/9%2F2/h2h")
     assert r.status_code == 200 and r.json()["rows"]
-    assert "9/2" in client.get("/h2h").json()["cells"]
+    assert "9/2" in _pool()["cells"]
     other = r.json()["rows"][0]["opponent"]
     back = client.get(f"/players/{other}/h2h").json()
     row = next(x for x in back["rows"] if x["opponent"] == "9/2")

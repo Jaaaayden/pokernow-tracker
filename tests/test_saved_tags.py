@@ -164,10 +164,10 @@ def test_tagged_lists_the_rows_with_flagged_first(client):
 
 
 def test_a_tag_change_reaches_a_cached_spot(client):
-    """The spot pool behind a player's archetype tags is cached by filter: a new
-    hand tag must not be served the pool from before it."""
+    """Spot answers are cached by filter: a `tag=` filter's key carries the tags,
+    so a new hand tag is not served the answer from before it."""
     player = client.get("/stats", params={"game": HU_GAME}).json()[0]["player"]
-    before = client.get(f"/players/{player}/tags", params={"filter": "tag=study"})
+    before = client.get(f"/players/{player}/stats", params={"filter": "tag=study"})
     assert before.status_code == 200
     client.post(f"/games/{HU_GAME}/hands/3/tags", json={"tag": "study"})
     from pnt.server import app as app_module

@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from pnt import update
-from pnt.db.conn import connect, generation, path_of
+from pnt.db.conn import connect
 from pnt.db.userdata import FLAGGED_TAG, tag_resolver
 from pnt.ingest import log_folder, sync
 from pnt.ingest import sample as samplemod
@@ -57,11 +57,9 @@ from pnt.stats.bluffs import pool_facts as bluff_pool_facts
 from pnt.stats.derive import Facts
 from pnt.stats.filters import date_key, parse_filter, vocabulary
 from pnt.stats.fold_equity import fold_equity
-from pnt.stats.fold_equity import pool_facts as fold_pool_facts
 from pnt.stats.lines import DEFAULT_MIN, MODES, line_breakdown
-from pnt.stats.lines import pool_facts as line_pool_facts
 from pnt.stats.live import snapshot
-from pnt.stats.pool import pool_for, pool_from_facts
+from pnt.stats.pool import pool_for
 from pnt.stats.pots import DEFAULT_DAYS, DEFAULT_LIMIT, DEFAULT_MIN_POT, big_pots
 from pnt.stats.queries import (
     SPOT_ANSWERS,
@@ -71,7 +69,6 @@ from pnt.stats.queries import (
     hand_list,
     not_analysed,
     player_games,
-    positional_report,
     remembered,
     report,
     sat_out_list,
@@ -958,8 +955,7 @@ def players(request: Request) -> list[dict] | HTMLResponse:
     }
     out: dict[str, dict] = {}
     for r in conn.execute(
-        "SELECT p.alias, p.notes, p.notes_at, pi.pn_id, pi.last_seen_name, pi.first_seen_at,"
-        " pi.last_seen_at"
+        "SELECT p.alias, p.notes, p.notes_at, pi.pn_id, pi.last_seen_name, pi.last_seen_at"
         " FROM players p JOIN player_identities pi ON pi.player_id = p.player_id"
         " ORDER BY p.alias, pi.pn_id"
     ):
@@ -982,19 +978,10 @@ def players(request: Request) -> list[dict] | HTMLResponse:
                 "pn_id": r["pn_id"],
                 "name": r["last_seen_name"],
                 "hands": counts.get(r["pn_id"], 0),
-                "first_seen_at": r["first_seen_at"],
                 "last_seen_at": r["last_seen_at"],
             }
         )
-    rows = list(out.values())
-    for entry in rows:
-        # Kept for callers written against the original shape -- the chart page's
-        # dropdown among them.
-        entry["pn_ids"] = ",".join(i["pn_id"] for i in entry["identities"])
-        entry["names"] = ",".join(
-            dict.fromkeys(i["name"] for i in entry["identities"] if i["name"])
-        )
-    return rows
+    return list(out.values())
 
 
 class PlayerNoteRequest(BaseModel):
@@ -1021,14 +1008,6 @@ def write_player_note(alias: str, req: Annotated[PlayerNoteRequest, Body()], cap
         "note": note["note"] if note else None,
         "noted_at": note["noted_at"] if note else None,
     }
-
-
-@app.get("/players/{alias:path}/positions")
-def positions(alias: str, split_by_size: bool = False) -> list[dict]:
-    try:
-        return positional_report(db(), alias, pool=not split_by_size)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _spot_facts(
@@ -1152,25 +1131,6 @@ def _with_marks(conn, rows: list[dict], game: str | None) -> list[dict]:
     return rows
 
 
-@app.get("/players/{alias:path}/flagged")
-def player_flagged(
-    alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'srp,vs=alex'")] = None,
-    game: str | None = None,
-) -> dict:
-    """The hands of one player's you flagged for manual review, newest first.
-
-    A flagged hand the rebuild has not reached yet is not listed until it has:
-    there is no row to draw before then.
-    """
-    conn = db()
-    flags = flagged_hands(conn, game)
-    facts = _spot_facts(alias, filter, game, conn, games="every")
-    facts = [f for f in facts if (f.game_id, f.hand_number) in flags]
-    rows = hand_list(facts, display_names(conn))
-    return {"player": alias, "filter": filter, "hands": _with_marks(conn, rows, game)}
-
-
 @app.get("/players/{alias:path}/sat-out")
 def player_sat_out(alias: str, game: str) -> dict:
     """The hands of one game the player was not dealt into: the session view's "Sat out".
@@ -1192,36 +1152,6 @@ def player_game_list(alias: str) -> list[dict]:
         return player_games(db(), alias)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.get("/players/{alias:path}/tags")
-def player_tags(
-    alias: str,
-    filter: Annotated[str | None, Query(description="e.g. 'players>=4'")] = None,
-    game: str | None = None,
-) -> dict:
-    """One player's archetype and exploit tags, judged on the hands in a spot.
-
-    Each tag carries the count it was judged on and the filter that puts those
-    hands on the chart. See SPEC.md, "Tags", for every rule and threshold.
-    """
-    conn = db()
-    out = tags_for(_spot_facts(alias, filter, game, conn), _tag_pool(conn, filter, game), alias)
-    return {"player": alias, "filter": filter, **out}
-
-
-def _tag_pool(conn: sqlite3.Connection, filter: str | None, game: str | None):
-    """The pool a player's tags are judged against: every player's hands in the
-    same scope and spot (SPEC.md, "Pool baseline")."""
-    pool = pool_for(conn, game)
-    if not filter:
-        return pool
-    pred = _predicate(conn, filter)
-    key = (path_of(conn), generation(conn), game, _spot_key(conn, filter))
-    return pool_from_facts(
-        {a: [f for f in facts_cached(conn, a, game) if pred(f)] for a in pool.players},
-        pool.owners, f"spot: {filter}", key,
-    )
 
 
 @app.get("/hands/{hand_id}")
@@ -1320,16 +1250,6 @@ def set_reviewed(hand_id: RowNumber, req: Annotated[ReviewedRequest, Body()]) ->
     }
 
 
-@app.get("/reviewed")
-def reviewed(game: str = Query(None, description="Restrict to one game_id.")) -> list[dict]:
-    """Every hand marked reviewed, newest mark first."""
-    marks = reviewed_marks(db(), game)
-    return [
-        {"game_id": g, "hand_number": n, "reviewed_at": at}
-        for (g, n), at in sorted(marks.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
-    ]
-
-
 class FlagRequest(BaseModel):
     flagged: bool = True
 
@@ -1348,16 +1268,6 @@ def write_flag(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"game_id": game_id, "hand_number": hand_number, "flagged": at is not None, "flagged_at": at}
-
-
-@app.get("/flagged")
-def flagged(game: str = Query(None, description="Restrict to one game_id.")) -> list[dict]:
-    """Every hand flagged for manual review, newest flag first."""
-    flags = flagged_hands(db(), game)
-    return [
-        {"game_id": g, "hand_number": n, "flagged_at": at}
-        for (g, n), at in sorted(flags.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
-    ]
 
 
 class NoteRequest(BaseModel):
@@ -1384,16 +1294,6 @@ def write_note(hand_id: RowNumber, req: Annotated[NoteRequest, Body()]) -> dict:
         "note": note["note"] if note else None,
         "noted_at": note["noted_at"] if note else None,
     }
-
-
-@app.get("/notes")
-def notes(game: str = Query(None, description="Restrict to one game_id.")) -> list[dict]:
-    """Every hand you have written a note on, newest note first."""
-    rows = hand_notes(db(), game)
-    return [
-        {"game_id": g, "hand_number": n, **v}
-        for (g, n), v in sorted(rows.items(), key=lambda kv: (kv[1]["noted_at"], kv[0]), reverse=True)
-    ]
 
 
 class AnnotationRequest(BaseModel):
@@ -2173,28 +2073,6 @@ def player_lines(
     return {"player": alias, "filter": filter, **_lines(facts, mode, street, min)}
 
 
-@app.get("/lines")
-def pool_lines(
-    filter: Annotated[str | None, Query(description="e.g. 'srp,pfa'")] = None,
-    mode: Annotated[str, Query(pattern=_LINES_MODE)] = "own",
-    street: Annotated[str | None, Query(pattern="^(flop|turn|river)?$")] = None,
-    min: Annotated[int, Query(ge=1)] = DEFAULT_MIN,
-    game: str | None = None,
-) -> dict:
-    """The same over every player's hands: what the pool has behind each line.
-
-    Hand ids are left out: one hand is a row per player in it, and a list of
-    every hand in the database is not something a view can use.
-    """
-    conn = db()
-    pred = _predicate(conn, filter)
-    facts = line_pool_facts(conn, game)
-    if pred is not None:
-        facts = [f for f in facts if pred(f)]
-    out = _lines(facts, mode, street, min)
-    for g in out["groups"]:
-        del g["hand_ids"]
-    return {"player": None, "filter": filter, **out}
 # --- value:bluff -----------------------------------------------------------------
 
 
@@ -2275,18 +2153,6 @@ def player_fold_equity(
     return {"player": alias, "filter": filter, **fold_equity(facts, with_ids=True)}
 
 
-@app.get("/fold_equity")
-def pool_fold_equity(
-    filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
-    game: str | None = None,
-) -> dict:
-    """The same for the whole pool: every player's bets and every player's
-    defense, summed. No hand ids -- one hand is several players' rows here."""
-    conn = db()
-    facts = fold_pool_facts(conn, game, _predicate(conn, filter))
-    return {"player": None, "filter": filter, **fold_equity(facts)}
-
-
 # ---- strength by street (slowplays) ------------------------------------------
 # Imported inside the endpoints so this block stands alone. See SPEC.md,
 # "Strength by street".
@@ -2314,32 +2180,6 @@ def player_slowplay(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"player": alias, "filter": filter, **every["streets"][street], **every,
             "made_on": made_on(facts, floor)}
-
-
-@app.get("/slowplay")
-def pool_slowplay(
-    street: Annotated[str, Query(pattern="^(flop|turn|river)$")] = "flop",
-    floor: Annotated[str, Query(description="The weakest made hand counted, e.g. 'set' or 'two_pair'.")] = "set",
-    filter: Annotated[str | None, Query(description="e.g. 'srp,players=2'")] = None,
-    game: str | None = None,
-    min: Annotated[int, Query(ge=1, description="Strong hands a player needs to be listed.")] = 1,
-) -> dict:
-    """The same table over everyone's hands pooled, plus each player's total row
-    ranked by slowplay share: who traps. Derived afresh, like a filtered /stats."""
-    from pnt.stats.queries import facts_by_player
-    from pnt.stats.slowplay import by_player, check_floor, slowplay
-
-    conn = db()
-    pred = _predicate(conn, filter)
-    try:
-        floor = check_floor(floor)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    grouped, aliases, _ = facts_by_player(conn, game)
-    if pred is not None:
-        grouped = {pid: [f for f in facts if pred(f)] for pid, facts in grouped.items()}
-    out = slowplay([f for facts in grouped.values() for f in facts], street, floor)
-    return {"filter": filter, **out, "players": by_player(grouped, aliases, street, floor, min)}
 
 
 # ---- 7-2 bounty ledger -------------------------------------------------------
@@ -2400,15 +2240,6 @@ def player_h2h(alias: str, game: str | None = None) -> dict:
         return h2h_rows(db(), alias, game)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.get("/h2h")
-def pool_h2h(game: str | None = None) -> dict:
-    """Who pays whom: every pair in the pool, as a matrix read from the row's side.
-    No hand ids -- one cell is two players' hands."""
-    from pnt.stats.h2h import pool_h2h as h2h_matrix
-
-    return h2h_matrix(db(), game)
 
 
 # ---- red line and blue line ----------------------------------------------------
@@ -2492,22 +2323,6 @@ def _post_loss(conn: sqlite3.Connection, alias: str | None, pn_id: str, game_id:
     facts = facts_cached(conn, alias, games="money") if alias else []
     out = next_hand([f for f in facts if f.pn_id == pn_id], game_id)
     return {"post_loss": out["post_loss"], "post_loss_since": out["since"], "post_loss_bb": out["loss_bb"]}
-
-
-# ---- the hero's leaks ------------------------------------------------------------
-# Imported inside the endpoint so this block stands alone. See SPEC.md, "Leak
-# finder".
-
-
-@app.get("/leaks")
-def hero_leaks(game: Annotated[str | None, Query(description="Restrict to one game_id.")] = None) -> dict:
-    """The hero's stats furthest outside their bands, ranked by cost x confidence:
-    `top` is the three costliest habits, `ranked` every judged leak outside its
-    band, `candidates` every stat judged. Each carries the filter that finds its
-    `n` on the hero's chart. No hero (no log names its owner) is an empty result."""
-    from pnt.stats.leaks import leaks
-
-    return leaks(db(), game)
 
 
 # ---- tendencies ------------------------------------------------------------------
@@ -2866,8 +2681,8 @@ def tagged(
     filter: Annotated[str | None, Query(description="e.g. 'srp'")] = None,
     game: str | None = None,
 ) -> dict:
-    """The hands carrying `tag`, newest first, in the rows `/players/{alias}/flagged`
-    lists, each with its `tags`; with no tag, every hand you tagged. `tags` counts
+    """The hands carrying `tag`, newest first, in the rows the other hand lists
+    use, each with its `tags`; with no tag, every hand you tagged. `tags` counts
     hands per tag over the same hands, `flagged` (the 🚩) first, for the chips.
 
     With `player` the rows are theirs and `filter` narrows their spot, as the

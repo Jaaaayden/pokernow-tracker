@@ -441,7 +441,7 @@ the CLI all open the same one. Routes added in this round:
 | `GET /players/{alias}/tree` | The spot tree, each node with its decision mix and filter |
 | `GET /players/{alias}/streets` | Flop holding against river holding |
 | `GET /players/{alias}/estimate`, `/board` | The estimated range, and its breakdown on a board |
-| `GET /tendencies`, `GET /leaks` | Your tags as others see them, the regulars' common tags, your leaks |
+| `GET /tendencies` | Your tags as others see them, and the regulars' common tags |
 | `GET /players/{alias}/timing`, `GET /timing` | Timing tells, for one player or the pool |
 | `GET` / `POST /spots`, `DELETE /spots/{id}` | Saved spots |
 | `GET /tags`, `GET /tagged`, `/games/{game}/hands/{n}/tags` | Hand tags: list, find, add, remove |

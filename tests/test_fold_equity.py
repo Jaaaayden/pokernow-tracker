@@ -259,17 +259,10 @@ def test_player_and_pool_endpoints(client):
     assert all({"hand_ids", "fold_hand_ids", "break_even", "edge"} <= set(r) for r in flop["bets"])
     assert all({"hand_ids", "mdf", "overfold"} <= set(r) for r in flop["faced"])
 
-    pool = client.get("/fold_equity").json()
-    assert pool["player"] is None and pool["hands"] > body["hands"]
-    assert "hand_ids" not in pool["streets"]["flop"]["bets"][0], "a pool row's ids are not one row each"
-    narrowed = client.get("/fold_equity", params={"filter": "srp"}).json()
-    assert narrowed["filter"] == "srp" and narrowed["hands"] < pool["hands"]
-
 
 def test_endpoints_validate_input(client):
     assert client.get("/players/ghost/fold_equity").status_code == 404
     assert client.get("/players/genericpoker/fold_equity", params={"filter": "bet_flop=huge"}).status_code == 400
-    assert client.get("/fold_equity", params={"filter": "nope"}).status_code == 400
 
 
 def test_cli_prints_a_player_and_the_pool(tmp_path):
