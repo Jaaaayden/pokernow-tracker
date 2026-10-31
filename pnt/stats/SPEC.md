@@ -2346,7 +2346,7 @@ hand is −100 bb/100 by construction, so −80 from the big blind is +20 here.
 
 | Fact / rate | Definition |
 |---|---|
-| **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` is `Fraction(posted, bb)`, exact, and None when the big blind is unknown |
+| **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` below means `Fraction(posted, bb)`, exact, and is undefined when the big blind is unknown |
 | **bb_per_100_vs_fold** | `(Σ net_bb + Σ posted_bb) / hands × 100`, over the complete hands with a known big blind that bb/100 uses (`n` = `Tally.bb_n`), where a hand with no decision adds 0 (call 2) |
 | **bb_per_100_vs_fold_ci** | The half-width `bb_per_100_ci` is, with `x` = each hand's `net_bb + posted_bb` (0 on a hand with no decision). None under two hands |
 

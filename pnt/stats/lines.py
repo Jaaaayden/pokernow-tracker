@@ -51,7 +51,7 @@ def tier_terms(tier: str, street: str) -> str | None:
     for a tier that cannot occur there (a draw on the river is air).
 
     `tier_<street>` reads `strength.tier_at` itself, so the term is the definition
-    and `test_every_tier_filter_reproduces_its_count` holds every row to it.
+    and `test_every_group_reproduces_as_a_filter` holds every row to it.
     """
     if tier == "draw" and street == "river":
         return None

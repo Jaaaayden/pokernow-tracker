@@ -141,14 +141,6 @@ def update_spot(
     return get_spot(conn, spot_id)
 
 
-def rename_spot(conn: sqlite3.Connection, spot_id: int, name: str) -> dict:
-    return update_spot(conn, spot_id, name=name)
-
-
-def pin_spot(conn: sqlite3.Connection, spot_id: int, pinned: bool = True) -> dict:
-    return update_spot(conn, spot_id, pinned=pinned)
-
-
 def delete_spot(conn: sqlite3.Connection, spot_id: int) -> bool:
     """Remove a saved spot. True if there was one; deleting it twice is a no-op."""
     with writing(conn):

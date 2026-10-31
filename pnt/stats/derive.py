@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from fractions import Fraction
 
 from ..logfmt.events import (
     FLOP,
@@ -449,11 +448,6 @@ class Facts:
         if self.seats_from_button is None or self.dead_button or self.blinds_irregular:
             return None
         return position_name(self.seats_from_button, self.n_dealt_in, self.position_slots)
-
-    @property
-    def posted_bb(self) -> Fraction | None:
-        """`posted` in this hand's big blinds, exact; None when the blind is unknown."""
-        return Fraction(self.posted, self.bb_size) if self.bb_size else None
 
     @property
     def steal_opp(self) -> bool:

@@ -48,12 +48,12 @@ def test_spots_save_list_and_refuse_a_taken_name(db):
 
 def test_spots_rename_pin_reorder_and_delete(db):
     ids = [ud.save_spot(db, n, "srp")["spot_id"] for n in ("one", "two", "three")]
-    assert ud.rename_spot(db, ids[0], "uno")["name"] == "uno"
+    assert ud.update_spot(db, ids[0], name="uno")["name"] == "uno"
     with pytest.raises(ValueError):
-        ud.rename_spot(db, ids[1], "uno")
+        ud.update_spot(db, ids[1], name="uno")
     assert ud.update_spot(db, ids[1], filter="3bet_pot")["filter"] == "3bet_pot"
 
-    assert ud.pin_spot(db, ids[2])["pinned"] is True
+    assert ud.update_spot(db, ids[2], pinned=True)["pinned"] is True
     assert [s["spot_id"] for s in ud.list_spots(db)] == [ids[2], ids[0], ids[1]]  # pinned first
 
     ud.reorder_spots(db, [ids[1]])
@@ -62,11 +62,11 @@ def test_spots_rename_pin_reorder_and_delete(db):
         ud.reorder_spots(db, [ids[0], 999])
     assert [s["spot_id"] for s in ud.list_spots(db)] == [ids[2], ids[1], ids[0]]  # nothing written
 
-    ud.pin_spot(db, ids[2], False)
+    ud.update_spot(db, ids[2], pinned=False)
     assert ud.delete_spot(db, ids[1]) and not ud.delete_spot(db, ids[1])
     assert [s["spot_id"] for s in ud.list_spots(db)] == [ids[2], ids[0]]
     with pytest.raises(LookupError):
-        ud.rename_spot(db, ids[1], "gone")
+        ud.update_spot(db, ids[1], name="gone")
     with pytest.raises(LookupError):
         ud.get_spot(db, ids[1])
 
@@ -114,7 +114,7 @@ def test_tagging_a_hand_that_is_not_there_raises_but_removing_does_not(db):
 def test_a_rebuild_keeps_all_of_it(db):
     ud.set_setting(db, "hud", {"columns": ["vpip"]})
     spot = ud.save_spot(db, "mine", "srp")
-    ud.pin_spot(db, spot["spot_id"])
+    ud.update_spot(db, spot["spot_id"], pinned=True)
     ud.add_tag(db, HU_GAME, 53, "cooler")
     before = (ud.get_setting(db, "hud"), ud.list_spots(db), ud.tags_for_hands(db), ud.all_tags(db))
     _rebuild_all(db)

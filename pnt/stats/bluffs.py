@@ -71,7 +71,8 @@ def class_terms(street: str) -> dict[str, str | None]:
     (`strength.tier_at`): value is strong or nutted, marginal is marginal, a
     semi-bluff is a draw, a bluff is air -- a board pair the hole cards add
     nothing to included. On the river nothing is a semi-bluff: a draw there has
-    missed, and is air. `test_every_class_reproduces` holds this to `strength_at`.
+    missed, and is air. `test_every_row_and_class_reproduces_as_a_filter` holds
+    this to `strength_at`.
     """
     return {
         "value": f"tier_{street}>=strong",

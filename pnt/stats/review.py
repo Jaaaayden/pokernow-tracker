@@ -660,13 +660,6 @@ def reviewed_marks(conn: sqlite3.Connection, game_id: str | None = None) -> dict
     return {(r["game_id"], r["hand_number"]): r["reviewed_at"] for r in conn.execute(sql, args)}
 
 
-def is_reviewed(conn: sqlite3.Connection, game_id: str, hand_number: int) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM hand_reviews WHERE game_id = ? AND hand_number = ?",
-        (game_id, hand_number),
-    ).fetchone() is not None
-
-
 def mark_reviewed(
     conn: sqlite3.Connection, game_id: str, hand_number: int, reviewed: bool = True
 ) -> str | None:
