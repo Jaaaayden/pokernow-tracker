@@ -458,7 +458,7 @@ filter is taken. [architecture.md](docs/architecture.md) has the rest.
 | [`docs/privacy.md`](docs/privacy.md) | What is stored, where it goes, and what each extension permission is for |
 | [`docs/findings.md`](docs/findings.md) | The PokerNow log format: identity, ordering, amounts, line vocabulary, traps |
 | [`pnt/stats/SPEC.md`](pnt/stats/SPEC.md) | Every stat, tag and review flag, defined exactly |
-| [`docs/ideas.md`](docs/ideas.md) | Analysis not built yet, ranked by value per effort, with the data each would use |
+| [`docs/ideas.md`](docs/ideas.md) | The analysis backlog, all built, and the ideas left out and why |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | What each fixture log exercises |
 | [`pnt/logs/README.md`](pnt/logs/README.md) | The bundled sample corpus |
 
