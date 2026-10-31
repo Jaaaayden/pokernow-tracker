@@ -258,3 +258,17 @@ def test_every_chart_chip_is_a_working_filter():
     assert len(chips) > 50
     for term in chips:
         parse_filter(term)
+
+
+def test_an_unidentified_id_is_its_own_player(db):
+    """No identity row (a rebuild always writes one, so this is a stray HandRow
+    source): each such ID reports as itself, never merged into one stand-in."""
+    from pnt.stats.queries import clear_caches
+
+    lone = [r[0] for r in db.execute(
+        "SELECT pn_id FROM player_identities ORDER BY pn_id LIMIT 2")]
+    db.execute(f"DELETE FROM player_identities WHERE pn_id IN ({','.join('?' * len(lone))})", lone)
+    db.commit()
+    clear_caches()
+    players = {r["player"] for r in report(db)}
+    assert set(lone) <= players

@@ -116,6 +116,19 @@ def test_a_row_against_the_table_sums_to_the_players_net(every):
     assert "hand_ids" not in json.dumps(pool)
 
 
+def test_two_people_under_one_name_keep_two_rows(every, monkeypatch):
+    """The matrix is keyed by name: people who share one each take their key beside it."""
+    from pnt.stats import h2h
+
+    key = _person(every)
+    keys = {key(pid) for h in load_hands(every) for pid in h.players}
+    monkeypatch.setattr(h2h, "_people", lambda conn: (key, {k: "Mike" for k in keys}))
+    pool = pool_h2h(every)
+    names = [p["player"] for p in pool["players"]]
+    assert len(names) == len(set(names)) == len(keys)
+    assert set(names) == {f"Mike ({k})" for k in keys} == set(pool["cells"])
+
+
 def test_heads_up_at_the_end_attributes_exactly():
     """B called A down; C folded after putting 10 in. A won it all."""
     hand = _hand({"A": (50, 110, False), "B": (50, 0, False), "C": (10, 0, True)})

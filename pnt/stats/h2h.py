@@ -379,16 +379,20 @@ def pool_h2h(conn: sqlite3.Connection, game_id: str | None = None) -> dict:
     for h in hands:
         played.update({key(pid) for pid in h.players})
     order = sorted(played, key=lambda k: (-played[k], labels.get(k, k)))
-    cells: dict[str, dict[str, dict]] = {labels.get(k, k): {} for k in order}
+    # The matrix is keyed by name, so two people shown under one name (no alias,
+    # the same last-seen name) would share a row: each takes its key beside it.
+    shown = Counter(labels.get(k, k) for k in order)
+    name = {k: labels.get(k, k) if shown[labels.get(k, k)] == 1 else f"{labels.get(k, k)} ({k})" for k in order}
+    cells: dict[str, dict[str, dict]] = {name[k]: {} for k in order}
     totals: dict[str, Fraction] = {k: Fraction(0) for k in order}
     for (a, b), e in flows.items():
-        cells[labels.get(a, a)][labels.get(b, b)] = _row(e)
+        cells[name[a]][name[b]] = _row(e)
         totals[a] -= e["net_bb_a_to_b"]
     return {
         "game": game_id,
         "hands": len(hands),
         "players": [
-            {"player": labels.get(k, k), "hands": played[k], "net_bb": _bb(totals[k])} for k in order
+            {"player": name[k], "hands": played[k], "net_bb": _bb(totals[k])} for k in order
         ],
         "cells": cells,
         "skipped": _skipped(hands),

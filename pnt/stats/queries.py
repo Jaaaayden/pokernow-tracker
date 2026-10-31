@@ -516,17 +516,19 @@ def facts_by_player(
     conn: sqlite3.Connection,
     game_id: str | None = None,
     pn_ids: Collection[str] | None = None,
-) -> tuple[dict[int, list[Facts]], dict[int, str], list[HandRow]]:
+) -> tuple[dict[int | str, list[Facts]], dict[int | str, str], list[HandRow]]:
     """Derive every hand and group the resulting facts by canonical player.
     The `play` scope, like `facts_cached`'s default: every caller reads play."""
     with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
         hands = load_hands(conn, game_id, pn_ids)
         ident = identity_map(conn)
-    grouped: dict[int, list[Facts]] = defaultdict(list)
-    aliases: dict[int, str] = {}
+    grouped: dict[int | str, list[Facts]] = defaultdict(list)
+    aliases: dict[int | str, str] = {}
     for hand in hands:
         for fact in derive(hand):
-            pid, alias = ident.get(fact.pn_id, (-1, fact.pn_id))
+            # An ID with no identity row (none today: a rebuild resolves every seat)
+            # is its own player, never one shared stand-in.
+            pid, alias = ident.get(fact.pn_id, (fact.pn_id, fact.pn_id))
             grouped[pid].append(fact)
             aliases[pid] = alias
     # The session facts (see tilt.py) are numbered over every hand, as a player's
@@ -957,11 +959,11 @@ def _full_report(
 ) -> tuple[int | None, list[dict]]:
     """`report()`'s miss: every player's rates, derived where a game's stamp moved."""
     ident = identity_map(conn)
-    grouped_t: dict[int, Tally] = {}
-    names: dict[int, str] = {}
+    grouped_t: dict[int | str, Tally] = {}
+    names: dict[int | str, str] = {}
     for per_id in _tallies(conn, game_id):
         for pn_id, t in per_id.items():
-            pid, alias = ident.get(pn_id, (-1, pn_id))
+            pid, alias = ident.get(pn_id, (pn_id, pn_id))  # unidentified: its own row
             g = grouped_t.get(pid)
             if g is None:
                 g = grouped_t[pid] = Tally()

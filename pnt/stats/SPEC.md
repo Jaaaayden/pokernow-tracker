@@ -199,7 +199,7 @@ Judgement calls:
 
 | Fact | Definition |
 |---|---|
-| **posted_blind** | The player made a forced preflop post that is a live blind: small blind, big blind, straddle, or a returning player's missed big blind. Antes and dead small blinds are not live (`post_kind` `ante` and `missing_sb`), and a post of no recorded kind counts as live |
+| **posted_blind** | The player made a forced preflop post that is a live blind: small blind, big blind, straddle, or a returning player's missed big blind. Antes, dead small blinds and bomb-pot posts are not live (`post_kind` `ante`, `missing_sb` and `bomb_pot`), and a post of no recorded kind counts as live |
 
 | Stat | Numerator | Denominator | Exclusions |
 |---|---|---|---|

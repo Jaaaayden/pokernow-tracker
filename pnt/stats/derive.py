@@ -46,8 +46,9 @@ STEAL_SEATS = frozenset({"CO", "BTN", "SB", "BTN/SB"})
 #: The seats that defend against a steal.
 BLIND_SEATS = frozenset({"SB", "BB"})
 #: Forced posts that are not a live blind: they go to the pot without being the
-#: player's bet, so the player who made one still comes in cold.
-DEAD_POST_KINDS = frozenset({POST_ANTE, POST_MISSING_SB})
+#: player's bet, so the player who made one still comes in cold. A bomb-pot post
+#: is everyone's share of a pot with no preflop betting, not a blind either.
+DEAD_POST_KINDS = frozenset({POST_ANTE, POST_MISSING_SB, POST_BOMB})
 
 #: Bet-size buckets, smallest first: under a fifth of the pot, a fifth to half,
 #: half to three-quarters, three-quarters to pot, over pot. See SPEC.md, "Bet
