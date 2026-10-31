@@ -106,7 +106,9 @@ def setup(_args: list[str]) -> int:
             # The backup API, not a file copy: the live service holds the file open
             # in WAL mode, and a plain copy can catch it mid-checkpoint.
             say(f"copying {source} -> {DB}")
-            src, dst = sqlite3.connect(source), sqlite3.connect(DB)
+            # Read-only on the live file: nothing done here may write to it.
+            src = sqlite3.connect(f"{Path(source).resolve().as_uri()}?mode=ro", uri=True)
+            dst = sqlite3.connect(DB)
             try:
                 src.backup(dst)
             finally:

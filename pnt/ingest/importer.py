@@ -56,11 +56,21 @@ def ingest_entries(
             "SELECT COUNT(*) FROM raw_entries WHERE game_id = ?", (game_id,)
         ).fetchone()[0]
         n_new = after - before
-        conn.execute(
-            "INSERT INTO imports (game_id, source, ingested_at, n_entries, n_new)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (game_id, source, _now(), len(entries), n_new),
-        )
+        # One row per (game, source), kept current: live capture ingests every few
+        # seconds, and a row per call grew the table without bound. An update then
+        # an insert, rather than an upsert, so it needs no unique index to be in
+        # place on a database opened without migrating (`connect(init=False)`).
+        row = (_now(), len(entries), n_new, game_id, source)
+        if not conn.execute(
+            "UPDATE imports SET ingested_at = ?, n_entries = ?, n_new = n_new + ?"
+            " WHERE game_id = ? AND source = ?",
+            row,
+        ).rowcount:
+            conn.execute(
+                "INSERT INTO imports (ingested_at, n_entries, n_new, game_id, source)"
+                " VALUES (?, ?, ?, ?, ?)",
+                row,
+            )
     return len(entries), n_new
 
 

@@ -295,6 +295,44 @@ def test_log_rotates_once_past_the_cap(tmp_path, monkeypatch):
     assert log.read_text(encoding="utf-8") == "fresh\n"
 
 
+def test_log_rotates_while_the_server_runs(tmp_path, monkeypatch):
+    """Checked only at start, a server up for weeks never rotated: a fault logged
+    every few seconds grew the file without bound."""
+    monkeypatch.setattr(svc, "LOG_MAX_BYTES", 10)
+    log = tmp_path / "server.log"
+    with svc._open_log(log) as stream:
+        print("first line", file=stream)  # 11 characters: past the cap
+        print("second", file=stream)
+    assert (tmp_path / "server.log.1").read_text(encoding="utf-8") == "first line\n"
+    assert log.read_text(encoding="utf-8") == "second\n"
+
+
+def test_a_rotation_windows_refuses_is_tried_again_later_not_every_line(tmp_path, monkeypatch):
+    monkeypatch.setattr(svc, "LOG_MAX_BYTES", 10)
+    monkeypatch.setattr(svc._RotatingLog, "ROTATE_RETRY_BYTES", 1000)
+    tries = []
+
+    def refuse(self, target):
+        tries.append(target)
+        raise PermissionError("in use")
+
+    monkeypatch.setattr(Path, "replace", refuse)
+    log = tmp_path / "server.log"
+    with svc._open_log(log) as stream:
+        for _ in range(20):
+            print("a line of the log", file=stream)
+    assert len(tries) == 1
+    assert log.read_text(encoding="utf-8").count("\n") == 20
+
+
+def test_a_lan_host_is_warned_about():
+    """`x-pnt` stops a web page, not a program on the network: a non-loopback bind
+    exposes an API with no login."""
+    assert all(svc.loopback(h) for h in ("127.0.0.1", "localhost", "::1", "[::1]", "127.0.0.2"))
+    assert not any(svc.loopback(h) for h in ("0.0.0.0", "::", "192.168.1.5", "my-pc"))
+    assert "no login" in svc.exposed_warning("0.0.0.0", 52000)
+
+
 def test_file_log_config_is_timestamped_and_leaves_uvicorn_alone():
     uvicorn_config = pytest.importorskip("uvicorn.config")
     before = copy.deepcopy(uvicorn_config.LOGGING_CONFIG)

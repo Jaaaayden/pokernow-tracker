@@ -20,15 +20,16 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from pnt.db.conn import connect, writing
+from pnt.ingest.csv_source import RawEntry
 from pnt.ingest.importer import ingest_entries
 
 WRITERS = 12
 
 
-def _ingest_once(path):
+def _ingest_once(path, i):
     conn = connect(path, init=False)
     try:
-        ingest_entries(conn, "g", [], source="probe")
+        ingest_entries(conn, "g", [RawEntry(i, "2026-01-01", f"line {i}")], source="probe")
         return None
     except sqlite3.OperationalError as exc:  # pragma: no cover -- the regression
         return str(exc)
@@ -41,12 +42,14 @@ def test_concurrent_ingests_all_succeed(tmp_path):
     connect(path).close()  # create the schema once, up front
 
     with ThreadPoolExecutor(WRITERS) as pool:
-        failures = [e for e in pool.map(lambda _: _ingest_once(path), range(WRITERS)) if e]
+        failures = [e for e in pool.map(lambda i: _ingest_once(path, i), range(WRITERS)) if e]
 
     assert not failures, f"{len(failures)}/{WRITERS} concurrent writes failed: {failures[0]}"
 
     conn = connect(path, init=False)
-    assert conn.execute("SELECT COUNT(*) FROM imports").fetchone()[0] == WRITERS
+    assert conn.execute("SELECT COUNT(*) FROM raw_entries").fetchone()[0] == WRITERS
+    # One row for the source, and every writer's new line counted on it once.
+    assert [tuple(r) for r in conn.execute("SELECT n_entries, n_new FROM imports")] == [(1, WRITERS)]
     conn.close()
 
 
@@ -178,4 +181,54 @@ def test_migration_waits_for_one_already_under_way(tmp_path, monkeypatch):
 
     conn = connect(path, init=False)
     assert "notes_at" in {r[1] for r in conn.execute("PRAGMA table_info(players)")}
+    conn.close()
+
+
+def test_imports_keeps_one_row_per_game_and_source(tmp_path):
+    """Live capture ingests every few seconds; a row per call grew the table to
+    79k rows that nothing reads. Re-ingesting updates the source's one row."""
+    conn = connect(tmp_path / "t.sqlite")
+    for i in range(3):
+        ingest_entries(conn, "g", [RawEntry(i, "2026-01-01", f"line {i}")], source="extension")
+        ingest_entries(conn, "g", [RawEntry(i, "2026-01-01", f"line {i}")], source="extension")
+    ingest_entries(conn, "g", [RawEntry(9, "2026-01-01", "x")], source="csv:a.csv")
+    rows = conn.execute("SELECT source, n_entries, n_new FROM imports ORDER BY source").fetchall()
+    assert [tuple(r) for r in rows] == [("csv:a.csv", 1, 1), ("extension", 1, 3)]
+    conn.close()
+
+
+def test_an_older_database_has_its_imports_folded_and_the_extra_index_dropped(tmp_path):
+    """One row per (game, source) left, keeping the latest call and the new lines
+    summed; then the unique index. And `idx_hands_game`, which the UNIQUE
+    (game_id, hand_number) index makes redundant, is dropped."""
+    from pnt.db.conn import IMPORTS_INDEX
+
+    path = tmp_path / "t.sqlite"
+    connect(path).close()
+    old = sqlite3.connect(path)
+    old.execute(f"DROP INDEX {IMPORTS_INDEX}")
+    old.executemany(
+        "INSERT INTO imports (game_id, source, ingested_at, n_entries, n_new) VALUES (?, ?, ?, ?, ?)",
+        [("g", "extension", f"2026-01-0{d}", d * 10, d) for d in (1, 2, 3)]
+        + [("g", "csv:a.csv", "2026-02-01", 5, 5), ("h", "extension", "2026-03-01", 7, 0)],
+    )
+    old.execute("CREATE INDEX idx_hands_game ON hands(game_id)")
+    old.commit()
+    old.close()
+
+    conn = connect(path)
+    rows = conn.execute(
+        "SELECT game_id, source, ingested_at, n_entries, n_new FROM imports ORDER BY game_id, source"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [
+        ("g", "csv:a.csv", "2026-02-01", 5, 5),
+        ("g", "extension", "2026-01-03", 30, 6),
+        ("h", "extension", "2026-03-01", 7, 0),
+    ]
+    indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert IMPORTS_INDEX in indexes and "idx_hands_game" not in indexes
+    plan = " ".join(
+        r[3] for r in conn.execute("EXPLAIN QUERY PLAN SELECT hand_id FROM hands WHERE game_id = 'g'")
+    )
+    assert "sqlite_autoindex_hands_1" in plan
     conn.close()

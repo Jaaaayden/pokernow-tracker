@@ -26,13 +26,17 @@ CREATE TABLE IF NOT EXISTS raw_entries (
     PRIMARY KEY (game_id, ord)
 ) WITHOUT ROWID;
 
+-- Where each game's lines came from: one row per (game, source), updated in place
+-- by every ingest, so live capture's polls do not add a row each. The unique index
+-- on the pair is made by conn._migrate, which first folds an older file's rows
+-- down to one per pair.
 CREATE TABLE IF NOT EXISTS imports (
     import_id   INTEGER PRIMARY KEY,
     game_id     TEXT NOT NULL,
-    source      TEXT NOT NULL,          -- 'csv:<path>' | 'api' | 'extension'
-    ingested_at TEXT NOT NULL,
-    n_entries   INTEGER NOT NULL,       -- entries offered
-    n_new       INTEGER NOT NULL        -- entries actually inserted (0 == pure re-import)
+    source      TEXT NOT NULL,          -- 'csv:<file name>' | 'api' | 'extension'
+    ingested_at TEXT NOT NULL,          -- the latest ingest from this source
+    n_entries   INTEGER NOT NULL,       -- entries the latest ingest offered
+    n_new       INTEGER NOT NULL        -- entries this source has inserted, in all
 );
 
 -- Which log-folder files each game has been read from or written to. This is what
@@ -219,7 +223,8 @@ CREATE TABLE IF NOT EXISTS hands (
     UNIQUE (game_id, hand_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_hands_game ON hands(game_id);
+-- No index on game_id alone: the UNIQUE index above starts with it and serves
+-- every lookup by game. conn._migrate drops the one older files still have.
 
 -- Populated from the `Player stacks:` line -- the DEALT-IN roster -- never from
 -- join/quit events and never from whoever happened to act. A player sitting out

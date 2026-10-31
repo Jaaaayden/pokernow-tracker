@@ -838,10 +838,16 @@ def test_an_extension_from_before_the_header_is_told_to_reload(client):
         ("null", 403),
         ("chrome-extension://abcdefghijklmnop", 200),
         ("http://127.0.0.1:52000", 200),  # the server's own pages
+        ("http://localhost:52000", 403),  # a page of the same server is addressed as its Host
+        ("http://127.0.0.1:3000", 403),  # another local server's page
+        ("https://127.0.0.1:52000", 403),
     ],
 )
 def test_writes_from_a_foreign_origin_are_refused(client, origin, status):
-    r = client.post("/ingest", json={"game_id": "origin-probe", "entries": []}, headers={"origin": origin})
+    from fastapi.testclient import TestClient
+
+    here = TestClient(client.app, base_url="http://127.0.0.1:52000", headers={"x-pnt": "1"})
+    r = here.post("/ingest", json={"game_id": "origin-probe", "entries": []}, headers={"origin": origin})
     assert r.status_code == status
 
 
