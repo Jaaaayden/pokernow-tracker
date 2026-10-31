@@ -120,12 +120,16 @@ const handlers = {
   // back: counters and status text under `status:<tab>`, several times a poll,
   // and the /hud and /live payloads under `data:<tab>`, only when they changed
   // (`data` in the message). Every write reaches every open extension page.
+  // Answered with `held`, whether this tab's payloads are here: forget() drops
+  // them, and a content script still running then sends them again.
   status: async (msg, sender) => {
     const id = sender.tab?.id ?? "?";
     const put = { [`status:${id}`]: { ...msg.status, tabId: sender.tab?.id, at: Date.now() } };
     if (msg.data) put[`data:${id}`] = msg.data;
     await chrome.storage.session.set(put);
-    return {};
+    if (msg.data) return { held: true };
+    const key = `data:${id}`;
+    return { held: (await chrome.storage.session.get(key))[key] !== undefined };
   },
 
   // Which tab the content script is in; it cannot ask the tabs API itself. The

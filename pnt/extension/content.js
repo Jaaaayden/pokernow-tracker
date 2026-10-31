@@ -58,7 +58,7 @@
     sync: { cursor: 0, walk: null }, // see pager.js
     offered: 0, inserted: 0, polls: 0, errors: 0, pages: 0,
     lastError: null, lastPoll: null, shape: null, envelopeOk: null,
-    hud: null, hudJson: null, hudAt: 0, hudEmpty: false, hudError: null, trackerDown: false, paused: false,
+    hud: null, hudJson: null, hudAt: 0, hudSlow: false, hudEmpty: false, hudError: null, trackerDown: false, paused: false,
     live: null, liveInserted: -1,
     statusText: "starting…",
     rev: 0,             // bumped whenever hud or live changes: the panel redraws, and the payloads go out, only then
@@ -120,6 +120,12 @@
       data,
     });
     if (data && !r.ok && sentRev === rev) sentRev = -1; // lost: the next report carries them
+    // The worker no longer holds them (it drops a tab's on a load that left
+    // this script running): sent again at once, or the panel waits for ever.
+    if (!data && r.ok && r.data?.held === false && sentRev === rev) {
+      sentRev = -1;
+      return report();
+    }
     return r;
   }
 
@@ -333,14 +339,25 @@
 
   // A /hud the server is still working on: the worker gave up waiting (its own
   // limit, background.js SLOW_MS) or was stopped mid-call by Chrome. Not a
-  // failure: the server finishes and keeps it, so the next poll asks again.
+  // failure: the server finishes and keeps it. Nor asked again for HUD_EVERY_MS,
+  // a hand end's rebuild included: each ask starts the same work over beside
+  // the first, and on a cold database they would pile up.
   const SLOW = /tracker busy|message port closed/i;
 
   async function refreshHud() {
+    if (state.hudSlow && Date.now() - state.hudAt < HUD_EVERY_MS) return;
     const r = await tracker({ type: "hud", game_id: GAME });
     state.hudAt = Date.now();
-    if (!r.ok && SLOW.test(r.error || "")) {
-      state.hudAt = 0;
+    // The port closed because the extension was reloaded: the next poll retires.
+    if (!r.ok && orphaned()) return;
+    state.hudSlow = !r.ok && SLOW.test(r.error || "");
+    if (state.hudSlow) {
+      // Stats are on their way: no "failed" box beside "still loading".
+      if (state.hudError || state.hudEmpty) {
+        state.hudError = null;
+        state.hudEmpty = false;
+        state.rev += 1;
+      }
       setStatus("stats still loading");
       return;
     }
