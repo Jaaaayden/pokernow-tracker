@@ -27,9 +27,9 @@ function table({ acting = null } = {}) {
   };
 }
 
-function boot({ acting = null } = {}) {
+function boot({ acting = null, fail = {} } = {}) {
   const sent = [];       // message types to the worker, in order (status reports left out)
-  const reports = [];    // every status report
+  const reports = [];    // every status report, with the payloads it carried as `data`
   const timers = [];
   const storage = [];
   const lines = [];
@@ -49,8 +49,10 @@ function boot({ acting = null } = {}) {
       id: "ext", lastError: null, getURL: (s) => `chrome-extension://ext/${s}`,
       onMessage: { addListener() {} },
       sendMessage(msg, cb) {
-        if (msg.type === "status") reports.push(msg.status);
+        if (msg.type === "status") reports.push({ ...msg.status, data: msg.data });
         else sent.push(msg.type);
+        // `fail[type]`: that request fails with this error, while it is set.
+        if (fail[msg.type]) { queueMicrotask(() => cb({ ok: false, error: fail[msg.type] })); return; }
         let data = answer[msg.type];
         if (msg.type === "ingest") {
           let n = 0;
@@ -94,7 +96,9 @@ function boot({ acting = null } = {}) {
     await flush();
     return [...sent];
   };
-  return { add, start, poll, sent, reports, storage };
+  // content.js again in the same page, as the worker's injection after an update does.
+  const again = async () => { vm.runInContext(SCRIPTS.at(-1)[1], ctx, { filename: "content.js" }); await flush(); };
+  return { add, start, poll, again, sent, reports, storage, answer, chrome, ctx };
 }
 
 const HAND = [
@@ -139,4 +143,70 @@ test("a removed server setting falls back to the default rather than throwing", 
   await t.start();
   assert.equal(t.storage.length, 1);
   assert.doesNotThrow(() => t.storage[0]({ server: { oldValue: "http://127.0.0.1:52001" } }, "sync"));
+});
+
+test("a second copy in the same page stops at once, unless the first was orphaned", async () => {
+  const t = boot();
+  HAND.forEach(t.add);
+  await t.start();
+  t.sent.length = 0;
+  await t.again();
+  assert.deepEqual(t.sent, [], "the live copy goes on alone: no second settings, health or poll");
+  // The extension reloaded: the first copy's context is gone, the new one's is not.
+  const fresh = { ...t.chrome, runtime: { ...t.chrome.runtime, id: "ext-new" } };
+  t.chrome.runtime.id = undefined;
+  t.ctx.chrome = fresh;
+  await t.again();
+  assert.ok(t.sent.includes("settings"), "the fresh copy takes over");
+});
+
+test("the /hud and /live payloads go out only when they changed", async () => {
+  const t = boot();
+  HAND.forEach(t.add);
+  await t.start();
+  const withData = t.reports.filter((r) => r.data);
+  assert.ok(withData.length >= 1);
+  assert.ok(t.reports.every((r) => !("hudData" in r) && !("liveData" in r)), "never in the status itself");
+  const revs = withData.map((r) => r.data.rev);
+  assert.deepEqual(revs, [...new Set(revs)], "each rev once");
+  // Nothing new on the table: the reports carry no payload.
+  t.reports.length = 0;
+  await t.poll();
+  assert.ok(t.reports.length > 0 && t.reports.every((r) => !r.data));
+});
+
+test("the same /hud again is no news: no new rev for it", async () => {
+  const t = boot();
+  HAND.forEach(t.add);
+  await t.start();
+  const first = t.reports.filter((r) => r.data?.hudData).length;
+  t.add("-- ending hand #1 --");
+  t.reports.length = 0;
+  // ingest, live, rebuild, hud, live: the same /hud makes no rev of its own.
+  assert.deepEqual(await t.poll(), ["ingest", "live", "rebuild", "hud", "live"]);
+  assert.equal(new Set(t.reports.filter((r) => r.data).map((r) => r.data.rev)).size, 2, "one per /live");
+  t.answer.hud = { seats: [{ pn_id: "A1", alias: "ann" }] };
+  t.add('-- starting hand #2 (id: y)  No Limit Texas Hold\'em (dealer: "Ann @ A1") --');
+  t.add("-- ending hand #2 --");
+  t.reports.length = 0;
+  await t.poll();
+  assert.ok(first >= 1);
+  assert.ok(t.reports.some((r) => r.data?.hudData?.seats?.length === 1), "a changed /hud goes out");
+});
+
+test("a /hud the worker gave up waiting on is still loading, not a failure", async () => {
+  const fail = { hud: "tracker busy: no answer within 25 s" };
+  const t = boot({ fail });
+  HAND.forEach(t.add);
+  await t.start();
+  const last = t.reports.at(-1);
+  assert.equal(last.hudError, null, "no error line in the panel");
+  assert.equal(last.text, "stats still loading");
+  // Asked again on the very next poll, not 30 s later.
+  delete fail.hud;
+  assert.ok((await t.poll()).includes("hud"));
+  fail.hud = "The message port closed before a response was received.";
+  t.add("-- ending hand #1 --");
+  await t.poll();
+  assert.equal(t.reports.at(-1).hudError, null, "Chrome stopping the worker mid-call reads the same");
 });

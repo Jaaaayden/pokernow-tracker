@@ -53,14 +53,22 @@
   const params = new URLSearchParams(location.search);
   const EMBED = params.get("embed") === "1";
   const EMBED_TAB = EMBED ? Number(params.get("tab")) : NaN;
+  // The tab's report comes in two parts (background.js): its status, rewritten
+  // several times a poll, and the /hud and /live payloads with their `rev`,
+  // rewritten only when they change. The panel shows the two as one.
   const keyOf = (id) => `status:${id}`;
+  const dataKeyOf = (id) => `data:${id}`;
+  let tabStatus = null, tabData = null;
+  const report = () => (tabStatus ? { ...tabStatus, ...(tabData || {}) } : null);
   async function track() {
     let id;
     if (EMBED) id = Number.isInteger(EMBED_TAB) ? EMBED_TAB : null;
     else id = (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id ?? null;
     if (id !== state.tabId) { state.tabId = id; state.rev = -1; }
-    const got = id == null ? {} : await chrome.storage.session.get(keyOf(id));
-    show(got[keyOf(id)] || null);
+    const got = id == null ? {} : await chrome.storage.session.get([keyOf(id), dataKeyOf(id)]);
+    tabStatus = got[keyOf(id)] || null;
+    tabData = got[dataKeyOf(id)] || null;
+    show(report());
   }
   if (!EMBED) chrome.tabs.onActivated.addListener(track);
 
@@ -97,8 +105,11 @@
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "session" && state.tabId != null && keyOf(state.tabId) in changes) {
-      show(changes[keyOf(state.tabId)].newValue || null);
+    const k = state.tabId == null ? null : keyOf(state.tabId), d = state.tabId == null ? null : dataKeyOf(state.tabId);
+    if (area === "session" && k && (k in changes || d in changes)) {
+      if (k in changes) tabStatus = changes[k].newValue || null;
+      if (d in changes) tabData = changes[d].newValue || null;
+      show(report());
     }
     if (area === "sync" && changes.server) {
       state.server = String(changes.server.newValue || state.server).replace(/\/+$/, "");
