@@ -6,26 +6,7 @@
 <title>Players</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d;
-  }
+  /* The palette is loading.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 940px; margin: 0 auto; padding: 22px 20px 56px; }
@@ -134,15 +115,10 @@
   let players = [];
   let openAlias = null;
 
-  const api = async (path, body) => {
-    const r = await fetch(path, body ? {
-      // x-pnt: the server refuses writes without it (see app.py).
-      method: "POST", headers: { "content-type": "application/json", "x-pnt": "1" }, body: JSON.stringify(body),
-    } : undefined);
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `${r.status} ${r.statusText}`);
-    return data;
-  };
+  const api = (path, body) => pntPage.getJson(path, body ? {
+    // x-pnt: the server refuses writes without it (see app.py).
+    method: "POST", headers: { "content-type": "application/json", "x-pnt": "1" }, body: JSON.stringify(body),
+  } : undefined);
 
   let toastTimer = null;
   function toast(msg, action) {
@@ -249,7 +225,7 @@
       tr.appendChild(el("td", "id", i.pn_id));
       tr.appendChild(el("td", null, i.name || "–"));
       tr.appendChild(el("td", "r", fmt(i.hands)));
-      tr.appendChild(el("td", "r dim", (i.last_seen_at || "").slice(0, 10) || "–"));
+      tr.appendChild(el("td", "r dim", pntPage.when(i.last_seen_at) || "–"));
       if (!single) {
         const td = el("td", "r");
         const b = el("button", "small", "split off");
@@ -298,7 +274,7 @@
     box.setAttribute("aria-label", `note on ${p.alias}`);
     const hint = el("div", "hint");
     const paintHint = () => {
-      hint.textContent = (p.notes_at ? `noted ${p.notes_at.slice(0, 10)} · ` : "")
+      hint.textContent = (p.notes_at ? `noted ${pntPage.when(p.notes_at)} · ` : "")
         + "Ctrl+Enter or click away to save · empty to delete";
     };
     paintHint();
@@ -461,7 +437,7 @@
     return entry;
   }
 
-  const signedBb = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
+  const signedBb = (x) => pntPage.signed(x);
   const tone = (x) => (x > 0.05 ? "up" : x < -0.05 ? "down" : "");
 
   const chartHref = (player, filter) => href("/chart", filter ? { player, filter } : { player });

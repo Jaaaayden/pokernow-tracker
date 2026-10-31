@@ -19,7 +19,7 @@ from tests.conftest import ALL_LOGS, local_client
 
 ROOT = Path(__file__).parent.parent
 #: Every file with its own copy of the page-side helpers.
-COPIES = ["pnt/server/static/stats.html", "pnt/server/static/chart.html", "pnt/extension/spot.js"]
+COPIES = ["pnt/server/static/loading.js", "pnt/server/static/chart.html", "pnt/extension/spot.js"]
 
 
 def _function(src: str, name: str) -> str:
@@ -28,7 +28,8 @@ def _function(src: str, name: str) -> str:
 
 
 def test_every_copy_of_the_helpers_is_the_same():
-    """Three files each carry `wilson` and `ciText`; they must read a rate alike."""
+    """Three files each carry `wilson` and `ciText` (loading.js for the pages but
+    the chart); they must read a rate alike."""
     for name in ("wilson", "ciText"):
         bodies = {path: _function((ROOT / path).read_text(encoding="utf-8"), name) for path in COPIES}
         assert len(set(bodies.values())) == 1, f"{name} differs between {list(bodies)}"

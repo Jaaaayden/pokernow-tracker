@@ -6,29 +6,7 @@
 <title>PokerNow Tracker</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39;
-    --violet: #7353c4; --amber: #a86a0c;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d;
-      --violet: #a690f2; --amber: #e3a54c;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d;
-    --violet: #a690f2; --amber: #e3a54c;
-  }
+  /* The palette is loading.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 900px; margin: 0 auto; padding: 28px 20px 56px; }
@@ -576,27 +554,15 @@
   // that game first and lifetime in grey. Fetched once, on first open.
   const pv = { open: false, loading: null, rows: null, error: null };
   const PV_HANDS = { key: "hands", label: "hands", tip: "Hands they were dealt into. Every rate here is over some subset of these.", opp: null };
-  // The side panel's own formatting and drift rule, copied: see sidepanel.js.
-  const signed = (v, dp) => (v > 0 ? "+" : "") + v.toFixed(dp);
-  // One decimal on rates and bb/100, as every page prints them; hands a count.
-  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? signed(v, 1)
+  // The side panel's drift rule, copied: see sidepanel.js. One decimal on rates
+  // and bb/100, as every page prints them; hands a count.
+  const fmt = (v, k) => (v == null ? "–" : k === "bb_per_100" ? pntPage.signed(v)
     : k === "hands" ? pntPage.int(v) : typeof v === "number" ? v.toFixed(1) : String(v));
   const DRIFT_POINTS = 10, DRIFT_MIN_OPP = 10;
-  // Wilson 95% range as fractions; mirrors queries.wilson (spot.js carries the same).
-  function wilson(p, n, z = 1.96) {
-    if (!(n > 0) || p == null) return null;
-    const z2 = z * z;
-    const centre = (p + z2 / (2 * n)) / (1 + z2 / n);
-    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n);
-    return [Math.max(0, centre - half), Math.min(1, centre + half)];
-  }
+  const { wilson } = pntPage;
 
   async function pvLoad() {
-    const get = async (url) => {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    };
+    const get = pntPage.getJson;
     const [{ hero }, life] = await Promise.all([get("/settings/hero"), get("/stats")]);
     const byLife = new Map(life.map((r) => [r.player, r]));
     const most = (rows, not) => rows.filter((r) => r.player !== not).sort((a, b) => b.hands - a.hands)[0]?.player;

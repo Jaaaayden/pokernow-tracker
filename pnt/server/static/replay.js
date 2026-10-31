@@ -1,10 +1,29 @@
-// Hand replay, shared by the chart and all-in pages: one hand from /hands/{id},
-// street by street, with the pot before each action and a size word on each bet.
-// Exposed as window.pntReplay for the page's own script, which runs after this
-// one. Styled by the page, with one exception: the card chips. Every page that
-// lists hands draws them, so their rules are injected here once rather than
-// copied into each page's stylesheet.
+// Hand replay, shared by the chart, all-in and biggest pots pages: one hand from
+// /hands/{id}, street by street, with the pot before each action and a size word
+// on each bet. Exposed as window.pntReplay for the page's own script, which runs
+// after this one; loading.js (pntPage) runs before it. Its rules, and the card
+// chips' that every page listing hands draws, are injected here once rather
+// than copied into each page's stylesheet; :where() keeps them at no
+// specificity, so a page's own rule wins.
 (() => {
+  const { message, getJson } = window.pntPage;
+  // A hand's time, local: pntPage.when, kept here too for the pages that list hands.
+  const { when } = window.pntPage;
+  const REPLAY_CSS = `
+    :where(.replay) h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
+    :where(.replay) h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+    :where(.replay) .who { color: var(--ink-2); margin: 0 0 6px; }
+    :where(.replay) .street { margin-top: 10px; }
+    :where(.replay) .street > b { text-transform: capitalize; }
+    :where(.replay) .street > span { color: var(--muted); margin-left: 8px; }
+    :where(.replay) ol { margin: 4px 0 0; padding-left: 22px; }
+    :where(.replay) li.forced { color: var(--muted); }`;
+  if (!document.getElementById("pnt-replay-css")) {
+    const style = document.createElement("style");
+    style.id = "pnt-replay-css";
+    style.textContent = REPLAY_CSS;
+    document.head.prepend(style);
+  }
   const SUIT = { s: "♠", h: "♥", d: "♦", c: "♣" };
   // Plain text, for tooltips and captions where no element can go.
   const pretty = (cards) => cards.replace(/([2-9TJQKA])([shdc])/g, (_, r, s) => r + SUIT[s] + " ").trim();
@@ -48,20 +67,6 @@
     : amount >= Math.floor(0.5 * pot) ? "medium"
     : amount >= Math.floor(pot / 5) ? "small" : "blocker";
 
-  function message(text, cls = "muted") {
-    const p = document.createElement("p"); p.className = cls; p.textContent = text; return p;
-  }
-
-  // A hand's time in the viewer's own time zone, the year only when it is not
-  // this one: "Oct 30, 03:12 AM". The one formatter for every page that lists hands.
-  const WHEN = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  const WHEN_Y = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  const when = (ts) => {
-    const d = new Date(ts);
-    if (!ts || isNaN(d)) return ts || "";
-    return (d.getFullYear() === new Date().getFullYear() ? WHEN : WHEN_Y).format(d);
-  };
-
   // Chips in a hand's big blinds (at most one decimal, no ".0"), or as chips:
   // `unit` is "bb" (the default) or "chips". A hand with no big blind on record
   // is in chips whatever the unit.
@@ -97,12 +102,7 @@
     drawn.set(box, { d: null, unit });
     box.replaceChildren(message("loading…"));
     try {
-      const r = await fetch(`/hands/${id}`);
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.detail || `${r.status} ${r.statusText}`);
-      }
-      const d = await r.json();
+      const d = await getJson(`/hands/${id}`);
       if (box.dataset.replayReq === req) {
         const now = drawn.get(box);
         now.d = d;
@@ -341,7 +341,7 @@
       border: 1px dashed var(--ring); border-radius: 999px; background: transparent; color: var(--ink); }
     .tagbox input[type=text]:focus { border-style: solid; border-color: var(--accent); outline: 0; width: 10em; }
     .tagbox input::-webkit-calendar-picker-indicator { display: none !important; }
-    .tagbox .tg-err { color: #c62f2f; }`;
+    .tagbox .tg-err { color: var(--down, #b93a39); }`;
   if (!document.getElementById("pnt-tags-css")) {
     const style = document.createElement("style");
     style.id = "pnt-tags-css";
