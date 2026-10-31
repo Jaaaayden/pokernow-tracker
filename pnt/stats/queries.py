@@ -596,6 +596,7 @@ def pool_facts(
     conn: sqlite3.Connection,
     game_id: str | None = None,
     predicate: Callable[[Facts], bool] | None = None,
+    games: str = "play",
 ) -> list[Facts]:
     """Every (hand, player) row in the database, or in one game, inside a spot: the
     pool the pool views count. A heads-up hand is two rows, one from each seat.
@@ -604,10 +605,19 @@ def pool_facts(
     per-player cache holds a handful of players and this is all of them, and it is
     asked for by a person, not on a timer. The session facts come first, so a spot
     like `post_loss` reads whole sessions.
+
+    `games` is the scope (`SCOPES`), as `facts_cached` takes it: the session facts
+    are numbered over every hand in each, and `every` derives the hands not
+    analysed in full.
     """
+    if games not in SCOPES:
+        raise ValueError(f"unknown scope: {games!r}")
     with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
         hands = load_hands(conn, game_id)
-    facts = play_facts(hands)
+    if games == "play":
+        facts = play_facts(hands)
+    else:
+        facts = annotate([f for h in hands for f in derive(h, every_game=games == "every")])
     return [f for f in facts if predicate(f)] if predicate is not None else facts
 
 
