@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS hands (
     board_json       TEXT,             -- list of runs, so run-it-twice needs no new columns
     run_count        INTEGER NOT NULL DEFAULT 1,
     went_to_showdown INTEGER NOT NULL DEFAULT 0,
+    complete         INTEGER NOT NULL DEFAULT 1,  -- 0: the log stopped mid-hand
+    board_ords       TEXT,             -- JSON {street: ord} of the run-one board lines
+    clock_ms         INTEGER,          -- decision limit plus a full time bank, in ms
+    variant          TEXT,             -- the game per hand; NULL reads as Hold'em
+    double_board     INTEGER NOT NULL DEFAULT 0,
     UNIQUE (game_id, hand_number)
 );
 
@@ -251,6 +256,7 @@ CREATE TABLE IF NOT EXISTS actions (
     is_forced   INTEGER NOT NULL DEFAULT 0,
     all_in      INTEGER NOT NULL DEFAULT 0,
     post_kind   TEXT,                 -- sb | bb | ante | missed_bb | missing_sb | straddle | bomb_pot
+    ord         INTEGER,              -- the log line's ord: when it was logged (timing tells)
     PRIMARY KEY (hand_id, seq)
 ) WITHOUT ROWID;
 
