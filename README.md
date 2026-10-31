@@ -18,17 +18,11 @@ Other PokerNow HUDs show you a VPIP number. This shows you the spot.
 |---|:-:|:-:|
 | Live hand capture that follows each decision as it happens | – | ✓ |
 | This session's stats beside lifetime | – | ✓ |
-| Pick your HUD's stats, from 42 | – | ✓ |
 | Hand review: missed bluffs, missed value, bad beats | – | ✓ |
 | Flag and tag hands from the HUD while you play | – | ✓ |
-| Aggregate stats across every game you've played | – | ✓ |
-| Range charts from showdowns, in any spot | – | ✓ |
-| Estimated ranges from preflop frequencies, broken down on any board | – | ✓ |
-| A spot tree: every decision a player reached and what they chose | – | ✓ |
-| Any spot grouped by position, pot type or holding, with bb/100 against folding | – | ✓ |
+| Aggregate stats across every game you've played (even across devices/IDs) | – | ✓ |
 | Timing tells: what a snap and a long think have meant | – | ✓ |
-| Your own tendencies, as an opponent's HUD sees them | – | ✓ |
-| One player across renames and devices | – | ✓ |
+| Every player's tendencies (measured versus pool) | – | ✓ |
 
 Everything runs locally: a small server on your machine, a SQLite database, and a
 Chrome extension. [Setup](#setup) is one command.
@@ -82,7 +76,7 @@ The tracker turns a player's numbers into plain advice, with the count behind ev
 claim, judged against the rest of the table:
 
 ```
-alex  FISH  11697 hands
+Henry  FISH  11697 hands
   FOLDS RIVER            53.4% of 1787  Folded to a river bet 53.4% of the time (954 of 1787; pool 38.8%). Bet the river.
   INELASTIC VS 3BET       9.6% of 375   Opened and folded to a 3-bet only 9.6% of the time (36 of 375; pool 21.7%). 3-bet for value only, and bigger.
   LIMP-RERAISE = STRONG  68.4% of 19    Limp-reraised with a top-15% hand 13 of 19 shown times (68.4%). Fold to their limp-reraise without a big hand.
@@ -157,11 +151,11 @@ two_pair                    2   11.1    2     53.0
 top_pair                    1    5.6    1      5.0
 ```
 
-![What blake had made when he raised the river: almost all two pair or better](docs/images/range-made.png)
+![What Chris had made when he raised the river: almost all two pair or better](docs/images/range-made.png)
 
 17 of the 18 he showed were two pair or better, and not one was a draw or air: fold
 one pair to it. The 25 that were never shown are the raises that got a fold, so
-that's where any bluffs would be.
+that's where any (potential) bluffs would be.
 
 A spot can be anything: position, pot type, preflop line, bet size bucket, facing a
 jam, board texture, pot size, timing, or who you were against. Filters take *and*
@@ -181,7 +175,7 @@ Spot box: `BTN → facing open → call` is one click, not a filter to write.
 
 **Group by** splits any spot into rows (position, pot type, flop holding, and a
 second split under it), each with hands, shown, net bb and bb/100, and on the blinds **vs folding
-all**: bb/100 against folding every blind. Alex's big blind is −107 bb/100 raw, and vs fold
+all**: bb/100 against folding every blind. Henry's big blind is −107 bb/100 raw, and vs fold
 says whether that's a leak or just the blind. **Pool** swaps in everyone's hands, and
 clicking a row narrows the spot to it.
 
@@ -197,7 +191,7 @@ alex opens 25.7% of the time from the button (`position=BTN,unopened=raise`), so
 chart fades everything outside the top 25.7%, adjusted by what he has actually shown
 (here, more suited gappers and connectors).
 
-![Alex's button opens, with the classes outside the estimated range faded](docs/images/estimate-grid.png)
+![Henry's button opens, with the classes outside the estimated range faded](docs/images/estimate-grid.png)
 
 **Board** puts that range on a flop and cuts it at his next action's rate. On
 `Ah7c2d` he c-bets 42.5%: betting only his best hands would be 100% value, but what
@@ -228,11 +222,11 @@ the money went in:
 
 ![All-in EV per player: actual, adjusted and the luck by street](docs/images/allin-table.png)
 
-Casey is +900bb on his all-ins, but by equity he'd be down 230bb: the deck gave him
-1,130bb. Blake gets it in ahead (56% equity on average) and is 645bb short of what
+Luis is +900bb on his all-ins, but by equity he'd be down 230bb: the deck gave him
+1,130bb. Chris gets it in ahead (56% equity on average) and is 645bb short of what
 that was worth. Click a player to draw their actual and adjusted lines over time:
 
-![Casey's actual and adjusted all-in results over time, with each hand below](docs/images/allin-luis.png)
+![Luis's actual and adjusted all-in results over time, with each hand below](docs/images/allin-luis.png)
 
 `pnt allin` · [guide](docs/guide.md#all-in-ev)
 
@@ -243,9 +237,9 @@ the table, sized against each other so the outliers stand out, with one click to
 replay:
 
 ```
- 12,872   322bb  2026-10-16T02:57 sam +7,556 vs casey -5,316      Qc 5s 8c 2c Jc
- 10,806   270bb  2026-10-16T03:43 casey +5,473 vs alex -5,333       Kc 3s 3d 6s Ts
-  7,920   198bb  2026-10-16T03:20 casey +4,280 vs sam -3,640      4h Jd Qd 4s 3h
+ 12,872   322bb  2026-10-16T02:57 Jayden +7,556 vs Luis -5,316      Qc 5s 8c 2c Jc
+ 10,806   270bb  2026-10-16T03:43 Luis +5,473 vs Henry -5,333       Kc 3s 3d 6s Ts
+  7,920   198bb  2026-10-16T03:20 Luis +4,280 vs Jayden -3,640      4h Jd Qd 4s 3h
 ```
 
 ![Biggest pots of the last 7 days](docs/images/pots.png)
