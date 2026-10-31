@@ -1,4 +1,5 @@
-"""Calibrate `strength.HS_CUTS` on a database's shown hands. Read-only.
+"""Calibrate `strength.HS_CUTS` on a database's shown hands. Read-only: the
+database is opened `mode=ro`, so not even a migration can write to it.
 
     python scripts/calibrate_strength.py [pokernow.sqlite]
 
@@ -19,11 +20,12 @@ Paste the table into SPEC.md, "Hand strength", and the cuts into `HS_CUTS`.
 from __future__ import annotations
 
 import json
+import sqlite3
 import statistics
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path
 
-from pnt.db.conn import connect
 from pnt.stats.cards import MADE_LEAVES, board_at, board_texture, leaf_of, made_at
 from pnt.stats.strength import counts
 
@@ -46,7 +48,9 @@ def youden(pos: list[float], neg: list[float]) -> tuple[float, float]:
 
 
 def main(path: str) -> None:
-    conn = connect(path)
+    # Not pnt.db.conn.connect, which runs the schema and migrations on what it opens.
+    conn = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT hp.hole_cards AS cards, h.board_json AS board FROM hand_players hp"
         " JOIN hands h ON h.hand_id = hp.hand_id WHERE hp.hole_cards IS NOT NULL"

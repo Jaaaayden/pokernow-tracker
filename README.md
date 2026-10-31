@@ -363,13 +363,6 @@ Some updates change what is stored for each hand. When the restart (or the new `
 `pnt rebuild` once: it re-reads every stored log, so nothing needs importing
 again. The update that added think times (the chart's **Timing** view) is one.
 
-On a Mac set up before the background server came to macOS, run `pnt service
-install --db <full path to pokernow.sqlite>` once to get it.
-
-On Windows, run `pnt service install` once after this update: the background
-server now runs at normal priority, so HUD answers no longer queue behind the
-browser. `pnt update` keeps the task as it was installed.
-
 Installed before `pnt update` existed? Update by hand this one time, then reload
 the extension at `chrome://extensions`:
 
@@ -430,7 +423,7 @@ every command uses too, from any folder; `--db` still overrides it.
 The server at `127.0.0.1:52000` answers every page and the HUD from one JSON API,
 which your own scripts can read too. The choice of database and log folder lives in
 `~/.pnt/config.json`, outside the database, so the background task, `pnt serve` and
-the CLI all open the same one. Routes added in this round:
+the CLI all open the same one. Some of its routes:
 
 | Route | Returns |
 |---|---|
