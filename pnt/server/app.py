@@ -5,10 +5,12 @@ definitions. The database stays a plain SQLite file on disk, so pandas can open 
 directly and ignore this server entirely -- keeping the data out of the browser is
 the point, and IndexedDB would have trapped it in one profile.
 
-`POST /ingest` is deliberately built now, before any extension exists, so the
-capture contract is fixed and testable ahead of the browser work.
+The extension's live capture writes through `POST /ingest`; the pages and the
+HUD read the rest.
 
-Run with:  pnt serve      (or: uvicorn pnt.server.app:app --port 52000)
+Run with `pnt serve` (or `pnt service install` to keep it running), not uvicorn
+directly: `service.bind` takes the port with SO_EXCLUSIVEADDRUSE, without which
+Windows lets a second server share the port and answer half the requests.
 """
 
 from __future__ import annotations
@@ -369,10 +371,19 @@ WRITE_HEADER = "x-pnt"
 _READS = {"GET", "HEAD", "OPTIONS"}
 
 
-def _trusted_origin(origin: str) -> bool:
-    """The extension, or one of this server's own pages."""
-    parts = urlsplit(origin)
-    return parts.scheme == "chrome-extension" or parts.hostname in ALLOWED_HOSTS
+def _trusted_origin(origin: str, request: Request) -> bool:
+    """The extension, or one of this server's own pages.
+
+    A page of this server's sends its own origin: scheme, host and port all as
+    the request was addressed, so `http://localhost:3000` (another local dev
+    server) is not one. Any extension passes: the ID cannot be pinned, since an
+    unpacked extension's comes from its folder's path and the manifest has no
+    `key`. That leaves only extensions the user installed, and the write header
+    is the barrier against web pages either way."""
+    if urlsplit(origin).scheme == "chrome-extension":
+        return True
+    host = request.headers.get("host", "")
+    return request.url.scheme == "http" and origin.lower() == f"http://{host}".lower()
 
 
 @app.middleware("http")
@@ -398,7 +409,9 @@ async def _count_busy(request: Request, call_next):
 async def _writes_from_here_only(request: Request, call_next):
     if request.method not in _READS:
         origin = request.headers.get("origin")
-        if WRITE_HEADER not in request.headers or (origin is not None and not _trusted_origin(origin)):
+        if WRITE_HEADER not in request.headers or (
+            origin is not None and not _trusted_origin(origin, request)
+        ):
             # Only an extension from before the header writes from chrome-extension://
             # without it: Chrome keeps running that old worker after an update until
             # it is reloaded by hand. Short and front-loaded: the HUD bar cuts it off.
@@ -626,13 +639,22 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
     """`{"base": n, "counts": {term: n}}`: the hands `filter` keeps, and per term
     those `filter,term` keeps; null for a term the parser refuses. A POST only
     because 200 terms do not fit a URL; it writes nothing."""
+    from pnt.db.conn import reading
+    from pnt.stats.derive import derive
     from pnt.stats.filters import count_terms
-    from pnt.stats.queries import facts_by_player
+    from pnt.stats.queries import load_hands
+    from pnt.stats.tilt import annotate
 
     conn = db()
     if req.player is None:
-        grouped, _, _ = facts_by_player(conn, req.game)
-        facts = [f for rows in grouped.values() for f in rows]
+        # Every player's hands in the tab's scope, as `facts_cached` scopes one
+        # player's: the session facts numbered over all of them, then `play` keeps
+        # the analysed ones and `every` derives the others in full to list them.
+        with reading(conn):
+            hands = load_hands(conn, req.game)
+        facts = annotate([f for h in hands for f in derive(h, every_game=req.games == "every")])
+        if req.games == "play":
+            facts = [f for f in facts if f.analysed]
     else:
         try:
             facts = facts_cached(conn, req.player, req.game, req.games)

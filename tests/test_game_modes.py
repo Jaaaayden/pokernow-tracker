@@ -345,6 +345,10 @@ def test_card_terms_on_a_list_with_plo_answer_rather_than_crash(tmp_path, monkey
     counts = client.post("/counts", json={"player": "A", "games": "every", "terms": ["plo", "holdem"]}).json()
     assert counts["counts"] == {"plo": 3, "holdem": 0}
     assert client.post("/counts", json={"player": "A", "terms": ["plo"]}).json()["counts"] == {"plo": 0}
+    # The pool's counts (no player) take the scope too; they read `play` whatever was asked.
+    pool = client.post("/counts", json={"games": "every", "terms": ["plo", "holdem"]}).json()["counts"]
+    assert pool["plo"] >= 3 and pool["holdem"] == 0
+    assert client.post("/counts", json={"terms": ["plo"]}).json()["counts"] == {"plo": 0}
 
 
 def test_tree_names_a_bomb_pot():
