@@ -174,6 +174,13 @@ def identity_map(conn: sqlite3.Connection) -> dict[str, tuple[int, str]]:
     }
 
 
+def player_key(ident: Mapping[str, tuple[int, str]], pn_id: str) -> tuple[int | str, str]:
+    """(player key, alias) of `pn_id` in an `identity_map`. An ID with no identity
+    row (none today: a rebuild resolves every seat) is its own player, keyed and
+    named by itself, never one stand-in shared by every such ID."""
+    return ident.get(pn_id, (pn_id, pn_id))
+
+
 def display_names(conn: sqlite3.Connection) -> dict[str, str]:
     """pn_id -> the name a drill-down should print.
 
@@ -526,9 +533,7 @@ def facts_by_player(
     aliases: dict[int | str, str] = {}
     for hand in hands:
         for fact in derive(hand):
-            # An ID with no identity row (none today: a rebuild resolves every seat)
-            # is its own player, never one shared stand-in.
-            pid, alias = ident.get(fact.pn_id, (fact.pn_id, fact.pn_id))
+            pid, alias = player_key(ident, fact.pn_id)
             grouped[pid].append(fact)
             aliases[pid] = alias
     # The session facts (see tilt.py) are numbered over every hand, as a player's
@@ -963,7 +968,7 @@ def _full_report(
     names: dict[int | str, str] = {}
     for per_id in _tallies(conn, game_id):
         for pn_id, t in per_id.items():
-            pid, alias = ident.get(pn_id, (pn_id, pn_id))  # unidentified: its own row
+            pid, alias = player_key(ident, pn_id)
             g = grouped_t.get(pid)
             if g is None:
                 g = grouped_t[pid] = Tally()

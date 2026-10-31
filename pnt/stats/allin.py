@@ -42,6 +42,7 @@ from .queries import (
     identity_map,
     load_hands,
     play_facts,
+    player_key,
 )
 
 STREETS = (PREFLOP, FLOP, TURN, RIVER)
@@ -297,10 +298,10 @@ def allin_report(
 
     rows = _apply(rows, pool, predicate)
     ident = identity_map(conn)
-    grouped: dict[int, list[AllInRow]] = defaultdict(list)
-    aliases: dict[int, str] = {}
+    grouped: dict[int | str, list[AllInRow]] = defaultdict(list)
+    aliases: dict[int | str, str] = {}
     for r in rows:
-        pid, alias = ident.get(r.pn_id, (-1, r.pn_id))
+        pid, alias = player_key(ident, r.pn_id)
         grouped[pid].append(r)
         aliases[pid] = alias
 
