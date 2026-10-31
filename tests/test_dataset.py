@@ -71,10 +71,12 @@ def test_the_sample_version_reads_the_files_bytes(tmp_path, monkeypatch):
 def test_the_sample_is_built_beside_the_config(monkeypatch):
     """Not in the real ~/.pnt: a worktree's or a test's server (PNT_CONFIG pointed
     elsewhere) would build there and tidy away the live server's sample."""
-    import os
     from pathlib import Path
 
-    assert samplemod.HOME == Path(os.environ["PNT_CONFIG"]).parent  # set by conftest
+    # conftest points PNT_CONFIG at a temp folder before pnt is imported. Not compared
+    # with the variable itself: conftest is imported under two names, and the second
+    # import points it at another temp folder after sample.py has read it.
+    assert samplemod.HOME.name.startswith("pnt-config-")
     assert samplemod.HOME != Path.home() / ".pnt"
 
 
