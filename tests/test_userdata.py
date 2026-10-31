@@ -108,6 +108,15 @@ def test_tagging_a_hand_that_is_not_there_raises_but_removing_does_not(db):
     assert ud.remove_tag(db, "nosuchgame", 1, "x") is False
 
 
+def test_flagged_is_refused_as_a_tag_by_the_data_layer(db):
+    """`tag=flagged` reads the 🚩s, so a stored `flagged` tag would never be found.
+    Refused in `add_tag` itself, not only by the server's route."""
+    for tag in ("flagged", " Flagged "):
+        with pytest.raises(ValueError, match="flag the hand instead"):
+            ud.add_tag(db, HU_GAME, 53, tag)
+    assert ud.tags_for_hand(db, HU_GAME, 53) == []
+
+
 # ---------------------------------------------------------------- rebuild ---
 
 

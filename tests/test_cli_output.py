@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 
+import pytest
 from typer.testing import CliRunner
 
 from pnt import cli
@@ -92,6 +93,61 @@ def test_alias_export_refuses_the_bundled_file(tmp_path):
     )
     assert run.exit_code != 0
     assert cli.BUNDLED_ALIASES.read_bytes() == bundled
+
+
+def _flat(output: str) -> str:
+    return "".join(c for c in output if not c.isspace() and c not in "│╭╮╰╯─")  # rich wraps it
+
+
+@pytest.mark.parametrize("command", [["sync"], ["import"], ["setup", "--no-service"], ["backfill", "pglx"]])
+def test_the_sample_folder_is_refused_as_a_log_folder(tmp_path, command):
+    """Read as a log folder, the sample's anonymized copies of real games go on
+    record beside the games they copy; the server already refused it."""
+    db = tmp_path / "t.sqlite"
+    run = CliRunner().invoke(cli.app, [*command, "--log-dir", str(cli.BUNDLED_LOG_DIR), "--db", str(db)])
+    assert run.exit_code == 2, run.output
+    assert "bundledsample'sfolder" in _flat(run.output)
+    assert not db.exists() or connect(db).execute("SELECT COUNT(*) FROM raw_entries").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["stats", "--filter", "bogusterm"],
+        ["allin", "--filter", "bogusterm"],
+        ["alias", "merge", "nobody1", "nobody2"],
+        ["positions", "nobody"],
+        ["import", "nope.csv"],
+        ["redact", "--anonymize", "--aliases", "nope.csv", "--out", "out"],
+    ],
+)
+def test_a_typo_is_a_one_line_error_not_a_traceback(tmp_path, monkeypatch, args):
+    monkeypatch.chdir(tmp_path)
+    src = tmp_path / "in"
+    src.mkdir()
+    shutil.copy(HU, src / HU.name)
+    import_csv(connect(tmp_path / "t.sqlite"), src / HU.name)
+    extra = [str(src / HU.name)] if args[0] == "redact" else ["--db", str(tmp_path / "t.sqlite")]
+    run = CliRunner().invoke(cli.app, [*args, *extra])
+    assert run.exit_code == 2, run.output
+    assert run.exception is None or isinstance(run.exception, SystemExit), run.exception
+    assert "Traceback" not in run.output
+
+
+def test_setup_skips_a_log_with_no_hands(tmp_path):
+    """As `pnt import` and the sync do: a table joined and left before the first
+    deal would only make an empty game."""
+    folder = tmp_path / "logs"
+    folder.mkdir()
+    shutil.copy(HU, folder / HU.name)
+    lines = HU.read_text(encoding="utf-8").splitlines()
+    empty = folder / "poker_now_log_pglEmptyGame0000000000000.csv"
+    empty.write_text("\n".join([lines[0], *[ln for ln in lines[1:] if "starting hand" not in ln][-3:]]) + "\n", encoding="utf-8")
+    db = tmp_path / "t.sqlite"
+    run = CliRunner().invoke(cli.app, ["setup", "--no-service", "--db", str(db), "--log-dir", str(folder)])
+    assert run.exit_code == 0, run.output
+    assert "no hands" in run.output
+    assert [r[0] for r in connect(db).execute("SELECT game_id FROM games")] == [HU.stem.removeprefix("poker_now_log_")]
 
 
 def test_redact_keeps_plain_copies_out_of_the_package(tmp_path):

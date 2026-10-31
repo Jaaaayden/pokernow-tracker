@@ -217,8 +217,13 @@ def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) ->
 
 def add_tag(conn: sqlite3.Connection, game_id: str, hand_number: int, tag: str) -> str:
     """Tag one hand. Returns the tag as stored. Idempotent: tagging again keeps the
-    first time. Raises ValueError on a bad tag, or a hand the log does not have."""
+    first time. Raises ValueError on a bad tag, `flagged` (the 🚩's, set by flagging
+    the hand), or a hand the log does not have."""
     tag = normalise_tag(tag)
+    if tag == FLAGGED_TAG:
+        # Refused here, not only by the server: `tag_resolver` reads `tag=flagged`
+        # as the flags, so a row stored under the name would never be found.
+        raise ValueError(f"{FLAGGED_TAG} is the 🚩: flag the hand instead")
     _require_logged(conn, game_id, hand_number)
     with writing(conn):
         conn.execute(

@@ -17,6 +17,7 @@ import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
+from pnt import local_config
 from pnt.db.userdata import get_setting, set_setting
 from pnt.ingest.csv_source import has_hands, read_csv
 from pnt.ingest.importer import apply_aliases, import_csv
@@ -24,9 +25,11 @@ from pnt.ingest.sync import LOG_GLOB
 
 LOG_DIR = Path(__file__).resolve().parents[1] / "logs"
 ALIASES = LOG_DIR / "aliases.csv"
-#: Where the front page builds the sample: ~/.pnt beside the config, for the reason
-#: given in service.py (not under %LOCALAPPDATA%, which Store Python redirects).
-HOME = Path.home() / ".pnt"
+#: Where the front page builds the sample: beside the config (~/.pnt, for the reason
+#: given in service.py: not under %LOCALAPPDATA%, which Store Python redirects). It
+#: follows $PNT_CONFIG, so a worktree's or a test's server builds its own sample,
+#: and its clean-up of older ones never deletes the live server's.
+HOME = local_config.PATH.parent
 #: The setting a finished build stamps with its `version`; a build cut short has none.
 VERSION_SETTING = "sample_version"
 
@@ -35,13 +38,36 @@ def logs() -> list[Path]:
     return sorted(LOG_DIR.glob(LOG_GLOB))
 
 
+def is_sample_folder(path: Path) -> bool:
+    """Whether `path` is the bundled sample's own folder (pnt/logs). Never a log
+    folder: synced, its anonymized copies of real games land in your database beside
+    the games they copy, and live capture would save real names into it."""
+    try:
+        return path.expanduser().resolve() == LOG_DIR.resolve()
+    except OSError:
+        return False
+
+
+#: The last `version` worked out, under the files' (name, size, mtime) it was for.
+_version: tuple[tuple, str] | None = None
+
+
 def version() -> str:
-    """The bundled files as they are now: names and sizes, so a `pnt update` that
-    changes the sample makes the front page build it again."""
+    """The bundled files as they are now, so a `pnt update` that changes the sample
+    makes the front page build it again. Their bytes, not only their sizes: swapping
+    two stand-ins' names changes no size. Hashed again only when a file's size or
+    time moves; 27 MB takes a moment, and the switch asks more than once."""
+    global _version
+    files = [*logs(), ALIASES]
+    stamp = tuple((p.name, st.st_size, st.st_mtime_ns) for p in files for st in [p.stat()])
+    if _version is not None and _version[0] == stamp:
+        return _version[1]
     h = hashlib.sha256()
-    for p in [*logs(), ALIASES]:
+    for p in files:
         h.update(f"{p.name}:{p.stat().st_size}\n".encode())
-    return h.hexdigest()[:16]
+        h.update(p.read_bytes())
+    _version = (stamp, h.hexdigest()[:16])
+    return _version[1]
 
 
 def database() -> Path:

@@ -1760,13 +1760,9 @@ def _log_dir(text: str) -> Path:
 
 
 def _sample_folder(path: Path) -> bool:
-    """Whether `path` is the bundled sample's own folder (pnt/logs). Never a log
-    folder: synced, its anonymized copies of real games land in your database beside
-    the games they copy, and live capture would save real names into it."""
-    try:
-        return path.expanduser().resolve() == samplemod.LOG_DIR.resolve()
-    except OSError:
-        return False
+    """Whether `path` is the bundled sample's own folder: never a log folder
+    (`sample.is_sample_folder`, which the CLI's sync and import refuse too)."""
+    return samplemod.is_sample_folder(path)
 
 
 @app.get("/settings/paths")
