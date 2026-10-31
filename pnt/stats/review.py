@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from ..db.conn import generation, path_of, reading, writing
+from ..db.userdata import require_logged
 from ..logfmt.events import PREFLOP, RIVER
 from .allin import AllInRow, allin_rows, decision_street
 from .cards import (
@@ -659,13 +660,6 @@ def reviewed_marks(conn: sqlite3.Connection, game_id: str | None = None) -> dict
     return {(r["game_id"], r["hand_number"]): r["reviewed_at"] for r in conn.execute(sql, args)}
 
 
-def is_reviewed(conn: sqlite3.Connection, game_id: str, hand_number: int) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM hand_reviews WHERE game_id = ? AND hand_number = ?",
-        (game_id, hand_number),
-    ).fetchone() is not None
-
-
 def mark_reviewed(
     conn: sqlite3.Connection, game_id: str, hand_number: int, reviewed: bool = True
 ) -> str | None:
@@ -759,23 +753,11 @@ def set_note(
 # does not mark it, and marking it does not take the flag away, so the tab can
 # hide reviewed hands the way the others do.
 #
-# It is checked against the raw log, not against `hands`: the HUD flags a hand
-# seconds after its ending line arrives, often before the rebuild that derives it.
+# It is checked against the raw log, not against `hands` (`userdata.require_logged`):
+# the HUD flags a hand seconds after its ending line arrives, often before the
+# rebuild that derives it.
 
 _ENDING = re.compile(r"^-- ending hand #(\d+) --$")
-
-
-def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
-    """Raise unless the database has that hand, derived or still only raw lines."""
-    if conn.execute(
-        "SELECT 1 FROM hands WHERE game_id = ? AND hand_number = ?", (game_id, hand_number)
-    ).fetchone() is not None:
-        return
-    if conn.execute(
-        "SELECT 1 FROM raw_entries WHERE game_id = ? AND entry LIKE ?",
-        (game_id, f"-- starting hand #{hand_number} %"),
-    ).fetchone() is None:
-        raise ValueError(f"no hand #{hand_number} in game {game_id}")
 
 
 def last_ended_hand(conn: sqlite3.Connection, game_id: str) -> int | None:
@@ -818,7 +800,7 @@ def set_flag(
     does not check.
     """
     if flagged:
-        _require_logged(conn, game_id, hand_number)
+        require_logged(conn, game_id, hand_number)
     with writing(conn):
         if not flagged:
             conn.execute(

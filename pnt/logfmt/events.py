@@ -30,6 +30,8 @@ FLOP = "flop"
 TURN = "turn"
 RIVER = "river"
 STREET_ORDER = (PREFLOP, FLOP, TURN, RIVER)
+#: Each street's place in STREET_ORDER, for "folded before this street".
+STREET_INDEX = {s: i for i, s in enumerate(STREET_ORDER)}
 
 
 @dataclass(frozen=True, slots=True)

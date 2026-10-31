@@ -12,7 +12,7 @@ A session is a `game_id`. A loss in one game never carries into the next: a nigh
 sleep is the cure the window stands for.
 
 `annotate` runs wherever a player's hands are listed (`queries.facts_for`, `review_rows`,
-`facts_cached`, `facts_by_player`, `fold_equity.pool_facts`), before any spot
+`facts_cached`, `facts_by_player`, `queries.pool_facts`), before any spot
 filter, so the context is the player's whole session rather than the hands left
 after filtering. See SPEC.md, "Session dynamics".
 """
@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime
 
-from .derive import POSTFLOP_STREETS, Facts
+from .derive import POSTFLOP_STREETS, Facts, pct
 
 #: A hand that lost this many big blinds or more opens a post-loss window.
 #: Calibrated on the 14,720-hand database on 2026-10-12: 2.7% of complete hands
@@ -126,10 +126,6 @@ def next_hand(facts: Iterable[Facts], game_id: str) -> dict:
     return {"post_loss": True, "since": since, "loss_bb": size}
 
 
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
-
-
 def _row(key: str, label: str, filt: str, facts: list[Facts]) -> dict:
     """One row: VPIP, PFR, postflop aggression and bb/100, each with its n."""
     from .queries import rates, tally  # queries imports this module
@@ -151,7 +147,7 @@ def _row(key: str, label: str, filt: str, facts: list[Facts]) -> dict:
         "pfr_n": c["pfr_opp"],
         # Aggression frequency over every postflop street together: bets and
         # raises over bets, raises, calls and folds. An action count, not hands.
-        "af": _pct(agg, den),
+        "af": pct(agg, den),
         "af_n": den,
         "bb_hands": t.bb_n,
         "net_bb": r.get("net_bb"),

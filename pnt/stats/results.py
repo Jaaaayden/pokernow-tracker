@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from ..logfmt.parser import position_name
-from .derive import Facts
+from .derive import Facts, pct
 from .queries import rates, tally
 
 #: A row's bb/100 is only held up as the worst once it stands on this many hands
@@ -55,10 +55,6 @@ ROLES: tuple[tuple[str, str, str, Callable[[Facts], bool]], ...] = (
 SEAT_ORDER = ("UTG", "UTG+1", "UTG+2", "UTG+3", "LJ", "HJ", "CO", "BTN", "BTN/SB", "SB", "BB")
 
 
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
-
-
 def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
     """One row: its hands as a Tally, read out the way the stat rows are."""
     t = tally(facts)
@@ -84,9 +80,9 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
         # decision (`vpip_hands`; None when there are none), and how often they
         # saw a flop, of every hand. What separates "lost playing it" from "lost
         # the blind folding it".
-        "vpip_pct": _pct(c["vpip"], c["vpip_opp"]),
+        "vpip_pct": pct(c["vpip"], c["vpip_opp"]),
         "vpip_hands": c["vpip_opp"],
-        "saw_flop_pct": _pct(c["wtsd_opp"], t.hands),
+        "saw_flop_pct": pct(c["wtsd_opp"], t.hands),
         "wtsd": r.get("wtsd"),
         "wsd": r.get("wsd"),
         "worst": False,

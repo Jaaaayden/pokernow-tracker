@@ -36,6 +36,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 
+from ..logfmt.events import STREET_INDEX
 from ..logfmt.parser import position_name
 from .cards import (
     ALL_CLASSES,
@@ -51,6 +52,7 @@ from .cards import (
     street_of_board,
 )
 from .derive import ANSWERS, LINE_CODE, SIZE_BUCKETS, TEMPO_BUCKETS, Facts
+from .derive import POSTFLOP_STREETS as STREETS
 from .strength import TIERS, hs_of, tier_of
 from .tilt import BIG_LOSS_BB, WINDOW, post_loss
 
@@ -59,8 +61,6 @@ Predicate = Callable[[Facts], bool]
 #: hand_number) of every hand carrying it. A tag is your data, not the log's, so
 #: the caller with a connection passes one (`db.userdata.tag_resolver`).
 TagResolver = Callable[[str], Collection[tuple[str, int]]]
-
-STREETS = ("flop", "turn", "river")
 
 #: name -> predicate. Flags only; parameterised filters are handled in `parse_filter`.
 FLAGS: dict[str, Predicate] = {
@@ -405,8 +405,6 @@ def _street_term(term: str, kind: str) -> Predicate | None:
     return None
 
 
-#: The order streets are dealt in, for "folded before this street".
-_STREET_ORDER = {"preflop": 0, **{s: i + 1 for i, s in enumerate(STREETS)}}
 _LEAF_RANK = {leaf: i for i, leaf in enumerate(MADE_LEAVES)}
 
 
@@ -432,7 +430,7 @@ def _made_leaf(f: Facts, street: str | None) -> str | None:
         return None
     if street is None:
         street = street_of_board(f.board)
-    elif f.fold_street is not None and _STREET_ORDER[f.fold_street] < _STREET_ORDER[street]:
+    elif f.fold_street is not None and STREET_INDEX[f.fold_street] < STREET_INDEX[street]:
         return None
     mh = made_at(f.hole_cards, f.board, street)
     return None if mh is None else leaf_of(mh)
@@ -1133,9 +1131,9 @@ def _compile_term(
 
     if term.startswith("fold_street="):
         street = term.split("=", 1)[1].strip().lower()
-        if street not in _STREET_ORDER:
+        if street not in STREET_INDEX:
             raise ValueError(
-                f"unknown street {street!r} for fold_street=. Known: {', '.join(_STREET_ORDER)}"
+                f"unknown street {street!r} for fold_street=. Known: {', '.join(STREET_INDEX)}"
             )
         return (lambda f, s=street: f.fold_street == s), "fold_street"
 

@@ -31,12 +31,10 @@ across streets, ``all aggression``, has no filter, since a filter cannot say
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterable
 
 from ..logfmt.events import RIVER
-from .derive import POSTFLOP_STREETS, SIZE_BUCKETS, Facts
-from .queries import facts_by_player
+from .derive import POSTFLOP_STREETS, SIZE_BUCKETS, Facts, pct
 from .tags import strength_at
 
 #: The four classes, strongest claim first: the order the stacked bar is drawn in.
@@ -73,7 +71,8 @@ def class_terms(street: str) -> dict[str, str | None]:
     (`strength.tier_at`): value is strong or nutted, marginal is marginal, a
     semi-bluff is a draw, a bluff is air -- a board pair the hole cards add
     nothing to included. On the river nothing is a semi-bluff: a draw there has
-    missed, and is air. `test_every_class_reproduces` holds this to `strength_at`.
+    missed, and is air. `test_every_row_and_class_reproduces_as_a_filter` holds
+    this to `strength_at`.
     """
     return {
         "value": f"tier_{street}>=strong",
@@ -91,10 +90,6 @@ def ratio_text(value: int, bluffs: int) -> str:
     if not bluffs:
         return "∞ : 1"
     return f"{value / bluffs:.1f} : 1"
-
-
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
 
 
 def _last_aggression(f: Facts) -> str | None:
@@ -200,9 +195,9 @@ def _row(cat: dict, rows: list[Facts], ids: bool) -> dict:
         ),
         "n": len(rows),
         "known": known,
-        "coverage": _pct(known, len(rows)),
+        "coverage": pct(known, len(rows)),
         "counts": counts,
-        "pct": {c: _pct(v, known) for c, v in counts.items()},
+        "pct": {c: pct(v, known) for c, v in counts.items()},
         "ratio": round(counts["value"] / bluffs, 2) if bluffs else None,
         "ratio_text": ratio_text(counts["value"], bluffs),
         "folded": None,
@@ -212,7 +207,7 @@ def _row(cat: dict, rows: list[Facts], ids: bool) -> dict:
     if cat["kind"] in ("bet", "all_bets"):
         folded = sum(1 for f in rows if f.bet_answer.get(cat["street"]) == "fold")
         out["folded"] = folded
-        out["folded_pct"] = _pct(folded, len(rows))
+        out["folded_pct"] = pct(folded, len(rows))
     if ids:
         out["hand_ids"] = [f.hand_id for f in rows]
         out["class_ids"] = by_class
@@ -235,14 +230,3 @@ def bluff_value(facts: Iterable[Facts], ids: bool = True) -> dict:
         "streets": [*POSTFLOP_STREETS, "all"],
         "rows": rows,
     }
-
-
-def pool_facts(conn: sqlite3.Connection, game_id: str | None = None) -> list[Facts]:
-    """Every player's rows over every hand: the pool a pool category counts.
-
-    Derived afresh on each call, like a filtered `report()`: the Facts of the
-    whole database are too big to keep, and the pool is asked for by a person
-    clicking, not on a timer.
-    """
-    grouped, _, _ = facts_by_player(conn, game_id)
-    return [f for rows in grouped.values() for f in rows]

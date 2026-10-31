@@ -22,9 +22,8 @@ from pathlib import Path
 
 from pnt import local_config
 
-#: What a note can be. Open until someone answers it; resolved with a reply until
-#: you have looked and dismissed it, which closes it.
-STATUSES = ("open", "resolved", "closed")
+# A note is open until someone answers it, resolved with a reply until you have
+# looked and dismissed it, then closed (app.py's `AnnotationChange.status`).
 #: Past this, the oldest closed notes go: the file is read whole on every request.
 KEEP = 500
 

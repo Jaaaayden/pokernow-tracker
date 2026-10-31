@@ -592,7 +592,7 @@ def test_a_mark_survives_the_rebuild_that_moves_every_hand_id(db):
     rebuild_game(db, HU_GAME)
     after = ids()
     assert before and all(before[n] != after[n] for n in before), "hand_ids did not move"
-    assert rv.is_reviewed(db, HU_GAME, 53)
+    assert (HU_GAME, 53) in rv.reviewed_marks(db)
     assert rv.reviewed_marks(db, HU_GAME).keys() == {(HU_GAME, 53)}
 
 
@@ -602,7 +602,7 @@ def test_marking_is_idempotent_both_ways_and_keeps_the_first_time(db):
     assert first and rv.mark_reviewed(db, game, number) == first
     assert rv.mark_reviewed(db, game, number, reviewed=False) is None
     assert rv.mark_reviewed(db, game, number, reviewed=False) is None  # no-op, not an error
-    assert not rv.is_reviewed(db, game, number)
+    assert not (game, number) in rv.reviewed_marks(db)
 
 
 def test_marking_a_hand_that_is_not_there_raises_but_clearing_one_does_not(db):
@@ -683,7 +683,7 @@ def test_a_note_and_a_mark_do_not_touch_each_other(db):
     again must not throw away what you wrote about it."""
     game, number = _flagged(db)
     rv.set_note(db, game, number, "check the river call")
-    assert not rv.is_reviewed(db, game, number)  # a note does not mark it
+    assert not (game, number) in rv.reviewed_marks(db)  # a note does not mark it
 
     rv.mark_reviewed(db, game, number)
     rv.mark_reviewed(db, game, number, reviewed=False)
@@ -691,7 +691,7 @@ def test_a_note_and_a_mark_do_not_touch_each_other(db):
 
     rv.mark_reviewed(db, game, number)
     rv.set_note(db, game, number, None)
-    assert rv.is_reviewed(db, game, number)
+    assert (game, number) in rv.reviewed_marks(db)
 
 
 def test_every_row_of_a_noted_hand_carries_the_note(db):
@@ -793,7 +793,7 @@ def test_a_flag_is_independent_of_the_mark(db):
     assert rv.is_flagged(db, game, number)
     rv.mark_reviewed(db, game, number)
     rv.set_flag(db, game, number, flagged=False)
-    assert rv.is_reviewed(db, game, number)
+    assert (game, number) in rv.reviewed_marks(db)
 
 
 def test_every_review_row_carries_the_flag(db):

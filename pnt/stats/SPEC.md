@@ -199,7 +199,7 @@ Judgement calls:
 
 | Fact | Definition |
 |---|---|
-| **posted_blind** | The player made a forced preflop post that is a live blind: small blind, big blind, straddle, or a returning player's missed big blind. Antes and dead small blinds are not live (`post_kind` `ante` and `missing_sb`), and a post of no recorded kind counts as live |
+| **posted_blind** | The player made a forced preflop post that is a live blind: small blind, big blind, straddle, or a returning player's missed big blind. Antes, dead small blinds and bomb-pot posts are not live (`post_kind` `ante`, `missing_sb` and `bomb_pot`), and a post of no recorded kind counts as live |
 
 | Stat | Numerator | Denominator | Exclusions |
 |---|---|---|---|
@@ -512,7 +512,7 @@ Judgement calls:
    fold is in the log. The other bias still applies in reverse: this says how
    often a bet *won*, not what it was. Most bets that got called were not bluffs.
 
-The **pool** (`GET /fold_equity`, `pnt foldeq --pool`) is the same computation over
+The **pool** (`pnt foldeq --pool`) is the same computation over
 every (hand, player) row in the database, so its counts are the players' counts
 summed. Its rows carry filters but no hand ids, since one hand is several rows.
 `GET /players/{alias}/fold_equity` adds each row's `hand_ids` and, where the
@@ -752,7 +752,7 @@ as a flag is, so the hand that just ended can be tagged.
 
 `GET /tagged?tag=&player=&filter=&game=` lists the hands carrying `tag`
 (`flagged` for the 🚩; none for every tagged hand) newest first, in the rows
-`/players/{alias}/flagged` lists, each with its `tags`. `tags` counts the hands
+the other hand lists use, each with its `tags`. `tags` counts the hands
 per tag over the same hands, `flagged` first. With `player` the rows are theirs
 in the spot; without, one row per hand from the log owner's seat when they were
 dealt in, else the first seat from the button, derived alone, so the session
@@ -1201,7 +1201,7 @@ on the made-hand leaves, which name what a hand is rather than how good it was.
 ### Strength by line
 
 The action-line explorer (`lines.line_breakdown`, `GET /players/{alias}/lines`,
-`GET /lines` for the pool, `pnt lines`, the chart's **Lines** view) groups a spot's
+`pnt lines`, the chart's **Lines** view) groups a spot's
 hands by how they were played after the flop, and splits each group by what the
 hands in it were when shown.
 
@@ -1419,9 +1419,9 @@ two streets per hand, which no single term says.
 `GET /players/{alias}/slowplay?street=flop&floor=set&filter=` returns `street`'s
 table at the top level, every cell with `n`, `pct` of its row, `filter` and
 `hand_ids`, plus `streets`, `all_streets` and `made_on`.
-`GET /slowplay` (same parameters, plus `min`) pools everyone's hands and adds
+`pnt slowplay` with no alias (plus `--min`) pools everyone's hands and adds
 `players`, each player's total row, highest slowplay share first. `pnt slowplay
-[alias] --street flop --floor set` prints both. The chart's **Strength by street**
+[alias] --street flop --floor set` prints one player's. The chart's **Strength by street**
 view draws the player's: a grid of `slowplay_pct` per leaf and street (each cell
 lists the row's hands on that street; hover shows its columns), the one-street
 table under it, and the line-by-when-made groups, the top four lines each and the
@@ -1937,8 +1937,7 @@ Judgement calls:
 
 A tag is a claim about a player you can act on at the table, backed by a count
 and a spot filter that puts the hands behind it on the chart. `tags.py` mirrors
-this section; the HUD shows them as chips, `GET /players/{alias}/tags` and
-`pnt tags` print them. Every threshold lives in `tags.THRESHOLDS`, and this table
+this section; the HUD shows them as chips, and `pnt tags` prints them. Every threshold lives in `tags.THRESHOLDS`, and this table
 is the other copy.
 
 Three rules hold throughout:
@@ -2127,7 +2126,7 @@ fewer than five qualified players and stay on their fixed cuts.
 ### Leak finder
 
 The tags turned on the hero: their own stats furthest out of line, and what each
-costs. `leaks.py` mirrors this section; `GET /leaks` and `pnt leaks` read it.
+costs. `leaks.py` mirrors this section; `pnt leaks` reads it.
 
 **Experimental.** The fold-equity leaks hold the hero's folds against a pure
 bluff's break-even, which assumes the bettors bluff that size often enough. On a
@@ -2347,7 +2346,7 @@ hand is −100 bb/100 by construction, so −80 from the big blind is +20 here.
 
 | Fact / rate | Definition |
 |---|---|
-| **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` is `Fraction(posted, bb)`, exact, and None when the big blind is unknown |
+| **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` below means `Fraction(posted, bb)`, exact, and is undefined when the big blind is unknown |
 | **bb_per_100_vs_fold** | `(Σ net_bb + Σ posted_bb) / hands × 100`, over the complete hands with a known big blind that bb/100 uses (`n` = `Tally.bb_n`), where a hand with no decision adds 0 (call 2) |
 | **bb_per_100_vs_fold_ci** | The half-width `bb_per_100_ci` is, with `x` = each hand's `net_bb + posted_bb` (0 on a hand with no decision). None under two hands |
 
@@ -2464,8 +2463,8 @@ disposable: drop it and the next request refills it, with identical numbers.
 ### Head to head
 
 The money between two players: who has paid whom, and how much. `h2h.py` mirrors
-this section; `GET /players/{alias}/h2h` (one row per opponent), `GET /h2h` (the
-pool's matrix), `pnt h2h` and the players page read it.
+this section; `GET /players/{alias}/h2h` (one row per opponent), `pnt h2h` (the
+pool's matrix with no name) and the players page read it.
 
 Each hand is settled into transfers, **payer → payee**, on two ledgers kept apart:
 the pot (`collected − contributed`) and the 7-2 bounty (`bounty`). A Nit
@@ -3144,8 +3143,8 @@ therefore when it was *last* written, where `reviewed_at` is when the hand was
 set with the HUD's 🚩 for the hand that just ended, or with the 🚩 beside any list
 row. It is keyed, kept and made idempotent like the mark (`flagged_at` is when it was
 *first* set), and is independent of both the mark and the note. The Tagged
-tab lists the flagged hands as its built-in `flagged` tag;
-`GET /players/{alias}/flagged` returns them too, and
+tab lists the flagged hands as its built-in `flagged` tag
+(`GET /tagged?tag=flagged`), and
 `POST /games/{game_id}/hands/{hand_number}/flag` sets or clears one. Two things
 differ from the mark:
 

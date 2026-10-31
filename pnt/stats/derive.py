@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from fractions import Fraction
 
 from ..logfmt.events import (
     FLOP,
@@ -32,6 +31,12 @@ from .cards import board_at
 POSTFLOP_STREETS = (FLOP, TURN, RIVER)
 PREV_STREET = {FLOP: PREFLOP, TURN: FLOP, RIVER: TURN}
 
+def pct(num: int, den: int) -> float | None:
+    """`num` as a percent of `den` to one decimal; None on an empty denominator.
+    Every rate and share the stats print goes through this one rounding."""
+    return round(100.0 * num / den, 1) if den else None
+
+
 VOLUNTARY_COMMIT = {"call", "bet", "raise"}
 AGGRESSIVE = {"bet", "raise"}
 
@@ -41,8 +46,9 @@ STEAL_SEATS = frozenset({"CO", "BTN", "SB", "BTN/SB"})
 #: The seats that defend against a steal.
 BLIND_SEATS = frozenset({"SB", "BB"})
 #: Forced posts that are not a live blind: they go to the pot without being the
-#: player's bet, so the player who made one still comes in cold.
-DEAD_POST_KINDS = frozenset({POST_ANTE, POST_MISSING_SB})
+#: player's bet, so the player who made one still comes in cold. A bomb-pot post
+#: is everyone's share of a pot with no preflop betting, not a blind either.
+DEAD_POST_KINDS = frozenset({POST_ANTE, POST_MISSING_SB, POST_BOMB})
 
 #: Bet-size buckets, smallest first: under a fifth of the pot, a fifth to half,
 #: half to three-quarters, three-quarters to pot, over pot. See SPEC.md, "Bet
@@ -443,11 +449,6 @@ class Facts:
         if self.seats_from_button is None or self.dead_button or self.blinds_irregular:
             return None
         return position_name(self.seats_from_button, self.n_dealt_in, self.position_slots)
-
-    @property
-    def posted_bb(self) -> Fraction | None:
-        """`posted` in this hand's big blinds, exact; None when the blind is unknown."""
-        return Fraction(self.posted, self.bb_size) if self.bb_size else None
 
     @property
     def steal_opp(self) -> bool:

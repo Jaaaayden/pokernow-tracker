@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from .derive import Facts
+from .derive import Facts, pct
 from .filters import parse_filter
 
 #: The funnel's steps, widest first: (key, label, filter terms). "Reached" is the
@@ -47,10 +47,6 @@ FOLD_STREETS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _pct(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
-
-
 def _count(facts: list[Facts], terms: str) -> int:
     pred: Callable[[Facts], bool] = parse_filter(terms)
     return sum(1 for f in facts if pred(f))
@@ -61,7 +57,7 @@ def _fold_row(key: str, label: str, filt: str, of_filt: str, facts: list[Facts])
     same way. `pct` is how often reaching it that way ended in a fold there."""
     n, of = _count(facts, filt), _count(facts, of_filt)
     return {"key": key, "label": label, "filter": filt, "n": n,
-            "of_filter": of_filt, "of": of, "pct": _pct(n, of)}
+            "of_filter": of_filt, "of": of, "pct": pct(n, of)}
 
 
 def funnel(facts: Iterable[Facts]) -> dict:
@@ -88,12 +84,12 @@ def funnel(facts: Iterable[Facts]) -> dict:
         n = _count(flops, filt)
         steps.append({
             "key": key, "label": label, "filter": filt, "n": n,
-            "pct": _pct(n, seen), "step_pct": _pct(n, prev) if prev is not None else None,
+            "pct": pct(n, seen), "step_pct": pct(n, prev) if prev is not None else None,
         })
         prev = n
 
     won = [
-        {"key": key, "label": label, "filter": filt, "n": (n := _count(flops, filt)), "pct": _pct(n, seen)}
+        {"key": key, "label": label, "filter": filt, "n": (n := _count(flops, filt)), "pct": pct(n, seen)}
         for key, label, filt in WON
     ]
 
@@ -111,9 +107,9 @@ def funnel(facts: Iterable[Facts]) -> dict:
         folds.append(row)
     total_folds = sum(r["n"] for r in folds)
     for r in folds:
-        r["share"] = _pct(r["n"], total_folds)
+        r["share"] = pct(r["n"], total_folds)
         for x in r["roles"]:
-            x["share"] = _pct(x["n"], total_folds)
+            x["share"] = pct(x["n"], total_folds)
 
     return {
         "hands": len(facts),

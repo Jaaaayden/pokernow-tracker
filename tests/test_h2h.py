@@ -116,6 +116,19 @@ def test_a_row_against_the_table_sums_to_the_players_net(every):
     assert "hand_ids" not in json.dumps(pool)
 
 
+def test_two_people_under_one_name_keep_two_rows(every, monkeypatch):
+    """The matrix is keyed by name: people who share one each take their key beside it."""
+    from pnt.stats import h2h
+
+    key = _person(every)
+    keys = {key(pid) for h in load_hands(every) for pid in h.players}
+    monkeypatch.setattr(h2h, "_people", lambda conn: (key, {k: "Mike" for k in keys}))
+    pool = pool_h2h(every)
+    names = [p["player"] for p in pool["players"]]
+    assert len(names) == len(set(names)) == len(keys)
+    assert set(names) == {f"Mike ({k})" for k in keys} == set(pool["cells"])
+
+
 def test_heads_up_at_the_end_attributes_exactly():
     """B called A down; C folded after putting 10 in. A won it all."""
     hand = _hand({"A": (50, 110, False), "B": (50, 0, False), "C": (10, 0, True)})
@@ -240,8 +253,15 @@ def client(tmp_path, monkeypatch):
     return local_client(app_module.app)
 
 
+def _pool() -> dict:
+    """The pool matrix `pnt h2h` prints, on the client's database."""
+    from pnt.server import app as app_module
+
+    return pool_h2h(app_module.db(), None)
+
+
 def test_endpoints_and_the_chart_drill(client):
-    pool = client.get("/h2h").json()
+    pool = _pool()
     assert len(pool["players"]) >= 2
     alias = pool["players"][0]["player"]
     body = client.get(f"/players/{alias}/h2h").json()
@@ -254,12 +274,12 @@ def test_endpoints_and_the_chart_drill(client):
 
 
 def test_a_name_with_a_slash_reaches_h2h(client):
-    pool = client.get("/h2h").json()
+    pool = _pool()
     alias = pool["players"][0]["player"]
     assert client.post("/aliases/rename", json={"old": alias, "new": "9/2"}).status_code == 200
     r = client.get("/players/9%2F2/h2h")
     assert r.status_code == 200 and r.json()["rows"]
-    assert "9/2" in client.get("/h2h").json()["cells"]
+    assert "9/2" in _pool()["cells"]
     other = r.json()["rows"][0]["opponent"]
     back = client.get(f"/players/{other}/h2h").json()
     row = next(x for x in back["rows"] if x["opponent"] == "9/2")

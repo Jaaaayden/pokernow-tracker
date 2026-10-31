@@ -60,13 +60,18 @@ ANTE_FOLDS = mk([HERO, A, B], [(HERO, "post", 2, "ante"), (A, "post", 5, "sb"), 
 FOLDS = [SB_FOLDS, BB_FOLDS, BUTTON_FOLDS, WALK, ANTE_FOLDS]
 
 
+def posted_bb(f) -> Fraction | None:
+    """`posted` in the hand's big blinds, exact, as SPEC.md's `posted_bb`."""
+    return Fraction(f.posted, f.bb_size) if f.bb_size else None
+
+
 def test_posted_is_every_forced_chip_in_big_blinds():
-    assert hero(SB_FOLDS).posted_bb == Fraction(1, 2)
-    assert hero(BB_FOLDS).posted_bb == 1
-    assert hero(BUTTON_FOLDS).posted_bb == 0
-    assert hero(ANTE_FOLDS).posted == 2 and hero(ANTE_FOLDS).posted_bb == Fraction(1, 5)
+    assert posted_bb(hero(SB_FOLDS)) == Fraction(1, 2)
+    assert posted_bb(hero(BB_FOLDS)) == 1
+    assert posted_bb(hero(BUTTON_FOLDS)) == 0
+    assert hero(ANTE_FOLDS).posted == 2 and posted_bb(hero(ANTE_FOLDS)) == Fraction(1, 5)
     unknown = mk([HERO, A], [(HERO, "post", 5, "sb"), (A, "post", 10, "bb")], {}, bb=None)
-    assert hero(unknown).posted == 5 and hero(unknown).posted_bb is None
+    assert hero(unknown).posted == 5 and posted_bb(hero(unknown)) is None
 
 
 def test_folding_every_hand_is_zero_against_folding():
@@ -146,7 +151,7 @@ def test_an_incomplete_hand_is_out_of_both_sides():
 
 def _manual(rows) -> tuple[float, float]:
     xs = [
-        (Fraction(f.net, f.bb_size) + f.posted_bb) if f.vpip_opp or f.line else Fraction(0)
+        (Fraction(f.net, f.bb_size) + posted_bb(f)) if f.vpip_opp or f.line else Fraction(0)
         for f in rows if f.bb_size and f.complete
     ]
     n = len(xs)
@@ -202,10 +207,10 @@ def test_fixture_blinds_post_a_half_and_one_big_blind(db):
         for f in derive(h):
             kinds = [a.post_kind for a in _posts(h, f.pn_id)]
             if kinds == ["sb"] and h.bb == 2 * _posts(h, f.pn_id)[0].amount:
-                assert f.posted_bb == Fraction(1, 2)
+                assert posted_bb(f) == Fraction(1, 2)
                 seen += 1
             elif kinds == ["bb"]:
-                assert f.posted_bb == 1
+                assert posted_bb(f) == 1
                 seen += 1
     assert seen > 100
 
@@ -225,4 +230,4 @@ def test_every_fixture_post_counts_straddles_and_dead_posts_included(edge_db):
         f for h in load_hands(edge_db, STRADDLE_GAME) for f in derive(h)
         if any(a.post_kind == "straddle" for a in _posts(h, f.pn_id))
     )
-    assert straddler.posted_bb >= 2
+    assert posted_bb(straddler) >= 2

@@ -76,6 +76,14 @@ def test_a_bomb_pot_counts_in_no_preflop_rate():
     assert f["AAA"].bet_size.get("flop") and f["AAA"].hole_cards is None  # unknown, not hidden
 
 
+def test_a_bomb_pot_post_is_not_a_blind():
+    """Everyone's share of a bomb pot is forced, and nobody's live blind (SPEC.md,
+    "Squeeze and cold-call", `posted_blind`)."""
+    f = derive(hand_row(_parsed(double=False).hands[0]))
+    assert not any(x.posted_blind for x in f)
+    assert all(x.posted == 30 for x in f)
+
+
 def test_double_board_counts_for_money_only():
     """Two boards are past every rule here: money and the hand lists, like PLO."""
     h = hand_row(_parsed().hands[0])

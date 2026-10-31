@@ -300,7 +300,7 @@ def pool_rows(
     game_id: str | None = None,
     predicate: Callable[[Facts], bool] | None = None,
 ) -> list[Timed]:
-    """`fold_equity.pool_facts` for the pool's report, one game at a time and kept
+    """`queries.pool_facts` for the pool's report, one game at a time and kept
     to `Timed`. The whole database's Facts at once is about 400 MB, which the
     phone's 1 GB VM swaps on for minutes; a game's session facts never read
     another game's rows, so the answer is the same."""
@@ -311,11 +311,6 @@ def pool_rows(
         for f in play_facts(load_hands(conn, g))
         if predicate is None or predicate(f)
     ]
-
-
-def owners(conn: sqlite3.Connection) -> set[tuple[str, str]]:
-    """(game, PokerNow ID) of each log's owner: the player whose every card it shows."""
-    return {(g, h) for g, h in conn.execute("SELECT game_id, hero_pn_id FROM games WHERE hero_pn_id IS NOT NULL")}
 
 
 def needs_rebuild(conn: sqlite3.Connection) -> bool:

@@ -17,7 +17,7 @@ import json
 import math
 import sqlite3
 from collections import Counter, defaultdict
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from operator import attrgetter
@@ -35,6 +35,7 @@ from .derive import (
     HandPlayerRow,
     HandRow,
     derive,
+    pct,
 )
 from .lru import LRU
 from .tilt import annotate
@@ -187,10 +188,6 @@ def display_names(conn: sqlite3.Connection) -> dict[str, str]:
             " LEFT JOIN players p ON p.player_id = pi.player_id"
         )
     }
-
-
-def _rate(num: int, den: int) -> float | None:
-    return round(100.0 * num / den, 1) if den else None
 
 
 def wilson(num: int, den: int, z: float = 1.96) -> tuple[float, float] | None:
@@ -407,12 +404,12 @@ def rates(t: Tally) -> dict:
     bb_sum, vs_fold = t.bb_sum, _vs_fold(t)
     out = {
         "hands": t.hands,
-        "vpip": _rate(c["vpip"], c["vpip_opp"]),
-        "pfr": _rate(c["pfr"], c["pfr_opp"]),
-        "3bet": _rate(c["three_bet"], c["three_bet_opp"]),
-        "fold_to_3bet": _rate(c["fold_to_3bet"], c["fold_to_3bet_opp"]),
-        "wtsd": _rate(c["wtsd"], c["wtsd_opp"]),
-        "wsd": _rate(c["wsd"], c["wtsd"]),
+        "vpip": pct(c["vpip"], c["vpip_opp"]),
+        "pfr": pct(c["pfr"], c["pfr_opp"]),
+        "3bet": pct(c["three_bet"], c["three_bet_opp"]),
+        "fold_to_3bet": pct(c["fold_to_3bet"], c["fold_to_3bet_opp"]),
+        "wtsd": pct(c["wtsd"], c["wtsd_opp"]),
+        "wsd": pct(c["wsd"], c["wtsd"]),
         "net": t.net,
         "bb_per_100": round(float(100 * bb_sum / t.bb_n), 2) if t.bb_n else None,
         # The total behind bb/100: each complete hand's net in its own big blinds.
@@ -423,15 +420,15 @@ def rates(t: Tally) -> dict:
         "bb_per_100_vs_fold": round(float(100 * vs_fold / t.bb_n), 2) if t.bb_n else None,
         "bb_per_100_vs_fold_ci": _ci(t.bb_n, vs_fold, t.vf_sq),
         # Won when saw flop, and the part of it won without a showdown.
-        "wwsf": _rate(c["wwsf"], c["wtsd_opp"]),
-        "wwsf_nsd": _rate(c["wwsf_nsd"], c["wtsd_opp"]),
-        "ats": _rate(c["steal"], c["steal_opp"]),
-        "fold_to_steal": _rate(c["fold_to_steal"], c["fold_to_steal_opp"]),
-        "3bet_vs_steal": _rate(c["three_bet_vs_steal"], c["fold_to_steal_opp"]),
-        "squeeze": _rate(c["squeeze"], c["squeeze_opp"]),
-        "cold_call": _rate(c["cold_call"], c["cold_call_opp"]),
-        "limp_reraise": _rate(c["limp_raise"], limp_faced),
-        "jam_pf": _rate(c["jam_pf"], c["jam_pf_opp"]),
+        "wwsf": pct(c["wwsf"], c["wtsd_opp"]),
+        "wwsf_nsd": pct(c["wwsf_nsd"], c["wtsd_opp"]),
+        "ats": pct(c["steal"], c["steal_opp"]),
+        "fold_to_steal": pct(c["fold_to_steal"], c["fold_to_steal_opp"]),
+        "3bet_vs_steal": pct(c["three_bet_vs_steal"], c["fold_to_steal_opp"]),
+        "squeeze": pct(c["squeeze"], c["squeeze_opp"]),
+        "cold_call": pct(c["cold_call"], c["cold_call_opp"]),
+        "limp_reraise": pct(c["limp_raise"], limp_faced),
+        "jam_pf": pct(c["jam_pf"], c["jam_pf_opp"]),
         "_opp": {
             "vpip": c["vpip_opp"],
             "3bet": c["three_bet_opp"],
@@ -454,31 +451,31 @@ def rates(t: Tally) -> dict:
             ("probe", "probe", "probe_opp"),
             ("fold_to_probe", "fold_to_probe", "fold_to_probe_opp"),
         ):
-            out[f"{key}_{street}"] = _rate(c[num, street], c[den, street])
+            out[f"{key}_{street}"] = pct(c[num, street], c[den, street])
             out["_opp"][f"{key}_{street}"] = c[den, street]
     for street in _STREETS:
-        out[f"float_{street}"] = _rate(c["float_bet", street], c["float_opp", street])
+        out[f"float_{street}"] = pct(c["float_bet", street], c["float_opp", street])
         out["_opp"][f"float_{street}"] = c["float_opp", street]
     for street in _STREETS:
         faced_cbet = c["fold_to_cbet_opp", street]
-        out[f"cbet_{street}"] = _rate(c["cbet", street], c["cbet_opp", street])
-        out[f"fold_to_cbet_{street}"] = _rate(c["fold_to_cbet", street], faced_cbet)
-        out[f"raise_cbet_{street}"] = _rate(c["raise_cbet", street], faced_cbet)
-        out[f"donk_{street}"] = _rate(c["donk", street], c["donk_opp", street])
-        out[f"af_{street}"] = _rate(c["aggressive", street], c["agg_denom", street])
-        out[f"check_raise_{street}"] = _rate(c["check_raise", street], c["check_raise_opp", street])
+        out[f"cbet_{street}"] = pct(c["cbet", street], c["cbet_opp", street])
+        out[f"fold_to_cbet_{street}"] = pct(c["fold_to_cbet", street], faced_cbet)
+        out[f"raise_cbet_{street}"] = pct(c["raise_cbet", street], faced_cbet)
+        out[f"donk_{street}"] = pct(c["donk", street], c["donk_opp", street])
+        out[f"af_{street}"] = pct(c["aggressive", street], c["agg_denom", street])
+        out[f"check_raise_{street}"] = pct(c["check_raise", street], c["check_raise_opp", street])
 
         # Every c-bet counts toward the share, including one whose size is unknown.
         n_cbets = sum(n for k, n in c.items() if k[:2] == ("cbet_size", street))
         out[f"cbet_{street}_sizes"] = {
-            b: {"n": c["cbet_size", street, b], "pct": _rate(c["cbet_size", street, b], n_cbets)}
+            b: {"n": c["cbet_size", street, b], "pct": pct(c["cbet_size", street, b], n_cbets)}
             for b in SIZE_BUCKETS
         }
         out[f"vs_cbet_{street}_by_size"] = {
             b: {
                 "faced": c["faced", street, b],
-                "fold": _rate(c["faced_fold", street, b], c["faced", street, b]),
-                "raise": _rate(c["faced_raise", street, b], c["faced", street, b]),
+                "fold": pct(c["faced_fold", street, b], c["faced", street, b]),
+                "raise": pct(c["faced_raise", street, b], c["faced", street, b]),
             }
             for b in SIZE_BUCKETS
         }
@@ -487,7 +484,7 @@ def rates(t: Tally) -> dict:
         out[f"bet_{street}_answer_by_size"] = {
             b: {
                 "n": c["bet_n", street, b],
-                **{a: _rate(c["bet_got", street, b, a], c["bet_n", street, b]) for a in ANSWERS},
+                **{a: pct(c["bet_got", street, b, a], c["bet_n", street, b]) for a in ANSWERS},
             }
             for b in SIZE_BUCKETS
         }
@@ -495,7 +492,7 @@ def rates(t: Tally) -> dict:
         out[f"vs_bet_{street}_by_size"] = {
             b: {
                 "faced": c["vs_bet", street, b],
-                **{a: _rate(c["vs_bet_did", street, b, a], c["vs_bet", street, b]) for a in ANSWERS},
+                **{a: pct(c["vs_bet_did", street, b, a], c["vs_bet", street, b]) for a in ANSWERS},
             }
             for b in SIZE_BUCKETS
         }
@@ -519,17 +516,19 @@ def facts_by_player(
     conn: sqlite3.Connection,
     game_id: str | None = None,
     pn_ids: Collection[str] | None = None,
-) -> tuple[dict[int, list[Facts]], dict[int, str], list[HandRow]]:
+) -> tuple[dict[int | str, list[Facts]], dict[int | str, str], list[HandRow]]:
     """Derive every hand and group the resulting facts by canonical player.
     The `play` scope, like `facts_cached`'s default: every caller reads play."""
     with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
         hands = load_hands(conn, game_id, pn_ids)
         ident = identity_map(conn)
-    grouped: dict[int, list[Facts]] = defaultdict(list)
-    aliases: dict[int, str] = {}
+    grouped: dict[int | str, list[Facts]] = defaultdict(list)
+    aliases: dict[int | str, str] = {}
     for hand in hands:
         for fact in derive(hand):
-            pid, alias = ident.get(fact.pn_id, (-1, fact.pn_id))
+            # An ID with no identity row (none today: a rebuild resolves every seat)
+            # is its own player, never one shared stand-in.
+            pid, alias = ident.get(fact.pn_id, (fact.pn_id, fact.pn_id))
             grouped[pid].append(fact)
             aliases[pid] = alias
     # The session facts (see tilt.py) are numbered over every hand, as a player's
@@ -586,6 +585,25 @@ def play_facts(hands: Iterable[HandRow]) -> list[Facts]:
     of them, then the hands not analysed left out -- what `facts_cached` gives
     for one player."""
     return [f for f in annotate([f for h in hands for f in derive(h)]) if f.analysed]
+
+
+def pool_facts(
+    conn: sqlite3.Connection,
+    game_id: str | None = None,
+    predicate: Callable[[Facts], bool] | None = None,
+) -> list[Facts]:
+    """Every (hand, player) row in the database, or in one game, inside a spot: the
+    pool the pool views count. A heads-up hand is two rows, one from each seat.
+
+    Derived afresh, like a filtered `report()`: a predicate cannot key a cache, the
+    per-player cache holds a handful of players and this is all of them, and it is
+    asked for by a person, not on a timer. The session facts come first, so a spot
+    like `post_loss` reads whole sessions.
+    """
+    with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
+        hands = load_hands(conn, game_id)
+    facts = play_facts(hands)
+    return [f for f in facts if predicate(f)] if predicate is not None else facts
 
 
 def _scoped(conn: sqlite3.Connection, entry: _PlayerFacts, games: str) -> list[Facts]:
@@ -941,11 +959,11 @@ def _full_report(
 ) -> tuple[int | None, list[dict]]:
     """`report()`'s miss: every player's rates, derived where a game's stamp moved."""
     ident = identity_map(conn)
-    grouped_t: dict[int, Tally] = {}
-    names: dict[int, str] = {}
+    grouped_t: dict[int | str, Tally] = {}
+    names: dict[int | str, str] = {}
     for per_id in _tallies(conn, game_id):
         for pn_id, t in per_id.items():
-            pid, alias = ident.get(pn_id, (-1, pn_id))
+            pid, alias = ident.get(pn_id, (pn_id, pn_id))  # unidentified: its own row
             g = grouped_t.get(pid)
             if g is None:
                 g = grouped_t[pid] = Tally()
