@@ -313,11 +313,6 @@ def pool_rows(
     ]
 
 
-def owners(conn: sqlite3.Connection) -> set[tuple[str, str]]:
-    """(game, PokerNow ID) of each log's owner: the player whose every card it shows."""
-    return {(g, h) for g, h in conn.execute("SELECT game_id, hero_pn_id FROM games WHERE hero_pn_id IS NOT NULL")}
-
-
 def needs_rebuild(conn: sqlite3.Connection) -> bool:
     """Whether any stored voluntary action has no time: hands imported before
     `actions.ord` existed, which only `pnt rebuild` can time."""

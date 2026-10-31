@@ -2414,7 +2414,8 @@ def timing(
     logs' owners' own cards apart from everyone else's shown hands. Hands stored
     before this version have no times until `pnt rebuild`.
     """
-    from .stats.timing import owners, pool_rows, timing_report
+    from .stats.pool import owners
+    from .stats.timing import pool_rows, timing_report
 
     conn = connect(db)
     names = display_names(conn)

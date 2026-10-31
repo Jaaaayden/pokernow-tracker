@@ -2392,7 +2392,8 @@ def pool_timing(
     strength split into the logs' owners' own cards and everyone else's shown
     hands, and `thin`: who has enough known hands to read alone. No hand ids --
     one hand is several players' rows here."""
-    from pnt.stats.timing import owners, pool_rows, timing_report
+    from pnt.stats.pool import owners
+    from pnt.stats.timing import pool_rows, timing_report
 
     conn = db()
     pred = _predicate(conn, filter)

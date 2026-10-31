@@ -82,6 +82,10 @@ def test_bad_card_token_is_rejected():
         ("9c9dAcAd2s3s7h", "two_pair"),
         ("9c9dAcKd2s3s7h", "pair"),
         ("9cJdAcKd2s3s7h", "high_card"),
+        # One hole card to a flop (review.py asks this): four cards, no kicker.
+        ("9c9d9h9s", "quads"),
+        ("9c9dAcAd", "two_pair"),
+        ("9c9d9hAc", "trips"),
     ],
 )
 def test_made_class(cards, expected):

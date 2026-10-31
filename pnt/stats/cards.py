@@ -187,18 +187,6 @@ class MadeHand(NamedTuple):
     detail: str | None  # how the hole cards take part, or which draw; see `made_hand`
 
 
-def _straight_high(values: set[int]) -> int | None:
-    """Highest card of the best straight in `values`, wheel included; None if none."""
-    vs = set(values)
-    if 14 in vs:
-        vs.add(1)  # the ace plays low in A-2-3-4-5
-    best = None
-    for high in range(5, 15):
-        if all(v in vs for v in range(high - 4, high + 1)):
-            best = high
-    return best
-
-
 def _straight_outs(hole: list[Card], board: list[Card]) -> int:
     """Ranks that would complete a straight using at least one hole card.
 
@@ -258,31 +246,17 @@ def draw_detail(hole: list[Card], board: list[Card]) -> str | None:
     return None
 
 
-def made_class(cards: list[Card]) -> str:
-    """Best-five category of any 5..7 cards."""
-    by_suit: dict[str, set[int]] = {}
-    for c in cards:
-        by_suit.setdefault(c.suit, set()).add(c.value)
-    flush_suit = next((s for s, vs in by_suit.items() if len(vs) >= 5), None)
-    if flush_suit and _straight_high(by_suit[flush_suit]) is not None:
-        return "straight_flush"
+#: `equity.rank7`'s category number -> its class: 0 high card up to 8 straight flush.
+_CATEGORY_CLASS = (
+    "high_card", "pair", "two_pair", "trips", "straight", "flush", "full_house", "quads", "straight_flush",
+)
 
-    counts = sorted(Counter(c.value for c in cards).values(), reverse=True)
-    if counts[0] == 4:
-        return "quads"
-    if counts[0] == 3 and len(counts) > 1 and counts[1] >= 2:
-        return "full_house"
-    if flush_suit:
-        return "flush"
-    if _straight_high({c.value for c in cards}) is not None:
-        return "straight"
-    if counts[0] == 3:
-        return "trips"
-    if counts[0] == 2 and counts[1] == 2:
-        return "two_pair"
-    if counts[0] == 2:
-        return "pair"
-    return "high_card"
+
+def made_class(cards: list[Card]) -> str:
+    """Best-five category of any 4..7 cards: the first element of `equity.rank7`."""
+    from .equity import rank7  # equity imports this module
+
+    return _CATEGORY_CLASS[rank7(cards)[0]]
 
 
 def made_hand(hole: str | list[str] | tuple[str, ...], board: list[str] | tuple[str, ...]) -> MadeHand:

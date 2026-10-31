@@ -200,10 +200,10 @@ def normalise_tag(tag: str) -> str:
     return out
 
 
-def _require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
-    """Raise unless the database has that hand, derived or still only raw lines --
-    the check a flag makes (`review._require_logged`), for the same reason: a hand
-    can be tagged seconds after it ends, before the rebuild reaches it."""
+def require_logged(conn: sqlite3.Connection, game_id: str, hand_number: int) -> None:
+    """Raise unless the database has that hand, derived or still only raw lines. A
+    hand is flagged or tagged seconds after it ends, often before the rebuild that
+    derives it, so `hands` alone would refuse it."""
     if conn.execute(
         "SELECT 1 FROM hands WHERE game_id = ? AND hand_number = ?", (game_id, hand_number)
     ).fetchone() is not None:
@@ -219,7 +219,7 @@ def add_tag(conn: sqlite3.Connection, game_id: str, hand_number: int, tag: str) 
     """Tag one hand. Returns the tag as stored. Idempotent: tagging again keeps the
     first time. Raises ValueError on a bad tag, or a hand the log does not have."""
     tag = normalise_tag(tag)
-    _require_logged(conn, game_id, hand_number)
+    require_logged(conn, game_id, hand_number)
     with writing(conn):
         conn.execute(
             "INSERT INTO hand_tags (game_id, hand_number, tag, tagged_at) VALUES (?, ?, ?, ?)"
