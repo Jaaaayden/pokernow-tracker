@@ -23,6 +23,7 @@ while the extension is posting.
 from __future__ import annotations
 
 import copy
+import ipaddress
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ import plistlib
 import socket
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import urllib.request
@@ -64,7 +66,8 @@ LOG_FILE = LOG_DIR / "server.log"
 #: server has redirected it to LOG_FILE. Separate, since LOG_FILE is rotated by
 #: renaming, which would leave launchd writing to the old file.
 AGENT_LOG_FILE = LOG_DIR / "launchd.log"
-#: Checked at each start. With access logging off, a day of play writes far less.
+#: Past this the log rotates (`_RotatingLog`), at a start or while running. With
+#: access logging off, a day of play writes far less.
 LOG_MAX_BYTES = 5 * 1024 * 1024
 
 #: A run at least this long counts as healthy, so the next crash restarts quickly.
@@ -106,6 +109,31 @@ def bind(host: str, port: int) -> socket.socket:
     return sock
 
 
+def loopback(host: str) -> bool:
+    """Whether a server bound to `host` is reachable from this machine alone."""
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def exposed_warning(host: str, port: int) -> str:
+    """What `pnt serve` and `pnt service install` say about a non-loopback --host.
+
+    The write header (app.py) stops a web page, not a program: anything that can
+    reach the port can send it, and a Host of 127.0.0.1 with it. With no login, a
+    LAN bind hands every hand stored, and the switch of database and log folder, to
+    whoever is on the network."""
+    return (
+        f"WARNING: --host {host} lets other machines reach the tracker on port {port}."
+        " It has no login: anyone who can reach it can read every hand stored and"
+        " change the database. Use 127.0.0.1 unless only your own devices are on"
+        " that network."
+    )
+
+
 def run_server(db: Path, host: str, port: int, **uvicorn_options) -> None:
     """Run the API in this process until it stops. Shared by `pnt serve` and the task.
 
@@ -127,6 +155,8 @@ def run_server(db: Path, host: str, port: int, **uvicorn_options) -> None:
     logging.getLogger("uvicorn.error").info(
         "Uvicorn running on http://%s:%d (Press CTRL+C to quit)", host, port
     )
+    if not loopback(host):  # at every start, so the background task's log says it too
+        logging.getLogger("uvicorn.error").warning(exposed_warning(host, port))
     try:
         server.run(sockets=[sock])
     except KeyboardInterrupt:
@@ -199,12 +229,75 @@ def supervise(
         delay = min(delay * 2, MAX_BACKOFF_SECONDS)
 
 
+class _RotatingLog:
+    """The server log as a text stream that rotates itself by size.
+
+    Checking only at each start let a server up for weeks grow its log without
+    bound: a fault repeated every few seconds (a sync failing on a locked
+    database) writes a traceback each time. Past LOG_MAX_BYTES the file moves to
+    `<name>.1`, replacing the one before, and a new one starts. A rename Windows
+    refuses (the file open elsewhere) is tried again after another
+    ROTATE_RETRY_BYTES, rather than on every line.
+
+    Stands in for sys.stdout and sys.stderr, so it is what uvicorn's handlers and
+    `print` write to; everything else is the open file's.
+    """
+
+    ROTATE_RETRY_BYTES = 64 * 1024
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._rotate()
+        self._open()
+
+    def _open(self) -> None:
+        self._file = open(self._path, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 -- kept open until close()
+        self._size = self._path.stat().st_size
+        # Still past the cap, the rename was refused: try again a little further on.
+        over = self._size > LOG_MAX_BYTES
+        self._limit = self._size + self.ROTATE_RETRY_BYTES if over else LOG_MAX_BYTES
+
+    def _rotate(self) -> None:
+        try:
+            if self._path.exists() and self._path.stat().st_size > LOG_MAX_BYTES:
+                self._path.replace(self._path.with_name(self._path.name + ".1"))
+        except OSError:
+            pass  # held open elsewhere: `_open` sets the next try further on
+
+    def write(self, text: str) -> int:
+        with self._lock:
+            n = self._file.write(text)
+            self._size += len(text)
+            if self._size > self._limit:
+                self._file.close()
+                self._rotate()
+                self._open()
+            return n
+
+    def flush(self) -> None:
+        with self._lock:
+            self._file.flush()
+
+    def close(self) -> None:
+        with self._lock:
+            self._file.close()
+
+    def __getattr__(self, name: str):
+        if name == "_file":  # not open yet: no recursion through this method
+            raise AttributeError(name)
+        return getattr(self._file, name)
+
+    def __enter__(self) -> _RotatingLog:  # noqa: PYI034 -- never subclassed
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
 def _open_log(path: Path | None = None) -> TextIO:
-    path = path or LOG_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and path.stat().st_size > LOG_MAX_BYTES:
-        path.replace(path.with_name(path.name + ".1"))
-    return open(path, "a", encoding="utf-8", buffering=1)  # the caller closes it
+    return _RotatingLog(path or LOG_FILE)  # type: ignore[return-value]  # the caller closes it
 
 
 def _log_config() -> dict:
