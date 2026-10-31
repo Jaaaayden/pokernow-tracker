@@ -3,14 +3,9 @@
 **Still in development and being tested by friends. Planned for the Chrome Web Store
 in the coming weeks.**
 
-PokerNow Tracker records every hand you play on PokerNow and remembers every
-opponent, even across renames and devices. While a hand is being played, a side
-panel shows what the player to act has shown up with *in this exact spot*: how often
-they fold to a flop c-bet, and whether their calls are value, draws or air. When the
-session ends, it goes through every hand you played and pulls out each one worth a
-second look (missed bluffs, missed value, failed bluffs, suckouts and coolers), each
-with the cards, the board, the bet sizes and the opponent's archetype and showdown
-rate beside it, next to the hands you flagged or tagged yourself at the table.
+That said - feel free to follow the setup instructions below if you'd like an early
+preview to the soon-to-be best extension on the market :O (and yes... it will not even 
+require half the effort to install when it's fully released)
 
 Other PokerNow HUDs show you a VPIP number. This shows you the spot.
 
@@ -20,7 +15,7 @@ Other PokerNow HUDs show you a VPIP number. This shows you the spot.
 | This session's stats beside lifetime | – | ✓ |
 | Hand review: missed bluffs, missed value, bad beats | – | ✓ |
 | Flag and tag hands from the HUD while you play | – | ✓ |
-| Aggregate stats across every game you've played (even across devices/IDs) | – | ✓ |
+| Aggregate stats across every game you've played (even across devices) | – | ✓ |
 | Timing tells: what a snap and a long think have meant | – | ✓ |
 | Every player's tendencies (measured versus pool) | – | ✓ |
 
@@ -30,6 +25,8 @@ Chrome extension. [Setup](#setup) is one command.
 ---
 
 ## Features
+
+(with some real examples from my own hands!)
 
 ### Live HUD that follows the hand
 
@@ -129,12 +126,12 @@ is skipped. `pnt review <you>` · [guide](docs/guide.md#hand-review)
 
 ### Range charts for any spot
 
-Ask "what does blake raise the river with when he didn't raise preflop?" and get a
+Ask "what does Chris raise the river with when he didn't raise preflop?" and get a
 13×13 chart or a made-hand breakdown built from his showdowns, with coverage stated
 up front, so you know how much of the range is missing:
 
 ```bash
-pnt range blake --filter "raised_bet_river,!pfa" --by made
+pnt range Chris --filter "raised_bet_river,!pfa" --by made
 ```
 
 ```
@@ -170,7 +167,7 @@ The **Tree** view is every spot a player reached, seat first, with what they cho
 there. Click a spot, or one colour of its bar, and its exact filter goes into the
 Spot box: `BTN → facing open → call` is one click, not a filter to write.
 
-![Spot tree: alex on the button, each decision with its fold, call and raise mix](docs/images/tree.png)
+![Spot tree: Henry on the button, each decision with its fold, call and raise mix](docs/images/tree.png)
 ![Legend: fold, check, call or limp, bet or raise](docs/images/tree-legend.png)
 
 **Group by** splits any spot into rows (position, pot type, flop holding, and a
