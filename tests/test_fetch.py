@@ -125,6 +125,11 @@ def _raise(exc):
         (lambda *a, **k: _Answer(b'{"logs": 5}'), f.FetchError),
         (_timed_out, f.TransientFetchError),
         (_cut_short, f.TransientFetchError),
+        # Cut short with no Content-Length: the transport reports nothing wrong.
+        (lambda *a, **k: _Answer(b'{"logs": [{"msg": "x", "at": "2026-'), f.TransientFetchError),
+        (lambda *a, **k: _Answer('{"logs": [{"msg": "♠'.encode()[:-1]), f.TransientFetchError),
+        (lambda *a, **k: _Answer(b""), f.TransientFetchError),
+        (lambda *a, **k: _Answer(b"Service Unavailable"), f.FetchError),
         (_raise(ConnectionResetError(10054, "reset")), f.TransientFetchError),
         (_raise(urllib.error.URLError("no route")), f.TransientFetchError),
         (_raise(_http_error(500)), f.FetchError),
@@ -175,6 +180,20 @@ def test_a_page_lost_on_the_way_is_fetched_again():
     pacer = f.Pacer(pause=0, sleep=slept.append)
     assert f.fetch_log(GID, get_page=flaky, pacer=pacer) == game
     assert slept == [5, 10]
+
+
+def test_an_answer_cut_short_without_an_error_is_fetched_again(monkeypatch):
+    """No Content-Length, so the transport cannot tell: the JSON just stops."""
+    import json
+
+    whole = json.dumps({"logs": [
+        {"created_at": e.ord, "at": e.at, "msg": e.entry} for e in reversed(_game(3))
+    ]}).encode()
+    answers = iter([whole[: len(whole) // 2], whole])
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Answer(next(answers)))
+    slept: list[float] = []
+    assert f.fetch_log(GID, pacer=f.Pacer(pause=0, sleep=slept.append)) == _game(3)
+    assert slept == [5]
 
 
 def test_a_page_lost_every_time_gives_the_game_up():

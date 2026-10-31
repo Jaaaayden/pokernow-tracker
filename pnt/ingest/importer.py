@@ -23,7 +23,7 @@ from ..db.conn import GENERATION_KEY, bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
 from ..logfmt.parser import PARSE_VERSION, ParsedHand, parse
 from ..stats import strength
-from .csv_source import RawEntry, game_id_from_filename, read_csv
+from .csv_source import GAME_ID, RawEntry, game_id_from_filename, read_csv
 
 
 def _now() -> str:
@@ -630,9 +630,20 @@ def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
 
 
 def import_csv(conn: sqlite3.Connection, path: str | Path, game_id: str | None = None) -> dict:
-    """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly."""
+    """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly.
+
+    The game is `game_id`, else the one the file's name holds (`poker_now_log_<ID>.csv`,
+    a browser's ` (1)` aside), else the bare name when that is an ID itself. Anything
+    else is refused (ValueError): a game stored under an ID that is not one could be
+    neither served nor written to the log folder.
+    """
     path = Path(path)
     gid = game_id or game_id_from_filename(path) or path.stem
+    if not GAME_ID.fullmatch(gid):
+        raise ValueError(
+            f"{path.name}: no PokerNow game ID in the file name;"
+            " rename it poker_now_log_<game ID>.csv"
+        )
     entries = read_csv(path)
     offered, n_new = ingest_entries(conn, gid, entries, source=f"csv:{path.name}")
     summary = rebuild_game(conn, gid)

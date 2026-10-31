@@ -115,7 +115,7 @@ def fetch_page(game_id: str, before: int | None, cookie: str | None = None) -> l
         headers["Cookie"] = _cookie_header(cookie)
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as r:
-            body = json.load(r)
+            raw = r.read()
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             raise RateLimited(_retry_after(exc.headers.get("Retry-After"))) from exc
@@ -126,7 +126,15 @@ def fetch_page(game_id: str, before: int | None, cookie: str | None = None) -> l
         raise TransientFetchError(f"{game_id}: could not reach PokerNow ({exc.reason})") from exc
     except (OSError, http.client.HTTPException) as exc:  # a timeout, a reset, a page cut short
         raise TransientFetchError(f"{game_id}: lost the answer from PokerNow ({exc!r})") from exc
-    except ValueError as exc:  # not JSON: a Cloudflare check page, say
+    try:
+        body = json.loads(raw)
+    except ValueError as exc:
+        # Nothing, or JSON that stops early: an answer with no Content-Length cut
+        # short arrives as just that, with no error from the transport. Anything
+        # else is not JSON at all -- a Cloudflare check page, say -- and asking
+        # again would get the same.
+        if raw.lstrip()[:1] in (b"", b"{", b"["):
+            raise TransientFetchError(f"{game_id}: PokerNow's answer was cut short ({exc})") from exc
         raise FetchError(f"{game_id}: PokerNow's answer was not a log ({exc})") from exc
     try:
         return [

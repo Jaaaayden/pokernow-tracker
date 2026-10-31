@@ -321,8 +321,13 @@ async def _lifespan(_app: FastAPI):
         try:
             write_dataset(DatasetRequest(which="sample"))
         except Exception:  # never worth a server that cannot start: the HUD needs it
-            log.exception("could not show the sample again; the pages show your own data")
-            _leave_sample()
+            # For this run only: a passing fault (a locked file, a full disk) must
+            # not switch the sample off for good, so config.json keeps the choice.
+            log.warning(
+                "could not show the sample again; the pages show your own data until"
+                " the next start", exc_info=True,
+            )
+            _leave_sample(for_good=False)
     threading.Thread(target=_warm_strength, name="strength-warm", daemon=True).start()
     if SYNC_SECONDS > 0:
         worker = threading.Thread(target=_sync_loop, args=(stop,), name="log-sync", daemon=True)
@@ -1859,11 +1864,14 @@ def _enter_sample(path: Path) -> None:
     log.info("pages show the sample: %s", path)
 
 
-def _leave_sample() -> None:
+def _leave_sample(*, for_good: bool = True) -> None:
+    """Show your own data again. `for_good` forgets the choice in config.json too;
+    without it the next start tries the sample again."""
     global SAMPLE_ON, _sample_wanted
     from pnt import local_config
 
-    local_config.put("dataset", None)
+    if for_good:
+        local_config.put("dataset", None)
     _sample_wanted = False
     if SAMPLE_ON:
         SAMPLE_ON = False
@@ -1958,7 +1966,11 @@ def write_dataset(req: Annotated[DatasetRequest, Body()]) -> dict:
             _enter_sample(path)
             return _dataset()
         _sample_building = (0, len(samplemod.logs()))
-        threading.Thread(target=_build_sample, args=(path,), name="sample-build", daemon=True).start()
+        try:
+            threading.Thread(target=_build_sample, args=(path,), name="sample-build", daemon=True).start()
+        except BaseException:
+            _sample_building = None  # no thread will ever clear it
+            raise
         return _dataset()
 
 

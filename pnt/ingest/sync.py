@@ -232,13 +232,18 @@ def remove_empty(conn: sqlite3.Connection, folder: Path) -> list[Path]:
     """
     removed = []
     for path in empty_logs(folder):
-        gid = game_id_from_filename(path) or path.stem
+        # The game on record for the file, else the one its name holds; a name that
+        # holds none was never imported (`import_file` refuses it), so no game goes.
+        row = conn.execute("SELECT game_id FROM log_files WHERE path = ?", (_key(path),)).fetchone()
+        gid = row[0] if row else game_id_from_filename(path)
         try:
             path.unlink()
         except OSError as exc:  # open elsewhere, read-only
             log.warning("could not delete empty log %s: %s", path, exc)
             continue
         removed.append(path)
+        if gid is None:
+            continue
         hands = conn.execute("SELECT COUNT(*) FROM hands WHERE game_id = ?", (gid,)).fetchone()[0]
         if hands == 0:
             delete_game(conn, gid)

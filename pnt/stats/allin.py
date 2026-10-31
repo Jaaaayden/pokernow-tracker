@@ -285,9 +285,15 @@ def allin_report(
     """
     rows, skipped, _ = allin_rows(conn, game_id)
 
-    def pool() -> Iterable[Facts]:  # one game at a time: a session never spans two
-        for g in sorted({r.game_id for r in rows}):
-            yield from play_facts(load_hands(conn, g))
+    def pool() -> Iterable[Facts]:
+        # One game at a time, as a session never spans two, and in each only the
+        # hands of the players with a row there: session facts are numbered per
+        # (player, game) (tilt.annotate), so a player's own hands give the same ones.
+        players: dict[str, set[str]] = defaultdict(set)
+        for r in rows:
+            players[r.game_id].add(r.pn_id)
+        for g in sorted(players):
+            yield from play_facts(load_hands(conn, g, players[g]))
 
     rows = _apply(rows, pool, predicate)
     ident = identity_map(conn)

@@ -22,6 +22,7 @@ from ..logfmt.parser import (
     bomb_pot_bb,
     parse,
     position_name,
+    position_slots,
 )
 from .derive import HandAction, HandPlayerRow, HandRow, is_analysed
 from .lru import LRU
@@ -199,9 +200,8 @@ def to_act(parsed: ParsedHand) -> str | None:
     street = current_street(parsed)
     if street == E.PREFLOP and any(a.post_kind == E.POST_BOMB for a in parsed.actions):
         return None  # a bomb pot has no preflop decision: everyone posted, the flop is next
-    slots = max(
-        [parsed.n_dealt_in, *((p.seats_from_button or 0) + 1 for p in players.values())]
-    )
+    # As derive ranks seats: a seat with no position has no slot to add.
+    slots = position_slots((p.seats_from_button for p in players.values()), parsed.n_dealt_in)
     if street == E.PREFLOP:
         # First to act sits after the big blind, or after the last straddle.
         ref = 1 if parsed.n_dealt_in == 2 else 2
