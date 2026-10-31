@@ -22,8 +22,9 @@ from ..logfmt.parser import (
     bomb_pot_bb,
     parse,
     position_name,
+    position_slots,
 )
-from .derive import HandAction, HandPlayerRow, HandRow
+from .derive import HandAction, HandPlayerRow, HandRow, is_analysed
 from .lru import LRU
 from .nodes import nodes_for, resolve, street_of_board
 from .queries import facts_cached, identity_map
@@ -183,8 +184,9 @@ def to_act(parsed: ParsedHand) -> str | None:
     """Who the action is on, or None when that cannot be said with confidence.
 
     None also stands for "nobody": the street is closed and the next card is due,
-    everyone but one has folded, or every live player is all in. Guessing wrong
-    would point the HUD at the wrong player's spot, so any doubt is None.
+    everyone but one has folded, or every live player but at most one is all in
+    with nothing left to call. Guessing wrong would point the HUD at the wrong
+    player's spot, so any doubt is None.
     """
     players = parsed.players
     unfolded = [p for p in players.values() if not p.folded]
@@ -198,9 +200,8 @@ def to_act(parsed: ParsedHand) -> str | None:
     street = current_street(parsed)
     if street == E.PREFLOP and any(a.post_kind == E.POST_BOMB for a in parsed.actions):
         return None  # a bomb pot has no preflop decision: everyone posted, the flop is next
-    slots = max(
-        [parsed.n_dealt_in, *((p.seats_from_button or 0) + 1 for p in players.values())]
-    )
+    # As derive ranks seats: a seat with no position has no slot to add.
+    slots = position_slots((p.seats_from_button for p in players.values()), parsed.n_dealt_in)
     if street == E.PREFLOP:
         # First to act sits after the big blind, or after the last straddle.
         ref = 1 if parsed.n_dealt_in == 2 else 2
@@ -218,6 +219,12 @@ def to_act(parsed: ParsedHand) -> str | None:
             return (p.seats_from_button - 1) % slots
 
     ordered = sorted(live, key=rank)
+    committed = street_committed(parsed, street)
+    target = max(committed.get(p.pn_id, 0) for p in unfolded)
+    if len(live) == 1 and committed.get(live[0].pn_id, 0) >= target:
+        # Everyone else is all in and nothing is left to call: the board runs
+        # out with no decision for anyone.
+        return None
     voluntary = [a for a in parsed.actions if a.street == street and not a.is_forced]
     if not voluntary:
         return ordered[0].pn_id
@@ -225,8 +232,6 @@ def to_act(parsed: ParsedHand) -> str | None:
     if last is None or last.seats_from_button is None:
         return None
     last_rank = rank(last)
-    committed = street_committed(parsed, street)
-    target = max(committed.get(p.pn_id, 0) for p in unfolded)
     acted = {a.pn_id for a in voluntary}
     around = [p for p in ordered if rank(p) > last_rank] + [p for p in ordered if rank(p) < last_rank]
     for p in around:
@@ -256,12 +261,17 @@ def snapshot(
     before the first hand ends. It is there between hands too.
 
     With `masks` (pn_id -> a name to show), each player's alias and name are their
-    mask, or their seat without one; spots still resolve against who they are."""
+    mask, or their seat without one; spots still resolve against who they are.
+
+    `analysed` is False on a PLO or Double Board hand, whose play no stat reads:
+    every `resolved` is then None rather than Hold'em history passed off as the
+    spot's."""
     parsed = live_hand(conn, game_id)
     if parsed is None:
         return {"game_id": game_id, "hand": None, "previous": previous_hand(conn, game_id)}
 
     row = hand_row(parsed)
+    analysed = is_analysed(row)
     street = current_street(parsed)
     who = to_act(parsed)
     paths = nodes_for(row, pending_for=who)
@@ -282,7 +292,7 @@ def snapshot(
         path = paths.get(pid, [])
         node = path[-1] if path else None
         resolved = None
-        if alias and not p.folded and path:
+        if alias and not p.folded and path and analysed:
             resolved = resolve(
                 facts_cached(conn, alias), path, min_hands=min_hands, board=row.board, min_known=min_known,
             )
@@ -315,10 +325,14 @@ def snapshot(
         "hand_number": parsed.hand_number,
         "street": street,
         "board": list(parsed.board_runs[0]) if parsed.board_runs else [],
+        # Every board: two on a Double Board hand (or a run-it-twice), so the HUD
+        # can show the second one too. `board` stays the first, which streets follow.
+        "boards": [list(b) for b in parsed.board_runs],
         "bb": parsed.bb,
         "pot": parsed.total_contributed,
         "n_dealt_in": parsed.n_dealt_in,
         "positions_known": labelled,
+        "analysed": analysed,
         "to_act": who,
         "hero": hero,
         "players": players,

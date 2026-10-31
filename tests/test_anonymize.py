@@ -68,3 +68,36 @@ def test_an_aliased_id_is_named_for_its_alias_not_its_display_name():
     b = names.entry('"lu1s phone @ BBBBBBBBBB" folds')
     c = names.entry('"Guest @ CCCCCCCCCC" checks')
     assert a.startswith('"player 1 @') and b.startswith('"player 1 @') and c.startswith('"player 2 @')
+
+
+def test_a_login_line_s_bare_ids_go_through_the_same_stand_ins(tmp_path):
+    """`changed the ID from X to Y` names both IDs outside a quoted token. The new
+    one is the ID the token now carries, so a bare one would undo the stand-in."""
+    names = Pseudonyms(key=b"k" * 32)
+    before = names.entry('"Dee @ oldIDoldID" calls 20')
+    line = names.entry(
+        'The player "Dee @ newIDnewID" changed the ID from oldIDoldID to newIDnewID'
+        " because authenticated login."
+    )
+    assert "oldIDoldID" not in line and "newIDnewID" not in line
+    old, new = names.pn_id("oldIDoldID"), names.pn_id("newIDnewID")
+    assert before == f'"player 1 @ {old}" calls 20'
+    assert line == (
+        f'The player "player 1 @ {new}" changed the ID from {old} to {new} because authenticated login.'
+    )
+
+    log = tmp_path / "poker_now_log_pglLoginLineTest0000000001.csv"
+    quoted = line.replace('"', '""')
+    log.write_text(f'entry,at,order\n"{quoted}",2026-01-01T00:00:00.000Z,1\n', encoding="utf-8")
+    # The audit reads the bare IDs too, under the player's name.
+    assert players_in(log) == {("player 1", new), ("player 1", old)}
+
+
+def test_a_name_with_a_quote_in_it_is_replaced_whole():
+    names = Pseudonyms()
+    out = names.entry('"Bob "the" Nit @ abcDEF1234" paid 20 for the 7-2 bounty to "Al @ zyxWVU9876"')
+    assert out == (
+        f'"player 1 @ {names.pn_id("abcDEF1234")}" paid 20 for the 7-2 bounty to '
+        f'"player 2 @ {names.pn_id("zyxWVU9876")}"'
+    )
+    assert names.names == {'Bob "the" Nit': "player 1", "Al": "player 2"}

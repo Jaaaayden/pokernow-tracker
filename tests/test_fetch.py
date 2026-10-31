@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import email.message
+import email.utils
+import http.client
+import io
+import urllib.error
+import urllib.request
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from typer.testing import CliRunner
 
@@ -61,6 +69,161 @@ def test_game_id_from_link(link):
 def test_rejects_a_link_that_is_not_a_game():
     with pytest.raises(f.FetchError):
         f.game_id_from_link("https://www.pokernow.com/start-game")
+
+
+@pytest.mark.parametrize("link", ["a" * 65, f"https://www.pokernow.com/games/{'a' * 65}"])
+def test_rejects_an_id_the_log_folder_could_not_name_a_file_after(link):
+    """`log_path` refuses it, and backfill called that outside its try."""
+    with pytest.raises(f.FetchError):
+        f.game_id_from_link(link)
+
+
+class _Answer(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _http_error(code: int, retry_after: str | None = None):
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://www.pokernow.com", code, "", headers, None)
+
+
+def _cut_short(*a, **k):
+    class Reset(_Answer):
+        def read(self, *a):
+            raise http.client.IncompleteRead(b"{")
+
+    return Reset(b"")
+
+
+def _timed_out(*a, **k):
+    class Slow(_Answer):
+        def read(self, *a):
+            raise TimeoutError("The read operation timed out")
+
+    return Slow(b"")
+
+
+def _raise(exc):
+    def urlopen(*a, **k):
+        raise exc
+
+    return urlopen
+
+
+@pytest.mark.parametrize(
+    "urlopen, error",
+    [
+        (lambda *a, **k: _Answer(b"<html>Just a moment...</html>"), f.FetchError),  # Cloudflare
+        (lambda *a, **k: _Answer(b"[]"), f.FetchError),
+        (lambda *a, **k: _Answer(b'{"logs": [{"msg": "x"}]}'), f.FetchError),
+        (lambda *a, **k: _Answer(b'{"logs": 5}'), f.FetchError),
+        (_timed_out, f.TransientFetchError),
+        (_cut_short, f.TransientFetchError),
+        # Cut short with no Content-Length: the transport reports nothing wrong.
+        (lambda *a, **k: _Answer(b'{"logs": [{"msg": "x", "at": "2026-'), f.TransientFetchError),
+        (lambda *a, **k: _Answer('{"logs": [{"msg": "♠'.encode()[:-1]), f.TransientFetchError),
+        (lambda *a, **k: _Answer(b""), f.TransientFetchError),
+        (lambda *a, **k: _Answer(b"Service Unavailable"), f.FetchError),
+        (_raise(ConnectionResetError(10054, "reset")), f.TransientFetchError),
+        (_raise(urllib.error.URLError("no route")), f.TransientFetchError),
+        (_raise(_http_error(500)), f.FetchError),
+    ],
+)
+def test_a_bad_answer_is_a_fetch_error(monkeypatch, urlopen, error):
+    """Anything else escaped as itself and ended the whole backfill there."""
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    with pytest.raises(error):
+        f.fetch_page(GID, None)
+
+
+@pytest.mark.parametrize(
+    "header, wait",
+    [
+        ("7", 7.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.0),  # a date gone by: go now
+        ("whenever", None),
+        ("nan", None),
+        ("1e12", f.MAX_BACKOFF),
+    ],
+)
+def test_retry_after_as_seconds_or_a_date(monkeypatch, header, wait):
+    monkeypatch.setattr(urllib.request, "urlopen", _raise(_http_error(429, header)))
+    with pytest.raises(f.RateLimited) as exc:
+        f.fetch_page(GID, None)
+    assert exc.value.wait == wait
+
+
+def test_retry_after_a_date_ahead_waits_until_then():
+    ahead = email.utils.format_datetime(datetime.now(UTC) + timedelta(seconds=60), usegmt=True)
+    assert 55 <= f._retry_after(ahead) <= 60
+
+
+def test_a_page_lost_on_the_way_is_fetched_again():
+    game = _game(120)
+    log = FakeLog(game)
+    lost = iter([f.TransientFetchError("timed out"), f.TransientFetchError("reset")])
+    slept: list[float] = []
+
+    def flaky(game_id, before, cookie):
+        if before is not None:
+            err = next(lost, None)
+            if err:
+                raise err
+        return log(game_id, before, cookie)
+
+    pacer = f.Pacer(pause=0, sleep=slept.append)
+    assert f.fetch_log(GID, get_page=flaky, pacer=pacer) == game
+    assert slept == [5, 10]
+
+
+def test_an_answer_cut_short_without_an_error_is_fetched_again(monkeypatch):
+    """No Content-Length, so the transport cannot tell: the JSON just stops."""
+    import json
+
+    whole = json.dumps({"logs": [
+        {"created_at": e.ord, "at": e.at, "msg": e.entry} for e in reversed(_game(3))
+    ]}).encode()
+    answers = iter([whole[: len(whole) // 2], whole])
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Answer(next(answers)))
+    slept: list[float] = []
+    assert f.fetch_log(GID, pacer=f.Pacer(pause=0, sleep=slept.append)) == _game(3)
+    assert slept == [5]
+
+
+def test_a_page_lost_every_time_gives_the_game_up():
+    calls = 0
+
+    def gone(game_id, before, cookie):
+        nonlocal calls
+        calls += 1
+        raise f.TransientFetchError("timed out")
+
+    with pytest.raises(f.TransientFetchError):
+        f.fetch_log(GID, get_page=gone, pacer=_pacer())
+    assert calls == f.MAX_TRANSIENT_RETRIES + 1
+
+
+def test_backfill_carries_on_past_a_game_that_fails(tmp_path, monkeypatch):
+    """A Cloudflare page for one game: that game is counted failed, the next fetched."""
+    good = FakeLog(_game(3))
+
+    def page(game_id, before, cookie):
+        if game_id == "pglBAD":
+            raise f.FetchError(f"{game_id}: PokerNow's answer was not a log")
+        return good(game_id, before, cookie)
+
+    monkeypatch.setattr(f, "fetch_page", page)
+    monkeypatch.setattr(f, "PAUSE", 0)
+    result = CliRunner().invoke(cli.app, ["backfill", "pglBAD", GID, "--log-dir", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "not a log" in result.output
+    assert lf.log_path(tmp_path, GID).exists()
 
 
 @pytest.mark.parametrize("n", [0, 1, 49, 50, 51, 100, 137])

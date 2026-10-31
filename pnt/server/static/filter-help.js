@@ -82,6 +82,7 @@
 
   let vocab = null;      // the /filters payload
   let names = [];        // player names, for vs=
+  let someone = "";      // the player with the most hands: the vs= examples name them
   let tags = [];         // the /tags rows, for tag=
   let templates = [];    // one per vocabulary row, parsed into segments
   let groupBoxes = [];
@@ -445,7 +446,9 @@
         t.row = el("div", null, "fh-row");
         const b = el("button", term.term);
         b.type = "button";
-        b.title = `e.g. ${term.example}`;
+        b.title = `e.g. ${example(term)}`;
+        // A vs= example names someone in this database, who arrives after the list.
+        b.addEventListener("pointerenter", () => { b.title = `e.g. ${example(term)}`; });
         b.addEventListener("click", () => pickTerm(t));
         t.row.append(b, el("span", term.desc));
         box.append(t.row);
@@ -474,6 +477,14 @@
     put("DAYS", "a number of days then d: 1d today, 7d today and the 6 before");
 
     panel.replaceChildren(head, groupsBox, slotBox, empty, values);
+  }
+
+  // A term's example, as the panel shows it. The vocabulary's own `vs=` example is
+  // a made-up name that a filter on real data refuses, so it names the player
+  // with the most hands here instead (tests/test_api.py runs the same swap).
+  function example(term) {
+    const m = term.term.startsWith("vs") && term.example.match(/^(vs!?=)/);
+    return m ? m[1] + (someone || "NAME") : term.example;
   }
 
   // Which list the fragment calls for: a parameter's values when the clicked
@@ -578,7 +589,11 @@
       build();
       fetch("/players")
         .then((p) => (p.ok ? p.json() : []))
-        .then((rows) => { names = rows.map((p) => p.alias).filter(Boolean); update(); })
+        .then((rows) => {
+          names = rows.map((p) => p.alias).filter(Boolean);
+          someone = [...rows].sort((a, b) => b.hands - a.hands)[0]?.alias || "";
+          update();
+        })
         .catch(() => {});
       fetch("/tags")
         .then((t) => (t.ok ? t.json() : []))
@@ -598,7 +613,7 @@
       try {
         await load();
       } catch {
-        panel.replaceChildren(el("span", "Could not load the term list. If the server is older than this page, restart `pnt service`.", "err"));
+        panel.replaceChildren(el("span", "Could not load the term list. If the server is older than this page, run `pnt service restart`.", "err"));
         return;
       }
     }
@@ -659,7 +674,7 @@
       .fh-spot .acts button:hover, .fh-spot .acts button:focus-visible { background: var(--surface); color: var(--ink); outline: 0; }
       .fh-spot .acts .pin { filter: grayscale(1); opacity: .5; }
       .fh-spot .acts .pin[aria-pressed=true] { filter: none; opacity: 1; }
-      .fh-spot .acts .armed { color: #c62f2f; font-weight: 600; }
+      .fh-spot .acts .armed { color: var(--down); font-weight: 600; }
       .fh-spots input { width: 100%; box-sizing: border-box; font: inherit; padding: 4px 8px; border: 1px solid var(--ring);
         border-radius: 6px; background: var(--surface); color: var(--ink); }
       .fh-spots input:focus { border-color: var(--accent); outline: 0; }
@@ -667,7 +682,7 @@
         border-radius: 6px; padding: 5px 8px; font: inherit; text-align: left; }
       .fh-spots .save:disabled { color: var(--muted); cursor: default; }
       .fh-spots .fh-hint, .fh-spots .err { display: block; margin: 4px 6px 0; }
-      .fh-spots .err { color: #c62f2f; }
+      .fh-spots .err { color: var(--down); }
     `;
     document.head.appendChild(css);
 
@@ -817,7 +832,7 @@
       // Kept on screen at phone width: pulled left by however far it runs over.
       const over = menu.getBoundingClientRect().right - (document.documentElement.clientWidth - 16);
       if (over > 0) menu.style.left = `${-over}px`;
-      refresh().catch(() => { error = "Could not load the saved spots. If the server is older than this page, restart `pnt service`."; draw(); });
+      refresh().catch(() => { error = "Could not load the saved spots. If the server is older than this page, run `pnt service restart`."; draw(); });
     }
 
     star.addEventListener("click", () => open(menu.hidden));

@@ -24,10 +24,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 EXT = ROOT / "pnt" / "extension"
-STATES = ["loading", "between", "stuck-loading", "stuck-down", "stuck-tab", "waiting",
-          "empty", "error", "loaded", "update", "sample", "key", "twins"]
+STATES = ["loading", "between", "stuck-loading", "stuck-restart", "stuck-down", "stuck-tab", "waiting",
+          "empty", "error", "loaded", "update", "sample", "plo", "double", "narrow", "key", "twins"]
 #: The stuck boxes appear at 10/15/30 s; virtual time skips straight there.
-SLOW = {"stuck-loading", "stuck-down", "stuck-tab", "waiting"}
+SLOW = {"stuck-loading", "stuck-restart", "stuck-down", "stuck-tab", "waiting"}
 CHROMES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
            "/usr/bin/google-chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]

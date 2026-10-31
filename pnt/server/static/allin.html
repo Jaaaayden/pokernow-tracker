@@ -67,13 +67,8 @@
   td.down { color: var(--down); }
   tr:hover td, tr:hover td:first-child { background: var(--mid); }
   tr[aria-selected=true] td, tr[aria-selected=true] td:first-child { background: var(--mid); }
-  .err { color: #d03b3b; margin: 12px 0; }
+  .err { color: var(--down); margin: 12px 0; }
   .muted { color: var(--muted); }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
-    margin-bottom: 12px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
-  .crumb .go a + a { margin-left: 14px; }
   .key { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
   .key summary { cursor: pointer; color: var(--accent); width: fit-content; }
   .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px;
@@ -138,6 +133,8 @@
   #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
     border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
   #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  /* A player the server does not know: the error alone, no legend or list controls. */
+  #detail.failed .legend, #detail.failed #hands-sort, #detail.failed #hands-split { display: none; }
   @media (max-width: 620px) {
     #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
     #hand-pair.split > .replay[data-empty] { display: none; }
@@ -159,10 +156,7 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
-      <a id="chartlink" href="/chart">range chart &rsaquo;</a>
-      <a id="playerslink" href="/players.html">players &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="allin" aria-label="pages"></nav>
   <h1>All-in EV <small id="subtitle">what the jams were worth, against what they took</small></h1>
 
   <div class="controls">
@@ -233,13 +227,14 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const theme = new URLSearchParams(location.search).get("theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  pntPage.nav();
+  const theme = pntPage.theme;
   const { pretty, cardsEl } = pntReplay;
 
   const STREETS = ["preflop", "flop", "turn", "river"];
   const STREET_HEAD = { preflop: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
-  const state = { filter: "", min: 5, unit: "bb", sort: "hands", dir: -1, player: null, handSort: "newest", rows: [], detail: null };
+  const state = { filter: "", min: 5, unit: "bb", sort: "hands", dir: -1, player: null, handSort: "newest", rows: [], detail: null,
+    pressed: null };
   const HAND_ORDERS = ["newest", "pot", "swing"];
 
   const readUrl = () => {
@@ -272,22 +267,23 @@
     const ch = new URLSearchParams(c);
     if (state.player) ch.set("player", state.player);
     $("chartlink").href = "/chart?" + ch;
-    $("playerslink").href = "/players.html?" + new URLSearchParams(theme ? { theme } : {});
+    const who = state.player ? { player: state.player } : {};
+    $("potslink").href = pntPage.href("/pots.html", who);
+    $("tendencieslink").href = pntPage.href("/tendencies.html", who);
   };
 
   // Money keys come in chips and in big blinds; the unit toggle picks one.
   const unitKey = (k) => state.unit === "bb" ? `${k}_bb` : k;
   const money = (v) => {
     if (v == null) return "–";
-    const sign = v > 0 ? "+" : "";
-    return state.unit === "bb" ? sign + v.toFixed(1) : sign + Math.round(v).toLocaleString();
+    return state.unit === "bb" ? pntPage.signed(v) : pntPage.signed(Math.round(v), 0);
   };
   const value = (row, key) => {
     if (key === "hands" || key === "equity_avg") return row[key];
     if (key.startsWith("street:")) return row.by_street[key.slice(7)][unitKey("diff")];
     return row[unitKey(key)];
   };
-  const fmt = (v, kind) => v == null ? "–" : kind === "int" ? String(v) : kind === "pct" ? v.toFixed(1) + "%" : money(v);
+  const fmt = (v, kind) => v == null ? "–" : kind === "int" ? pntPage.int(v) : kind === "pct" ? pntPage.pct(v) : money(v);
 
   // [key, header, kind, hover text]
   const columns = () => [
@@ -305,7 +301,7 @@
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: restart `pnt service` (or `pnt serve`)");
+        throw new Error(pntPage.OLD_SERVER);
       }
       throw new Error(body.detail || `${r.status} ${r.statusText}`);
     }
@@ -327,13 +323,13 @@
       if (seq !== loadSeq) return;
       state.rows = rows;
       if (state.rows.length && !("adjusted_bb" in state.rows[0])) {
-        throw new Error("the running server is older than this page: restart `pnt service`");
+        throw new Error(pntPage.OLD_SERVER);
       }
       render();
       if (state.player) openPlayer(state.player);
     } catch (e) {
       if (seq !== loadSeq) return;
-      $("err").textContent = String(e.message || e);
+      $("err").textContent = pntPage.firstLine(e.message || e);
       $("err").classList.remove("hidden");
       $("subtitle").textContent = "";
       $("table").replaceChildren();
@@ -444,7 +440,7 @@
     writeUrl();
     document.querySelectorAll("#table tr").forEach(tr => tr.setAttribute("aria-selected", tr.querySelector("td.name a")?.textContent === name));
     const box = $("detail");
-    box.classList.remove("hidden");
+    box.classList.remove("hidden", "failed");
     $("detail-title").textContent = name;
     $("detail-count").textContent = "";
     resetReplay();
@@ -461,7 +457,8 @@
     } catch (e) {
       if (seq !== detailSeq) return;
       resetReplay(false);
-      $("hand-rows").replaceChildren(message(String(e.message || e), "err"));
+      box.classList.add("failed");
+      $("hand-rows").replaceChildren(message(pntPage.firstLine(e.message || e), "err"));
     }
     box.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
@@ -568,7 +565,8 @@
     for (const h of orderedHands(hands)) {
       const b = document.createElement("button");
       b.type = "button"; b.className = "hand-row"; b.dataset.hand = h.hand_id;
-      b.setAttribute("aria-pressed", "false");
+      // The replay on show keeps its row pressed through a re-sort or a unit switch.
+      b.setAttribute("aria-pressed", String(h.hand_id === state.pressed));
       const span = (cls, text, title) => {
         const s = document.createElement("span"); s.className = cls; s.append(text);
         if (title) s.title = title;
@@ -589,7 +587,7 @@
       }
       span("eq", `${(h.equity * 100).toFixed(1)}%${h.method === "sampled" ? "~" : ""}`,
         h.method === "sampled" ? `sampled over ${h.n.toLocaleString()} deals` : `exact over ${h.n.toLocaleString()} board${h.n === 1 ? "" : "s"}`);
-      span("pot", `pot ${h.bb ? Math.round(h.pot / h.bb) + "bb" : h.pot.toLocaleString()}`);
+      span("pot", `pot ${state.unit === "bb" && h.bb ? (h.pot / h.bb).toFixed(1) + "bb" : h.pot.toLocaleString()}`);
       const m = span("money", "");
       const diff = h[unitKey("diff")];
       m.append(`${money(h[unitKey("actual")])} `);
@@ -603,6 +601,7 @@
       m.title = "actual, adjusted, diff";
       b.addEventListener("click", () => {
         list.querySelectorAll(".hand-row").forEach(x => x.setAttribute("aria-pressed", x === b));
+        state.pressed = h.hand_id;
         pntReplay.show($("replay"), h.hand_id);
       });
       list.appendChild(b);
@@ -619,6 +618,7 @@
   function resetReplay(shown = true) {
     const box = $("replay");
     pntReplay.cancel(box);
+    state.pressed = null;
     if (split && shown) {
       box.classList.remove("hidden");
       box.dataset.empty = ""; // pntReplay.show clears it

@@ -120,6 +120,71 @@ def test_filter_is_validated_not_silently_ignored(client):
     assert "unknown filter term" in r.json()["detail"]
 
 
+def test_an_unknown_term_says_the_nearest_on_its_first_line(client):
+    """Pages print the first line only; the list of every term follows it for the
+    API and the CLI, and the ? Filters panel has it on the page."""
+    detail = client.get("/stats", params={"filter": "cbet_flp"}).json()["detail"]
+    first, rest = detail.split("\n", 1)
+    assert first.startswith("unknown filter term: 'cbet_flp'; did you mean cbet_flop")
+    assert "Known flags" in rest
+
+
+def test_every_filter_help_example_works_on_this_data(client):
+    """filter-help.js shows each vocabulary example, with a vs= one naming the
+    player who has the most hands here (its example() function): every one of
+    them must be a filter the server takes on real data, not just in the parser."""
+    players = client.get("/players").json()
+    someone = max(players, key=lambda p: p["hands"])["alias"]
+    examples = [
+        t["example"].split("=", 1)[0] + "=" + someone if t["term"].startswith("vs") else t["example"]
+        for g in client.get("/filters").json()["groups"] for t in g["terms"]
+    ]
+    other = next(p["alias"] for p in players if p["alias"] != someone)
+    r = client.post("/counts", json={"player": other, "terms": examples})
+    assert r.status_code == 200, r.json()
+    refused = [t for t, n in r.json()["counts"].items() if n is None]
+    assert not refused, refused
+
+
+BIG = 99999999999999999999  # over 2**63: SQLite raised OverflowError on it, a 500
+
+
+@pytest.mark.parametrize(
+    "method, url, body",
+    [
+        ("get", "/pots?days=inf", None),
+        ("get", "/pots?days=nan", None),
+        ("get", "/pots?days=1e10", None),
+        ("get", f"/hands/{BIG}", None),
+        ("post", f"/hands/{BIG}/reviewed", {"reviewed": True}),
+        ("post", f"/hands/{BIG}/note", {"note": "x"}),
+        ("post", f"/games/{HU_GAME}/hands/{BIG}/flag", {"flagged": True}),
+        ("get", f"/games/{HU_GAME}/hands/{BIG}/tags", None),
+        ("patch", f"/spots/{BIG}", {"name": "x"}),
+        ("delete", f"/spots/{BIG}", None),
+        ("post", "/ingest", {"game_id": "g", "entries": [{"entry": "x", "at": "y", "order": 2**70}]}),
+        ("get", "/stats?split=", None),
+        ("get", "/stats?split=srp&split=%20", None),
+        ("get", "/stats?filter=last:99999999d", None),
+    ],
+)
+def test_out_of_range_input_is_a_4xx_not_a_500(client, method, url, body):
+    kwargs = {"json": body} if body is not None else {}
+    r = getattr(client, method)(url, **kwargs)
+    assert r.status_code in (400, 422), (r.status_code, r.text)
+
+
+def test_rebuilding_a_game_with_no_lines_is_a_404_that_writes_nothing(client):
+    from pnt.db.conn import connect
+    from pnt.server import app as app_module
+
+    assert client.post("/rebuild/nosuchgame1").status_code == 404
+    conn = connect(app_module.DB_PATH)
+    assert conn.execute("SELECT 1 FROM games WHERE game_id = 'nosuchgame1'").fetchone() is None
+    conn.close()
+    assert client.post(f"/rebuild/{HU_GAME}").json()["hands"] == 188
+
+
 def test_filter_narrows_results(client):
     everything = {r["player"]: r for r in client.get("/stats").json()}
     threebet = {r["player"]: r for r in client.get("/stats", params={"filter": "3bet"}).json()}
@@ -423,6 +488,32 @@ def test_hand_replay_names_every_player(client):
     assert body["hand"]["bb_effective"]
 
 
+def test_hand_replay_says_what_came_back_uncalled(client):
+    """A bet nobody called comes back: `uncalled` is what each player put in less
+    what stayed in the pot, so the replay can take it out of the pot it shows."""
+    from pnt.db.conn import connect
+
+    conn = connect(Path(os.environ["PNT_DB"]))
+    ids = [r[0] for r in conn.execute(
+        "SELECT hp.hand_id FROM hand_players hp JOIN (SELECT hand_id, pn_id, SUM(amount) AS put"
+        " FROM actions GROUP BY hand_id, pn_id) s USING (hand_id, pn_id)"
+        " WHERE s.put > hp.contributed LIMIT 3"
+    )]
+    conn.close()
+    assert ids, "the fixtures hold raises nobody called"
+    for hid in [*ids, 1]:
+        body = client.get(f"/hands/{hid}").json()
+        put: dict[str, int] = {}
+        for a in body["actions"]:
+            put[a["pn_id"]] = put.get(a["pn_id"], 0) + a["amount"]
+        for p in body["players"]:
+            assert p["uncalled"] == put.get(p["pn_id"], 0) - p["contributed"] >= 0
+        returned = sum(p["uncalled"] for p in body["players"])
+        assert returned > 0 or hid not in ids
+        # What is left in the pot is what was collected from it.
+        assert sum(put.values()) - returned == sum(p["contributed"] for p in body["players"])
+
+
 def test_player_stats_endpoint(client):
     """What the chart page's postflop strip reads: one player, inside a spot."""
     all_hands = client.get("/players/genericpoker/stats").json()
@@ -536,6 +627,20 @@ def test_every_page_loads_the_loading_signal_first(client):
         head = html[: html.index("</head>")]
         assert '<script src="/loading.js"></script>' in head, page
         assert head.index("/loading.js") < min(i for i in (head.find("<script>"), len(head)) if i >= 0), page
+
+
+def test_every_page_has_the_one_nav(client):
+    """One list in loading.js, in one order; each page names itself as current."""
+    script = client.get("/loading.js").text
+    order = ["/stats.html", "/chart", "/pots.html", "/allin.html", "/tendencies.html", "/players.html"]
+    at = [script.index(f'"{path}"') for path in order]
+    assert at == sorted(at)
+    for page, key in (("/", "home"), ("/stats.html", "stats"), ("/chart", "chart"), ("/pots.html", "pots"),
+                      ("/allin.html", "allin"), ("/tendencies.html", "tendencies"), ("/players.html", "players")):
+        html = client.get(page, headers={"accept": "text/html"}).text
+        assert f'<nav class="pnt-nav" id="crumb" data-page="{key}"' in html, page
+        assert f'["{key}", ' in script, key
+        assert "pntPage.nav()" in html, page
 
 
 def test_the_front_door_links_every_page(client):

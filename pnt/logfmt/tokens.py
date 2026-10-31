@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-#: PokerNow IDs are base64url-ish. Seen in the wild: `gpP9uUffpu`, `d-4X_F_SSU`.
+#: PokerNow IDs are base64url-ish. Seen in the wild: `aB3_xY9-kQ`, `Zp-7_Wm2Rt`.
 PN_ID = r"[A-Za-z0-9_-]+"
 
 _SUITS = {"♠": "s", "♥": "h", "♦": "d", "♣": "c"}

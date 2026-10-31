@@ -101,7 +101,7 @@ def seat_of(f: Facts) -> str | None:
     blind does not hide it from the filter, so it does not hide it here."""
     if f.seats_from_button is None or f.dead_button:
         return None
-    return position_name(f.seats_from_button, f.n_dealt_in)
+    return position_name(f.seats_from_button, f.n_dealt_in, f.position_slots)
 
 
 def _extras(f: Facts, texture: bool) -> tuple[str, ...]:

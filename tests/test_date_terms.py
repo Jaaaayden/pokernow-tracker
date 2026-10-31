@@ -87,6 +87,7 @@ def test_a_second_bound_of_one_side_is_the_tighter_one():
         ("last:abc", "bad span 'abc' for last"),
         ("last:0d", "bad span '0d'"),
         ("last:7", "a number of days, e.g. last:7d"),
+        ("last:99999999d", "reaches back past any date"),  # was an OverflowError, a 500
         ("since:2026-10-01|2026-10-05", "unknown filter term"),
         ("!since:2026-10-01", "only a flag can be negated"),
     ],

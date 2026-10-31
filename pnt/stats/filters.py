@@ -15,7 +15,7 @@ flop half pot, c-bet the turn, overbet the river" is::
     opener,open_bb>=4,srp,cbet_flop=medium,cbet_turn,bet_river=overbet
 
 The pot and the opposition are terms too: `pot>=500` keeps the hands whose final
-pot reached 500 chips, and `vs=henry` the hands played against henry.
+pot reached 500 chips, and `vs=alex` the hands played against alex.
 `jam_river` keeps river all-ins, the spot for reading bluffs against value, and
 `called_jam` the other side of it. `line_flop=xr` is a flop check-raise, and
 `made_flop>=set,line_flop=x*` the sets that checked the flop -- a slowplay.
@@ -30,6 +30,7 @@ brackets (SPEC.md, "Filter language").
 
 from __future__ import annotations
 
+import difflib
 import re
 from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, date, datetime, time, timedelta
@@ -681,7 +682,10 @@ def _date_term(term: str) -> Predicate | None:
         m = _DAYS.fullmatch(value)
         if m is None or int(m.group(1)) < 1:
             raise ValueError(f"bad span {value!r} for last: use a number of days, e.g. last:7d")
-        cut = _day_start(_today() - timedelta(days=int(m.group(1)) - 1))
+        try:
+            cut = _day_start(_today() - timedelta(days=int(m.group(1)) - 1))
+        except OverflowError:  # back past the year 1
+            raise ValueError(f"span {value!r} for last: reaches back past any date") from None
     else:
         try:
             if not _DATE.fullmatch(value):
@@ -896,8 +900,8 @@ VOCABULARY: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("double_board", "double_board", "Double Board was dealt: hand lists and Results only"),
     )),
     ("Opponent", (
-        ("vs=NAME", "vs=player 3", "played against that player"),
-        ("vs!=NAME", "vs!=player 3", "not against that player"),
+        ("vs=NAME", "vs=alex", "played against that player"),
+        ("vs!=NAME", "vs!=alex", "not against that player"),
     )),
     ("Your tags", (
         ("tag=TAG", "tag=river-bluff", "hands you tagged, e.g. tag=cooler|study · tag=flagged the 🚩 ones"),
@@ -1045,7 +1049,7 @@ def parse_filter(
       ``raise_bb<=2.5``      this player's own preflop raise-to
       ``bet_river>=1``       this player's first river bet, as a fraction of the pot
       ``pot>=500``           the final pot was at least 500 chips; ``pot_bb>=50`` in blinds
-      ``vs=henry``           henry was still in when this player last acted; ``vs!=`` negates
+      ``vs=alex``           alex was still in when this player last acted; ``vs!=`` negates
       ``jam_river``          bet or raised all-in on the river; also ``jam``, ``faced_jam_<street>``
                              and ``called_jam_<street>``, preflop included
       ``cbet_flop=medium``   a flop c-bet in that size bucket; also bet_<street>= and
@@ -1142,7 +1146,7 @@ def _compile_term(
         return (
             lambda f, w=want: f.seats_from_button is not None
             and not f.dead_button
-            and position_name(f.seats_from_button, f.n_dealt_in).upper() == w
+            and position_name(f.seats_from_button, f.n_dealt_in, f.position_slots).upper() == w
         ), "position"
 
     # In the order the terms were always tried: the first family to claim a term
@@ -1167,8 +1171,10 @@ def _compile_term(
         if pred is not None:
             return pred, family
 
+    # The first line is the whole answer on a page (the ? Filters panel lists every
+    # term there); the list after it is for the API and the CLI.
     raise ValueError(
-        f"unknown filter term: {term!r}. "
+        f"unknown filter term: {term!r}{_did_you_mean(term)}\n"
         f"Known flags: {', '.join(sorted(FLAGS))}; "
         f"position=<POS>; fold_street=<street>; vs=<player>; tag=<tag>; hand=<class>; "
         f"since:YYYY-MM-DD, before:YYYY-MM-DD or last:Nd; "
@@ -1181,6 +1187,26 @@ def _compile_term(
         f"tempo_<street>=TEMPO ({', '.join(TEMPO_BUCKETS)}), preflop included; "
         f"!flag, !(...); or flop=/turn=/river=/board= with a texture tag"
     )
+
+
+@lru_cache(maxsize=1)
+def _term_names() -> tuple[str, ...]:
+    """Every term name the vocabulary documents, each street written in."""
+    out: set[str] = set()
+    for _, terms in VOCABULARY:
+        for term, _, _ in terms:
+            for s in STREETS:
+                name = re.split(r"[!<>=:]", term.replace("<street>", s).lstrip("!"), maxsplit=1)[0]
+                if name and "<" not in name:
+                    out.add(name)
+    return tuple(sorted(out))
+
+
+def _did_you_mean(term: str) -> str:
+    """`; did you mean fold_to_cbet_flop?` for a near miss, else nothing."""
+    name = re.split(r"[!<>=:]", term.lstrip("!"), maxsplit=1)[0].strip().lower()
+    near = difflib.get_close_matches(name, _term_names(), n=3, cutoff=0.6) if name else []
+    return f"; did you mean {' or '.join(near)}?" if near else ""
 
 
 #: What makes a `|` segment a term of its own rather than a value of the one

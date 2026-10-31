@@ -45,8 +45,6 @@
   .seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 10px; color: var(--ink-2); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
-  .crumb .go a + a { margin-left: 14px; }
   .note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; max-width: 82ch; }
   .note p { margin: 0 0 4px; }
   .note ul { margin: 0; padding-left: 18px; }
@@ -71,10 +69,7 @@
   td.up { color: var(--up); }
   td.down { color: var(--down); }
   tr:hover td, tr:hover td:first-child { background: var(--mid); }
-  .err { color: #d03b3b; margin: 12px 0; }
-  .crumb { margin-bottom: 12px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
+  .err { color: var(--down); margin: 12px 0; }
   .key { margin-top: 14px; font-size: 13px; color: var(--ink-2); }
   .key summary { cursor: pointer; color: var(--accent); width: fit-content; }
   .key dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px;
@@ -98,10 +93,7 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a id="playerslink" href="/players.html">players &rsaquo;</a>
-      <a id="chartlink" href="/chart">range chart &rsaquo;</a>
-      <a id="allinlink" href="/allin.html">all-in EV &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="stats" aria-label="pages"></nav>
   <h1>Stats <small id="subtitle">every player, in one spot</small></h1>
 
   <div class="controls">
@@ -131,20 +123,18 @@
   </details>
 
   <ul class="note foot">
-    <li><b>Postflop columns</b> follow the street you pick. Hover a column name for what it counts, or open <b>What the columns mean</b> above for all of them.</li>
-    <li><b>C-Bet, Fold, Raise, Lead:</b> against the previous street's aggressor. <b>AFq</b> (aggression frequency, a %, not the AF ratio) counts every action.</li>
-    <li>Fold vs C-Bet + Raise C-Bet + calls = <b>100%</b> of c-bets faced. A <b>lead</b> leaves the street out of the c-bet columns.</li>
-    <li><b>All stats</b> adds squeeze, cold call, the blind war, LRR, jams, WWSF, DCB, Probe, F2P and Float.</li>
-    <li><b>Split</b> adds a sub-row per group under each player: heads-up vs 3+ way, straddled or not, stack depth, position. Position adds <b>vs folding all</b> on the SB and BB rows: + means better than folding every blind (fold-all score beside it), red = losing more than folding.</li>
-    <li><b>Blank</b> = never reached the spot. Hover a rate for its sample; click a player for their chart.</li>
+    <li><b>Postflop columns</b> follow the street picked, e.g. Turn → C-Bet is the turn c-bet.</li>
+    <li><b>All stats</b> adds the rest, e.g. squeeze, blind war, jams, Probe, Float.</li>
+    <li><b>Split</b> adds a sub-row per group, e.g. position → SB and BB rows with <b>vs folding all</b>.</li>
+    <li><b>–</b> = never reached the spot. Hover a rate for its sample; click a name for their chart.</li>
   </ul>
 </main>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const theme = new URLSearchParams(location.search).get("theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  pntPage.nav();
+  const theme = pntPage.theme;
 
   // Preflop and showdown columns, the same whatever street is selected.
   // [key, header, kind, opportunity key inside `_opp`]
@@ -241,8 +231,9 @@
   // tooltips and the visible key below the table are both built from this, and
   // hover alone is no use on a touch screen.
   const BASE_TIP = {
-    hands: ["", "Hands they were dealt into. Every rate below is over some subset of these, "
-      + "so treat a small number here as a warning about all of them."],
+    hands: ["Hold'em hands", "Hold'em hands they were dealt into, on one board: PLO and Double Board "
+      + "are left out, so the Players page, which counts every game, shows more. Every rate here is "
+      + "over some subset of these."],
     vpip: ["Voluntarily Put $ In Pot",
       "How often they called, bet or raised preflop. Blinds are forced, so they never count. "
       + "The headline looseness number: high means they play a lot of hands."],
@@ -284,7 +275,7 @@
       "How far their true win rate could sit from bb/100, either way, given how much their results "
       + "swing hand to hand. A +5 ± 30 is not yet a winner: the figure means little until the ± is smaller "
       + "than it. Blank under two complete hands."],
-    bb_per_100_vs_fold: ["", "Blinds only: bb/100 better (+) or worse (−) than folding every blind you had a "
+    bb_per_100_vs_fold: ["", "Blinds only: bb/100 better (+) or worse (−) than folding every blind they had a "
       + "choice in. Beside it, what folding them all would have scored."],
   };
 
@@ -385,8 +376,8 @@
 
   const fmt = (v, kind) => {
     if (v == null) return "–";
-    if (kind === "int") return String(v);
-    if (kind === "num") return (v > 0 ? "+" : "") + v.toFixed(2);
+    if (kind === "int") return pntPage.int(v);
+    if (kind === "num") return pntPage.signed(v);
     if (kind === "ci") return "±" + v.toFixed(1);
     return v.toFixed(1) + "%";
   };
@@ -453,7 +444,7 @@
     return r.json();
   }
   const withTerm = (term) => [state.filter, term].filter(Boolean).join(",");
-  const OLD_SERVER = "the running server is older than this page: restart `pnt service`";
+  const OLD_SERVER = pntPage.OLD_SERVER;
   async function load() {
     const seq = ++loadSeq;
     $("card").classList.add("loading");
@@ -482,7 +473,7 @@
       render();
     } catch (e) {
       if (seq !== loadSeq) return;
-      $("err").textContent = String(e.message || e);
+      $("err").textContent = pntPage.firstLine(e.message || e);
       $("err").classList.remove("hidden");
       $("table").replaceChildren();
     } finally {
@@ -606,12 +597,12 @@
             const fold = row.bb_per_100 - v;
             const s = document.createElement("small"); s.className = "foldall"; s.textContent = ` fold all ${fmt(fold, "num")}`;
             td.appendChild(s);
-            title = `you ${fmt(row.bb_per_100, "num")} bb/100 · folding every hand ${fmt(fold, "num")} → `
+            title = `${row.player} ${fmt(row.bb_per_100, "num")} bb/100 · folding every hand ${fmt(fold, "num")} → `
               + (v >= 0 ? `${fmt(v, "num")} better` : `${fmt(-v, "num")} worse`) + " than folding"
               + (title ? ` · ${title}` : "");
           }
           if (leak) title += " · worse than folding, past the noise";
-        } else if (key === "bb_per_100" || key === "bb_per_100_vs_fold") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
+        } else if (key === "bb_per_100") td.className = v > 0 ? "up" : v < 0 ? "down" : "";
         if (title) td.title = title;
         tr.appendChild(td);
       }

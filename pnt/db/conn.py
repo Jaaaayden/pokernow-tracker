@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -12,22 +13,31 @@ DEFAULT_DB = Path("pokernow.sqlite")
 
 
 def connect(path: str | Path = DEFAULT_DB, *, init: bool = True) -> sqlite3.Connection:
-    """Open the tracker database, creating the schema if needed."""
+    """Open the tracker database, creating the schema if needed.
+
+    A file that will not open as one (not a database, corrupt) raises
+    sqlite3.DatabaseError with the connection closed, so the file can be deleted:
+    Windows refuses while any handle is left open on it."""
     conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    # WAL lets the HUD read while an import writes -- the two consumers of this
-    # file are meant to run at the same time.
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    # Stated rather than inherited from sqlite3.connect's default, because it is
-    # load-bearing: `writing()` relies on a blocked writer waiting here instead of
-    # failing. A rebuild holds the lock for a fraction of a second, so this is slack.
-    conn.execute("PRAGMA busy_timeout = 15000")
-    if init:
-        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
-        _migrate(conn)
-        conn.commit()
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        # WAL lets the HUD read while an import writes -- the two consumers of this
+        # file are meant to run at the same time.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        # Stated rather than inherited from sqlite3.connect's default, because it is
+        # load-bearing: `writing()` relies on a blocked writer waiting here instead of
+        # failing. A rebuild holds the lock for a fraction of a second, so this is slack.
+        conn.execute("PRAGMA busy_timeout = 15000")
+        if init:
+            conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+            _migrate(conn)
+            _merge_copy_games(conn)
+            conn.commit()
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -94,6 +104,118 @@ def _migrate(conn: sqlite3.Connection) -> None:
     with writing(conn):
         for table, column, decl in _missing_columns(conn):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+#: Key in `meta` set once a database's browser-copy games are merged
+#: (`_merge_copy_games`), so the scan runs once per file, not on every connect.
+COPY_GAMES_KEY = "copy_games_merged"
+
+#: A game stored under a browser's copy name: `X (1)` (Chrome, Edge) or `X(1)`
+#: (Firefox), from `poker_now_log_X (1).csv` read before csv_source dropped the
+#: copy number. No real game ID has a space or a bracket in it, so none matches.
+_COPY_GAME_ID = re.compile(r"(?P<base>.+?) ?\(\d+\)")
+
+#: The tables that name a game, apart from raw_entries, games and hands, which
+#: `_merge_copy_game` moves by hand. The user tables (layer-2 judgement) are kept
+#: on the base game; the rest are bookkeeping that follows it.
+_HAND_KEYED_USER_TABLES = ("hand_reviews", "hand_flags", "hand_tags")
+
+
+def _copy_games(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """(copy ID, base ID) of every game stored under a browser's copy name."""
+    from ..ingest.csv_source import GAME_ID  # lazy: ingest imports this module
+
+    ids: set[str] = set()
+    for table in ("raw_entries", "games", "log_files", "imports", "parse_misses",
+                  "hand_notes", *_HAND_KEYED_USER_TABLES):
+        ids.update(r[0] for r in conn.execute(f"SELECT DISTINCT game_id FROM {table}"))
+    out = []
+    for gid in sorted(ids):
+        m = _COPY_GAME_ID.fullmatch(gid)
+        if m and GAME_ID.fullmatch(m.group("base")):
+            out.append((gid, m.group("base")))
+    return out
+
+
+def _merge_copy_game(conn: sqlite3.Connection, copy: str, base: str) -> None:
+    """Fold the game stored as `copy` into `base`, inside the caller's transaction.
+
+    Raw lines are keyed on (game_id, ord), so lines both hold collapse into one.
+    The base game's hands stay as they are until `pnt rebuild --if-stale` re-derives
+    them from the merged lines: it is marked stale, never rebuilt here, since a
+    parse is far too slow to run inside `connect`.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO raw_entries (game_id, ord, at, entry)"
+        " SELECT ?, ord, at, entry FROM raw_entries WHERE game_id = ?",
+        (base, copy),
+    )
+    conn.execute("DELETE FROM raw_entries WHERE game_id = ?", (copy,))
+    if conn.execute("SELECT 1 FROM games WHERE game_id = ?", (base,)).fetchone():
+        # Hands first: hand_players, actions and voluntary_shows cascade from them.
+        conn.execute("DELETE FROM hands WHERE game_id = ?", (copy,))
+        conn.execute("DELETE FROM games WHERE game_id = ?", (copy,))
+    elif conn.execute("SELECT 1 FROM games WHERE game_id = ?", (copy,)).fetchone():
+        # Only the copy was ever derived: it becomes the base game. hands reference
+        # games(game_id) with no ON UPDATE, so the new row goes in before they move.
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(games)") if r[1] != "game_id"]
+        conn.execute(
+            f"INSERT INTO games (game_id, {', '.join(cols)})"
+            f" SELECT ?, {', '.join(cols)} FROM games WHERE game_id = ?",
+            (base, copy),
+        )
+        conn.execute("UPDATE hands SET game_id = ? WHERE game_id = ?", (base, copy))
+        conn.execute("DELETE FROM games WHERE game_id = ?", (copy,))
+    conn.execute(
+        "UPDATE OR IGNORE parse_misses SET game_id = ? WHERE game_id = ?", (base, copy)
+    )
+    conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (copy,))
+    # The copy's file is a file of the base game: a sync that finds it unchanged
+    # skips it, and deleting it counts toward deleting the base game.
+    conn.execute("UPDATE log_files SET game_id = ? WHERE game_id = ?", (base, copy))
+    conn.execute("UPDATE imports SET game_id = ? WHERE game_id = ?", (base, copy))
+    # What you marked, flagged and tagged on the copy's hands: the same hands, by
+    # the log's own numbers. Where the base has the same mark, it stands.
+    for table in _HAND_KEYED_USER_TABLES:
+        conn.execute(f"UPDATE OR IGNORE {table} SET game_id = ? WHERE game_id = ?", (base, copy))
+        conn.execute(f"DELETE FROM {table} WHERE game_id = ?", (copy,))
+    # A note is typed text: where both hold a different one, keep both.
+    conn.execute(
+        "UPDATE hand_notes SET"
+        " note = note || char(10) || char(10) || (SELECT c.note FROM hand_notes c"
+        "   WHERE c.game_id = ? AND c.hand_number = hand_notes.hand_number),"
+        " noted_at = MAX(noted_at, (SELECT c.noted_at FROM hand_notes c"
+        "   WHERE c.game_id = ? AND c.hand_number = hand_notes.hand_number))"
+        " WHERE game_id = ? AND hand_number IN (SELECT c.hand_number FROM hand_notes c"
+        "   WHERE c.game_id = ? AND c.note <> hand_notes.note)",
+        (copy, copy, base, copy),
+    )
+    conn.execute("UPDATE OR IGNORE hand_notes SET game_id = ? WHERE game_id = ?", (base, copy))
+    conn.execute("DELETE FROM hand_notes WHERE game_id = ?", (copy,))
+    # Stale, so `pnt rebuild --if-stale` re-derives it from the merged lines.
+    conn.execute("UPDATE games SET parsed_with = 0 WHERE game_id = ?", (base,))
+
+
+def _merge_copy_games(conn: sqlite3.Connection) -> None:
+    """Merge every game stored under a browser's copy name into the game it copies.
+
+    Before csv_source read `poker_now_log_X (1).csv` as game X, it stored it as a
+    game `X (1)` of its own, counting each hand twice. Nothing else would put it
+    right: a sync skips the file, whose stamp has not changed. Once per database,
+    marked in `meta`; the usual call is one primary-key lookup.
+    """
+    done = "SELECT 1 FROM meta WHERE key = ?"
+    if conn.execute(done, (COPY_GAMES_KEY,)).fetchone():
+        return
+    with writing(conn):
+        if conn.execute(done, (COPY_GAMES_KEY,)).fetchone():
+            return  # another connection got here first
+        copies = _copy_games(conn)
+        for copy, base in copies:
+            _merge_copy_game(conn, copy, base)
+        if copies:
+            bump_generation(conn)
+        conn.execute("INSERT INTO meta (key, value) VALUES (?, 1)", (COPY_GAMES_KEY,))
 
 
 @contextmanager

@@ -4,8 +4,7 @@
  *
  * The rule: the chart follows the player the action is on, unless a row has
  * been pinned, and it moves only when the resolved spot actually changes. A
- * player with no data behind their spot never moves the chart -- an empty grid
- * would replace a useful one for nothing.
+ * player with no data behind their spot is shown on all their hands (nextSpot).
  */
 (function (root) {
   "use strict";
@@ -17,12 +16,16 @@
     return (entries || []).some((e) => END_LINE.test(e.entry || ""));
   }
 
-  /** The /live player row the table says is to act: `acting` is the name on the
-   * table's decision-current seat (watch.js), which moves before the log does.
+  /** The /live player row the table says is to act, which moves before the log
+   * does. `acting` is that seat's PokerNow ID when content.js could read it off
+   * the stacks line, else the name on the table's decision-current seat
+   * (watch.js). The ID still matches when /live masks the names (the sample).
    * Null unless it names exactly one player still in. */
   function tableRow(live, acting) {
     if (!acting) return null;
-    const hits = (live?.players || []).filter((p) => p.name === acting && !p.folded);
+    const players = (live?.players || []).filter((p) => !p.folded);
+    const byId = players.filter((p) => p.pn_id === acting);
+    const hits = byId.length ? byId : players.filter((p) => p.name === acting);
     return hits.length === 1 ? hits[0] : null;
   }
 
@@ -49,11 +52,6 @@
     if (table?.alias) return table;
     const logged = live?.to_act ? players.find((p) => p.pn_id === live.to_act) : null;
     return logged?.alias ? logged : null;
-  }
-
-  /** The alias the chart should show (see pickRow). */
-  function pickPlayer(live, pinned, acting) {
-    return pickRow(live, pinned, acting)?.alias ?? null;
   }
 
   /** The next spot to put in the chart -- with the seat it is read from, `pn_id`,
@@ -197,14 +195,11 @@
     return [tag.tip || tag.label || "", count, streaky].filter(Boolean).join("\n");
   }
 
-  /** Which chips fit in a row: the archetype always, then the rest in order up
-   * to `max`, with whatever is left named in `hidden` for a "+k" chip. */
-  function tagChips(tags, max = 3) {
+  /** The chips in the order a card shows them: the archetype first, then the
+   * rest as the server sent them. */
+  function tagChips(tags) {
     const list = Array.isArray(tags) ? tags.filter(Boolean) : [];
-    const arch = list.filter((t) => t.kind === "archetype");
-    const rest = list.filter((t) => t.kind !== "archetype");
-    const room = Math.max(0, max - arch.length);
-    return { shown: [...arch, ...rest.slice(0, room)], hidden: rest.slice(room) };
+    return [...list.filter((t) => t.kind === "archetype"), ...list.filter((t) => t.kind !== "archetype")];
   }
 
   // Wilson 95% interval for a rate of p (0..1) over n chances, as [lo, hi]
@@ -235,7 +230,7 @@
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  const api = { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
+  const api = { handEnded, actingId, pickRow, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PNT = Object.assign(root.PNT || {}, api);
 })(typeof globalThis !== "undefined" ? globalThis : this);

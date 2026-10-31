@@ -22,7 +22,7 @@ rate is then quietly too low for exactly the players who sit out most.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ..ingest.csv_source import RawEntry
@@ -42,17 +42,24 @@ DEAD_POSTS = frozenset({E.POST_ANTE, E.POST_MISSING_SB})
 #: when the player never acts again, which is why it hid in fold-around hands.
 CUMULATIVE_POSTS = frozenset({E.POST_STRADDLE, E.POST_MISSED_BB})
 
-#: Bumped whenever this module would store an existing log's hands differently.
-#: Each game records the version that parsed it (`games.parsed_with`), and
-#: `pnt rebuild --if-stale` re-parses any game parsed by an older one.
+#: Bumped whenever any change under pnt/logfmt/ -- this module, the line grammar
+#: (grammar.py) or hero inference (hero.py) -- would store an existing log's hands
+#: or game row differently. Each game records the version that parsed it
+#: (`games.parsed_with`), and `pnt rebuild --if-stale` re-parses any game parsed
+#: by an older one.
 #: 1: hands a gap in the log joined together are dropped (SPEC.md, "Money").
 #: 2: a Nit Game that did not start is recognized, not a parse miss; a big blind
 #:    all in for less than the table's blind no longer sets the hand's blind.
 #: 3: a show, 7-2 bounty or Nit penalty logged after a hand's end line is not
 #:    booked on it when the next start skips a number.
-PARSE_VERSION = 3
+#: 4: Cents Mode amounts parse (in the table's integer units); "posts an ante";
+#:    a `|` in a name keeps the roster; a hand with no big blind post is played
+#:    at the table's blind; a dealer who posts the big blind no longer anchors
+#:    positions; the game's sb/bb come from its hands' posts; hero needs 2
+#:    showdowns, not 3, when nobody else could be hero (hero.py).
+PARSE_VERSION = 4
 #: What the latest bump changed, for the line `pnt update` prints as it rebuilds.
-PARSE_CHANGE = "stop booking a later hand's shows and bounties on the hand before a gap"
+PARSE_CHANGE = "read Cents Mode tables, antes and short sessions' hero cards"
 
 
 @dataclass(slots=True)
@@ -175,7 +182,8 @@ class ParseResult:
     game_id: str
     hands: list[ParsedHand] = field(default_factory=list)
     misses: list[tuple[int, str, str]] = field(default_factory=list)  # (ord, entry, reason)
-    blinds: dict[str, int] = field(default_factory=dict)  # latest sb/bb/ante seen
+    #: The game's sb/bb/ante: its latest hand's, else its latest blind-change lines.
+    blinds: dict[str, int | None] = field(default_factory=dict)
     #: Hands dropped because the log lost lines between them and the next boundary:
     #: another hand's end line, or a start other than the next hand's (see SPEC.md,
     #: "Money"). Each is the number the dropped hand started as.
@@ -221,6 +229,12 @@ def assign_positions(
         positions = {seat: k for k, seat in enumerate(rotation)}
         if bb_seat is not None and bb_seat in positions:
             offset = expected_bb - positions[bb_seat]
+            if offset > 0 and positions[bb_seat] == 0:
+                # The named dealer posted the big blind, so the button is not
+                # where the start line says (a player sat down between the
+                # blinds). The blinds are what the action follows: anchor on
+                # the big blind, as with a dead button.
+                return _from_big_blind(seats, bb_seat), True
             if offset > 0:
                 # A dead blind sits between the button and the big blind; everyone
                 # from the button's left onward is one or more slots further round
@@ -231,13 +245,17 @@ def assign_positions(
         return positions, False
 
     if bb_seat is not None and bb_seat in seats:
-        start = seats.index(bb_seat)
-        return (
-            {seats[(start + k) % n]: (expected_bb + k) % n for k in range(n)},
-            False,
-        )
+        return _from_big_blind(seats, bb_seat), False
 
     return {}, False
+
+
+def _from_big_blind(seats: list[int], bb_seat: int) -> dict[int, int]:
+    """Positions counted round from the big blind, over sorted dealt-in seats."""
+    n = len(seats)
+    expected_bb = 1 if n == 2 else 2
+    start = seats.index(bb_seat)
+    return {seats[(start + k) % n]: (expected_bb + k) % n for k in range(n)}
 
 
 # Standard position names by table size. Written out rather than computed because
@@ -256,18 +274,30 @@ _POSITION_TABLES: dict[int, tuple[str, ...]] = {
 }
 
 
-def position_name(seats_from_button: int, n_dealt_in: int) -> str:
+def position_name(seats_from_button: int, n_dealt_in: int, slots: int = 0) -> str:
     """Label a position at *query* time.
 
     Never stored: seat 4 is UTG on one hand and the cutoff on the next once two
     players leave.
+
+    `slots` is the hand's `position_slots`: more than `n_dealt_in` on a hand with
+    a dead small blind, whose empty slot still sits between the button and the
+    big blind. Such a hand is named as the table it was dealt at, dead slot
+    included -- four dealt in round a dead small blind are BTN, BB, HJ and CO, so
+    the seat right of the button is the cutoff, as it is on every other hand.
     """
-    table = _POSITION_TABLES.get(max(2, min(n_dealt_in, 10)), _POSITION_TABLES[10])
+    size = max(n_dealt_in, slots, seats_from_button + 1)
+    table = _POSITION_TABLES.get(max(2, min(size, 10)), _POSITION_TABLES[10])
     if 0 <= seats_from_button < len(table):
         return table[seats_from_button]
-    # Only reachable on irregular-blind hands, where a dead slot pushes the last
-    # player past the final seat. They act first preflop, so: UTG.
-    return "UTG"
+    # Past ten slots, which ten seats cannot reach: the last name there is.
+    return table[-1]
+
+
+def position_slots(seats_from_button: Iterable[int | None], n_dealt_in: int) -> int:
+    """How many position slots a hand has: its players, plus any dead slot that
+    pushed one of them past `n_dealt_in - 1` (`assign_positions`)."""
+    return max([n_dealt_in, *(k + 1 for k in seats_from_button if k is not None)])
 
 
 class _HandBuilder:
@@ -293,9 +323,11 @@ class _HandBuilder:
         #: A big blind posted all in: possibly short of the level, so `finish`
         #: weighs it against the table's blind.
         self._bb_all_in = 0
+        self._roster_read = False
 
     # -- event handlers ----------------------------------------------------
     def roster(self, ev: E.PlayerStacks) -> None:
+        self._roster_read = True
         for seat, ref, stack in ev.seats:
             self.hand.players[ref.pn_id] = HandPlayer(
                 pn_id=ref.pn_id, name=ref.name, seat=seat, starting_stack=stack
@@ -413,7 +445,13 @@ class _HandBuilder:
             # callers still paid 10. The table's blind wins unless the post tops it.
             self.hand.bb = max(self._bb_all_in, table_bb or 0)
         if self.hand.bb is None:
-            self.hand.bb = bomb_pot_bb(self.hand, bomb_bbs, table_bb)
+            # A bomb pot is played at its own blind; any other hand with no big
+            # blind post (a dead one) at the table's.
+            self.hand.bb = bomb_pot_bb(self.hand, bomb_bbs, table_bb) or table_bb
+        if not self._roster_read:
+            # No `Player stacks:` line that parsed, so nobody is dealt in and no
+            # chips are on record: whatever the end line says, this is partial.
+            self.hand.complete = False
         positions, irregular = assign_positions(
             [p.seat for p in self.hand.players.values()],
             self.hand.dealer_seat,
@@ -500,6 +538,7 @@ _CLOCK_SETTINGS = {
 
 
 BOMB_BBS = re.compile(r"^\* Bomb Pot BB Quantity: .*» (\S+)\s*$", re.MULTILINE)
+CENTS_MODE = re.compile(r"^\* Cents Mode: .*» (\S+)\s*$", re.MULTILINE)
 
 
 def bomb_bbs_setting(raw: str) -> tuple[bool, int | None]:
@@ -564,9 +603,14 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     #: The open hand's latest big blind post, whoever posted it. A dropped hand's
     #: posts may straddle a gap, and the later one is the table's blind now.
     bb_posted: int | None = None
+    #: The table is in Cents Mode, by its settings or because a hand's stacks were
+    #: printed as decimals: amounts are logged in hundredths (`grammar._chips`).
+    table_cents = False
+    #: Whether the line now being read was logged in Cents Mode.
+    cents = False
 
     for raw in entries:
-        ev = classify(raw.entry, raw.ord)
+        ev = classify(raw.entry, raw.ord, cents=cents)
 
         if isinstance(ev, E.Unknown):
             result.misses.append((raw.ord, raw.entry, ev.reason))
@@ -590,6 +634,7 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
                 last = None
             builder = _HandBuilder(game_id, ev, raw.at)
             bb_posted = None
+            cents = table_cents
             if clock["limit"] is not None:
                 builder.hand.clock_ms = 1000 * (clock["limit"] + (clock["bank"] or 0))
             continue
@@ -600,11 +645,16 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             sets, value = bomb_bbs_setting(ev.raw)
             if sets:
                 bomb_bbs = value
+            # Unlike the clock, the display switches at once: the lines after
+            # this one are printed in the new mode.
+            mode = CENTS_MODE.search(ev.raw)
+            if mode:
+                table_cents = cents = mode.group(1) == "on"
             continue
 
         if isinstance(ev, E.BlindChange):
             result.blinds[ev.which] = ev.to_amount
-            if ev.which == "bb" and isinstance(ev.to_amount, int):
+            if ev.which == "bb":
                 table_bb = ev.to_amount
             continue
 
@@ -649,6 +699,8 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
             result.hands.append(last)
             builder = None
         elif isinstance(ev, E.PlayerStacks):
+            if ev.cents:
+                table_cents = cents = True
             builder.roster(ev)
         elif isinstance(ev, E.HeroCards):
             builder.hand.hero_cards = ev.cards
@@ -673,7 +725,34 @@ def parse(entries: Iterable[RawEntry], game_id: str) -> ParseResult:
     elif held and last is not None:  # the log ends after the last hand: nothing missing
         _settle(last, held)
 
+    _game_blinds(result)
     return result
+
+
+def _game_blinds(result: ParseResult) -> None:
+    """The game's blinds as its hands played them, over the blind-change lines.
+
+    Those lines say what the table was set to, not what was dealt: a level set
+    after the last hand, or none at all on a table that never changed its
+    blinds. So the latest hand with a big blind sets `bb`, its small blind post
+    (or the latest one at that level) `sb`, and its antes `ante`; the lines are
+    kept only for a game with no such hand.
+    """
+    last = next((h for h in reversed(result.hands) if h.bb), None)
+    if last is None:
+        return
+    sb = next(
+        (
+            a.amount
+            for h in reversed(result.hands)
+            if h.bb == last.bb
+            for a in h.actions
+            if a.post_kind == E.POST_SB and not a.all_in
+        ),
+        result.blinds.get("sb"),
+    )
+    ante = max((a.amount for a in last.actions if a.post_kind == E.POST_ANTE), default=0)
+    result.blinds = {"sb": sb, "bb": last.bb, "ante": ante}
 
 
 def _settle(hand: ParsedHand, events: list[E.Event]) -> None:
@@ -685,7 +764,3 @@ def _settle(hand: ParsedHand, events: list[E.Event]) -> None:
             _apply_nit(hand, ev)
         else:
             _apply_voluntary_show(hand, ev)
-
-
-def iter_hands(entries: Iterable[RawEntry], game_id: str) -> Iterator[ParsedHand]:
-    yield from parse(entries, game_id).hands

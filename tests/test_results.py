@@ -116,8 +116,17 @@ def test_walks_are_the_big_blind_folded_to(db):
         walk = out["tables"][0]["rows"][0]
         assert walk["key"] == "walk" and "roles" not in walk
         if walk["hands"]:
-            assert walk["vpip_pct"] == 0 and walk["saw_flop_pct"] == 0
+            # No preflop decision, so no VPIP: "–", as on the stat rows.
+            assert walk["vpip_pct"] is None and walk["vpip_hands"] == 0
+            assert walk["saw_flop_pct"] == 0
             assert walk["net_bb"] > 0
+
+
+def test_vpip_is_the_stat_rows_vpip(db):
+    """One label, one number: Results' VPIP is the stats page's and the HUD's."""
+    for row in report(db):
+        total = results_breakdown(facts_for(db, row["player"]))["total"]
+        assert total["vpip_pct"] == row["vpip"], row["player"]
 
 
 def _fact(hand_id: int, net: int, *, complete: bool = True, **kw) -> Facts:

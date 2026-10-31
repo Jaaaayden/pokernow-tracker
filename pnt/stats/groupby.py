@@ -75,7 +75,7 @@ def _seat(f: Facts, _: Context) -> Key:
     keeps its label, so the cell reproduces from its term; a dead button has none."""
     if f.seats_from_button is None or f.dead_button:
         return None
-    return position_name(f.seats_from_button, f.n_dealt_in)
+    return position_name(f.seats_from_button, f.n_dealt_in, f.position_slots)
 
 
 #: Results' pot types, under the names the pot-type flags have.
@@ -371,7 +371,7 @@ def group(
         per_dim = []
         for i, d in enumerate(chosen):
             raw = _buckets(d, f, ctx)
-            # Several spellings of one bucket (`vs`: Henry, henry) are one cell,
+            # Several spellings of one bucket (`vs`: Alex, alex) are one cell,
             # shown under the first spelling met.
             idents = []
             for b in raw:

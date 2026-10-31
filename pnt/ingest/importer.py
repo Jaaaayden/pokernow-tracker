@@ -23,7 +23,7 @@ from ..db.conn import GENERATION_KEY, bump_generation, writing
 from ..logfmt.hero import apply_hero_cards, infer_hero
 from ..logfmt.parser import PARSE_VERSION, ParsedHand, parse
 from ..stats import strength
-from .csv_source import RawEntry, game_id_from_filename, read_csv
+from .csv_source import GAME_ID, RawEntry, game_id_from_filename, read_csv
 
 
 def _now() -> str:
@@ -80,8 +80,8 @@ def resolve_identity(conn: sqlite3.Connection, pn_id: str, name: str, seen_at: s
 
     New IDs get their own player. Deciding that two IDs are the same human is a
     judgement call, so it stays manual (`pnt alias merge`) rather than guessing
-    from display names -- this dataset contains ``hsj`` and ``HSJ`` on different
-    IDs, and also one ID that presents as both ``genericpoker`` and ``500``.
+    from display names -- this dataset contains ``kai`` and ``KAI`` on different
+    IDs, and also one ID that presents as both ``tablebot`` and ``500``.
     """
     row = conn.execute(
         "SELECT player_id FROM player_identities WHERE pn_id = ?", (pn_id,)
@@ -191,6 +191,10 @@ def split_identities(conn: sqlite3.Connection, pn_ids: list[str], alias: str) ->
     """
     if not pn_ids:
         raise ValueError("no identities given")
+    # The rules of `rename_player`: what a player is called is stripped, and never blank.
+    alias = alias.strip()
+    if not alias:
+        raise ValueError("the new player's name cannot be empty")
     with writing(conn):
         rows = conn.execute(
             "SELECT pn_id, player_id FROM player_identities"
@@ -493,62 +497,93 @@ def needs_parse_rebuild(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def _raw_print(conn: sqlite3.Connection, game_id: str) -> tuple:
+    """What the stored raw lines of a game are, in brief. Lines are only ever added
+    (or the game deleted whole), so any change moves the count, the ends, or both."""
+    return tuple(
+        conn.execute(
+            "SELECT COUNT(*), MIN(ord), MAX(ord) FROM raw_entries WHERE game_id = ?", (game_id,)
+        ).fetchone()
+    )
+
+
+def _derive_game(entries: list[RawEntry], game_id: str):
+    result = parse(entries, game_id)
+    guess = infer_hero(result.hands)
+    hero_pn_id = guess.pn_id if guess.confident else None
+    if hero_pn_id:
+        apply_hero_cards(result.hands, hero_pn_id)
+    return result, guess, hero_pn_id
+
+
+def _store_derived(conn: sqlite3.Connection, game_id: str, entries: list[RawEntry], result, hero_pn_id) -> None:
+    """Replace a game's derived rows with `result`, inside the caller's transaction."""
+    conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
+    conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
+    conn.execute(
+        "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id, parsed_with)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(game_id) DO UPDATE SET started_at=excluded.started_at,"
+        " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, variant=excluded.variant,"
+        " hero_pn_id=excluded.hero_pn_id, parsed_with=excluded.parsed_with",
+        (
+            game_id,
+            entries[0].at,
+            result.blinds.get("sb"),
+            result.blinds.get("bb"),
+            result.blinds.get("ante", 0),
+            result.hands[0].variant if result.hands else "nlhe",
+            hero_pn_id,
+            PARSE_VERSION,
+        ),
+    )
+    for hand in result.hands:
+        for p in hand.players.values():
+            resolve_identity(conn, p.pn_id, p.name, hand.ts)
+        _insert_hand(conn, hand)
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO parse_misses (game_id, ord, entry, reason)"
+        " VALUES (?, ?, ?, ?)",
+        [(game_id, o, e, r) for o, e, r in result.misses],
+    )
+    bump_generation(conn)
+    # Stamped in the same transaction: a cache keyed on it can never see new
+    # hands under an old stamp.
+    conn.execute(
+        "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
+        (GENERATION_KEY, game_id),
+    )
+
+
 def rebuild_game(conn: sqlite3.Connection, game_id: str) -> dict:
     """Re-derive every hand of a game from its stored raw entries.
 
     Destroys and recreates all layer-2 rows for the game inside one transaction,
     so a partial failure leaves the previous derivation intact.
+
+    What is stored is derived from the raw lines as they are when it commits. The
+    parse runs before the write lock, to keep the lock short; if lines arrived in
+    between (two tabs on one table, `pnt import` beside the server), it runs again
+    under the lock. Otherwise a rebuild that read first but committed last would
+    leave the game derived from the older lines, with nothing to set it right.
+
+    A game with no raw lines is left alone: no games row is written for it.
     """
     entries = read_raw(conn, game_id)
-    result = parse(entries, game_id)
-
-    guess = infer_hero(result.hands)
-    hero_pn_id = guess.pn_id if guess.confident else None
-    if hero_pn_id:
-        apply_hero_cards(result.hands, hero_pn_id)
-
-    started_at = entries[0].at if entries else None
+    seen = (len(entries), entries[0].ord, entries[-1].ord) if entries else (0, None, None)
+    result, guess, hero_pn_id = _derive_game(entries, game_id)
 
     with writing(conn):  # single transaction, write lock taken up front
-        conn.execute("DELETE FROM hands WHERE game_id = ?", (game_id,))
-        conn.execute("DELETE FROM parse_misses WHERE game_id = ?", (game_id,))
-        conn.execute(
-            "INSERT INTO games (game_id, started_at, sb, bb, ante, variant, hero_pn_id, parsed_with)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            " ON CONFLICT(game_id) DO UPDATE SET started_at=excluded.started_at,"
-            " sb=excluded.sb, bb=excluded.bb, ante=excluded.ante, hero_pn_id=excluded.hero_pn_id,"
-            " parsed_with=excluded.parsed_with",
-            (
-                game_id,
-                started_at,
-                result.blinds.get("sb"),
-                result.blinds.get("bb"),
-                result.blinds.get("ante", 0),
-                result.hands[0].variant if result.hands else "nlhe",
-                hero_pn_id,
-                PARSE_VERSION,
-            ),
-        )
-        for hand in result.hands:
-            for p in hand.players.values():
-                resolve_identity(conn, p.pn_id, p.name, hand.ts)
-            _insert_hand(conn, hand)
-
-        conn.executemany(
-            "INSERT OR REPLACE INTO parse_misses (game_id, ord, entry, reason)"
-            " VALUES (?, ?, ?, ?)",
-            [(game_id, o, e, r) for o, e, r in result.misses],
-        )
-        bump_generation(conn)
-        # Stamped in the same transaction: a cache keyed on it can never see new
-        # hands under an old stamp.
-        conn.execute(
-            "UPDATE games SET derived_gen = (SELECT value FROM meta WHERE key = ?) WHERE game_id = ?",
-            (GENERATION_KEY, game_id),
-        )
-    # Its own transaction, after the rebuild's: the hand strength of every shown
-    # holding, so grading the game never waits on a board (stats/strength.py).
-    strength.warm(conn, game_id)
+        if _raw_print(conn, game_id) != seen:
+            entries = read_raw(conn, game_id)
+            result, guess, hero_pn_id = _derive_game(entries, game_id)
+        if entries:
+            _store_derived(conn, game_id, entries, result, hero_pn_id)
+    if entries:
+        # Its own transaction, after the rebuild's: the hand strength of every shown
+        # holding, so grading the game never waits on a board (stats/strength.py).
+        strength.warm(conn, game_id)
 
     return {
         "game_id": game_id,
@@ -595,9 +630,20 @@ def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
 
 
 def import_csv(conn: sqlite3.Connection, path: str | Path, game_id: str | None = None) -> dict:
-    """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly."""
+    """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly.
+
+    The game is `game_id`, else the one the file's name holds (`poker_now_log_<ID>.csv`,
+    a browser's ` (1)` aside), else the bare name when that is an ID itself. Anything
+    else is refused (ValueError): a game stored under an ID that is not one could be
+    neither served nor written to the log folder.
+    """
     path = Path(path)
     gid = game_id or game_id_from_filename(path) or path.stem
+    if not GAME_ID.fullmatch(gid):
+        raise ValueError(
+            f"{path.name}: no PokerNow game ID in the file name;"
+            " rename it poker_now_log_<game ID>.csv"
+        )
     entries = read_csv(path)
     offered, n_new = ingest_entries(conn, gid, entries, source=f"csv:{path.name}")
     summary = rebuild_game(conn, gid)

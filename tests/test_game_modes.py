@@ -197,6 +197,92 @@ def test_game_filters_and_results_rows():
             pred = parse_filter(r["filter"])
             assert sum(pred(f) for f in [*plo, *double, *bomb]) == r["hands"], r["key"]
     assert "walk" not in pots or pots["walk"] == 0
+    # No preflop read on any of them: no VPIP, rather than a 0% nobody played.
+    vpip = {r["key"]: (r["vpip_pct"], r["vpip_hands"]) for r in rows}
+    assert vpip["plo"] == vpip["double"] == vpip["bomb"] == (None, 0)
+
+
+def test_a_plo_table_says_its_hands_are_not_analysed(tmp_path, monkeypatch):
+    """The HUD's stats leave PLO out; /hud says how many hands that is, and /live
+    resolves no Hold'em spot for a PLO hand in progress."""
+    import importlib
+
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import ingest_entries, rebuild_game
+    from pnt.server import app as app_module
+    from pnt.stats.queries import not_analysed
+    from tests.conftest import local_client
+
+    path = tmp_path / "api.sqlite"
+    monkeypatch.setenv("PNT_DB", str(path))
+    importlib.reload(app_module)
+    conn = connect(path)
+    done = _plo_entries(3)
+    live = [t.replace("{n}", "4") for t in PLO_SHOWDOWN[:9]]  # hand 4, on the flop
+    ingest_entries(conn, GAME, done + [RawEntry(ord=len(done) + i, at="t", entry=t) for i, t in enumerate(live)], "test")
+    rebuild_game(conn, GAME)
+    assert not_analysed(conn, GAME) == {"A": 4, "B": 4}  # the live one is stored, incomplete
+    conn.close()
+
+    client = local_client(app_module.app)
+    hud = client.get(f"/hud/{GAME}").json()
+    for seat in hud["seats"]:
+        assert seat["session"] == {"hands": 0, "not_analysed": 4}, seat
+        assert seat["stats"]["hands"] == 0 and seat["stats"]["not_analysed"] == 4
+    now = client.get(f"/live/{GAME}").json()
+    assert now["hand_number"] == 4 and now["analysed"] is False
+    assert all(p["resolved"] is None for p in now["players"])
+
+
+def _not_analysed_by_sql(conn, game_id=None):
+    """The whole-database count `not_analysed` made before it was kept per game."""
+    from pnt.stats.derive import ANALYSED_SQL
+
+    where = " AND h.game_id = ?" if game_id else ""
+    return {
+        r[0]: r[1]
+        for r in conn.execute(
+            "SELECT p.alias, COUNT(*) FROM hands h"
+            " JOIN hand_players hp ON hp.hand_id = h.hand_id"
+            " JOIN player_identities pi ON pi.pn_id = hp.pn_id"
+            " JOIN players p ON p.player_id = pi.player_id"
+            f" WHERE NOT {ANALYSED_SQL}{where} GROUP BY p.alias",
+            (game_id,) if game_id else (),
+        )
+    }
+
+
+def test_not_analysed_is_counted_per_game_and_recounts_only_a_rebuilt_one(tmp_path, monkeypatch):
+    from pnt.db.conn import connect
+    from pnt.ingest.importer import import_csv, ingest_entries, merge_players, rebuild_game
+    from pnt.stats import queries
+    from tests.conftest import HU
+
+    conn = connect(tmp_path / "na.sqlite")
+    import_csv(conn, HU)  # Hold'em: nothing left out
+    other = GAME + "_two"
+    ingest_entries(conn, GAME, _plo_entries(3), "test")
+    ingest_entries(conn, other, _plo_entries(5), "test")
+    for gid in (GAME, other):
+        rebuild_game(conn, gid)
+
+    assert queries.not_analysed(conn) == _not_analysed_by_sql(conn) == {"A": 8, "B": 8}
+    for gid in (GAME, other):
+        assert queries.not_analysed(conn, gid) == _not_analysed_by_sql(conn, gid)
+
+    counted = []
+    real = queries._not_analysed_in
+    monkeypatch.setattr(queries, "_not_analysed_in", lambda c, gid: counted.append(gid) or real(c, gid))
+    rebuild_game(conn, other)
+    assert queries.not_analysed(conn) == {"A": 8, "B": 8}
+    assert counted == [other]
+
+    # A merge regroups the same per-game counts, with nothing counted again.
+    counted.clear()
+    merge_players(conn, "B", "A")
+    assert queries.not_analysed(conn) == _not_analysed_by_sql(conn) == {"A": 16}
+    assert counted == []
+    conn.close()
 
 
 def test_the_nit_board_and_the_session_list(tmp_path, monkeypatch):

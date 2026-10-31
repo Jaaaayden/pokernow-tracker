@@ -261,6 +261,45 @@ def test_a_rebuild_in_the_middle_of_a_read_cannot_mix_old_and_new_hand_ids(db, m
     assert {f.hand_id for f in after} != {f.hand_id for f in before}  # the rebuild's new ids
     assert after == q.facts_for(db, "genericpoker")
 
+def test_the_report_reads_each_game_in_a_snapshot_but_derives_outside_one(db, monkeypatch):
+    """A rebuild landing between load_hands' queries must not read as a game of
+    hands with no players; and no snapshot is held while hands are derived, which
+    on a big database would keep WAL from checkpointing for a minute."""
+    q.clear_caches()
+    other = connect(path_of(db))
+    loading: list[str | None] = []
+    fired = []
+
+    def rebuild_mid_load(sql: str) -> None:  # between the hands and their players
+        if loading[-1:] == [HU_GAME] and "FROM hand_players hp JOIN" in sql and not fired:
+            fired.append(rebuild_game(other, HU_GAME))
+
+    real_load, real_tally = q.load_hands, q._tally_by_id
+    derived_in_snapshot = []
+
+    def load_hands(conn, game_id=None, *a, **k):
+        assert conn.in_transaction, "load_hands outside a snapshot"
+        loading.append(game_id)
+        return real_load(conn, game_id, *a, **k)
+
+    def tally(hands):
+        derived_in_snapshot.append(db.in_transaction)
+        return real_tally(hands)
+
+    monkeypatch.setattr(q, "load_hands", load_hands)
+    monkeypatch.setattr(q, "_tally_by_id", tally)
+    db.set_trace_callback(rebuild_mid_load)
+    try:
+        during = q.report(db)
+    finally:
+        db.set_trace_callback(None)
+        other.close()
+    assert fired and derived_in_snapshot and not any(derived_in_snapshot)
+    monkeypatch.undo()
+    q.clear_caches()
+    assert during == q.report(db)
+
+
 def test_a_merge_regroups_the_tallies_without_deriving_anything(db, monkeypatch):
     q.report(db)
     calls = _games_loaded(monkeypatch)

@@ -26,7 +26,7 @@ from pnt.stats.cards import straight_possible, top_kicker, top_two_pair
 from pnt.stats.derive import HandAction, HandPlayerRow, HandRow, derive
 from pnt.stats.equity import best_of
 from pnt.stats.filters import parse_filter
-from pnt.stats.queries import display_names, facts_for, load_hands, report
+from pnt.stats.queries import display_names, facts_cached, facts_for, load_hands, report
 
 THREE_GAME = "pglSdQtyFGypDbrqD5IhXXlYz"
 HERO, VIL = "hero", "vil"
@@ -524,6 +524,25 @@ def test_a_spot_filter_narrows_the_rows(db, reviews):
     out = rv.review_hand_list(db, "genericpoker", predicate=pred)
     assert out["hands"] and all("Chris" in h["vs"] for h in out["hands"])
     assert out["examined"] < reviews["genericpoker"]["examined"]
+
+
+def test_session_terms_find_the_hands_the_chart_finds(db, reviews):
+    """`post_loss` and `session_hand` are numbered over the whole session
+    (tilt.py); the review must read them as `facts_cached` does, or any session
+    term on the chart's spot empties the Review and Bad beats tabs."""
+    names = display_names(db)
+    hits = 0
+    for alias, whole in reviews.items():
+        chart = {f.hand_id: f for f in facts_cached(db, alias)}  # one seat per hand here
+        for expr in ("post_loss", "!post_loss", "session_hand>=50", "hands_since_loss<=5"):
+            pred = parse_filter(expr, names)
+            out = rv.review_hand_list(db, alias, predicate=pred)
+            want = [h for h in whole["hands"] if pred(chart[h["hand_id"]])]
+            assert [(h["hand_id"], h["kind"]) for h in out["hands"]] == [(h["hand_id"], h["kind"]) for h in want]
+            assert out["examined"] == sum(1 for f in chart.values() if f.complete and pred(f)), (alias, expr)
+            if expr == "post_loss":
+                hits += len(out["hands"])
+    assert hits, "some flagged hand on the fixture logs follows a big loss"
 
 
 def test_an_unknown_alias_raises(db):

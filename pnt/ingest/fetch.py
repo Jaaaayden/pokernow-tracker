@@ -19,14 +19,18 @@ is the one that says who you are (docs/findings.md §8).
 
 from __future__ import annotations
 
+import email.utils
+import http.client
 import json
+import math
 import re
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from datetime import UTC, datetime
 
-from .csv_source import RawEntry
+from .csv_source import GAME_ID, RawEntry
 
 BASE_URL = "https://www.pokernow.com"
 PAGE_SIZE = 50
@@ -40,14 +44,20 @@ MAX_PAUSE = 10.0
 #: before a game is given up on -- losing its pages is worse than waiting.
 MAX_RETRIES = 14
 MAX_BACKOFF = 120.0
+#: Per page, for a timeout, a dropped connection or an answer cut short: worth a
+#: second try, but not twenty minutes of them.
+MAX_TRANSIENT_RETRIES = 3
 
 _USER_AGENT = "Mozilla/5.0 (pokernow-tracker backfill)"
-_ID = re.compile(r"[A-Za-z0-9_-]+")
 _URL_ID = re.compile(r"/games/(?P<gid>[A-Za-z0-9_-]+)")
 
 
 class FetchError(Exception):
     """A game that cannot be fetched: a bad link, or PokerNow refusing."""
+
+
+class TransientFetchError(FetchError):
+    """A page lost on the way: a timeout, a reset or an answer cut short. Retried."""
 
 
 class RateLimited(Exception):
@@ -57,14 +67,35 @@ class RateLimited(Exception):
 
 
 def game_id_from_link(link: str) -> str:
-    """`https://www.pokernow.com/games/pglX...?foo` -> `pglX...`. A bare ID passes through."""
+    """`https://www.pokernow.com/games/pglX...?foo` -> `pglX...`. A bare ID passes through.
+
+    Only IDs the log folder can name a file after (`csv_source.GAME_ID`) pass."""
     link = link.strip()
     m = _URL_ID.search(link)
-    if m:
-        return m.group("gid")
-    if _ID.fullmatch(link):
-        return link
+    gid = m.group("gid") if m else link
+    if GAME_ID.fullmatch(gid):
+        return gid
     raise FetchError(f"not a PokerNow game link or ID: {link!r}")
+
+
+def _retry_after(value: str | None) -> float | None:
+    """Seconds to wait from a Retry-After header: a number of seconds or an HTTP
+    date. None when it says neither, so the caller's own backoff applies."""
+    if not value:
+        return None
+    try:
+        wait = float(value)
+    except ValueError:
+        try:
+            when = email.utils.parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        wait = (when - datetime.now(UTC)).total_seconds()
+    if not math.isfinite(wait):
+        return None
+    return min(max(wait, 0.0), MAX_BACKOFF)
 
 
 def _cookie_header(cookie: str) -> str:
@@ -84,20 +115,34 @@ def fetch_page(game_id: str, before: int | None, cookie: str | None = None) -> l
         headers["Cookie"] = _cookie_header(cookie)
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as r:
-            body = json.load(r)
+            raw = r.read()
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
-            retry_after = exc.headers.get("Retry-After")
-            raise RateLimited(float(retry_after) if retry_after else None) from exc
+            raise RateLimited(_retry_after(exc.headers.get("Retry-After"))) from exc
         if exc.code == 404:
             raise FetchError(f"{game_id}: no such game (404)") from exc
         raise FetchError(f"{game_id}: PokerNow answered HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
-        raise FetchError(f"{game_id}: could not reach PokerNow ({exc.reason})") from exc
-    return [
-        RawEntry(ord=int(line["created_at"]), at=line["at"], entry=line["msg"])
-        for line in body.get("logs", [])
-    ]
+        raise TransientFetchError(f"{game_id}: could not reach PokerNow ({exc.reason})") from exc
+    except (OSError, http.client.HTTPException) as exc:  # a timeout, a reset, a page cut short
+        raise TransientFetchError(f"{game_id}: lost the answer from PokerNow ({exc!r})") from exc
+    try:
+        body = json.loads(raw)
+    except ValueError as exc:
+        # Nothing, or JSON that stops early: an answer with no Content-Length cut
+        # short arrives as just that, with no error from the transport. Anything
+        # else is not JSON at all -- a Cloudflare check page, say -- and asking
+        # again would get the same.
+        if raw.lstrip()[:1] in (b"", b"{", b"["):
+            raise TransientFetchError(f"{game_id}: PokerNow's answer was cut short ({exc})") from exc
+        raise FetchError(f"{game_id}: PokerNow's answer was not a log ({exc})") from exc
+    try:
+        return [
+            RawEntry(ord=int(line["created_at"]), at=str(line["at"]), entry=str(line["msg"]))
+            for line in body.get("logs", [])
+        ]
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise FetchError(f"{game_id}: PokerNow's answer was not a log ({exc!r})") from exc
 
 
 class Pacer:
@@ -141,11 +186,17 @@ def fetch_log(
     before: int | None = None
     pages = 0
     while True:
+        lost = 0  # pages lost on the way, this page
         for attempt in range(MAX_RETRIES + 1):
             pacer.wait()
             try:
                 page = get_page(game_id, before, cookie)
                 break
+            except TransientFetchError:
+                lost += 1
+                if lost > MAX_TRANSIENT_RETRIES or attempt == MAX_RETRIES:
+                    raise  # a FetchError: backfill counts the game failed and goes on
+                pacer.sleep(min(5 * 2 ** (lost - 1), MAX_BACKOFF))
             except RateLimited as exc:
                 if attempt == MAX_RETRIES:
                     raise FetchError(

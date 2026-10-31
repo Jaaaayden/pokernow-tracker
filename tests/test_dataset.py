@@ -184,6 +184,69 @@ def test_the_sample_stays_switched_on_across_a_restart(server):
         assert client.get("/settings/dataset").json()["active"] == "own"
 
 
+def test_a_corrupt_sample_database_is_built_again_not_a_dead_server(server):
+    """Unreadable with the sample switched on, it failed every start, and `supervise`
+    restarted the server forever: the HUD went down with the pages."""
+    path = samplemod.database()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"this is not a database" * 100)
+    local_config.put("dataset", "sample")
+
+    importlib.reload(server)
+    with local_client(server.app) as client:  # the start itself must not raise
+        assert client.get("/health").status_code == 200
+        assert _wait_for_sample(client)["active"] == "sample"
+    assert _hands(path) > 0
+
+
+def test_switching_to_a_corrupt_sample_is_no_500(server):
+    path = samplemod.database()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"this is not a database" * 100)
+    client = local_client(server.app)
+    got = client.put("/settings/dataset", json={"which": "sample"})
+    assert got.status_code == 200, got.text
+    assert _wait_for_sample(client)["active"] == "sample"
+
+
+def test_a_failed_restore_of_the_sample_starts_on_your_own_data(server, monkeypatch):
+    local_config.put("dataset", "sample")
+    importlib.reload(server)
+
+    def broken(path):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(server, "_sample_current", broken)
+    with local_client(server.app) as client:
+        assert client.get("/settings/dataset").json()["active"] == "own"
+    # For this run only: a passing fault does not switch the sample off for good.
+    assert local_config.get("dataset") == "sample"
+
+    importlib.reload(server)  # the next start, with `_sample_current` its own again
+    with local_client(server.app) as client:
+        assert _wait_for_sample(client)["active"] == "sample"
+
+
+def test_a_restore_whose_build_cannot_start_leaves_no_build_showing(server, monkeypatch):
+    """Failing after the build was announced, it once showed `building` for good."""
+    import threading
+
+    local_config.put("dataset", "sample")
+    importlib.reload(server)
+
+    class NoBuild(threading.Thread):
+        def start(self):
+            if self.name == "sample-build":
+                raise RuntimeError("can't start new thread")
+            super().start()
+
+    monkeypatch.setattr(threading, "Thread", NoBuild)
+    with local_client(server.app) as client:
+        got = client.get("/settings/dataset").json()
+        assert got["active"] == "own" and got["building"] is None
+    assert local_config.get("dataset") == "sample"
+
+
 def test_the_samples_folder_is_never_the_log_folder(server):
     """Synced, its anonymized copies of your games would sit in your database beside them."""
     got = local_client(server.app).put("/settings/paths", json={"log_dir": str(samplemod.LOG_DIR)})

@@ -32,11 +32,6 @@
   h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
   h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
   h2 small, h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
-    margin-bottom: 12px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
-  .crumb .go a + a { margin-left: 14px; }
   ul.note { color: var(--ink-2); font-size: 13px; margin: 0 0 14px; padding-left: 18px; max-width: 82ch; }
   ul.note li { margin: 2px 0; }
   ul.note b { color: var(--ink); font-weight: 600; }
@@ -97,17 +92,13 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a href="/stats.html">stats &rsaquo;</a>
-      <a href="/chart">range chart &rsaquo;</a>
-      <a href="/players.html">players &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="tendencies" aria-label="pages"></nav>
   <h1>Tendencies</h1>
   <ul class="note">
-    <li><b>You:</b> the tags an opponent's HUD shows on you, and how they would play you.</li>
-    <li><b>Your opponents:</b> the exploits that fire on your regulars, most common first. Each is judged against the others at the table, e.g. folds to c-bets 51% vs a pool at 40%.</li>
-    <li><b>The table:</b> what the regulars do together, on fixed cuts, since a whole table never stands out from itself.</li>
-    <li><b>One player:</b> pick a name for their tags and every measure against the pool, e.g. folds to river bets 53% vs 39%.</li>
-    <li>Click a tag or a name for those hands on the chart.</li>
+    <li><b>You:</b> the tags an opponent's HUD shows on you.</li>
+    <li><b>Your opponents:</b> exploits your regulars share, e.g. folds to c-bets 51.0% vs a pool at 40.0%.</li>
+    <li><b>The table:</b> the regulars together, on fixed cuts.</li>
+    <li><b>One player:</b> pick a name, e.g. folds to river bets 53.0% vs 39.0%. Click a tag or a name for its hands.</li>
   </ul>
   <div class="pick"><label for="who">Player</label>
     <input id="who" list="who-list" placeholder="search a player" autocomplete="off" spellcheck="false">
@@ -118,15 +109,14 @@
   <section class="card loading" id="pool"><h2>Your opponents <small id="pool-sub"></small></h2><div id="pool-body" class="dim">loading…</div></section>
   <section class="card loading" id="table"><h2>The table <small id="table-sub"></small></h2><div id="table-body" class="dim">loading…</div></section>
   <section class="card hidden" id="one"><h2><span id="one-name"></span> <small id="one-sub"></small></h2><div id="one-body"></div></section>
-  <div class="err" id="err" hidden></div>
 </main>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const theme = new URLSearchParams(location.search).get("theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  if (theme) for (const a of document.querySelectorAll("#crumb .go a")) a.href += "?theme=" + encodeURIComponent(theme);
+  pntPage.nav();
+  const theme = pntPage.theme;
+  const { pct, int } = pntPage;
   const node = (tag, text, cls) => {
     const n = document.createElement(tag);
     if (text != null) n.textContent = text;
@@ -147,14 +137,15 @@
     td.append(a);
     return td;
   };
-  const figure = (t) => t.kind === "archetype" ? `${t.n} hands` : `${t.pct}% of ${t.n}`;
+  // An archetype is read over their preflop decisions, not every hand dealt.
+  const figure = (t) => t.kind === "archetype" ? `${int(t.n)} preflop decisions` : `${pct(t.pct)} of ${int(t.n)}`;
 
   function renderYou(d) {
     const body = $("you-body");
     const who = $("you-sub");
     who.textContent = d.hero ? d.hero + " · " : "";
     const pick = node("a", d.hero ? "not you?" : "pick yourself");
-    pick.href = "/#files-h";
+    pick.href = pntPage.href("/") + "#files-h";
     pick.title = "Choose who you are on the front page, under Files";
     who.append(pick);
     if (!d.hero) { body.textContent = "No log names its owner yet: download one from your own seat, or pick yourself."; return; }
@@ -170,7 +161,7 @@
 
   function renderPool(d) {
     const body = $("pool-body");
-    $("pool-sub").textContent = `${d.regulars} regulars with ${d.min_hands}+ hands`;
+    $("pool-sub").textContent = `${d.regulars} regulars with ${int(d.min_hands)}+ Hold'em hands`;
     if (!d.pool.length) { body.textContent = d.regulars ? "No tag fires on any of them." : "No opponent has enough hands yet."; return; }
     const t = node("table");
     for (const x of d.pool) {
@@ -179,7 +170,7 @@
       for (const p of x.players) {
         const a = node("a", p.player);
         a.href = chart(p.player, { ...p, kind: x.kind });
-        a.title = x.kind === "archetype" ? `${p.n} hands` : `${p.pct}% of ${p.n}`;
+        a.title = figure({ ...p, kind: x.kind });
         who.append(a);
       }
       tr.append(tagCell(x, chart(x.players[0].player, { ...x.players[0], kind: x.kind }), `opens ${x.players[0].player}'s hands`),
@@ -197,19 +188,19 @@
     const t = node("table");
     for (const x of rows) {
       const tr = node("tr");
-      tr.append(node("td", x.label, "tag"), node("td", `${x.pct}% of ${x.n}`, "n"), node("td", x.advice));
+      tr.append(node("td", x.label, "tag"), node("td", figure(x), "n"), node("td", x.advice));
       t.append(tr);
     }
     body.replaceChildren(t);
   }
 
   // ---- one player -------------------------------------------------------
-  const pctText = (v) => v == null ? "–" : `${v}%`;
+  const pctText = pct;
   function tagTable(rows, p, d) {
     const t = node("table");
     for (const x of rows) {
       const tr = node("tr", null, x.carried_by ? "streaky" : null);
-      const pool = x.pool_pct != null ? `pool ${x.pool_pct}%` : x.kind === "archetype" ? "" : "fixed cut";
+      const pool = x.pool_pct != null ? `pool ${pct(x.pool_pct)}` : x.kind === "archetype" ? "" : "fixed cut";
       const shared = x.shared ? `${x.shared} of ${d.regulars} regulars` : "";
       tr.append(tagCell(x, chart(p.player, x), x.tip), node("td", figure(x), "n"), node("td", pool, "pool"),
         node("td", x.carried_by ? `one session carries it · ${x.advice}` : x.advice), node("td", shared, "shared"));
@@ -231,15 +222,15 @@
     dot.style.left = `${Math.min(100, r.pct)}%`;
     track.append(dot);
     track.title = r.pool_spread
-      ? `${r.pct}% against the pool's middle half, ${r.pool_spread[0]}–${r.pool_spread[1]}%`
-      : `${r.pct}%: too few players for a pool line`;
+      ? `${pct(r.pct)} against the pool's middle half, ${pct(r.pool_spread[0])} to ${pct(r.pool_spread[1])}`
+      : `${pct(r.pct)}: too few players for a pool line`;
     td.append(track);
     return td;
   }
   function renderOne(d) {
     const p = d.player;
     $("one-name").textContent = p.player;
-    $("one-sub").textContent = `${p.hands.toLocaleString()} hands · VPIP ${pctText(p.vpip)} · PFR ${pctText(p.pfr)}`;
+    $("one-sub").textContent = `${int(p.hands)} Hold'em hands · VPIP ${pctText(p.vpip)} · PFR ${pctText(p.pfr)}`;
     const body = $("one-body");
     body.replaceChildren();
     const tags = [...p.tags, ...p.streaky];
@@ -256,8 +247,8 @@
         a.href = chart(p.player, r);
         m.append(a);
         const fig = node("td", null, "fig");
-        fig.append(node("b", pctText(r.pct)), node("small", `of ${r.n.toLocaleString()}`));
-        const pool = r.own_log ? "their own log" : r.pool_pct != null ? `pool ${r.pool_pct}%` : "";
+        fig.append(node("b", pctText(r.pct)), node("small", `of ${int(r.n)}`));
+        const pool = r.own_log ? "their own log" : r.pool_pct != null ? `pool ${pct(r.pool_pct)}` : "";
         tr.append(m, fig, gauge(r), node("td", pool, "pool"));
         t.append(tr);
       }
@@ -278,7 +269,7 @@
   }
   let aliases = [];
   fetch("/players").then((r) => r.json()).then((rows) => {
-    aliases = rows.map((p) => p.alias);
+    aliases = rows.map((p) => p.alias).sort(pntPage.byName);
     $("who-list").replaceChildren(...aliases.map((a) => Object.assign(document.createElement("option"), { value: a })));
   }).catch(() => {});
   // A name from the list picks at once; Enter takes the first that starts with
@@ -306,7 +297,11 @@
       return r.json();
     })
     .then((d) => { if (picked) renderOne(d); else { renderYou(d); renderPool(d); renderTable(d); } })
-    .catch((e) => { $("err").textContent = `Could not load /tendencies: ${e.message || e}`; $("err").hidden = false; })
+    .catch((e) => {
+      // Every section still saying "loading…" says why instead.
+      const why = `Could not load: ${pntPage.firstLine(e.message || e)}`;
+      for (const id of sections) $(`${id}-body`).replaceChildren(node("p", why, "err"));
+    })
     .finally(() => { for (const id of sections) $(id).classList.remove("loading"); });
 })();
 </script>

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { handEnded, actingId, pickPlayer, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText } = require("./spot.js");
+const { handEnded, actingId, pickRow, nextSpot, isEcho, spotText, showText, pathText, mix, tagTitle, tagChips, wilson, ciText, clockText } = require("./spot.js");
 
 test("the acting clock reads seconds, then minutes, and nothing when unknown", () => {
   assert.equal(clockText(0), "0s");
@@ -44,16 +44,16 @@ test("a flop three or more saw leads the path line with its count", () => {
 });
 
 const live = (over = {}) => ({
-  to_act: "gp",
+  to_act: "bk",
   players: [
-    { pn_id: "chris", alias: "Chris", folded: false,
+    { pn_id: "alex", alias: "Alex", folded: false,
       node: { label: "unopened", decision: "raise" },
       resolved: { filter: "position=BTN/SB,unopened", hands: 40, known: 9, exact: true,
                   relaxed: [], decisions: { fold: 10, call: 12, raise: 18 }, label: "unopened",
                   decision: "raise", arrived: false, street: "preflop", texture: [],
                   showings: { fold: row(10, 0), call: row(12, 3, { medium: 1, weak: 2 }),
                               raise: row(18, 6, { strong: 3, medium: 2, weak: 1 }) } } },
-    { pn_id: "gp", alias: "genericpoker", folded: false,
+    { pn_id: "bk", alias: "blake", folded: false,
       node: { label: "facing open", decision: null },
       resolved: { filter: "position=BB,faced_open", hands: 33, known: 7, exact: true,
                   relaxed: [], decisions: { fold: 20, call: 8, raise: 5 }, label: "facing open",
@@ -65,6 +65,9 @@ const live = (over = {}) => ({
   ...over,
 });
 
+// The alias of the row the chart would show.
+const pickPlayer = (...a) => pickRow(...a)?.alias ?? null;
+
 test("the hand-end line is what triggers a rebuild", () => {
   assert.equal(handEnded([{ entry: '"A @ 1" folds' }, { entry: "-- ending hand #7 --" }]), true);
   assert.equal(handEnded([{ entry: "-- starting hand #8 (id: x) --" }]), false);
@@ -72,89 +75,101 @@ test("the hand-end line is what triggers a rebuild", () => {
 });
 
 test("the pinned player wins while seated, else the player to act", () => {
-  assert.equal(pickPlayer(live(), "Chris"), "Chris");
-  assert.equal(pickPlayer(live(), null), "genericpoker");
-  assert.equal(pickPlayer(live(), "someone who left"), "genericpoker");
+  assert.equal(pickPlayer(live(), "Alex"), "Alex");
+  assert.equal(pickPlayer(live(), null), "blake");
+  assert.equal(pickPlayer(live(), "someone who left"), "blake");
   assert.equal(pickPlayer(live({ to_act: null }), null), null);
   assert.equal(pickPlayer(live({ to_act: "new" }), null), null, "a player with no alias has no chart");
-  assert.equal(pickPlayer(null, "Chris"), null);
+  assert.equal(pickPlayer(null, "Alex"), null);
 });
 
 test("a spot is sent once; a player with no data is still followed, on all their hands", () => {
   const first = nextSpot(live(), null, null);
-  assert.deepEqual(first, { player: "genericpoker", pn_id: "gp", filter: "position=BB,faced_open", exact: true, label: "facing open" });
+  assert.deepEqual(first, { player: "blake", pn_id: "bk", filter: "position=BB,faced_open", exact: true, label: "facing open" });
   assert.equal(nextSpot(live(), null, { player: first.player, filter: first.filter }), null, "same spot again");
   assert.equal(nextSpot(live({ to_act: "new" }), null, null), null, "no identity yet: nothing to chart");
   const gone = live();
   gone.players[1].resolved = null;
-  assert.deepEqual(nextSpot(gone, null, first), { player: "genericpoker", pn_id: "gp", filter: "", exact: false, label: "all hands" },
+  assert.deepEqual(nextSpot(gone, null, first), { player: "blake", pn_id: "bk", filter: "", exact: false, label: "all hands" },
     "no data: the chart still moves to them");
-  assert.equal(nextSpot(gone, null, { player: "genericpoker", filter: "" }), null, "and is not sent twice");
-  assert.equal(nextSpot(live(), "Chris", first).player, "Chris", "pinning changes who is sent");
+  assert.equal(nextSpot(gone, null, { player: "blake", filter: "" }), null, "and is not sent twice");
+  assert.equal(nextSpot(live(), "Alex", first).player, "Alex", "pinning changes who is sent");
 });
 
 // The same table, with the names the page shows on each seat.
 const named = (over = {}) => {
   const l = live(over);
-  l.players.forEach((p, i) => { p.name = ["chris", "gp", "newbie"][i]; });
+  l.players.forEach((p, i) => { p.name = ["Al", "Bee", "newbie"][i]; });
   return l;
 };
 
 test("the table's player to act leads the log's", () => {
-  // The log still has gp to act; the table has already moved on to Chris.
-  assert.equal(pickPlayer(named(), null, "chris"), "Chris");
-  assert.equal(actingId(named(), "chris"), "chris");
-  assert.equal(pickPlayer(named({ to_act: null }), null, "chris"), "Chris", "the log thinks the street is closed");
-  assert.equal(pickPlayer(named(), "genericpoker", "chris"), "genericpoker", "a pin still wins");
-  assert.equal(pickPlayer(named(), null, "a stranger"), "genericpoker", "an unknown name falls back to the log");
-  assert.equal(actingId(named(), "a stranger"), "gp");
-  assert.equal(pickPlayer(named(), null, "newbie"), "genericpoker", "no alias: fall back to the log");
+  // The log still has bk to act; the table has already moved on to Alex.
+  assert.equal(pickPlayer(named(), null, "Al"), "Alex");
+  assert.equal(actingId(named(), "Al"), "alex");
+  assert.equal(pickPlayer(named({ to_act: null }), null, "Al"), "Alex", "the log thinks the street is closed");
+  assert.equal(pickPlayer(named(), "blake", "Al"), "blake", "a pin still wins");
+  assert.equal(pickPlayer(named(), null, "a stranger"), "blake", "an unknown name falls back to the log");
+  assert.equal(actingId(named(), "a stranger"), "bk");
+  assert.equal(pickPlayer(named(), null, "newbie"), "blake", "no alias: fall back to the log");
   const folded = named();
   folded.players[0].folded = true;
-  assert.equal(pickPlayer(folded, null, "chris"), "genericpoker", "a folded seat is never to act");
+  assert.equal(pickPlayer(folded, null, "Al"), "blake", "a folded seat is never to act");
   const twins = named();
-  twins.players[1].name = "chris";
-  assert.equal(pickPlayer(twins, null, "chris"), "genericpoker", "an ambiguous name is not trusted");
+  twins.players[1].name = "Al";
+  assert.equal(pickPlayer(twins, null, "Al"), "blake", "an ambiguous name is not trusted");
+});
+
+test("the table's player to act matches by ID when content.js has it, masked names or not", () => {
+  // The sample switch masks /live's names: the table's real name never matches.
+  const masked = named();
+  masked.players.forEach((p, i) => { p.name = p.alias = `player ${i + 1}`; });
+  assert.equal(actingId(masked, "alex"), "alex", "the ID still finds the seat");
+  assert.equal(pickRow(masked, null, "alex").pn_id, "alex");
+  assert.equal(actingId(masked, "a stranger"), "bk", "a name that is not there: the log's");
+  const folded = named();
+  folded.players[0].folded = true;
+  assert.equal(actingId(folded, "alex"), "bk", "a folded seat is never to act, by ID either");
 });
 
 test("ahead of the log, the chart shows all their hands; the spot follows once /live agrees", () => {
-  const ahead = nextSpot(named(), null, null, "chris");
-  assert.deepEqual(ahead, { player: "Chris", pn_id: "chris", filter: "", exact: false, label: "all hands" },
+  const ahead = nextSpot(named(), null, null, "alex");
+  assert.deepEqual(ahead, { player: "Alex", pn_id: "alex", filter: "", exact: false, label: "all hands" },
     "their resolved spot is from before the action came round");
-  assert.equal(nextSpot(named(), null, ahead, "chris"), null, "and is not sent twice");
-  const caught = nextSpot(named({ to_act: "chris" }), null, ahead, "chris");
-  assert.deepEqual(caught, { player: "Chris", pn_id: "chris", filter: "position=BTN/SB,unopened", exact: true, label: "unopened" });
-  assert.deepEqual(nextSpot(named(), null, null, "gp"), nextSpot(named(), null, null),
+  assert.equal(nextSpot(named(), null, ahead, "alex"), null, "and is not sent twice");
+  const caught = nextSpot(named({ to_act: "alex" }), null, ahead, "alex");
+  assert.deepEqual(caught, { player: "Alex", pn_id: "alex", filter: "position=BTN/SB,unopened", exact: true, label: "unopened" });
+  assert.deepEqual(nextSpot(named(), null, null, "bk"), nextSpot(named(), null, null),
     "when the table and the log agree, nothing changes");
-  assert.equal(nextSpot(named(), "Chris", null, "gp").filter, "position=BTN/SB,unopened",
+  assert.equal(nextSpot(named(), "Alex", null, "bk").filter, "position=BTN/SB,unopened",
     "a pinned player keeps the spot /live gave them");
 });
 
 test("one player on two seats: the chart follows the seat, not the first with their alias", () => {
-  // Chris's second account, seated after gp: merged, so the same alias.
+  // Alex's second account, seated after bk: merged, so the same alias.
   const two = (over = {}) => {
     const l = live(over);
-    l.players.push({ ...l.players[0], pn_id: "chris2", resolved: { ...l.players[1].resolved, filter: "position=BB,3bet" } });
+    l.players.push({ ...l.players[0], pn_id: "alex2", resolved: { ...l.players[1].resolved, filter: "position=BB,3bet" } });
     return l;
   };
-  assert.equal(nextSpot(two({ to_act: "chris2" }), null, null).filter, "position=BB,3bet", "the seat to act");
-  assert.equal(nextSpot(two({ to_act: "chris2" }), null, null).pn_id, "chris2", "and says which seat");
-  assert.equal(nextSpot(two({ to_act: "chris2" }), "Chris", null).filter, "position=BB,3bet",
+  assert.equal(nextSpot(two({ to_act: "alex2" }), null, null).filter, "position=BB,3bet", "the seat to act");
+  assert.equal(nextSpot(two({ to_act: "alex2" }), null, null).pn_id, "alex2", "and says which seat");
+  assert.equal(nextSpot(two({ to_act: "alex2" }), "Alex", null).filter, "position=BB,3bet",
     "a pin on them takes the seat to act");
-  assert.equal(nextSpot(two(), "Chris", null).filter, "position=BTN/SB,unopened", "else the first seat still in");
+  assert.equal(nextSpot(two(), "Alex", null).filter, "position=BTN/SB,unopened", "else the first seat still in");
   const out = two();
   out.players[0].folded = true;
-  assert.equal(nextSpot(out, "Chris", null).filter, "position=BB,3bet", "a folded seat gives way to the live one");
+  assert.equal(nextSpot(out, "Alex", null).filter, "position=BB,3bet", "a folded seat gives way to the live one");
 });
 
 test("the chart's echo of a sent spot is recognised; an edit is not", () => {
-  const sent = { player: "genericpoker", filter: "position=BB,faced_open" };
-  const base = "http://127.0.0.1:52000/chart?theme=dark&player=genericpoker";
+  const sent = { player: "blake", filter: "position=BB,faced_open" };
+  const base = "http://127.0.0.1:52000/chart?theme=dark&player=blake";
   assert.equal(isEcho(`${base}&filter=position%3DBB%2Cfaced_open`, sent), true);
   assert.equal(isEcho(`${base}&filter=3bet`, sent), false, "the user typed a spot");
   assert.equal(isEcho(`${base}`, sent), false, "the user cleared the spot");
-  assert.equal(isEcho(`${base}`, { player: "genericpoker", filter: "" }), true);
-  assert.equal(isEcho(`${base}&filter=3bet`, [sent, { player: "genericpoker", filter: "3bet" }]), true,
+  assert.equal(isEcho(`${base}`, { player: "blake", filter: "" }), true);
+  assert.equal(isEcho(`${base}&filter=3bet`, [sent, { player: "blake", filter: "3bet" }]), true,
     "any recently sent spot counts, so two quick changes cannot look like an edit");
   assert.equal(isEcho(`${base}`, null), false);
 });
@@ -170,13 +185,13 @@ test("a decision's shown hands read as value, marginal, draw and air", () => {
 test("the spot cell says where they are and what they have shown up with there", () => {
   // Still to act: one row per decision that has a shown hand behind it. The
   // fold row has none, so it is left out; the frequencies are in the hover.
-  const gp = live().players[1];
-  assert.deepEqual(spotText(gp), {
+  const bk = live().players[1];
+  assert.deepEqual(spotText(bk), {
     text: "facing open · call: value 25% · marginal 75% (4 of 8 shown) · raise: value 100% (3 of 5 shown)",
     title: "facing open\nspot: position=BB,faced_open\n33 hands, 7 with cards known\n"
       + "facing open: fold 61% · call 24% · raise 15%\nhands read on the preflop",
   });
-  const widened = { ...gp, resolved: { ...gp.resolved, exact: false, relaxed: ["any position"], filter: "faced_open" } };
+  const widened = { ...bk, resolved: { ...bk.resolved, exact: false, relaxed: ["any position"], filter: "faced_open" } };
   assert.match(spotText(widened).text, /^facing open · ≈ call: /);
   assert.match(spotText(widened).title, /closest spot: faced_open\nany position/);
   // Decided: the row for the decision they made.
@@ -227,13 +242,11 @@ test("a tag chip's hover text is the evidence and the count behind it", () => {
     "Showed air 6.9% (shown).\n19 of 276\nOne session only: gone without a 74-hand game (11 sessions in all).");
 });
 
-test("the archetype always gets a chip; the rest are capped with the overflow named", () => {
-  const { shown, hidden } = tagChips(tags, 3);
-  assert.deepEqual(shown.map((t) => t.id), ["fish", "no_bluff", "folds_river"]);
-  assert.deepEqual(hidden.map((t) => t.id), ["limper", "fun_72"]);
-  assert.deepEqual(tagChips(tags.slice(1), 1).shown.map((t) => t.id), ["no_bluff"]);
-  assert.deepEqual(tagChips([tags[0]], 3), { shown: [tags[0]], hidden: [] });
-  assert.deepEqual(tagChips(null), { shown: [], hidden: [] });
+test("the archetype chip comes first, then the rest in the order sent", () => {
+  const moved = [tags[1], tags[0], ...tags.slice(2)];
+  assert.deepEqual(tagChips(moved).map((t) => t.id), ["fish", "no_bluff", "folds_river", "limper", "fun_72"]);
+  assert.deepEqual(tagChips([tags[0], null]), [tags[0]]);
+  assert.deepEqual(tagChips(null), []);
 });
 
 test("wilson is the 95% score interval, and ciText prints it as a ± and a range", () => {

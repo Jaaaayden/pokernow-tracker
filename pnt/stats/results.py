@@ -64,6 +64,9 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
     t = tally(facts)
     r = rates(t) if t.hands else {}
     c = t.counts
+    # VPIP is the stat rows' own: over the hands with a preflop decision
+    # (`vpip_opp`), so a walk, a bomb pot (no preflop decision) and PLO or Double
+    # Board (money only, never analysed) are out of it. See SPEC.md, "Preflop".
     row = {
         "key": key,
         "label": label,
@@ -77,10 +80,12 @@ def _row(key: str, label: str, filt: str | None, facts: list[Facts]) -> dict:
         "bb_per_100": r.get("bb_per_100"),
         # Its 95% half-width (SPEC.md, "Confidence intervals"); the chart's tile hover.
         "bb_per_100_ci": r.get("bb_per_100_ci"),
-        # Shares of every hand in the row: how often they put chips in, and how
-        # often they saw a flop. What separates "lost playing it" from "lost the
-        # blind folding it".
-        "vpip_pct": _pct(c["vpip"], t.hands),
+        # How often they put chips in, of the hands where they had a preflop
+        # decision (`vpip_hands`; None when there are none), and how often they
+        # saw a flop, of every hand. What separates "lost playing it" from "lost
+        # the blind folding it".
+        "vpip_pct": _pct(c["vpip"], c["vpip_opp"]),
+        "vpip_hands": c["vpip_opp"],
         "saw_flop_pct": _pct(c["wtsd_opp"], t.hands),
         "wtsd": r.get("wtsd"),
         "wsd": r.get("wsd"),
@@ -116,7 +121,7 @@ def _seat(f: Facts) -> str | None:
     """
     if f.seats_from_button is None or f.dead_button:
         return None
-    return position_name(f.seats_from_button, f.n_dealt_in)
+    return position_name(f.seats_from_button, f.n_dealt_in, f.position_slots)
 
 
 def _position_table(facts: list[Facts]) -> list[dict]:

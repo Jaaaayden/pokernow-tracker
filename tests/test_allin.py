@@ -122,6 +122,42 @@ def test_a_spot_filter_narrows_the_report(db):
     assert sum(r["hands"] for r in preflop) < sum(r["hands"] for r in everything.values())
 
 
+def test_session_terms_read_the_whole_session(db):
+    """`session_hand` counts every hand of the game, not only the all-ins: the
+    list and the report read it as the chart does."""
+    from pnt.stats.queries import facts_cached
+
+    names = display_names(db)
+    for expr in ("session_hand>=50", "session_hand<50", "!post_loss"):
+        pred = parse_filter(expr, names)
+        chart = {f.hand_id: f for f in facts_cached(db, "genericpoker")}
+        every = al.allin_hand_list(db, "genericpoker")["hands"]
+        want = [h["hand_id"] for h in every if pred(chart[h["hand_id"]])]
+        assert [h["hand_id"] for h in al.allin_hand_list(db, "genericpoker", predicate=pred)["hands"]] == want
+        row = {r["player"]: r for r in al.allin_report(db, predicate=pred)}.get("genericpoker")
+        assert (row["hands"] if row else 0) == len(want), expr
+    late = al.allin_hand_list(db, "genericpoker", predicate=parse_filter("session_hand>=50", names))
+    assert late["hands"], "the fixture's all-ins are not all in the first 50 hands"
+
+
+def test_the_pool_filter_reads_only_the_all_in_players_hands(db, monkeypatch):
+    """The same report as deriving every hand of each game, from fewer hands."""
+    names = display_names(db)
+    exprs = ("session_hand>=50", "session_hour>=1", "!post_loss", "post_loss", "vs=Chris", "limped")
+    narrow = {e: al.allin_report(db, predicate=parse_filter(e, names)) for e in exprs}
+    real = al.load_hands
+    narrowed = []
+
+    def whole_games(conn, game_id=None, pn_ids=None, **kw):
+        narrowed.append(pn_ids is not None)
+        return real(conn, game_id, **kw)
+
+    monkeypatch.setattr(al, "load_hands", whole_games)
+    for e in exprs:
+        assert al.allin_report(db, predicate=parse_filter(e, names)) == narrow[e], e
+    assert any(narrowed)
+
+
 def test_the_hand_list_is_oldest_first_and_names_the_villains(db):
     body = al.allin_hand_list(db, "genericpoker")
     hands = body["hands"]

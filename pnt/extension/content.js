@@ -1,4 +1,5 @@
-/* Content script on a PokerNow game page: capture, and nothing drawn on the page.
+/* Content script on a PokerNow game page: capture, and the floating HUD's box
+ * (float mode) -- nothing else is drawn on the page.
  *
  * Capture: poll GET /games/{id}/log with the page's own cookie, normalize, and
  * hand the entries to the background worker, which posts them to /ingest. How
@@ -37,9 +38,10 @@
   const SETTLE_MS = 300;
   const LOG_LAG_MS = 1_000;
   const LOG_LAG_LOOKS = 3;
+  const DEFAULT_SERVER = "http://127.0.0.1:52000";
 
   const state = {
-    server: "http://127.0.0.1:52000",
+    server: DEFAULT_SERVER,
     pollSeconds: 5,
     liveMin: 1,
     liveKnown: 5,
@@ -60,6 +62,10 @@
     pokedWhileRunning: false,
     tableActing: null,  // the name on the table's decision-current seat (watch.js)
     tableActingAt: null, // Date.now() when the action reached them: the HUD's clock
+    // The newest hand's "Player stacks" line: who sits where, by PokerNow ID. It
+    // turns the table's name into an ID, which /live matches even when its names
+    // are masked (the sample switch, app.py `_masks`).
+    roster: { at: -1, seats: [] },
   };
 
   const send = (msg) => new Promise((resolve) => {
@@ -93,9 +99,25 @@
       live: state.live ? (state.live.hand_number ? `hand #${state.live.hand_number} · ${state.live.street}` : "between hands") : null,
       text: state.statusText, rev: state.rev, hudData: state.hud, liveData: state.live, hudEmpty: state.hudEmpty,
       hudError: state.hudError, trackerDown: state.trackerDown,
-      tableActing: state.tableActing, tableActingAt: state.tableActingAt,
+      tableActing: state.tableActing, tableActingPn: actingPn(), tableActingAt: state.tableActingAt,
     },
   });
+
+  // `#3 "Name @ ID" (1000)` per seat. A name may hold anything, " @ " and quotes
+  // included; the ID's charset is known, so the match ends on it (tokens.py).
+  const STACKS = /^Player stacks:/;
+  const SEAT = /#\d+ "(.*?) @ ([A-Za-z0-9_-]+)" \(/g;
+  function noteRoster(entries) {
+    for (const e of entries) {
+      if (!(e.order > state.roster.at) || !STACKS.test(e.entry || "")) continue;
+      state.roster = { at: e.order, seats: [...e.entry.matchAll(SEAT)].map((m) => ({ name: m[1], pn_id: m[2] })) };
+    }
+  }
+  // The ID on the seat the table has to act, when its name is one seat's alone.
+  function actingPn() {
+    const hits = state.roster.seats.filter((s) => s.name === state.tableActing);
+    return hits.length === 1 ? hits[0].pn_id : null;
+  }
 
   function setStatus(text) {
     state.statusText = text;
@@ -143,6 +165,7 @@
     ingest: async (entries) => {
       // No rebuild per page: a rebuild re-derives the whole game, and a history walk
       // can run to a hundred pages. `rebuildIfDue` runs at checkpoints instead.
+      noteRoster(entries);
       const res = await tracker({ type: "ingest", game_id: GAME, entries, rebuild: false });
       if (!res.ok) throw new Error(res.error);
       state.offered += res.data.offered;
@@ -185,7 +208,10 @@
       await PNT.sync(state.sync, io, {
         onPage: async ({ pages }) => {
           state.pages += 1;
-          if (pages === 1 || pages % REBUILD_EVERY_PAGES === 0) await rebuildIfDue(true);
+          // `pages` counts within this pass, and every poll is a pass: page 1 forces
+          // a rebuild only the first time, so the table's earlier hands show at
+          // once. After that a poll's rebuild waits for the hand to end.
+          if ((pages === 1 && !state.rebuiltTime) || pages % REBUILD_EVERY_PAGES === 0) await rebuildIfDue(true);
           if (pages > 1) state.statusText = `loading history · ${state.inserted} lines`;
           report();
         },
@@ -336,7 +362,7 @@
   const float = (() => {
     const EDGE = 4, SIZE = { w: 420, h: 640 };
     const EXT = chrome.runtime.getURL("");
-    let host = null, box = null, frame = null, want = null;
+    let host = null, box = null, frame = null, want = null, sizer = null;
     // Compact (the frame's –): the box is as tall as the table, and only its width
     // can be dragged. The full-size box's size is kept apart, to go back to.
     let compact = false;
@@ -392,14 +418,17 @@
       if (pos) place(pos.left, pos.top);
       else place(innerWidth - box.offsetWidth - 12, 12);
       // `resize` fires no event of its own; the observer sees the corner drag land.
-      new ResizeObserver(() => {
+      sizer = new ResizeObserver(() => {
         if (!box || !box.offsetWidth || compact) return;
         write("pnt-float-size", { w: box.offsetWidth, h: box.offsetHeight });
-      }).observe(box);
+      });
+      sizer.observe(box);
       setShown(!read("pnt-float-hidden"));
     }
 
     function unmount() {
+      sizer?.disconnect();
+      sizer = null;
       host?.remove();
       host = box = frame = want = null;
       compact = false;
@@ -473,7 +502,7 @@
       : `tracker not reachable at ${state.server}: ${h.error}`);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return;
-      if (changes.server) state.server = changes.server.newValue.replace(/\/+$/, "");
+      if (changes.server) state.server = String(changes.server.newValue || DEFAULT_SERVER).replace(/\/+$/, "");
       if (changes.pollSeconds) state.pollSeconds = Number(changes.pollSeconds.newValue) || 5;
       if (changes.liveMin) {
         state.liveMin = Math.max(1, Number(changes.liveMin.newValue) || 1);

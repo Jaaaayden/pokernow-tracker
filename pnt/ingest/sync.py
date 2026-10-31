@@ -49,15 +49,25 @@ def _key(path: Path) -> str:
     return str(path.resolve())
 
 
-def record_file(conn: sqlite3.Connection, path: Path, game_id: str) -> None:
-    """Note that `path` holds `game_id`, as it is on disk right now."""
+def _stamp(path: Path) -> tuple[int, int]:
     st = path.stat()
+    return st.st_mtime_ns, st.st_size
+
+
+def record_file(
+    conn: sqlite3.Connection, path: Path, game_id: str, stamp: tuple[int, int] | None = None
+) -> None:
+    """Note that `path` holds `game_id`, as it is on disk right now -- or as it was
+    at `stamp` (mtime_ns, size), taken before the file was read. A caller that read
+    it passes that: a write landing between the read and now then shows as a change,
+    and the next sync reads the file again instead of taking it as imported."""
+    mtime_ns, size = stamp or _stamp(path)
     with writing(conn):
         conn.execute(
             "INSERT INTO log_files (path, game_id, mtime_ns, size) VALUES (?, ?, ?, ?)"
             " ON CONFLICT(path) DO UPDATE SET game_id = excluded.game_id,"
             " mtime_ns = excluded.mtime_ns, size = excluded.size",
-            (_key(path), game_id, st.st_mtime_ns, st.st_size),
+            (_key(path), game_id, mtime_ns, size),
         )
 
 
@@ -114,22 +124,35 @@ def forget_missing(conn: sqlite3.Connection) -> int:
     return len(gone)
 
 
-def import_file(conn: sqlite3.Connection, path: Path, entries: list[RawEntry] | None = None) -> dict:
+def import_file(
+    conn: sqlite3.Connection,
+    path: Path,
+    entries: list[RawEntry] | None = None,
+    stamp: tuple[int, int] | None = None,
+) -> dict:
     """Import one log-folder file and record it. Rebuilds only when something changed.
 
     `import_csv` always rebuilds; a sync reads every file once on a database that
     predates `log_files`, and nearly all of those are already in it. `entries` is
-    the file already read, when the caller has it.
+    the file already read, when the caller has it, and `stamp` its (mtime_ns, size)
+    from before that read.
+
+    The game is the one the file's name says, a browser's ` (1)` aside, so a second
+    download of an export adds nothing. A name that holds no game ID is refused
+    (ValueError): sync's glob lets `poker_now_log_anything.csv` through.
     """
-    gid = game_id_from_filename(path) or path.stem
+    gid = game_id_from_filename(path)
+    if gid is None:
+        raise ValueError(f"{path.name}: no PokerNow game ID in the file name")
     if entries is None:
+        stamp = _stamp(path)
         entries = read_csv(path)
     offered, n_new = ingest_entries(conn, gid, entries, source=f"csv:{path.name}")
     known = conn.execute("SELECT 1 FROM games WHERE game_id = ?", (gid,)).fetchone()
     summary = {"game_id": gid, "file": path.name, "entries_offered": offered, "entries_new": n_new}
     if n_new or not known:
         summary |= rebuild_game(conn, gid)
-    record_file(conn, path, gid)
+    record_file(conn, path, gid, stamp)
     return summary
 
 
@@ -164,9 +187,14 @@ def sync_folder(
                 if skip is not None:
                     skip[key] = stamp
                 continue
-            out.imported.append(import_file(conn, path, entries))
-        except (OSError, ValueError, csv.Error) as exc:  # locked, half-written, not a log
-            out.failed[str(path)] = str(exc)
+            out.imported.append(import_file(conn, path, entries, stamp))
+        except sqlite3.Error:
+            raise  # the database's trouble, not this file's: the next pass tries again
+        except Exception as exc:  # locked, half-written, not a log, a line the parser trips on
+            if not isinstance(exc, OSError | ValueError | csv.Error):
+                log.exception("could not import %s", path)
+            # One bad file must not hold back the ones after it.
+            out.failed[str(path)] = str(exc) or type(exc).__name__
             if skip is not None:
                 skip[key] = stamp
     return out
@@ -204,13 +232,18 @@ def remove_empty(conn: sqlite3.Connection, folder: Path) -> list[Path]:
     """
     removed = []
     for path in empty_logs(folder):
-        gid = game_id_from_filename(path) or path.stem
+        # The game on record for the file, else the one its name holds; a name that
+        # holds none was never imported (`import_file` refuses it), so no game goes.
+        row = conn.execute("SELECT game_id FROM log_files WHERE path = ?", (_key(path),)).fetchone()
+        gid = row[0] if row else game_id_from_filename(path)
         try:
             path.unlink()
         except OSError as exc:  # open elsewhere, read-only
             log.warning("could not delete empty log %s: %s", path, exc)
             continue
         removed.append(path)
+        if gid is None:
+            continue
         hands = conn.execute("SELECT COUNT(*) FROM hands WHERE game_id = ?", (gid,)).fetchone()[0]
         if hands == 0:
             delete_game(conn, gid)

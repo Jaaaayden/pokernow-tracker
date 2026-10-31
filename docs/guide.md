@@ -67,6 +67,10 @@ The rules that keep this safe:
   before the first deal. Live capture and `pnt backfill` no longer write them, and
   sync and `pnt import` skip them. `pnt sync --remove-empty` deletes the ones already
   in the folder, along with any game they put in the database.
+- A second download of the same export, `poker_now_log_<id> (1).csv`, is the same
+  game, so its hands are not counted twice.
+- A row that is cut off or malformed is skipped and noted in the server log. The
+  rest of the file is still imported, and so are the files after it.
 
 ### Backfill: old games by link
 
@@ -116,17 +120,17 @@ human on a second device gets a different ID.
 
 ```bash
 pnt alias list
-pnt alias merge "onlybluffs" "genericpoker"   # one person, two devices
-pnt alias split "FQN9hzhzP_" --alias henry    # the inverse: undo a merge, or part two people
-pnt alias export                              # save the table to pnt/logs/aliases.csv
+pnt alias merge "riley2" "riley"              # one person, two devices
+pnt alias split "Qr4_St5Uv6" --alias alex     # the inverse: undo a merge, or part two people
+pnt alias export                              # save the table to ~/.pnt/aliases.csv
 pnt alias import                              # and put it back on a fresh database
 ```
 
-The alias table is the one thing in the database that a re-import cannot rebuild,
-so it is kept in the repo as [pnt/logs/aliases.csv](../pnt/logs/aliases.csv). Run
-`pnt alias export` after merging and commit the file. `pnt alias import` is safe to
-repeat: IDs the database has not seen yet are skipped, so import new logs and run it
-again.
+The alias table is the one thing in the database that a re-import cannot rebuild.
+Run `pnt alias export` after merging to keep a copy (give it a path to put it
+somewhere else, such as beside your logs). It holds real names, so it never goes in
+`pnt/logs/`, which ships with the package. `pnt alias import` is safe to repeat:
+IDs the database has not seen yet are skipped, so import new logs and run it again.
 
 The same thing, with the evidence in front of you, is the players page at
 [http://127.0.0.1:52000/players](http://127.0.0.1:52000/players). It lists every
@@ -134,8 +138,8 @@ person, the PokerNow IDs behind them, and every name each ID has shown. That las
 column is the point, because the names are how you recognise someone:
 
 ```
-harry    <-  bread, Woolball (har), wool, wool ball, fish
-charles  <-  chugnuts, The Great Wall, straight teeth, SplayWash
+drew    <-  bagel, Moonpie (dr), moon, moon pie, guppy
+eli     <-  gulpnuts, The Long Fence, crooked smile, SpinCycle
 ```
 
 No string comparison finds those. Only someone who was at the table knows, so the
@@ -154,9 +158,9 @@ their HUD card, and the ✎ beside the name edits it there. In the compact table
 name is underlined and the note is its tooltip.
 
 ```bash
-pnt player-note henry "tanks then jams with air; never folds a river"
-pnt player-note henry           # read it back
-pnt player-note henry --clear
+pnt player-note alex "tanks then jams with air; never folds a river"
+pnt player-note alex            # read it back
+pnt player-note alex --clear
 pnt player-note                 # every note so far
 ```
 
@@ -190,7 +194,7 @@ pnt bounties --game <id>    # one game
 
 ### Head to head
 
-`vs=henry` shows how you play against henry; head to head shows how much money
+`vs=alex` shows how you play against alex; head to head shows how much money
 went between you. Open a player's row on the players page for a **Head to head**
 table: one row per opponent, biggest money either way first, with the hands you
 played together, the big blinds you won from them (negative is lost), showdowns,
@@ -206,7 +210,7 @@ whoever they were paid to. SPEC.md, "Head to head", has the rule in full.
 
 ```bash
 pnt h2h            # the pool's matrix
-pnt h2h henry      # henry against each opponent
+pnt h2h alex       # alex against each opponent
 ```
 
 ## Stats
@@ -301,7 +305,7 @@ commands worth knowing when something looks wrong.
 ### Positional breakdown
 
 ```bash
-pnt positions genericpoker
+pnt positions riley
 ```
 
 ```
@@ -376,8 +380,8 @@ pnt stats --filter "faced_cbet_flop,players>=3"
 
 - `3bet_pot|4bet_pot`: either pot.
 - `position=BTN,3bet_pot|4bet_pot`: the button, in either pot.
-- `position=BTN|CO`, `faced_open=call|raise`, `vs=henry|luis`: any of the values.
-- `vs!=henry|luis`: against neither.
+- `position=BTN|CO`, `faced_open=call|raise`, `vs=alex|casey`: any of the values.
+- `vs!=alex|casey`: against neither.
 - `(srp,position=BTN)|(3bet_pot,position=SB)`: either bracket.
 - `!(limped)`: everything the bracket doesn't match.
 
@@ -387,9 +391,9 @@ number each: `eff_bb<40|eff_bb>=200`. An unknown value is an error rather than
 an empty result: `position=XYZ` says so.
 
 **The hand.** `pot>=500` keeps hands whose final pot reached 500 chips (`pot_bb>=50`
-says it in big blinds). `vs=henry` keeps hands played against henry, meaning he was
+says it in big blinds). `vs=alex` keeps hands played against alex, meaning he was
 still in when the player last acted (the same "vs" that a hand row prints).
-`vs!=henry` keeps the rest. `pnt stats --filter vs=henry` is everyone's figures in
+`vs!=alex` keeps the rest. `pnt stats --filter vs=alex` is everyone's figures in
 hands against him.
 
 **The line.** `opener`, `pfa` (preflop aggressor), the pot types `limped` / `srp` /
@@ -497,12 +501,12 @@ The ★ beside a Spot box keeps a filter under a name.
 What a player *had* in a spot, from the hands where their cards were shown:
 
 ```bash
-pnt range henry --filter "opener,open_bb>=4,srp"          # the 13x13 chart
-pnt range henry --filter "pfa,srp,cbet_flop,cbet_turn,bet_river=overbet" --by made
+pnt range alex --filter "opener,open_bb>=4,srp"          # the 13x13 chart
+pnt range alex --filter "pfa,srp,cbet_flop,cbet_turn,bet_river=overbet" --by made
 ```
 
 ```
-henry  filter: pfa,srp,cbet_flop,cbet_turn,bet_river=overbet
+alex  filter: pfa,srp,cbet_flop,cbet_turn,bet_river=overbet
 hands in this spot: 12   cards known: 7   coverage: 58.3%
 
 class                       n    pct  won   net bb
@@ -533,8 +537,8 @@ are missing.
 What they bet each size *with* is its own view:
 
 ```bash
-pnt sizing henry --street flop --kind cbet         # c-bets by size, plus the checks
-pnt sizing henry --street turn --kind faced_cbet   # fold / call / raise per size faced
+pnt sizing alex --street flop --kind cbet         # c-bets by size, plus the checks
+pnt sizing alex --street turn --kind faced_cbet   # fold / call / raise per size faced
 ```
 
 Every raise-size figure comes with its median, mode, mean, min and max, computed
@@ -650,7 +654,7 @@ opponent list and who c-bet on which street. Each row also shows the pot, and th
 list can be ordered newest first or biggest first.
 
 Player, spot, view, colour mode and theme all live in the URL
-(`/chart?player=henry&filter=opener,srp&color=size&theme=dark`), which is how the
+(`/chart?player=alex&filter=opener,srp&color=size&theme=dark`), which is how the
 HUD embeds it. `GET /players/{alias}/range` returns the same data as JSON, with all
 169 cells present in chart order.
 
@@ -770,8 +774,8 @@ The definitions are in [`SPEC.md`](../pnt/stats/SPEC.md), "Decision points
 
 ```bash
 pnt tags                                   # everyone, most hands first
-pnt tags henry                             # one player, with why each tag fired
-pnt tags henry --filter "players>=4"       # judged on the hands in a spot
+pnt tags alex                              # one player, with why each tag fired
+pnt tags alex --filter "players>=4"        # judged on the hands in a spot
 ```
 
 Each player gets one archetype (FISH, MANIAC, STATION, LAG or NIT), judged against
@@ -829,7 +833,7 @@ rules are in [`SPEC.md`](../pnt/stats/SPEC.md), "Leak finder".
 ### Shows without being asked
 
 ```bash
-pnt shows henry          # what henry turned over after a fold or an uncontested pot
+pnt shows alex          # what alex turned over after a fold or an uncontested pot
 ```
 
 Some players show the bluff that got a fold, to needle the table; others show only
@@ -841,7 +845,7 @@ counted only. The tiles give how often they showed air, how often a strong
 hand, and how many of the folds they showed were ahead of the hand that won,
 counted where the winner's cards are known (yours, or the winner's own show).
 Click a row to replay it. The spot box does not narrow shows. Any chart link can
-do the same with `hand=<id>`, as in `/chart?player=henry&hand=1234`. These are the
+do the same with `hand=<id>`, as in `/chart?player=alex&hand=1234`. These are the
 hands they *chose* to show you, so read them as what they want you to believe, not
 as their range. The range charts leave them out for the same
 reason.
@@ -849,11 +853,11 @@ reason.
 ## Hand review
 
 ```bash
-pnt review jayden                          # newest first, every flag
-pnt review jayden --kind missed_bluff      # one flag
-pnt review jayden --filter "3bet_pot"      # any spot filter the other pages take
-pnt review jayden --unreviewed             # only what you have not marked off yet
-pnt review jayden --noted                  # only the ones you wrote something about
+pnt review sam                          # newest first, every flag
+pnt review sam --kind missed_bluff      # one flag
+pnt review sam --filter "3bet_pot"      # any spot filter the other pages take
+pnt review sam --unreviewed             # only what you have not marked off yet
+pnt review sam --noted                  # only the ones you wrote something about
 ```
 
 Review flags three kinds of mistake and three kinds of bad beat:
@@ -887,13 +891,13 @@ deletes the note. **Hide reviewed** clears the hands you are done with out of th
 list. Both are also on the command line:
 
 ```bash
-pnt reviewed pgl41zM3_CKphpnKM1DMIosUT 161    # mark it
-pnt reviewed pgl41zM3_CKphpnKM1DMIosUT 161 --undo
+pnt reviewed pgl051Pj7uqrht2HJB-JPZlcd 161    # mark it
+pnt reviewed pgl051Pj7uqrht2HJB-JPZlcd 161 --undo
 pnt reviewed                                  # everything marked so far
 
-pnt note pgl41zM3_CKphpnKM1DMIosUT 161 "turn barrel had no fold equity"
-pnt note pgl41zM3_CKphpnKM1DMIosUT 161        # read it back
-pnt note pgl41zM3_CKphpnKM1DMIosUT 161 --clear
+pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 "turn barrel had no fold equity"
+pnt note pgl051Pj7uqrht2HJB-JPZlcd 161        # read it back
+pnt note pgl051Pj7uqrht2HJB-JPZlcd 161 --clear
 pnt note                                      # every note so far
 ```
 
@@ -954,7 +958,7 @@ lists every hand of one game in the order it was dealt, starting with your lates
 game. Pick another game from the dropdown. A flagged hand carries its flag on the
 row, and every row has the same check box and pencil, so you can mark or write on
 any hand, flagged or not. **Played only** (on by default) leaves out the hands that
-were just a preflop fold. The Spot box still applies, so `vs=luis` lists only that
+were just a preflop fold. The Spot box still applies, so `vs=casey` lists only that
 session's hands against him. `GET /players/{alias}/games` lists a player's games,
 and `GET /players/{alias}/hands?game=<id>` lists the rows with their marks and notes.
 
@@ -996,7 +1000,7 @@ other pages do. `GET /allin` and `GET /players/{alias}/allin` return the JSON.
 pnt pots                                   # over 2,000 chips in the last 7 days
 pnt pots --days 1                          # just today
 pnt pots --all --min-pot 10000             # the biggest ever recorded
-pnt pots --player jayden                   # only hands you were dealt into
+pnt pots --player sam                      # only hands you were dealt into
 ```
 
 The pot is what actually sat in the middle. Uncalled bets are not in it (an
@@ -1021,8 +1025,10 @@ Opponents get one line per showdown, but you get one line per hand:
 "Your hand is 4♦, 9♥",2026-07-23T08:18:05.455Z,178479468545503
 ```
 
-`pnt redact` writes copies you can publish. [`pnt/logs/`](../pnt/logs) is its
-output, and it is what ships in the wheel:
+`pnt redact` writes copies you can share with the people who were at the table:
+your unshown cards go, every name stays. [`pnt/logs/`](../pnt/logs) ships in the
+wheel, so it takes only `--anonymize` output; `pnt redact` refuses to write plain
+copies there.
 
 ```bash
 pnt redact --out shared          # every log in the log folder, your unshown cards removed
@@ -1040,8 +1046,8 @@ unchanged, since hole cards feed range charts and not action frequencies. What y
 lose is your own range coverage, which drops to the level you give an opponent:
 
 ```
-pnt range wooooo          # original: cards known: 222   coverage: 100%
-pnt range wooooo          # redacted: cards known:  54   coverage: 24.3%
+pnt range casey          # original: cards known: 222   coverage: 100%
+pnt range casey          # redacted: cards known:  54   coverage: 24.3%
 ```
 
 Your originals are never written to. How the matching works, and why it cannot

@@ -271,7 +271,6 @@ same keys as `faced_bet` — and are:
 
 | Fact | Definition | Notes |
 |---|---|---|
-| **faced_level[street]** | How many bets and raises the street had when they first faced one: 1 a bet, 2 a raise, 3 a re-raise | The bettor who is raised first faces level 2 |
 | **faced_bet_pot[street]** | The latest bet or raise in front of them then, measured as its maker's own size: `bet_pot` for a bet, `raise_pot` for a raise | The size of what they faced, not the price of calling it -- the rule `faced_cbet_size` already follows |
 | **faced_bet_size[street]** | The size bucket of that same bet or raise | |
 | **faced_bet_action[street]** | `fold`, `call` or `raise`, exactly one | A caller who later re-raises a re-raise answered with `call` |
@@ -625,7 +624,7 @@ unit := "(" conj ")" | "!(" conj ")" | term
 | `(srp,position=BTN)\|(3bet_pot,position=SB)` | either bracket |
 | `!(srp,position=BTN)` | every hand the bracket does not match |
 | `position=BTN\|CO` | `position=BTN` or `position=CO` |
-| `vs!=henry\|luis` | `vs!=henry` and `vs!=luis`: against neither |
+| `vs!=alex\|blake` | `vs!=alex` and `vs!=blake`: against neither |
 | `3bet_pot\|position=BTN` | either term |
 | `eff_bb<40\|eff_bb>=200` | either comparison |
 
@@ -657,7 +656,7 @@ unit := "(" conj ")" | "!(" conj ")" | term
    display name or PokerNow ID is that player, even when a flag has the same name.
    Without a name map, which only internal callers omit, every operator-free
    segment after `vs=` is a name. Brackets make a term of it either way:
-   `vs=henry|(won)`. A tag can be any word, so the other way round: a flag after
+   `vs=alex|(won)`. A tag can be any word, so the other way round: a flag after
    `tag=` is always the flag (`tag=study|won`), and `tag=study|tag=won` names the tag.
 7. **An unknown value raises**, which the server answers with a 400: `position=XYZ`,
    `position=`, `faced_open=jam`, `fold_street=showdown`. A segment after a key that
@@ -1709,7 +1708,7 @@ this order:
 
 | Part | Content |
 |---|---|
-| **position** | `position=<POS>`; withheld on dead-button and irregular-blind hands, as every positional view does |
+| **position** | `position=<POS>`; withheld on dead-button and irregular-blind hands, as `pnt positions` does (judgement call 4) |
 | **preflop history** | The terms this player's earlier preflop decisions earned (table below) |
 | **pot type** | `limped` / `srp` / `3bet_pot` / `4bet_pot` from `pot_level`, from the first postflop node on |
 | **players** | `players_flop=2` or `players_flop>=3` from `players_flop` (everyone who did not fold preflop), on postflop nodes; the groups of "Multiway vs heads-up" |
@@ -2267,7 +2266,12 @@ reads hands, not facts, and counts their money. Whatever the scope, such a
 fact's `hole_cards` is None and its `pot_level` 0: no card reader sees it, and
 no pot-type term describes it. Its cards are in `cards`, which only the hand
 lists print. No all-in equity and no voluntary-show class either
-(`ANALYSED_SQL`). A bomb pot on one board is analysed: no preflop decision, so
+(`ANALYSED_SQL`). Where a `play` figure would read as a count, the hands left
+out are said, not hidden: `/hud` carries `not_analysed` (`queries.not_analysed`,
+per seat dealt in) beside each seat's `stats` and `session` hands, so a PLO
+table reads "0 hands, 312 not analysed"; `/live` says `analysed: false` on such
+a hand and resolves no spot for it, since Hold'em history is not its spot.
+A bomb pot on one board is analysed: no preflop decision, so
 no preflop rate counts it, `pot_level` 0 (neither a walk nor a limp), and its
 postflop play counts like any other. Results gives it a row.
 
@@ -2285,8 +2289,8 @@ Board, told apart from run-it-twice by its `(second board)` lines). `plo` and
 `double_board` find hands only in the hand lists and Results.
 
 `contributed` subtracts uncalled bets because chips returned to you were never at
-risk. Verified against hand #187 of the sample log: Chris posts SB 5, raises to 30,
-opponent folds, 20 is returned, he collects 20 — net **+10**, which is the
+risk. Verified against hand #187 of the sample log: a player posts SB 5, raises to 30,
+opponent folds, 20 is returned, they collect 20 — net **+10**, which is the
 opponent's big blind and nothing else.
 
 **Incomplete hands are excluded from bb/100, and only from bb/100.** A log that
@@ -2298,7 +2302,9 @@ rate with no opportunities: unknown is not zero.
 
 Everything else about such a hand is real and still counts. The players folded,
 bet, called and reached showdown exactly as recorded, so VPIP, PFR, 3-bet, c-bet
-and WTSD all include it. Only the ledger is short.
+and WTSD all include it. Only the ledger is short. One reading needs the end: a
+log cut on the flop or turn with two players still in shows two players at no
+showdown, so `wtsd` there needs the river dealt; cut on the river, it counts.
 
 `hands` therefore counts every hand, while the bb/100 denominator may be smaller.
 Re-importing the finished export repairs the hand and it rejoins.
@@ -2342,7 +2348,7 @@ hand is −100 bb/100 by construction, so −80 from the big blind is +20 here.
 | Fact / rate | Definition |
 |---|---|
 | **posted** / **posted_bb** | This player's own forced posts this hand: the chips of every `post` action -- small blind, big blind, straddle, missed big blind, missing small blind and ante alike. `posted` is chips, like `net`; `posted_bb` is `Fraction(posted, bb)`, exact, and None when the big blind is unknown |
-| **bb_per_100_vs_fold** | `(Σ net_bb + Σ posted_bb) / hands × 100`, over the complete hands with a known big blind that bb/100 uses (`n` = `Tally.bb_n`), where a hand with no preflop decision adds 0 (call 2) |
+| **bb_per_100_vs_fold** | `(Σ net_bb + Σ posted_bb) / hands × 100`, over the complete hands with a known big blind that bb/100 uses (`n` = `Tally.bb_n`), where a hand with no decision adds 0 (call 2) |
 | **bb_per_100_vs_fold_ci** | The half-width `bb_per_100_ci` is, with `x` = each hand's `net_bb + posted_bb` (0 on a hand with no decision). None under two hands |
 
 **0 is no better than folding every hand; a negative value is the leak.** It
@@ -2350,7 +2356,9 @@ says the player lost more by playing than folding would have cost them. A big
 blind at −80 bb/100 raw is +20 vs fold, which is fine; a small blind at −60 raw
 is −10 vs fold, and that is a small blind defending too much.
 
-`Tally.posted` is Σ `posted_bb` over the counted hands that had a decision,
+`Tally.posted` is Σ `posted_bb` over the counted hands that had a decision
+(`vpip_opp`, or an action on any postflop street: `line`, which in a bomb pot
+is the only place a decision can be),
 `Tally.idle` Σ `net_bb` over those that had none, and `Tally.vf_sq` Σx²; all
 three are exact fractions and add across games like `bb_sum`. So
 `bb_per_100_vs_fold = (bb_sum − idle + posted) / bb_n × 100`.
@@ -2363,13 +2371,17 @@ Judgement calls:
    question. Here the question is what folding loses, and folding loses a dead
    post as surely as a live one: the chips are gone either way. With every post
    counted, a player who folds at every decision scores exactly 0.
-2. **A hand with no preflop decision adds 0.** A walk, or all in from a post
+2. **A hand with no decision adds 0.** A walk, or all in from a post
    (`!acted_preflop`, the walk row of "Results by pot type"). Folding every hand
    could not have changed it: the big blind everyone folds to wins the small
    blind whatever they would have done. Counting its post would read every walk
    as +1.5 bb for the big blind (net +0.5, plus the 1 posted), about +10 bb/100
    on a big blind who sees a walk one hand in fifteen -- exactly the seat this
-   number is for.
+   number is for. **A bomb pot has no preflop decision but is not idle**: every
+   postflop action is a real decision, and folding at the first of them loses
+   the bomb post and nothing more. So a bomb pot the player acted in on any
+   street adds `net_bb + posted_bb`, as a raised pot does; one they were all in
+   for from the post adds 0, like any hand all in from a post.
 3. **The counterfactual is this player's alone.** Folding changes nothing
    anyone else did; that is what "against folding" means in every tracker, and
    the only reading the log can support.
@@ -2436,8 +2448,8 @@ equity    = expected / pot                           share of the whole pot
 |---|---|
 | **Population** | Complete hands that reached showdown with at least one all-in action, where every unfolded player's cards are known. One row per (hand, unfolded player). A hand with a mucked live hand is *counted* as `skipped.cards_unknown`, never silently dropped. Folded players have no row: they have no claim on the pot |
 | **Decision point** | The street of the last voluntary action -- where the betting stopped. The board is the first run's cards dealt by then: 0, 3, 4 or 5. A run-it-twice second board repeats that prefix, so the first run is what everyone saw when they committed |
-| **Pots** | Layered from `contributed` (which already excludes uncalled returns): the distinct amounts the live players put in are the layers, each open to the live players who reached it. Every chip is in some pot, a folded player's included; Σ pots = `pot` by construction. A layer only one player reached is folded into the pot below it -- see judgement call 15 |
-| **Method** | `exact` when two or fewer cards are to come (990 boards after a flop all-in, 44 after a turn one, 1 on the river); `sampled` preflop, 50,000 deals from a generator seeded by the cards and pots, so the same hand always gets the same answer and its error stays under a quarter of a percent |
+| **Pots** | Layered from `contributed` (which already excludes uncalled returns): the distinct amounts the live players put in are the layers, each open to the live players who reached it. Every chip is in some pot, a folded player's included; Σ pots = `pot` by construction. A layer only one live player reached is folded into the pot below it when every chip in it is that player's own (an overpay nobody returned); one a folded player also paid into is a side pot of its own, which its one player always wins -- see judgement call 15 |
+| **Method** | `exact` when two or fewer cards are to come (990 boards after a flop all-in, 44 after a turn one, 1 on the river); `sampled` preflop, 50,000 deals from a generator seeded by the cards and pots, so the same hand always gets the same answer; its standard error is about 0.2% of the pot, a few chips on the biggest pots |
 
 Because `actual` is the same `net` every other view prints, the two lines on the page
 differ only where the deck did something: **within one hand the `diff`s sum to zero.**
@@ -2512,7 +2524,7 @@ Judgement calls:
    them is not a pair. Folding happens through the identity map at read time, so
    a merge or a split re-answers on the next request.
 5. **The chart filter names the opponent only when it names nobody else.**
-   `vs=` matches a display name or a raw ID, ignoring case, so `hsj` and `HSJ`
+   `vs=` matches a display name or a raw ID, ignoring case, so `kai` and `KAI`
    are one term for two people. Then a player with one PokerNow ID is named by
    that ID (`vs=<pn_id>`); one with several, sharing a name, gets `filter: null`,
    since a filter cannot say "this ID or that one". A name with a comma would
@@ -2532,7 +2544,7 @@ to the spot's total: the same hand count, and the same net to the exact fraction
 
 | Table | Rows | Filter each row adds |
 |---|---|---|
-| **Pot type** | walk, limped, single-raised, 3-bet pot, 4-bet pot+ | `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` |
+| **Pot type** | walk, limped, single-raised, 3-bet pot, 4-bet pot+; then bomb pot, double board and PLO, each only when there is one | `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` · `holdem,!double_board,bomb_pot` · `holdem,double_board` · `plo` |
 | ↳ **role**, raised pots only | PFA, caller / other | `<pot>,pfa` · `<pot>,!pfa` |
 | **Position** | each seat `position=` names, in preflop acting order, blinds last; then dead button | `position=<seat>` · `dead_button` |
 | **In position after the flop** | in position, out of position, no flop | none · none · `!saw_flop` |
@@ -2542,9 +2554,15 @@ bb/100 is made of everywhere: each complete hand's net over its own big blind.
 **`net_bb`** is that sum; **`bb_per_100`** is it over **`bb_hands`**, the
 complete hands with a known big blind. **`hands`** counts every hand. An
 incomplete hand is therefore in a row's `hands` and in none of its bb figures --
-the rule in "Money", unchanged. The other columns: `vpip_pct` and `saw_flop_pct`
-are shares of the row's hands, so "lost it playing" can be told from "lost the
-blind folding"; `wtsd` and `wsd` are the stat rows' own.
+the rule in "Money", unchanged. The other columns: `saw_flop_pct` is a share of
+the row's hands, and `vpip_pct` is the stat rows' VPIP ("Preflop"): a share of
+the row's **`vpip_hands`**, the hands with a preflop decision (`vpip_opp`), so
+the same label is the same number on Results, the stats page and the HUD. That
+leaves out a walk, a bomb pot (no preflop decision), PLO and Double Board
+(money only, never analysed); `vpip_pct` is None on a row with no decision (the
+walk, bomb pot, double board and PLO rows) rather than a 0% nobody played. It is
+what tells "lost it playing" from "lost the blind folding". `wtsd` and `wsd` are
+the stat rows' own.
 
 **The worst row.** In each table, the lowest bb/100 among the rows standing on
 at least **100 hands with a known result** (`WORST_MIN_HANDS`) is marked
@@ -2763,8 +2781,11 @@ at 50). Pooled across players, VPIP is 70.2% in hands 1-10 after a loss, 70.0% i
 11-20, and 67.3% in 21-30, against 67.6% overall.
 
 The filter terms are `post_loss`, `hands_since_loss`, `session_hand` and
-`session_hour`. A row nobody annotated (one derived on its own, like the all-in
-population) has no session context, and every one of them is False on it.
+`session_hour`. A row nobody annotated (one derived on its own) has no session
+context, and every one of them is False on it -- so every list a spot filters
+reads annotated rows: the Review and Bad beats lists number the session over
+every hand the player played, and the all-in lists take theirs from the
+player's (or the pool's) annotated facts.
 
 **The report**, over one player's hands in a spot:
 
@@ -2949,10 +2970,10 @@ that finds exactly them: `<spot>,<term>` reproduces the cell on any page.
 | Dimension | Buckets, in order | Term | Not applicable (skipped) |
 |---|---|---|---|
 | **position** | each seat `position=` names, in Results' seat order | `position=BTN` | dead button |
-| **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` | never |
+| **pot_type** | walk, limped, srp, 3bet_pot, 4bet_pot, bomb_pot, double_board, plo | Results' pot-type terms: `limped,!acted_preflop` · `limped,acted_preflop` · `srp` · `3bet_pot` · `4bet_pot` · `holdem,!double_board,bomb_pot` · `holdem,double_board` · `plo` (the last two only reach a list in the `money` or `every` scope) | a hand none of them matches; every hand Group by reads matches one |
 | **players_flop** | 2, 3+ | `players_flop=2` · `players_flop>=3` | no flop dealt |
 | **depth** | <40, 40–100, 100–200, 200+ bb | the "Stack-depth splits" terms | `eff_bb` unknown |
-| **vs** | each opponent, by name | `vs=henry` | no opponent left |
+| **vs** | each opponent, by name | `vs=alex` | no opponent left |
 | **player** | each player (pool only) | none: the cell names its `player` | never |
 | **line_\<street\>** | each line, most hands first | `line_flop=xc` | did not act on the street |
 | **made_\<street\>** | the `MADE_GROUPS`, strongest first, with `pair` opened into its leaves | `made_flop=top_pair`; the `trips` group is `made_flop=set\|trips` | cards unknown, no such board, or folded before it |
@@ -3256,7 +3277,9 @@ still the table's.
 ## Known judgement calls
 
 These are choices, not facts. They are listed so they can be revisited without
-archaeology.
+archaeology. The numbers run across the whole document, so other sections and
+the code can cite one by number alone: 16-18 are under "Tags", 19-27
+under "Hand review", and this list goes on from 28 after 15.
 
 1. **BB walks are excluded from VPIP/PFR denominators.** Rule 3 above.
 2. **A checked-through street clears the aggressor**, so no c-bet opportunity
@@ -3275,12 +3298,22 @@ archaeology.
      `pgl1UViJ4` has the button on seat 2, a `Dead Small Blind` line, and seat 10
      posting the *big* blind one slot from the button. `seats_from_button` is
      shifted past the gap, which means it can exceed `n_dealt_in - 1` on these
-     hands.
+     hands. The same flag marks a hand whose named dealer posted the big blind
+     (a player sat down between the blinds): its positions are anchored on the
+     big blind, as on a dead button.
 
    Both are rare (1 each in 549 hands) and both are flagged rather than guessed
-   at. `positional_report` drops them; aggregate stats still include them, since
-   only the *position label* is uncertain, not the actions. IP/OOP is likewise
-   still computed on them — see call 11, which is the same distinction again.
+   at. `positional_report` drops them, and so do the HUD and the line explorer's
+   node filters; aggregate stats still include them, since only the *position
+   label* is uncertain, not the actions. IP/OOP is likewise still computed on
+   them — see call 11, which is the same distinction again.
+
+   The `position=` filter, and the views that follow it (Results, group-by,
+   the tree), do label a dead-small-blind hand. They name it as the table it
+   was dealt at, dead slot included: `position_slots` is `n_dealt_in` plus the
+   gap, so four dealt in are BTN, BB, HJ and CO, and three are BTN, BB and CO.
+   The seat right of the button is the cutoff, as on any other hand. A dead
+   button gets no label anywhere.
 5. **Antes and dead small blinds** contribute to the pot but not to a player's
    street commitment, so they do not reduce what that player must pay to call.
 6. **Each bet-size edge belongs to the bucket above it, rounded down to a chip**,
@@ -3318,15 +3351,25 @@ archaeology.
     bounties are in both `actual` and `adjusted`, so `diff` is pure variance.
 14. **Preflop equity is sampled, not enumerated.** 1.7 million boards heads-up is
     fifteen seconds of pure Python per hand; 50,000 seeded deals is half a second
-    and reproducible, with an error smaller than a single chip on any pot in the
-    corpus. Every row says which it was.
-15. **Chips only one player could win go with the pot below.** PokerNow sometimes
+    and reproducible, with a standard error of about 0.2% of the pot: under a chip
+    on most pots, a few chips on the biggest (AA against KK for 2,000 is 1,634.6
+    sampled against 1,638.9 exact). Every row says which it was.
+15. **A caller's unreturned overpay goes with the pot below.** PokerNow sometimes
     lets a caller put in a few chips more than the all-in and returns nothing: in
     hand #73 of `pgl8vNV4WURe` the caller put in 915 against 910, and the winner
     collected all 1,945. Treated as a side pot of 5 that only the caller could win,
     the hand would show a 5-chip gap on a river all-in, where there is no gap to
     have. It is paid where PokerNow paid it. The one other river gap in the
     database is the odd chip of a chopped pot, which is real and half a chip.
+    Only a layer whose every chip came from its one live player is merged. When
+    a player who later folded also paid into it -- two deep stacks bet past a
+    short all-in, then one gave up -- it is a real side pot: the short stack
+    could never win it, so it stays its own pot, won by the one player left in
+    it. Merging those handed the short stack a share of chips it could never
+    win: 5 of 1,357 all-in showdowns in the author's database have such a pot
+    (#195 of `pglAxUBh5ntTOy1R-Cg4_w7ja`: 734 chips, half of them a folded
+    player's), and on the 2 decided on the flop it moved `expected` by 16 to 53
+    chips.
 28. **A raise is sized after the call, against the pot the call would make.**
     `raise_pot = (amount − to_call) / (pot_before + to_call)`. Checked against
     the 1,419 postflop raises that were not all in across the bundled logs
@@ -3349,7 +3392,7 @@ archaeology.
 29. **A blocker is under a fifth of the pot.** No button makes one, so the edge
     is a judgement value; a fifth keeps the one-blind poke into a big pot apart
     from the ⅓-pot bet, which is a real sizing and not a blocker.
-30. **The facing-a-bet sizes are the first decision only.** `faced_level`,
+30. **The facing-a-bet sizes are the first decision only.**
     `faced_bet_pot`, `faced_bet_size` and `faced_bet_action` describe the first
     time the player faced a bet on the street, as `fold_to_cbet_opp` does for
     c-bets, so each is one answer per street and the by-size table counts each

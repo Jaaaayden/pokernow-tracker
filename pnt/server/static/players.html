@@ -36,11 +36,6 @@
   .note b { color: var(--ink); font-weight: 600; }
   a.link { color: var(--accent); text-decoration: none; }
   a.link:hover { text-decoration: underline; }
-  .crumb { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
-    margin-bottom: 14px; font-size: 13px; }
-  .crumb a { color: var(--accent); text-decoration: none; }
-  .crumb a:hover { text-decoration: underline; }
-  .crumb .go a + a { margin-left: 14px; }
 
   select, input, button { font: inherit; color: var(--ink); background: var(--surface);
     border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
@@ -48,7 +43,6 @@
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
   button.primary { background: var(--accent); color: #fff; border-color: transparent; }
-  button.danger { background: var(--down); color: #fff; border-color: transparent; }
   button.small { padding: 3px 8px; font-size: 12.5px; }
 
   .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
@@ -118,10 +112,7 @@
 </head>
 <body>
 <main>
-  <div class="crumb" id="crumb"><a href="/">&lsaquo; tracker</a>
-    <span class="go"><a id="statslink" href="/stats.html">stats &rsaquo;</a>
-      <a id="chartlink" href="/chart">range chart &rsaquo;</a>
-      <a id="tendencieslink" href="/tendencies.html">tendencies &rsaquo;</a></span></div>
+  <nav class="pnt-nav" id="crumb" data-page="players" aria-label="pages"></nav>
   <h1>Players <small id="count"></small></h1>
   <ul class="note">
     <li><b>One human, one row.</b> PokerNow IDs are per browser, so one person on a phone and a laptop shows up twice.</li>
@@ -138,8 +129,8 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const theme = new URLSearchParams(location.search).get("theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  pntPage.nav();
+  const { href } = pntPage;
   let players = [];
   let openAlias = null;
 
@@ -174,7 +165,7 @@
   async function load() {
     players = await api("/players");
     players.sort((a, b) => b.hands - a.hands);
-    resetH2h();
+    h2hCache.clear();
     $("count").textContent = `${players.length} player${players.length === 1 ? "" : "s"}`
       + ` · ${players.reduce((n, p) => n + p.n_ids, 0)} PokerNow ids`;
     render();
@@ -188,14 +179,12 @@
     return e;
   };
 
-  // The crumb's chart link opens on whoever is unfolded.
+  // The nav's chart, tendencies and pots links open on whoever is unfolded.
   function crumbLinks() {
-    const t = new URLSearchParams(theme ? { theme } : {});
-    const c = new URLSearchParams(t);
-    if (openAlias) c.set("player", openAlias);
-    $("statslink").href = "/stats.html?" + t;
-    $("chartlink").href = "/chart?" + c;
-    $("tendencieslink").href = "/tendencies.html?" + t;
+    const who = openAlias ? { player: openAlias } : {};
+    for (const [id, path] of [["chartlink", "/chart"], ["tendencieslink", "/tendencies.html"], ["potslink", "/pots.html"]]) {
+      $(id).href = href(path, who);
+    }
   }
 
   function render() {
@@ -226,7 +215,8 @@
     row.appendChild(tw);
     const num = el("div", "num");
     num.appendChild(el("b", null, fmt(p.hands)));
-    num.appendChild(el("span", null, `hands · ${p.n_ids} id${p.n_ids === 1 ? "" : "s"}`));
+    num.appendChild(el("span", null, `hands, all games · ${p.n_ids} id${p.n_ids === 1 ? "" : "s"}`));
+    num.title = "Every hand dealt in, PLO and Double Board included; Stats and Tendencies count Hold'em only";
     row.appendChild(num);
     row.addEventListener("click", () => {
       openAlias = p.alias === openAlias ? null : p.alias;
@@ -257,9 +247,9 @@
     for (const i of p.identities) {
       const tr = el("tr", single ? "only" : "");
       tr.appendChild(el("td", "id", i.pn_id));
-      tr.appendChild(el("td", null, i.name || "—"));
+      tr.appendChild(el("td", null, i.name || "–"));
       tr.appendChild(el("td", "r", fmt(i.hands)));
-      tr.appendChild(el("td", "r dim", (i.last_seen_at || "").slice(0, 10) || "—"));
+      tr.appendChild(el("td", "r dim", (i.last_seen_at || "").slice(0, 10) || "–"));
       if (!single) {
         const td = el("td", "r");
         const b = el("button", "small", "split off");
@@ -273,15 +263,16 @@
 
     const acts = el("div", "acts");
     const chart = el("a", "link");
-    chart.href = "/chart?player=" + encodeURIComponent(p.alias);
+    chart.href = href("/chart", { player: p.alias });
     chart.textContent = "range chart ↗";
     chart.target = "_blank"; chart.rel = "noopener";
     acts.appendChild(chart);
-    const stats = el("a", "link");
-    stats.href = "/stats.html";
-    stats.textContent = "stats ↗";
-    stats.target = "_blank"; stats.rel = "noopener";
-    acts.appendChild(stats);
+    const tend = el("a", "link");
+    tend.href = href("/tendencies.html", { player: p.alias });
+    tend.textContent = "tendencies ↗";
+    tend.title = `${p.alias}'s tags and every measure against the pool`;
+    tend.target = "_blank"; tend.rel = "noopener";
+    acts.appendChild(tend);
     acts.appendChild(el("span", "sep"));
 
     const rn = el("button", "small", "rename");
@@ -459,10 +450,6 @@
   // the cache no longer holds.
   const h2hCache = new Map();
 
-  function resetH2h() {
-    h2hCache.clear();
-  }
-
   function h2hFor(alias) {
     let entry = h2hCache.get(alias);
     if (!entry) {
@@ -477,11 +464,7 @@
   const signedBb = (x) => (x > 0 ? "+" : "") + x.toFixed(1);
   const tone = (x) => (x > 0.05 ? "up" : x < -0.05 ? "down" : "");
 
-  function chartHref(player, filter) {
-    const q = new URLSearchParams({ player });
-    if (filter) q.set("filter", filter);
-    return "/chart?" + q;
-  }
+  const chartHref = (player, filter) => href("/chart", filter ? { player, filter } : { player });
 
   function shortfall(skipped) {
     const n = skipped.incomplete + skipped.unbalanced + skipped.no_bb;
@@ -516,7 +499,7 @@
     const hr = document.createElement("tr");
     for (const [h, cls, tip] of [
       ["opponent", "l", ""],
-      ["hands", "", "Dealt in together"],
+      ["hands", "", "Dealt in together, every game"],
       ["net bb", "", `What ${p.alias} won from them; negative is lost to them`],
       ["SD", "", "Both still in at a showdown"],
       ["split", "", "Hands where money moved between them by the multiway rule rather than exactly"],
@@ -559,7 +542,7 @@
         a.addEventListener("click", (e) => e.stopPropagation());
         td.appendChild(a);
       } else {
-        td.textContent = "—";
+        td.textContent = "–";
         td.title = "No one vs= term names only this player: another answers to the same name, ignoring case";
       }
       tr.appendChild(td);
@@ -568,8 +551,8 @@
     scroll.appendChild(t);
     frag.appendChild(scroll);
     frag.appendChild(el("p", "h2h-foot",
-      `Net ${signedBb(data.net_bb)}bb against the table over ${fmt(data.hands)} hands. A hand with one winner `
-      + "settles exactly; with several, each loser's loss is split by what each winner won."
+      `Net ${signedBb(data.net_bb)}bb against the table over ${fmt(data.hands)} hands, every game and 7-2 bounties `
+      + "included, so it differs from the Stats win rate. A hand with several winners splits each loss by what each won."
       + shortfall(data.skipped)));
     return frag;
   }

@@ -14,8 +14,8 @@ flop all-in, 44 rivers after a turn one, a single board on the river. Preflop
 there are 1.7 million boards heads-up, which pure Python cannot enumerate in a
 time anyone will wait for, so preflop is **sampled**: 50,000 deals from a
 generator seeded by the cards and pots themselves, which makes the answer
-reproducible and its error under a quarter of a percent. Every result says which
-of the two it was.
+reproducible, with a standard error of about 0.2% of the pot -- a few chips on
+the biggest pots. Every result says which of the two it was.
 
 Nothing here touches the database; ``allin.py`` does the reading and caching.
 """
@@ -166,8 +166,11 @@ def side_pots(
     does). When it does not -- PokerNow occasionally lets a caller put in a few chips
     more than the all-in and returns nothing (hand #73 of `pgl8vNV4WURe`: 915 called
     against 910, and the winner collected all 1,945) -- the top layer has a single
-    eligible player. Such a layer is folded into the pot below it, because that is
-    where PokerNow paid it: to the winner, not back to its owner.
+    eligible player and every chip in it is theirs. Such a layer is folded into the
+    pot below it, because that is where PokerNow paid it: to the winner, not back
+    to its owner. A one-player layer that someone who folded also paid into is a
+    real side pot -- two deep stacks bet past the all-in, then one gave up -- and
+    stays a pot of its own, which its one eligible player always wins.
     """
     alive = [p for p in live if p in contributed]
     levels = sorted({contributed[p] for p in alive})
@@ -177,7 +180,8 @@ def side_pots(
         chips = sum(max(0, min(c, level) - floor) for c in contributed.values())
         eligible = tuple(p for p in alive if contributed[p] >= level)
         if chips > 0:
-            if len(eligible) == 1 and pots:
+            own = min(contributed[eligible[0]], level) - floor if len(eligible) == 1 else None
+            if own == chips and pots:
                 below, below_eligible = pots[-1]
                 pots[-1] = (below + chips, below_eligible)
             else:

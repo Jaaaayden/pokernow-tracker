@@ -38,8 +38,19 @@ your Chrome account like any extension's settings. Nothing else is synced.
   page itself would ask.
 - **To the local server:** the same logs, over your own computer's loopback
   address.
+- **To GitHub, to check for updates:** an install from a GitHub archive (the one
+  the README gives) has its local server ask GitHub's API whether a newer version
+  exists, when it starts and then every 6 hours:
+  `GET https://api.github.com/repos/Jaaaayden/pokernow-tracker/compare/<commit>...<branch>`,
+  where `<commit>` is the version you installed and `<branch>` the branch it came
+  from, with the user agent `pnt`. GitHub sees your IP address, as with any web
+  request. Nothing else is sent: no hands, names, stats, settings or login. Set
+  `PNT_UPDATE_CHECK=0` in the server's environment to turn it off. A copy run from
+  a source checkout, or installed with `git+`, never checks. `pnt update`
+  downloads the new version from GitHub, and only when you run it.
 - **To anyone else: nothing.** No analytics, no crash reports, no accounts, no
-  remote server of ours.
+  remote server of ours. The extension itself talks only to PokerNow and the
+  local server.
 
 The data is not sold, shared, or used for anything but showing it back to you.
 
@@ -51,6 +62,7 @@ The data is not sold, shared, or used for anything but showing it back to you.
 | `127.0.0.1`, `localhost` | Send the log to the local server and read the HUD's figures back |
 | `storage` | Settings |
 | `sidePanel` | Show the HUD beside the game, not over it |
+| `scripting` | When the extension is installed or updated, re-attach its own log reader to PokerNow game tabs already open, so they keep recording without a reload. It runs only the extension's own files, only on those tabs |
 
 ## Deleting it
 

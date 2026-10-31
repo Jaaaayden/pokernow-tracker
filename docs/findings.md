@@ -13,17 +13,17 @@ suite pins, and the grammar is additionally run against a 24-game working databa
 ### The token
 
 Players appear as `"Name @ ID"`. The ID charset is base64url-ish — `[A-Za-z0-9_-]`
-— confirmed by `d-4X_F_SSU`, which contains both a dash and underscores. Anything
+— confirmed by `k-7Q_R_TWx`, which contains both a dash and underscores. Anything
 matching only `[A-Za-z0-9]` will silently mis-parse those players.
 
 ### IDs are stable; names are not
 
 | Evidence | Consequence |
 |---|---|
-| `Chris @ 5NARaPRkSp` quits with stack 0 at 08:27:06, requests a seat at 08:28:38, is re-approved — **same ID** | The ID survives quit/rejoin *within* a game |
-| `gpP9uUffpu` is **`genericpoker`** in `pgl41zM3` and **`500`** in `pglSdQty` | The ID survives renames *across* games. Keying on name would split one person's 421 hands into two |
-| `d-4X_F_SSU` is **`getting even`** then **`1500`** | Same |
-| `hsj @ PEMYRVPxOS` and `HSJ @ FJqZyN7BjN` | One human, two IDs — the cross-device case. Only an alias table can join these |
+| `Blake @ aB3dE5fG7h` quits with stack 0 at 08:27:06, requests a seat at 08:28:38, is re-approved — **same ID** | The ID survives quit/rejoin *within* a game |
+| `Zp3Lm8Qx2w` is **`riley`** in game A and **`500`** in game B | The ID survives renames *across* games. Keying on name would split one person's 421 hands into two |
+| `k-7Q_R_TWx` is **`running hot`** then **`1500`** | Same |
+| `kit @ HtR4kW9sYe` and `KIT @ Vn6bC2xJqP` | One human, two IDs — the cross-device case. Only an alias table can join these |
 
 **The ID is the key. The display name is decoration.**
 
@@ -31,7 +31,7 @@ matching only `[A-Za-z0-9]` will silently mis-parse those players.
 
 `Your hand is 5♦, 8♣` carries no player name, so a downloaded log does not say
 whose it is. Hero can be recovered by matching those cards against showdown
-`shows` lines: hand #188 shows `genericpoker` holding exactly `5♦, 8♣`.
+`shows` lines: hand #188 shows `riley` holding exactly `5♦, 8♣`.
 
 Done as elimination plus voting, this is self-validating — a player who ever shows
 cards that are *not* hero's cards for that hand cannot be hero. On all three
@@ -41,8 +41,8 @@ contradicted, and hero collects 24–59 confirming votes.
 It matters more than it looks. Hero's cards are printed on *every* hand, not just
 showdowns, so identifying hero lifts hole-card coverage from ~15% to ~58%.
 
-**The user's own identity is not constant.** Hero is `gpP9uUffpu` in two logs and
-`MBFczOlpuA` in the third — a second device. The alias table is needed on day one,
+**The user's own identity is not constant.** Hero is `Zp3Lm8Qx2w` in two logs and
+`Lw8eT1gUoD` in the third — a second device. The alias table is needed on day one,
 for you, before any opponent is considered.
 
 ---
@@ -92,7 +92,7 @@ is wrong — while still looking entirely plausible. This is guarded by a
 conservation law over all 549 hands: `Σ contributed == Σ collected`, per hand.
 
 Uncalled returns are **not** contributed, because those chips were never at risk.
-Hand #187: Chris posts SB 5, raises to 30, opponent folds, 20 is returned, he
+Hand #187: Blake posts SB 5, raises to 30, opponent folds, 20 is returned, he
 collects 20 → net **+10**, exactly the opponent's big blind.
 
 ---

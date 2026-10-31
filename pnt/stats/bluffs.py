@@ -42,14 +42,6 @@ from .tags import strength_at
 #: The four classes, strongest claim first: the order the stacked bar is drawn in.
 CLASSES = ("value", "marginal", "semi_bluff", "bluff")
 
-#: A street's rows, in order. First one row per size, every bet or raise of that
-#: size, opening into the bet, the raise and the check-raise made at it -- size
-#: above action, since the size is what the table sees first. Then the street's
-#: summaries, across sizes: every check-raise, every raise (check-raises
-#: included), and the jams. A raise is sized like a bet, by `raise_pot`.
-SIZE_KINDS = ("bet", "raise", "check_raise")
-SUMMARY_KINDS = ("check_raise", "raise", "jam")
-
 _SIZE_WORDS = {
     "blocker": "blocker, under 1/5 pot",
     "small": "small, 1/5 to 1/2 pot",
@@ -117,7 +109,14 @@ def _last_aggression(f: Facts) -> str | None:
 def categories() -> list[dict]:
     """Every category: key, street, kind, size, label, filter, and its membership
     test. The street a row's hands are read on is `street`, except for ``all
-    aggression``, which reads each hand on its last aggressive street."""
+    aggression``, which reads each hand on its last aggressive street.
+
+    A street's rows, in order: first one row per size, every bet or raise of
+    that size, opening into the bet, the raise and the check-raise made at it --
+    size above action, since the size is what the table sees first. Then the
+    street's summaries, across sizes: every check-raise, every raise
+    (check-raises included), and the jams. A raise is sized like a bet, by
+    `raise_pot`."""
     out: list[dict] = []
 
     def add(key, street, kind, size, label, term, test, read_on, parent=None):
