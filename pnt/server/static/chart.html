@@ -5693,7 +5693,9 @@
         : d.hands.length ? "no hands played in this spot — turn off Played only" : "no hands in this spot"));
       return;
     }
-    for (const h of rows.slice(0, listCap())) {
+    const shown = rows.slice(0, listCap());
+    const anyPill = shown.some(h => h.flags.length || h.flagged);
+    for (const h of shown) {
       const f = h.flags[0];
       // A hand they sat out names who played it and who won, in place of their own result.
       const away = h.sat_out ? {
@@ -5702,7 +5704,8 @@
       } : {};
       const row = handRowButton(h, list, $("review-replay"), {
         ...away,
-        kind: f ? { text: f.label, group: f.group } : h.flagged ? { text: "Flagged", group: "manual" } : null,
+        // An empty pill slot only when some row on the list has a pill to line up with.
+        kind: f ? { text: f.label, group: f.group } : h.flagged ? { text: "Flagged", group: "manual" } : anyPill ? null : undefined,
         why: h.flags.map(x => x.why).filter(Boolean).join(" · ") || undefined,
         title: h.flags.length > 1 ? "flagged: " + h.flags.map(x => x.label).join(", ") : "",
       });
