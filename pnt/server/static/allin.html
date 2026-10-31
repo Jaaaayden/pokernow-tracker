@@ -6,26 +6,7 @@
 <title>All-in EV</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d;
-  }
+  /* The palette is loading.js's; the replay's own rules are replay.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
@@ -112,34 +93,14 @@
   .hand-row .money small { color: var(--muted); }
   .hand-row .up { color: var(--up); }
   .hand-row .down { color: var(--down); }
-  .replay { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 13px; }
-  .replay h3 { font-size: 14px; margin: 0 0 4px; overflow-wrap: anywhere; }
-  .replay h3 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .replay .who { color: var(--ink-2); margin: 0 0 6px; }
-  .replay .street { margin-top: 10px; }
-  .replay .street > b { text-transform: capitalize; }
-  .replay .street > span { color: var(--muted); margin-left: 8px; }
-  .replay ol { margin: 4px 0 0; padding-left: 22px; }
-  .replay li.forced { color: var(--muted); }
-  /* Side by side, as on the chart and under its switch (pnt.reviewLayout): the
-     list on the left, the replay sticking beside it. A narrow list stacks its
-     rows and leaves the street and pot to the replay; with no hands to replay,
-     the list has the width. As on the chart, the replay stops at about 640px
-     and the list takes the rest of the card. */
-  #hand-pair.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 640px));
-    gap: 0 12px; align-items: start; }
-  #hand-pair.split:has(> .replay.hidden) { grid-template-columns: minmax(0, 1fr); }
+  /* Side by side (pntPage.sideBySide has the rest): the list on the left, the
+     replay sticking beside it. A narrow list stacks its rows and leaves the
+     street and pot to the replay. As on the chart, the replay stops at about
+     640px and the list takes the rest of the card. */
+  #hand-pair.split { grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 640px)); }
   #hand-pair.split .hand-rows { max-height: calc(100vh - 140px); max-height: calc(100dvh - 140px); }
-  #hand-pair.split .replay { position: sticky; top: 12px; margin-top: 0; padding: 0 0 0 12px; border-top: 0;
-    border-left: 1px solid var(--grid); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
-  #hands-split[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
   /* A player the server does not know: the error alone, no legend or list controls. */
   #detail.failed .legend, #detail.failed #hands-sort, #detail.failed #hands-split { display: none; }
-  @media (max-width: 620px) {
-    #hand-pair.split:has(> .replay[data-empty]) { grid-template-columns: minmax(0, 1fr); }
-    #hand-pair.split > .replay[data-empty] { display: none; }
-    .replay { font-size: 11px; }
-  }
   .hand-rows { container-type: inline-size; }
   @container (max-width: 420px) {
     .hand-row { gap: 1px 6px; padding: 4px 2px; font-size: 11px; }
@@ -217,7 +178,8 @@
       <dt>Actual</dt><dd>Net chips over those hands, the same figure every other page prints.</dd>
       <dt>Adjusted</dt><dd>Net chips had every pot been split by equity instead of dealt out.</dd>
       <dt>Diff</dt><dd>Actual minus adjusted. Above zero ran good, below ran bad.</dd>
-      <dt>Preflop … River</dt><dd>The diff split by the street the betting stopped on. Hover for that street's hands, actual and adjusted.</dd>
+      <dt>Preflop … River</dt><dd>The diff split by the street the betting stopped on. Hover for that street's hands, actual and adjusted.
+        River is always 0: no cards were left to come.</dd>
       <dt>~</dt><dd>In the hand list: a preflop equity, sampled rather than enumerated.</dd>
     </dl>
   </details>
@@ -229,7 +191,8 @@
   const $ = (id) => document.getElementById(id);
   pntPage.nav();
   const theme = pntPage.theme;
-  const { pretty, cardsEl } = pntReplay;
+  const { getJson, message } = pntPage;
+  const { pretty, cardsEl, when } = pntReplay;
 
   const STREETS = ["preflop", "flop", "turn", "river"];
   const STREET_HEAD = { preflop: "Preflop", flop: "Flop", turn: "Turn", river: "River" };
@@ -278,9 +241,15 @@
     if (v == null) return "–";
     return state.unit === "bb" ? pntPage.signed(v) : pntPage.signed(Math.round(v), 0);
   };
+  // A diff under one chip is a split pot's odd chip, not luck, and reads as 0.
+  // A river all-in has no cards to come, so its diff is only those odd chips,
+  // summed over every river hand: the River column is 0 by definition.
+  const diffOf = (s) => Math.abs(s.diff ?? 0) < 1 ? 0 : s[unitKey("diff")];
   const value = (row, key) => {
     if (key === "hands" || key === "equity_avg") return row[key];
-    if (key.startsWith("street:")) return row.by_street[key.slice(7)][unitKey("diff")];
+    if (key === "street:river") return 0;
+    if (key.startsWith("street:")) return diffOf(row.by_street[key.slice(7)]);
+    if (key === "diff") return diffOf(row);
     return row[unitKey(key)];
   };
   const fmt = (v, kind) => v == null ? "–" : kind === "int" ? pntPage.int(v) : kind === "pct" ? pntPage.pct(v) : money(v);
@@ -292,21 +261,10 @@
     ["net", "Actual", "money", "Net chips over these hands: collected minus put in."],
     ["adjusted", "Adjusted", "money", "Net chips had every pot been paid out by equity."],
     ["diff", "Diff", "money", "Actual minus adjusted. Positive ran above expectation."],
-    ...STREETS.map(s => [`street:${s}`, STREET_HEAD[s], "money",
-      `Diff over the hands where the betting stopped ${s === "preflop" ? "preflop" : "on the " + s}.`]),
+    ...STREETS.map(s => [`street:${s}`, STREET_HEAD[s], "money", s === "river"
+      ? "Always 0: no cards were left to come. Hover a cell for the river all-ins."
+      : `Diff over the hands where the betting stopped ${s === "preflop" ? "preflop" : "on the " + s}.`]),
   ];
-
-  async function getJson(url) {
-    const r = await fetch(url, { headers: { accept: "application/json" } });
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error(pntPage.OLD_SERVER);
-      }
-      throw new Error(body.detail || `${r.status} ${r.statusText}`);
-    }
-    return r.json();
-  }
 
   // Bumped by every load: an answer for controls since changed is dropped, so a
   // slow load cannot land after a quicker, newer one and be what is left on show.
@@ -463,10 +421,6 @@
     box.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  function message(text, cls = "muted") {
-    const p = document.createElement("p"); p.className = cls; p.textContent = text; return p;
-  }
-
   function renderDetail() {
     const d = state.detail;
     if (!d) return;
@@ -508,8 +462,12 @@
       return e;
     };
     mk("line", { class: "zero", x1: L, x2: W - R, y1: y(0), y2: y(0) });
+    // The top, zero and the bottom, each kept only clear of the last one drawn:
+    // a line that barely dips below zero would print its low over the 0.
+    let lastY = -Infinity;
     for (const v of [hi, 0, lo]) {
-      if (v === 0 && (hi === 0 || lo === 0)) continue;
+      if (y(v) - lastY < 14) continue;
+      lastY = y(v);
       mk("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, money(v));
     }
     mk("text", { x: W - R, y: H - 6, "text-anchor": "end" }, `${n} all-in hand${n === 1 ? "" : "s"}, oldest first`);
@@ -572,7 +530,7 @@
         if (title) s.title = title;
         b.appendChild(s); return s;
       };
-      span("num", `#${h.hand_number}`, [h.game_id, h.ts].filter(Boolean).join(" · "));
+      span("num", `#${h.hand_number}`, [h.game_id, when(h.ts)].filter(Boolean).join(" · "));
       span("street", h.street, "where the betting stopped");
       span("hole", cardsEl(h.hole_cards));
       const vs = span("vs", "vs ");
@@ -589,7 +547,7 @@
         h.method === "sampled" ? `sampled over ${h.n.toLocaleString()} deals` : `exact over ${h.n.toLocaleString()} board${h.n === 1 ? "" : "s"}`);
       span("pot", `pot ${state.unit === "bb" && h.bb ? (h.pot / h.bb).toFixed(1) + "bb" : h.pot.toLocaleString()}`);
       const m = span("money", "");
-      const diff = h[unitKey("diff")];
+      const diff = diffOf(h);
       m.append(`${money(h[unitKey("actual")])} `);
       const small = document.createElement("small");
       small.textContent = `vs ${money(h[unitKey("adjusted")])} · `;
@@ -602,44 +560,21 @@
       b.addEventListener("click", () => {
         list.querySelectorAll(".hand-row").forEach(x => x.setAttribute("aria-pressed", x === b));
         state.pressed = h.hand_id;
-        pntReplay.show($("replay"), h.hand_id);
+        pntReplay.show($("replay"), h.hand_id, { unit: state.unit });
       });
       list.appendChild(b);
     }
   }
 
-  // ---- side by side ------------------------------------------------------
-  // The chart's switch and key, so one choice holds on every page. Split, the
-  // pane is there with a placeholder whenever there are hands to pick, so picking
-  // the first does not shove the list aside.
-  const LAYOUT_KEY = "pnt.reviewLayout";
-  let split = true;
-  try { split = localStorage.getItem(LAYOUT_KEY) !== "stacked"; } catch { /* side by side */ }
-  function resetReplay(shown = true) {
-    const box = $("replay");
-    pntReplay.cancel(box);
-    state.pressed = null;
-    if (split && shown) {
-      box.classList.remove("hidden");
-      box.dataset.empty = ""; // pntReplay.show clears it
-      box.replaceChildren(message("click a hand to replay it"));
-    } else {
-      box.classList.add("hidden");
-    }
-  }
-  function applyLayout() {
-    $("hand-pair").classList.toggle("split", split);
-    $("hands-split").setAttribute("aria-pressed", split);
-  }
-  $("hands-split").addEventListener("click", () => {
-    split = !split;
-    try { localStorage.setItem(LAYOUT_KEY, split ? "split" : "stacked"); } catch { /* this visit only */ }
-    applyLayout();
-    // A replay on show stays, even when a re-sort has unpressed its row.
-    const box = $("replay");
-    if (box.classList.contains("hidden") || "empty" in box.dataset) resetReplay(!!state.detail?.hands.length);
+  // ---- side by side (pntPage.sideBySide) ---------------------------------
+  const resetPane = pntPage.sideBySide({
+    pair: $("hand-pair"), toggle: $("hands-split"), replay: $("replay"),
+    empty: "click a hand to replay it", has: () => !!state.detail?.hands.length,
   });
-  applyLayout();
+  function resetReplay(shown = true) {
+    state.pressed = null;
+    resetPane(shown);
+  }
 
   function closeDetail() {
     detailSeq++;
@@ -664,6 +599,7 @@
     document.querySelectorAll("[data-unit]").forEach(x => x.setAttribute("aria-pressed", x === b));
     state.unit = b.dataset.unit;
     writeUrl(); render(); renderDetail();
+    pntReplay.setUnit($("replay"), state.unit);
   }));
   $("detail-close").addEventListener("click", closeDetail);
   $("hands-sort").addEventListener("change", () => {
