@@ -66,6 +66,9 @@
   tr.out .gauge-dot { background: var(--accent); }
   @media (max-width: 620px) {
     td.gauge, td.shared, table:not(.measures) td.pool { display: none; }
+    /* With no gauge, the measure's name keeps most of the width. */
+    table.measures td.fig { width: 7.6em; padding-left: 4px; padding-right: 4px; }
+    table.measures td.pool { width: 6em; font-size: 12px; padding-left: 4px; }
     /* A tag's advice gets a line of its own under the tag and its figure. */
     #one-body table:not(.measures) tr { display: flex; flex-wrap: wrap; align-items: baseline;
       border-bottom: 1px solid var(--grid); }
