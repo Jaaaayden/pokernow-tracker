@@ -25,7 +25,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 EXT = ROOT / "pnt" / "extension"
 STATES = ["loading", "between", "stuck-loading", "stuck-restart", "stuck-down", "stuck-tab", "waiting",
-          "empty", "error", "loaded", "update", "sample", "plo", "double", "narrow", "key", "twins"]
+          "empty", "error", "loaded", "update", "sample", "plo", "double", "narrow", "key", "twins",
+          "compact", "fresh", "settings", "nogame"]
 #: The stuck boxes appear at 10/15/30 s; virtual time skips straight there.
 SLOW = {"stuck-loading", "stuck-restart", "stuck-down", "stuck-tab", "waiting"}
 CHROMES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -70,7 +71,7 @@ def live_from_hud(hud: dict, previous) -> dict:
 
 def build_site(site: Path, server: str, game: str) -> None:
     site.mkdir(parents=True, exist_ok=True)
-    for name in ("sidepanel.js", "spot.js", "annotate.js"):
+    for name in ("sidepanel.js", "spot.js", "annotate.js", "popup.js"):
         if (EXT / name).exists():  # annotate.js: the note overlay, newer than this harness
             shutil.copy(EXT / name, site / name)
     for name in ("stub.js", "scenario.js"):
@@ -85,6 +86,16 @@ def build_site(site: Path, server: str, game: str) -> None:
                               f'  <script src="stub.js"></script>\n  {spot}')
     html = html.replace(panel, f'{panel}\n  <script src="scenario.js"></script>')
     (site / "sidepanel.html").write_text(html, encoding="utf-8")
+    # The settings the panel's ⚙ frames, with the same stub ahead of popup.js.
+    popup = (EXT / "popup.html").read_text(encoding="utf-8")
+    tag = '<script src="popup.js"></script>'
+    if tag not in popup:
+        sys.exit("popup.html's script tag changed; update shoot.py's injection")
+    popup = popup.replace(tag, f'<script type="application/json" id="harness-conf">{conf}</script>\n'
+                               f'<script src="stub.js"></script>\n{tag}')
+    (site / "popup.html").write_text(popup, encoding="utf-8")
+    # The chosen columns, for a first install's placeholders (the `fresh` state).
+    (site / "settings-hud.json").write_text(json.dumps(get(server, "/settings/hud")), encoding="utf-8")
     hud = get(server, f"/hud/{game}")
     live = get(server, f"/live/{game}")
     if live.get("hand", "") is None:  # between hands

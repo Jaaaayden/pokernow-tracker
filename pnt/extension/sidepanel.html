@@ -111,8 +111,13 @@
   .grid table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   .grid th, .grid td { padding: 2px 5px; text-align: right; white-space: nowrap; }
   .grid th { color: #898781; font-weight: 500; font-size: 10px; }
-  .grid th.group { color: #c3c2b7; text-align: center; font-weight: 400; padding-bottom: 0; }
+  .grid th.group { color: #c3c2b7; text-align: left; font-weight: 400; padding-bottom: 0; }
+  .grid th.group span { position: sticky; left: 5px; }
   .grid th:first-child, .grid td:first-child { text-align: left; }
+  /* The names stay put while the figures scroll under them; a fade at the right
+     edge says more columns are off screen (.more, sidepanel.js grid()). */
+  .grid .name { position: sticky; left: 0; z-index: 1; background: #141413; }
+  .grid.more { -webkit-mask-image: linear-gradient(to left, transparent, #000 28px); mask-image: linear-gradient(to left, transparent, #000 28px); }
   .grid td.name { font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
   .grid td.name.noted { text-decoration: underline dotted #898781; text-underline-offset: 2px; }
   .grid td.name small { color: #898781; font-weight: 400; margin-left: 3px; font-size: 9px; }
@@ -120,6 +125,9 @@
   .grid td .drift { color: #86b6ef; }
   .grid tr.act td.name { color: #ffd166; }
   .grid tr.out td { opacity: .45; }
+  /* Dimmed by colour, not opacity: the figures scrolling under it would show through. */
+  .grid tr.out td.name { opacity: 1; color: #6e6d68; }
+  .grid tr.out td.name > * { opacity: .45; }
 
   /* A figure whose first /hud is still on its way: a shimmering bar, not a "–",
      which would read as "no data". Still, for anyone who asked for less motion. */
@@ -142,6 +150,9 @@
   .stuck code { font: 10px ui-monospace, Consolas, monospace; background: #262624; padding: 0 3px; border-radius: 3px; }
   .stuck button { padding: 0 5px; border: 1px solid #383835; font-size: 10px; }
   .stuck .shut { float: right; border: 0; }
+  .stuck b + code { font-size: 10.5px; color: #ff8a65; overflow-wrap: anywhere; }
+  /* The tracker is down: "waiting for the first hand" would point the wrong way. */
+  .stuck[data-kind="down"]:not([hidden]) ~ main .waiting { display: none; }
   /* The "nothing from this tab" box says it with steps: the plain line would repeat it. */
   .stuck:not([hidden]) + #nogame { display: none; }
 
@@ -181,18 +192,18 @@
     <span class="live" id="live"></span>
   </div>
   <div class="update" id="update" hidden></div>
-  <div class="update" id="sample" hidden><b>Demo mode</b>: names masked, notes and chart off. Switch under Files.</div>
+  <div class="update" id="sample" hidden title="The cards are your own table's, with the names masked. The Data switch under Files, on the front page, turns this off."><b>Demo</b>: your table, names masked; no notes or chart. Off under Files.</div>
   <div class="huderr" id="huderr" role="status" hidden></div>
   <div class="settings" id="settings" hidden><iframe id="settings-frame" title="settings"></iframe></div>
   <div class="key" id="key" hidden></div>
   <div class="stuck" id="stuck" role="status" hidden></div>
-  <div class="empty" id="nogame">Nothing from this tab yet. If this is a PokerNow game, reload the page — a game opened before the extension was (re)loaded is not being tracked.</div>
+  <div class="empty" id="nogame">Nothing from this tab yet. PokerNow game? Reload it.</div>
   <main id="main" hidden>
     <div class="legend" id="legend" hidden
       title="Each figure: this game first, then every game on record in grey. A blue session figure is 10+ points from lifetime on at least 10 chances, with lifetime outside the session's 95% range.">
       this session · <span style="color:#898781">lifetime</span> · <span class="drift">blue</span> = drifting</div>
     <div class="legend" id="na" hidden title="PLO and Double Board hands count for money only: no stat reads their play."></div>
-    <div id="body"><div class="empty dots">waiting for the first hand</div></div>
+    <div id="body"><div class="empty dots waiting">waiting for the first hand</div></div>
     <div class="chart" id="chart" hidden>
       <div class="bar">
         <span id="who"></span>

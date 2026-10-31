@@ -19,7 +19,10 @@ the panel outside the extension instead.
   (still warming up), `stuck-restart` (warm-up over), `stuck-down`, `stuck-tab`,
   `waiting`, `empty`, `error` (a failed /hud after the next /live), `loaded`,
   `update`, `sample`, `plo` (a PLO table: no session figures), `double` (two
-  boards), `narrow` (320px, long status), `key`, `twins`.
+  boards), `narrow` (320px, long status), `key`, `twins`, `compact` (the stats
+  table at 320px), `fresh` (a first install: no kept columns, so the
+  placeholders ask `/settings/hud`), `settings` (the ⚙ frame open), `nogame`
+  (no report from the tab, before its stuck box).
 - `--server`: defaults to this worktree's port (`.pnt-dev/port`), else 52000. In a
   worktree, start `python scripts/orca_worktree.py serve` first, and never point it at 52000.
 - `--game`: defaults to the hero's latest game. `--height` (default 900).
@@ -28,10 +31,12 @@ It prints one PNG path per state. Read each PNG to look at it.
 
 ## How it works
 
-- Copies `sidepanel.html`, `sidepanel.js`, `spot.js` and `annotate.js` from `pnt/extension/` into
-  `<out>/site`, adding `harness/stub.js` before spot.js and `harness/scenario.js`
-  after sidepanel.js. The panel code is always the checkout's current code.
-- `stub.js` fakes `chrome.runtime.sendMessage` (health and settings),
+- Copies `sidepanel.html`, `sidepanel.js`, `spot.js` and `annotate.js` from
+  `pnt/extension/` into `<out>/site`, adding `harness/stub.js` before spot.js and
+  `harness/scenario.js` after sidepanel.js. The ⚙'s `popup.html` and `popup.js` go
+  too, with the stub ahead of popup.js. The panel code is always the checkout's
+  current code. `settings-hud.json` is a saved `GET /settings/hud`.
+- `stub.js` fakes `chrome.runtime.sendMessage` (health, settings and hudColumns),
   `chrome.tabs.query` and `chrome.storage.session` plus `onChanged`. It also exposes
   `__push(snap)` to feed a status snapshot (`hudData`, `liveData`, `hudEmpty`,
   `hudError`, `trackerDown`, `text`, `rev`).

@@ -112,6 +112,10 @@ const handlers = {
       body: JSON.stringify({ note: String(note ?? "") }),
     }),
 
+  // The HUD's chosen columns, for the side panel's placeholders before its
+  // first /hud (`columns` is keys; `catalog` has their labels and tips).
+  hudColumns: () => call("/settings/hud"),
+
   // The content script reports here and the side panel and settings page read it
   // back: counters and status text under `status:<tab>`, several times a poll,
   // and the /hud and /live payloads under `data:<tab>`, only when they changed

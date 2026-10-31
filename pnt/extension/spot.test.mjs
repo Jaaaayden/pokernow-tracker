@@ -242,6 +242,23 @@ test("a tag chip's hover text is the evidence and the count behind it", () => {
     "Showed air 6.9% (shown).\n19 of 276\nOne session only: gone without a 74-hand game (11 sessions in all).");
 });
 
+test("a tip that already gives its count is not followed by it again", () => {
+  const fun = { label: "7-2 ALL-IN-PRE ×2", kind: "fun", n: 2, hits: 2,
+    tip: "Jammed preflop with 7-2 2 times (shown), raised it 7 times in all." };
+  assert.equal(tagTitle(fun), fun.tip, "not a closing \"2 hands\"");
+  const exploit = { label: "NO BLUFF", kind: "exploit", n: 226, hits: 30,
+    tip: "Showed air 13.3% of the time (30 of 226 shown; pool 23.3%)." };
+  assert.equal(tagTitle(exploit), exploit.tip);
+  const arch = { label: "LAG", kind: "archetype", n: 812, hits: 812, tip: "Loose (812 preflop decisions)." };
+  assert.equal(tagTitle(arch), arch.tip, "decisions are not hands");
+  // The count's digits inside another figure do not count as saying it.
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Showed air 6.9% (shown)." }),
+    "Showed air 6.9% (shown).\n3 of 9");
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Folded 19 times." }), "Folded 19 times.\n3 of 9");
+  assert.equal(tagTitle({ kind: "fun", n: 2, hits: 2, tip: "Raised 7-2 3 times." }), "Raised 7-2 3 times.\n2 hands",
+    "the 2 of a hand's name is not a count");
+});
+
 test("the archetype chip comes first, then the rest in the order sent", () => {
   const moved = [tags[1], tags[0], ...tags.slice(2)];
   assert.deepEqual(tagChips(moved).map((t) => t.id), ["fish", "no_bluff", "folds_river", "limper", "fun_72"]);
