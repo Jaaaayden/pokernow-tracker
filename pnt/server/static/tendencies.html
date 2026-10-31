@@ -6,26 +6,7 @@
 <title>Tendencies</title>
 <script src="/loading.js"></script>
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --mid: #f0efec; --accent: #2a78d6;
-    --up: #1f7a4d; --down: #b93a39;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-      --up: #4cc38a; --down: #e66e6d;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --mid: #383835; --accent: #3987e5;
-    --up: #4cc38a; --down: #e66e6d;
-  }
+  /* The palette is loading.js's. */
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 48px; }
@@ -61,18 +42,22 @@
   .pick a:hover { text-decoration: underline; }
   #one h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 14px 0 2px; }
   #one h3::first-letter { text-transform: uppercase; }
-  table.measures { max-width: 980px; }
+  /* One table per street group, each the same fixed columns, so the figures,
+     gauges and pool line up from one group to the next. */
+  table.measures { max-width: 980px; table-layout: fixed; }
+  table.measures td.m { width: auto; }
+  table.measures td.fig { width: 9em; }
+  table.measures td.gauge { width: 38%; }
+  table.measures td.pool { width: 7.5em; }
   td.pool { white-space: nowrap; width: 1%; color: var(--muted); text-align: right; }
   td.shared { white-space: nowrap; width: 1%; color: var(--muted); font-size: 12px; }
   tr.streaky td { color: var(--muted); }
-  td.m { width: 34%; }
   td.m a { color: var(--ink); text-decoration: none; }
   td.m a:hover { color: var(--accent); }
   td.fig { white-space: nowrap; width: 1%; text-align: right; }
   td.fig small { color: var(--muted); margin-left: 4px; }
   tr.out td.fig b { color: var(--accent); }
   /* Where the player sits: the pool's middle half as a band, the player a dot. */
-  td.gauge { width: 160px; }
   .gauge-track { position: relative; height: 8px; margin-top: 6px; border-radius: 4px; background: var(--grid); }
   .gauge-band { position: absolute; top: 0; bottom: 0; border-radius: 4px;
     background: color-mix(in srgb, var(--muted) 55%, transparent); }
@@ -81,7 +66,9 @@
   tr.out .gauge-dot { background: var(--accent); }
   @media (max-width: 620px) {
     td.gauge, td.shared, table:not(.measures) td.pool { display: none; }
-    td.m { width: auto; }
+    /* With no gauge, the measure's name keeps most of the width. */
+    table.measures td.fig { width: 7.6em; padding-left: 4px; padding-right: 4px; }
+    table.measures td.pool { width: 6em; font-size: 12px; padding-left: 4px; }
     /* A tag's advice gets a line of its own under the tag and its figure. */
     #one-body table:not(.measures) tr { display: flex; flex-wrap: wrap; align-items: baseline;
       border-bottom: 1px solid var(--grid); }
@@ -195,7 +182,6 @@
   }
 
   // ---- one player -------------------------------------------------------
-  const pctText = pct;
   function tagTable(rows, p, d) {
     const t = node("table");
     for (const x of rows) {
@@ -230,7 +216,7 @@
   function renderOne(d) {
     const p = d.player;
     $("one-name").textContent = p.player;
-    $("one-sub").textContent = `${int(p.hands)} Hold'em hands · VPIP ${pctText(p.vpip)} · PFR ${pctText(p.pfr)}`;
+    $("one-sub").textContent = `${int(p.hands)} Hold'em hands · VPIP ${pct(p.vpip)} · PFR ${pct(p.pfr)}`;
     const body = $("one-body");
     body.replaceChildren();
     const tags = [...p.tags, ...p.streaky];
@@ -247,7 +233,7 @@
         a.href = chart(p.player, r);
         m.append(a);
         const fig = node("td", null, "fig");
-        fig.append(node("b", pctText(r.pct)), node("small", `of ${int(r.n)}`));
+        fig.append(node("b", pct(r.pct)), node("small", `of ${int(r.n)}`));
         const pool = r.own_log ? "their own log" : r.pool_pct != null ? `pool ${pct(r.pool_pct)}` : "";
         tr.append(m, fig, gauge(r), node("td", pool, "pool"));
         t.append(tr);
@@ -268,7 +254,7 @@
     location.search = "?" + q;
   }
   let aliases = [];
-  fetch("/players").then((r) => r.json()).then((rows) => {
+  pntPage.getJson("/players").then((rows) => {
     aliases = rows.map((p) => p.alias).sort(pntPage.byName);
     $("who-list").replaceChildren(...aliases.map((a) => Object.assign(document.createElement("option"), { value: a })));
   }).catch(() => {});
@@ -291,11 +277,7 @@
     $("one-name").textContent = picked;
     $("one-body").textContent = "loading…";
   }
-  fetch("/tendencies" + (picked ? "?" + new URLSearchParams({ player: picked }) : ""), { headers: { accept: "application/json" } })
-    .then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `${r.status} ${r.statusText}`);
-      return r.json();
-    })
+  pntPage.getJson("/tendencies" + (picked ? "?" + new URLSearchParams({ player: picked }) : ""))
     .then((d) => { if (picked) renderOne(d); else { renderYou(d); renderPool(d); renderTable(d); } })
     .catch((e) => {
       // Every section still saying "loading…" says why instead.
