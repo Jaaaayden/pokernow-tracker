@@ -19,10 +19,12 @@
     --mid: #f0efec;
     --accent: #2a78d6;
     --flag: #c4372f;
-    /* profit, loss and in-between, for figures read against a baseline */
+    /* Money only: profit and loss. */
     --up: #1f7a4d;
     --down: #b93a39;
-    --amber: #a86b00;
+    /* Everything else's warm end: below a baseline, a count that wants a look,
+       draws and air. 4.9:1 on the surface (dark: 7.9:1). */
+    --amber: #9c6300;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -63,6 +65,10 @@
   input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
   #treeback { color: var(--accent); border-color: var(--accent); }
   .controls.narrow { margin-top: -6px; }
+  /* Shows, 7-2 and Nit read every hand: the spot's controls dim and stop taking
+     clicks there, with #nospot saying why (syncSpotless). */
+  .spotless { opacity: .45; }
+  #nospot { color: var(--muted); font-size: 12px; }
   .controls.narrow .lbl { color: var(--muted); font-size: 12px; margin-right: 8px; }
   /* Your note on the player on show, under the dropdown. Set off like a hand's
      note: it is the one line here you wrote yourself. */
@@ -115,6 +121,9 @@
   .filters .lines { margin-bottom: 0; }
   .filters > div + div { border-top: 1px solid var(--grid); padding-top: 6px; margin-top: 6px; }
   .common button.more { border-style: dashed; color: var(--accent); }
+  /* The Common row's term chips add to the spot; its presets replace it. */
+  .common button .plus { color: var(--muted); margin-right: 3px; }
+  .common button[aria-pressed=true] .plus { color: inherit; }
   .common button.more[aria-expanded=true] { border-style: solid; }
   /* Chip counts: the hands a click would leave, muted; a chip that would leave
      none is dimmed but still clicks. */
@@ -131,7 +140,9 @@
   .tile .v { font-size: 24px; font-weight: 600; line-height: 1.1; }
   .tile .k { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .tile.warn .v { color: var(--ink-2); }
-  .tile.pick { cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  .tile.pick, .tile:disabled { text-align: left; font: inherit; color: inherit; }
+  .tile.pick { cursor: pointer; }
+  .tile:disabled { cursor: default; }
   .tile.pick:hover { border-color: var(--muted); }
   /* A result's sign, wherever one is printed: profit green, loss red (signTone).
      A tile's net under BIG_BB is .soft, a paler tone; .attn is a count that
@@ -384,8 +395,9 @@
   .hand-rows.tall { max-height: 560px; }
   .hand-rows .more-rows { flex: none; align-self: flex-start; margin: 8px 4px; font-size: 12px; padding: 3px 10px;
     border-style: dashed; color: var(--accent); }
+  .hand-row .kslot { flex: none; width: 8.5em; display: inline-flex; }
   .hand-row .kind { font-size: 11px; padding: 0 7px; border: 1px solid var(--axis); border-radius: 999px;
-    color: var(--ink-2); white-space: nowrap; }
+    color: var(--ink-2); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .hand-row .kind[data-group=beat] { border-color: var(--accent); color: var(--accent); }
   .hand-row .kind[data-group=manual] { border-color: var(--flag); color: var(--flag); }
   .hand-row .why { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }
@@ -493,6 +505,8 @@
     .hand-rows .hand-row .why { order: 4; }
     .hand-rows .hand-row .pc-row { flex-wrap: wrap; }
     .hand-rows .hand-row :is(.kind, .why) { font-size: 10px; }
+    .hand-rows .hand-row .kslot { width: auto; }
+    .hand-rows .hand-row .kslot:empty { display: none; }
     .rev-row .marks.three { display: flex; }
   }
 
@@ -524,19 +538,21 @@
 
   /* --- value:bluff: a stacked bar per kind of aggression, grouped by street.
      The four classes are one diverging scale, strongest claim to weakest: value
-     blue, marginal the neutral midpoint, semi-bluff and bluff red, the bluff
-     deepest. Dark mode takes its own steps, deepest the lightest, as the ramps
-     elsewhere on the page do. Checked with the dataviz palette validator. */
-  .bv { --bv-value: #256abf; --bv-marginal: #d6d5cc; --bv-semi_bluff: #ef9291; --bv-bluff: #b93a39;
+     blue, marginal the neutral midpoint, semi-bluff and bluff orange (ORANGE),
+     the bluff deepest; red stays money's. Dark mode takes its own steps, deepest
+     the lightest, as the ramps elsewhere on the page do. Checked with the dataviz
+     palette validator. */
+  .bv { --bv-value: #256abf; --bv-marginal: #d6d5cc; --bv-semi_bluff: #e3903a; --bv-bluff: #9e5a03;
     display: flex; flex-direction: column; gap: 14px; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #e34948; --bv-bluff: #f6b6b5; }
+    :root:not([data-theme="light"]) .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #c27005; --bv-bluff: #f4bc8c; }
   }
-  :root[data-theme="dark"] .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #e34948; --bv-bluff: #f6b6b5; }
+  :root[data-theme="dark"] .bv { --bv-value: #6da7ec; --bv-marginal: #3e3d3a; --bv-semi_bluff: #c27005; --bv-bluff: #f4bc8c; }
   .bv-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
   .bv-key { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: 12px; }
   .bv-key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-  .bv-street h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+  .bv-rows h3 { grid-column: 1 / -1; font-size: 13px; font-weight: 600; margin: 10px 0 2px; }
+  .bv-rows h3:first-child { margin-top: 0; }
   .bv-rows { display: grid; grid-template-columns: minmax(9em, max-content) minmax(120px, 1fr) repeat(3, max-content);
     gap: 4px 14px; align-items: center; font-variant-numeric: tabular-nums; }
   .bv-row { display: contents; }
@@ -560,7 +576,7 @@
   @media (max-width: 600px) {
     .bv-rows { grid-template-columns: minmax(6em, max-content) minmax(60px, 1fr) repeat(3, max-content); gap: 3px 6px; font-size: 11px; }
     .bv-row .num small { display: none; }
-    .bv-key, .bv-cols, .bv-street h3 { font-size: 10px; }
+    .bv-key, .bv-cols, .bv-rows h3 { font-size: 10px; }
     .bv-bar { height: 10px; }
   }
 
@@ -657,13 +673,14 @@
 
   /* --- tilt: after a big loss, and through the night ---
      Plain tables; a VPIP or PFR that moved from all hands by the gap worth a
-     look is marked in the flag colour, the way the worst pot is on Results. */
+     look is marked in amber, the colour of a count that wants a look (.attn):
+     red beside the bb/100 column would read as a loss. */
   #tilt { display: flex; flex-direction: column; gap: 18px; overflow-x: auto; }
   #tilt h3 { font-size: 13px; font-weight: 600; margin: 0; }
   #tilt table { margin-top: 6px; min-width: 560px; }
   #tilt tr.empty td { color: var(--muted); }
   #tilt td small { color: var(--muted); margin-left: 3px; }
-  #tilt td.moved { color: var(--flag); font-weight: 600; }
+  #tilt td.moved { color: var(--amber); font-weight: 600; }
   #tilt .why { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
   /* Tilt's bb/100 is money, so it takes the profit and loss colours; one more
      than TILT_BB_BAND from all hands is bold. */
@@ -686,14 +703,14 @@
   #shows tr.total td { font-weight: 600; }
   #shows tbody tr, #bounty tbody tr { cursor: pointer; }
   #shows tbody tr:hover td, #bounty tbody tr:hover td { background: var(--mid); }
-  /* Strength as the Lines view colours it: strong blue, marginal amber, draws
-     and air red. Green stays money's. Ahead and behind are a result, so they take
-     the profit and loss pair. A class cell is tinted by its share of the row's
-     two-card shows; a list row's read is a pill of the same colour. */
+  /* Strength as the Lines view colours it: strong blue, marginal grey, draws
+     and air orange (--amber). Red and green stay money's. Ahead and behind are a
+     result, so they take the profit and loss pair. A class cell is tinted by its
+     share of the row's two-card shows; a list row's read is a pill of the same colour. */
   #shows .cls-strong { --c: var(--accent); }
   #shows .ahead { --c: var(--up); }
-  #shows .cls-marginal { --c: var(--amber); }
-  #shows .cls-air, #shows .cls-draw { --c: var(--flag); }
+  #shows .cls-marginal { --c: var(--ink-2); }
+  #shows .cls-air, #shows .cls-draw { --c: var(--amber); }
   #shows .behind { --c: var(--down); }
   #shows .ahead, #shows .behind { color: var(--c); }
   #shows td.share small { color: var(--muted); font-size: 11px; margin-left: 5px; }
@@ -837,13 +854,14 @@
      One row per decision point: caret, how they got there (muted), the spot, its
      hands, and what they chose there as a stacked bar and as text. Each level sits
      one step further in; narrow, the steps shrink and the text drops under the bar. */
-  #tree { --tr-fold: #b4b2a9; --tr-check: #e1e0d9; --tr-call: #6da7ec; --tr-raise: #b93a39; --tind: 16px;
+  /* Calls blue, bets and raises orange (ORANGE): red stays money's. Fold and
+     check two greys far enough apart to tell in the legend, in both themes. */
+  #tree { --tr-fold: #a8a69d; --tr-check: #e1e0d9; --tr-call: #6da7ec; --tr-raise: #c27005; --tind: 16px;
     display: flex; flex-direction: column; gap: 8px; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+    :root:not([data-theme="light"]) #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e3903a; }
   }
-  /* Dark: fold a light grey, check a dark one, far enough apart to tell in the legend. */
-  :root[data-theme="dark"] #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e66e6d; }
+  :root[data-theme="dark"] #tree { --tr-fold: #8f8d86; --tr-check: #3e3d3a; --tr-call: #3987e5; --tr-raise: #e3903a; }
   #tree .tbase code { color: var(--ink); }
   #tree .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
   #tree .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
@@ -897,7 +915,7 @@
   #streets td.zero { color: var(--muted); text-align: center; }
   #streets td small { display: block; color: inherit; opacity: .7; font-size: 10.5px; }
   #streets tr.total td { border-top: 1px solid var(--axis); font-weight: 600; }
-  #streets .snote { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
+  #streets .snote { color: var(--muted); font-size: 12px; margin: 2px 0 0; padding-left: 18px; }
 </style>
 </head>
 <body>
@@ -914,6 +932,7 @@
     <button id="clear" title="back to all hands">Clear</button>
     <button id="back" class="hidden" title="undo the last change to the spot (Alt+←)">← Back</button>
     <button id="treeback" class="hidden" title="the spot tree, scrolled where you left it (or the browser's Back)">‹ Back to tree</button>
+    <span class="lbl hidden" id="nospot">this tab counts every hand: the spot does not apply</span>
   </div>
   <!-- The views, on a row of their own: how they play on the left, then over on
        the right the results and the hands to look at again. -->
@@ -1112,8 +1131,13 @@
   const BLUE = ["#cde2fb","#9ec5f4","#6da7ec","#3987e5","#256abf","#184f95","#0d366b"];
   const RED  = ["#fbd9d8","#f6b6b5","#ef9291","#e66e6d","#e34948","#b93a39","#8f2d2c"];
   // Money: profit in GREEN, loss in RED, the --up/--down pair every net and
-  // bb/100 figure on the page takes. Blue is never money here.
+  // bb/100 figure on the page takes. Red and green are never anything but money.
   const GREEN = ["#d3efe0","#a6dcc0","#74c69d","#4cb382","#2f9566","#1f7a4d","#14563a"];
+  // Every other two-ended scale runs blue to ORANGE: value against air, call
+  // against raise, a bigger raise against a smaller one. Same lightness steps as
+  // RED; step 2 is nudged so a draw stays apart from the grey midpoint (checked
+  // with the dataviz palette validator in both themes).
+  const ORANGE = ["#fbdcc1","#f4bc8c","#e3903a","#d88018","#c27005","#9e5a03","#7b4501"];
   const theme = new URLSearchParams(location.search).get("theme");
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
   pntPage.nav(); // the shared nav (loading.js), so crumbLinks has its links to set
@@ -1182,13 +1206,13 @@
   ];
   const FILTERS_KEY = "pnt.allFilters";
 
-  // Bet-size buckets; see "Bet size buckets" in SPEC.md. PokerNow's 1/2, 3/4 and
-  // pot buttons each start a bucket.
-  const SIZES = [["<⅕", "blocker"], ["⅕–½", "small"], ["½–¾", "medium"], ["¾–pot", "large"], ["overbet", "overbet"]];
   // The size words, the bucket rule and card formatting live with the replay
   // renderer (replay.js), which the all-in page shares.
   const { SIZE_LABEL, pretty, cardsEl } = pntReplay;
-  const SHORT_SIZE = Object.fromEntries(SIZES.map(([t, b]) => [b, t]));
+  // Bet-size buckets; see "Bet size buckets" in SPEC.md. PokerNow's 1/2, 3/4 and
+  // pot buttons each start a bucket. Every view, chip and row names them in
+  // SIZE_LABEL's words, Sizing's own ("⅕–½ pot").
+  const SIZES = ["blocker", "small", "medium", "large", "overbet"].map(b => [SIZE_LABEL[b], b]);
 
   // Postflop line chips: one row per street, each holding at most one term, so
   // picking a size replaces "any" or another size on that street.
@@ -1601,9 +1625,6 @@
     state.player = q.get("player");
     state.filter = q.get("filter") || "";
     state.by = VIEWS.includes(q.get("by")) ? q.get("by") : "preflop";
-    // The old Flagged view's links: its hands are the tagged view's 🚩 flagged.
-    const oldFlagged = q.get("by") === "manual";
-    if (oldFlagged) state.by = TAGGED_VIEW;
     state.order = ORDER_NAMES.includes(q.get("order")) ? q.get("order") : null;
     state.game = q.get("game") || null;
     state.played = q.get("played") !== "all";
@@ -1625,7 +1646,7 @@
     state.gbStreet = ["turn", "river"].includes(q.get("gbs")) ? q.get("gbs") : "flop";
     state.gbMin = /^\d+$/.test(q.get("gbmin") || "") ? Number(q.get("gbmin")) : 0;
     state.gbScope = q.get("gbp") === "pool" ? "pool" : "player";
-    state.tag = oldFlagged ? "flagged" : /^[\w-]{1,40}$/.test(q.get("tag") || "") ? q.get("tag").toLowerCase() : "";
+    state.tag = /^[\w-]{1,40}$/.test(q.get("tag") || "") ? q.get("tag").toLowerCase() : "";
     // The spot tree's depth, texture split and dimming; the made view's tab.
     state.tdepth = ["3", "6"].includes(q.get("depth")) ? Number(q.get("depth")) : TREE_DEPTH;
     state.tx = q.get("tx") === "1";
@@ -1705,15 +1726,13 @@
   };
 
   // ---- data ------------------------------------------------------------
+  // A failed answer as an Error. A bare 404 is a route this page needs and the
+  // running server lacks: it is older than the page.
+  const httpError = (r, body) => new Error(r.status === 404 && body.detail === "Not Found"
+    ? pntPage.OLD_SERVER : body.detail || `${r.status} ${r.statusText}`);
   async function sendJson(url, opts) {
     const r = await fetch(url, opts);
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: run `pnt service restart`");
-      }
-      throw new Error(body.detail || `${r.status} ${r.statusText}`);
-    }
+    if (!r.ok) throw httpError(r, await r.json().catch(() => ({})));
     return r.json();
   }
   const getJson = (url) => sendJson(url);
@@ -1739,7 +1758,7 @@
     }
     if (!state.player || !rows.some(p => p.alias === state.player)) {
       // No ?player=: the hero, as the stats page and the HUD open on. The first
-      // name only when no hero is known (or the server is too old to say).
+      // name only when no hero is known.
       const hero = await getJson("/settings/hero").then(h => h.hero, () => null);
       state.player = rows.some(p => p.alias === hero) ? hero : rows[0]?.alias ?? null;
     }
@@ -1863,6 +1882,17 @@
   // one view's data under another view's renderer. Nor does it touch a cache:
   // an older answer landing last would replace a newer one there.
   let loadSeq = 0;
+  // The views whose server answer takes no filter: every hand, whatever the spot.
+  const SPOTLESS = new Set(["shows", "bounties", "nit"]);
+  function syncSpotless(view) {
+    const off = SPOTLESS.has(view);
+    for (const el of [$("filter"), $("apply"), $("clear"), $("back"), document.querySelector(".controls.narrow"),
+      $("common"), $("filters")]) {
+      el.classList.toggle("spotless", off);
+      el.inert = off;
+    }
+    $("nospot").classList.toggle("hidden", !off);
+  }
   async function load({ quiet = false } = {}) {
     if (!state.player) return;
     paintPlayerNote(); // the player on show may have changed
@@ -1871,6 +1901,7 @@
     viewCtl.abort();
     viewCtl = new AbortController();
     const view = state.by;
+    syncSpotless(view);
     // The side panels' requests go with the views that asked for them: one still
     // on its way when they are left is cancelled, and asked again on the way back.
     if (!GB_VIEWS.includes(view) && gb.ctl && $("gb-body").classList.contains("loading")) {
@@ -1898,16 +1929,13 @@
           data = state.review.data;
         } else {
           data = await viewJson(`/players/${player}/review?` + q);
-          if (!("counts" in data)) {
-            throw new Error("the running server is older than this page: run `pnt service restart`");
-          }
           if (live()) state.review = { key, data };
         }
       } else if (view === "bluffs") {
         data = await loadBluffs(quiet, live);
       } else if (view === "sizing") {
         // Fold equity rides along: same player and spot, every street at once. A
-        // server too old to have it costs that section, not the view.
+        // failure there costs that section, not the view.
         const fe = viewJson(`/players/${player}/fold_equity?` + q).catch(e => ({ error: String(e.message || e) }));
         q.set("street", state.street); q.set("kind", state.kind);
         data = await viewJson(`/players/${player}/sizing?` + q);
@@ -1930,8 +1958,8 @@
         data = await viewJson(view === "nit" ? "/nit" : "/bounties");
         data.player = state.player;
       } else if (view === "results") {
-        // The red and blue lines ride along: same player and spot. A server too
-        // old to have them costs the graph, not the view.
+        // The red and blue lines ride along: same player and spot. A failure
+        // there costs the graph, not the view.
         const wq = new URLSearchParams(q); wq.set("adjusted", "true");
         const w = viewJson(`/players/${player}/winnings?` + wq).catch(e => ({ error: String(e.message || e) }));
         const fn = viewJson(`/players/${player}/funnel?` + q).catch(e => ({ error: String(e.message || e) }));
@@ -1949,10 +1977,6 @@
       } else {
         q.set("by", view);
         data = await viewJson(`/players/${player}/range?` + q);
-        const probe = data.cells ? Object.values(data.cells)[0] : data.classes?.[0];
-        if (probe && !("hand_ids" in probe)) {
-          throw new Error("the running server is older than this page (no hand ids in its data): run `pnt service restart`");
-        }
       }
       if (!live()) return;
       state.data = data;
@@ -2027,9 +2051,6 @@
         ])
       : [{ hands: [] }, { hands: [] }, { hands: [] }];
     if (!live()) return null;
-    if (hands.hands.length && !("reviewed" in hands.hands[0])) {
-      throw new Error("the running server is older than this page: run `pnt service restart`");
-    }
     const flags = new Map();
     for (const r of review.hands) {
       if (!flags.has(r.hand_id)) flags.set(r.hand_id, []);
@@ -2127,7 +2148,7 @@
     results: "Results: big blinds won and lost",
     tilt: "Tilt: after a big loss, and through the night",
     timing: "Timing: how long they took, and what they had",
-    shows: "Shown without being asked",
+    shows: "Shows: hands shown without being asked",
     bounties: "7-2 bounties",
     nit: "Nit Game",
   };
@@ -2145,7 +2166,7 @@
     "**Whole street:** THEIRS IN CAPS, others lower case; **-** not in that street, **.** nobody acted (run-out after an all-in).",
   ];
   // Strongest first. The colours are the page's two ramps as a diverging scale:
-  // blue for made value, the grey midpoint for marginal, red for draws and air.
+  // blue for made value, the grey midpoint for marginal, orange for draws and air.
   const TIERS = [
     ["nutted", "beats nearly every holding on that board"],
     ["strong", "a value hand on that board: top pair or better on most"],
@@ -2154,7 +2175,7 @@
     ["air", "high card or a board pair, and on the river a draw that missed"],
   ];
   const tierColor = (t) => ({ nutted: ramp(BLUE)[5], strong: ramp(BLUE)[2], marginal: "var(--axis)",
-                              draw: ramp(RED)[2], air: ramp(RED)[5] })[t];
+                              draw: ramp(ORANGE)[2], air: ramp(ORANGE)[5] })[t];
   // The lines people ask about most, as spot terms. One at a time: two lines
   // ANDed together is rarely a question.
   const LINE_CHIPS = [
@@ -2490,7 +2511,7 @@
       if (!rows.length) list.appendChild(message("no hands"));
       for (const h of rows.slice(0, HAND_LIMIT)) {
         const row = handRowButton(h, list, $("replay"), { kind: { text: h.player, group: "player" } });
-        list.appendChild("note" in h ? reviewedRow(h, row, { noteOnly: true }) : row);
+        list.appendChild(reviewedRow(h, row, { noteOnly: true }));
       }
     } catch (e) {
       if (seq !== handsSeq) return;
@@ -2582,12 +2603,16 @@
       el.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
       el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); fn(); } });
     };
+    // Every street in one grid, so the bars start at the same edge in each block.
+    // "folded" heads only the streets with a row that counts it (every river bet).
+    const grid = document.createElement("div"); grid.className = "bv-rows";
     for (const street of d.streets) {
       const rows = d.rows.filter(r => r.street === street);
-      const block = document.createElement("div"); block.className = "bv-street";
       const h = document.createElement("h3"); h.textContent = BV_STREET[street];
-      const grid = document.createElement("div"); grid.className = "bv-rows";
-      for (const [text, cls] of [["", ""], ["shown hands", ""], ["value : bluff", "num"], ["shown", "num"], ["folded", "num"]]) {
+      grid.appendChild(h);
+      const hasFolded = rows.some(r => r.folded != null);
+      for (const [text, cls] of [["", ""], ["shown hands", ""], ["value : bluff", "num"], ["shown", "num"],
+        [hasFolded ? "folded" : "", "num"]]) {
         const c = document.createElement("div"); c.className = `bv-cols ${cls}`; c.textContent = text; grid.appendChild(c);
       }
       // Size above action: a row per size, every bet or raise of it, opening into
@@ -2648,9 +2673,8 @@
         if (open) for (const c of sub) addRow(c, depth + 1);
       };
       for (const r of rows) if (!r.parent) addRow(r, 0);
-      block.append(h, grid);
-      wrap.appendChild(block);
     }
+    wrap.appendChild(grid);
   }
 
   // Fold equity on the street the Sizing view is showing: their bets against a
@@ -2661,10 +2685,8 @@
     const wrap = $("foldeq");
     wrap.replaceChildren();
     const fe = d.fold_equity;
-    if (!fe || fe.error || !fe.streets) {
-      wrap.appendChild(message(fe?.error
-        ? `fold equity: ${fe.error}`
-        : "fold equity: the running server is older than this page: run `pnt service restart`", "err"));
+    if (fe?.error) {
+      wrap.appendChild(message(`fold equity: ${fe.error}`, "err"));
       return;
     }
     const street = d.street;
@@ -2783,14 +2805,14 @@
   const spLeaf = (leaf) => SP_LEAF[leaf] || leaf.replace(/_/g, " ");
   const SP_NOTE = [
     "**Grid:** slowplay % of each made hand they had on each street, shown hands only. Hover a cell for what they did, click for its hands.",
-    "**Skew:** a strong hand that bet and got folds is never shown, so slowplay % reads high, except yours (all cards known).",
+    "**Skew:** a strong hand that bet and got folds is never shown, so slowplay % reads high, except a log owner's (all cards known).",
     "**Line by when made:** the whole line, by the street the hand first got that strong. Read coverage first.",
   ];
 
   function renderStrengthTiles(d) {
     // Every postflop hand sees the flop, so its counts are the view's coverage.
     const f = d.streets.flop, a = d.all_streets;
-    setTileKeys("in the hand on the flop", "cards known", "coverage");
+    setTileKeys("in the hand on the flop ›", "cards known", "coverage");
     $("t-hands").textContent = f.hands;
     $("t-known").textContent = f.known;
     $("t-cov").textContent = fmtPct(f.coverage);
@@ -3786,7 +3808,7 @@
   // the term that finds its hands, and a click adds it to the spot. See SPEC.md,
   // "Group by". The pool scope reads every player's hands and offers `player`.
   const GB_MIX = [["two_pair+", "two pair+", () => ramp(BLUE)[5]], ["top_pair+", "top pair+", () => ramp(BLUE)[2]],
-    ["weak_pair", "weak pair", () => "var(--axis)"], ["draw", "draw", () => ramp(RED)[2]], ["air", "air", () => ramp(RED)[5]]];
+    ["weak_pair", "weak pair", () => "var(--axis)"], ["draw", "draw", () => ramp(ORANGE)[2]], ["air", "air", () => ramp(ORANGE)[5]]];
   const GB_MIX_OF = Object.fromEntries(GB_MIX.map(([g, text, color]) => [g, { text, color }]));
   // A row's key as the rest of the page words it: `full_house` → "full house",
   // `pocket_pair` → "underpair", `srp` → "single-raised", `small` → "⅕–½ pot".
@@ -3852,15 +3874,12 @@
       const r = await fetch("/groupby?" + q, { signal: ctl.signal });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) {
-        if (r.status === 404 && body.detail === "Not Found") {
-          throw new Error("the running server is older than this page: run `pnt service restart`");
-        }
         // A dimension from the URL this scope does not have, before its catalog is known.
         if (r.status === 400 && !retried && !known && (state.gb || state.gb2)) {
           state.gb = null; state.gb2 = ""; gb.key = null; writeUrl();
           return loadGroupby(true);
         }
-        throw new Error(body.detail || `${r.status} ${r.statusText}`);
+        throw httpError(r, body);
       }
       if (ctl !== gb.ctl) return;
       gb.dims[scope] = body.dims;
@@ -4097,7 +4116,6 @@
     if (!quiet) $("card-title").textContent = building;
     try {
       const data = await viewJson(`/players/${encodeURIComponent(state.player)}/tree?` + q);
-      if (!("roots" in data)) throw new Error("the running server is older than this page: run `pnt service restart`");
       if (live()) state.tree = { key, data };
       return data;
     } finally {
@@ -4319,7 +4337,9 @@
     const m = s.shown_matrix;
     h3("Shown hands: flop → river", `${m.hands} reached the river · click a cell to add it`);
     host.appendChild(m.hands ? streetMatrix(m, "flop", label) : message("no shown hand in this spot reached the river"));
-    const note = document.createElement("p"); note.className = "snote"; note.textContent = s.notes.join(" ");
+    // One line per note, not run together into a paragraph.
+    const note = document.createElement("ul"); note.className = "snote";
+    bulletsInto(note, s.notes);
     host.appendChild(note);
 
     const hf = s.hero_funnel;
@@ -4364,7 +4384,7 @@
   // a newer request aborts the one before it. See "Estimated ranges" in SPEC.md.
   const est = { key: null, ctl: null, data: null, err: null, bkey: null, bctl: null, board: null, berr: null };
   const GROUP_FILL = { strong: BLUE[6], trips: BLUE[5], two_pair: BLUE[4], top_pair: BLUE[3], weak_pair: BLUE[1],
-    draw: RED[3], air: "var(--axis)" };
+    draw: ORANGE[3], air: "var(--axis)" };
   const VALUE_GROUPS = ["strong", "trips", "two_pair", "top_pair", "weak_pair"];
   const leafWord = (x) => MADE_LABEL[x] || x.replace(/_/g, " ");
   const estOn = () => state.est && state.by === "preflop" && !state.table && !EMBED;
@@ -4372,17 +4392,7 @@
   // A class's weight in the estimate on show, 0 outside it; null with none on show.
   const estWeight = (label) => estOn() && est.data && est.key === estKey() ? (est.data.cells[label] || 0) : null;
 
-  async function getAbortable(url, ctl) {
-    const r = await fetch(url, { signal: ctl.signal });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      if (r.status === 404 && body.detail === "Not Found") {
-        throw new Error("the running server is older than this page: run `pnt service restart`");
-      }
-      throw new Error(body.detail || `${r.status} ${r.statusText}`);
-    }
-    return body;
-  }
+  const getAbortable = (url, ctl) => sendJson(url, { signal: ctl.signal });
 
   async function loadEstimate() {
     const key = estKey();
@@ -4603,6 +4613,7 @@
     else if (view === LINES_VIEW) renderLinesTiles(d);
     else if (strength) renderStrengthTiles(d);
     else if (view === TREE_VIEW) renderTreeTiles(d);
+    else if (view === "made") renderMadeTiles(d);
     else renderRangeTiles(d);
     $("subtitle").textContent = `${d.player} · ${d.filter || "all hands"}`;
     setNote(review ? REVIEW_NOTE[view]
@@ -4695,8 +4706,9 @@
     setRaiseKey("folded the best hand", fv.known ? "folds shown against a winner whose cards are known" : "no shown fold with the winner's cards known");
     tileTip("t-known", `${d.classes.air} of ${d.two_card} two-card shows`);
     tileTip("t-cov", `${d.classes.strong} of ${d.two_card} two-card shows`);
-    setNote(d.note, `${d.shows} shown of ${d.hands} hands dealt in; ${d.two_card} with both cards, ${d.one_card} with one (counted only).`,
-      "The spot box does not narrow shows. Click a row to replay the hand.");
+    // The spot does not narrow shows: the dimmed spot row says so (syncSpotless).
+    setNote(d.note, `${d.shows} shown of ${d.hands} dealt in: ${d.two_card} with both cards, ${d.one_card} with one (counted only).`,
+      "Click a row to replay the hand.");
     $("tabletoggle").classList.add("hidden");
     $("table").classList.add("hidden");
     if (!d.shows) { wrap.appendChild(message("never showed a hand unasked")); return; }
@@ -4932,6 +4944,25 @@
     for (const id of ["t-known", "t-cov", "t-raise"]) tileTip(id, "");
     // and the colours the last view put on the figures (signTone, .attn)
     for (const id of ["t-hands", "t-known", "t-cov", "t-raise"]) $(id).classList.remove("up", "down", "soft", "attn");
+    // The hands tile is a button only where a click lists what it counts.
+    const pick = !!handsTileAction();
+    $("t-hands-tile").classList.toggle("pick", pick);
+    $("t-hands-tile").disabled = !pick;
+    if (pick) $("t-hands-tile").title = "list these hands"; else $("t-hands-tile").removeAttribute("title");
+  }
+  // What a click on the hands tile lists: the hands the tile counts. None where no
+  // one player's list holds them (the bluff pool, 7-2, Nit) or the view is that
+  // list already (Session, Tagged).
+  function handsTileAction() {
+    const d = state.dataView === state.by ? state.data : null;
+    if (!d || !state.player) return null;
+    switch (state.by) {
+      case SESSION_VIEW: case TAGGED_VIEW: case "bounties": case "nit": return null;
+      case "bluffs": return state.bluffScope === "pool" ? null : () => openHands("All hands in this spot", null);
+      case "shows": return () => openHands("Shown without being asked", d.rows.map(r => r.hand_id));
+      case "strength": return () => openHands("In the hand on the flop", null, d.streets.flop.hands_filter);
+      default: return () => openHands("All hands in this spot", null);
+    }
   }
   // Hover text on the tile around a figure: the ± on a tile that shows a sampled
   // rate. Coverage gets none: it counts these exact hands, it does not estimate.
@@ -4950,6 +4981,19 @@
     setRaiseKey("usual preflop raise", rs
       ? `median · ${rs.mode == null ? "no repeated size" : "mode " + rs.mode} · mean ${rs.mean} · ${rs.min}–${rs.max} · n=${rs.n}`
       : "no raises in this spot");
+  }
+
+  // Made hands: the fourth tile is how often the shown hands that reached a board
+  // made two pair or better, not the preflop raise the grid's tile reports.
+  const BELOW_TWO_PAIR = new Set(["pair", "draw", "high_card", "no_board"]);
+  function renderMadeTiles(d) {
+    renderRangeTiles(d);
+    const board = d.classes.filter(c => c.group !== "no_board");
+    const seen = board.reduce((s, c) => s + c.n, 0);
+    const big = board.filter(c => !BELOW_TWO_PAIR.has(c.group)).reduce((s, c) => s + c.n, 0);
+    $("t-raise").textContent = fmtPct(seen ? Math.round(1000 * big / seen) / 10 : null);
+    setRaiseKey("two pair or better", `${big} of ${seen} shown hands that saw a flop`);
+    tileTip("t-raise", ciText(seen ? 100 * big / seen : null, seen));
   }
 
   function renderSizingTiles(d) {
@@ -5026,14 +5070,14 @@
       };
     }
     // raise size, relative to how this player usually sizes in this spot.
-    // Gray = at the usual size; red = smaller than usual; blue = larger. The
+    // Gray = at the usual size; orange = smaller than usual; blue = larger. The
     // usual size comes from every hand in the spot, shown or not, so it has
     // full coverage. Absolute values live in the tooltip and table. A
     // light->dark ramp on absolute size put a 2bb-opener's whole chart on one
     // step; centring on the median is what makes the exceptions visible.
     const usual = d.raise ? d.raise.median : null;
     const SPAN = 3; // +-3bb from usual reaches the deepest step; beyond saturates
-    const B = ramp(BLUE), R = ramp(RED);
+    const B = ramp(BLUE), R = ramp(ORANGE);
     return {
       fill(c) {
         if (c.n === 0) return null;
@@ -5047,7 +5091,7 @@
       legend: {
         left: `−${SPAN}bb smaller`,
         right: `+${SPAN}bb larger than usual (${usual == null ? "–" : usual + "bb"})`,
-        steps: [...ramp(RED).slice().reverse(), "var(--mid)", ...ramp(BLUE)],
+        steps: [...ramp(ORANGE).slice().reverse(), "var(--mid)", ...ramp(BLUE)],
       },
     };
   }
@@ -5387,10 +5431,6 @@
     if (filter) q.set("filter", filter);
     const asked = loadSeq;
     const body = await sendJson(`/players/${encodeURIComponent(state.player)}/hands?` + q, { signal: handsCtl.signal });
-    // Checked before caching, so a stale answer is never memoized for the session.
-    if (body.hands.length && !("ip" in body.hands[0])) {
-      throw new Error("the running server is older than this page: run `pnt service restart`");
-    }
     // A load since this was asked may mean new hands: these rows are kept for
     // this list only, not for the next one.
     if (asked === loadSeq) state.handRows = { key, rows: body.hands };
@@ -5461,10 +5501,9 @@
       : `${rows.length} hand${rows.length === 1 ? "" : "s"}`;
     if (!rows.length) { list.appendChild(message("no hands")); return; }
     // Each with the review rows' ✎, so a hand found by drilling in can be written
-    // on where it was found. Rows from a server too old to send notes get none.
+    // on where it was found.
     for (const h of rows.slice(0, HAND_LIMIT)) {
-      const row = handRowButton(h, list, $("replay"));
-      list.appendChild("note" in h ? reviewedRow(h, row, { noteOnly: true }) : row);
+      list.appendChild(reviewedRow(h, handRowButton(h, list, $("replay")), { noteOnly: true }));
     }
   }
 
@@ -5475,10 +5514,16 @@
     const b = document.createElement("button");
     b.type = "button"; b.className = "hand-row"; b.setAttribute("aria-pressed", "false");
     const span = (cls, text) => { const s = document.createElement("span"); s.className = cls; s.append(text); b.appendChild(s); return s; };
-    if (opts.kind) {
-      const k = span("kind", opts.kind.text);
-      k.dataset.group = opts.kind.group;
-      if (opts.kind.title) k.title = opts.kind.title;
+    // The pill sits in a slot of its own, there but empty on a list's rows with
+    // no flag (`kind: null`), so the columns after it line up row to row.
+    if (opts.kind !== undefined) {
+      const slot = span("kslot", "");
+      if (opts.kind) {
+        const k = document.createElement("span"); k.className = "kind"; k.textContent = opts.kind.text;
+        k.dataset.group = opts.kind.group;
+        k.title = opts.kind.title || opts.kind.text;
+        slot.appendChild(k);
+      }
     }
     span("num", `#${h.hand_number}`);
     // Whether they closed the action, not where they sat: every postflop stat
@@ -5500,7 +5545,7 @@
     // Double Board: the second board under the first.
     if (h.board2?.length) boardEl.append(document.createElement("br"), cardsEl(h.board2));
     span("pot", h.pot == null ? "" : `pot ${fmtPot(h)}`);
-    span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SHORT_SIZE[z]}`).join(" · "));
+    span("sizes", opts.sizes ?? Object.entries(h.bet_size).map(([s, z]) => `${s} ${SIZE_LABEL[z]}`).join(" · "));
     signTone(span("net", h.net_bb == null ? "–" : fmtBb(h.net_bb)), h.net_bb);
     if (opts.why) span("why", opts.why);
     b.title = handTitle(h) + (opts.title ? "\n" + opts.title : "");
@@ -5525,7 +5570,7 @@
   function reviewDetail(h) {
     const pct = (x) => `${Math.round(x * 100)}%`;
     if (h.kind === "failed_bluff") {
-      const size = h.bluff_size ? SHORT_SIZE[h.bluff_size] : h.bluff_pot != null ? `${pct(h.bluff_pot)} pot` : "";
+      const size = h.bluff_size ? SIZE_LABEL[h.bluff_size] : h.bluff_pot != null ? `${pct(h.bluff_pot)} pot` : "";
       return [`${h.bluff_kind} ${h.street}`, size, h.answer].filter(Boolean).join(" · ");
     }
     if (h.equity != null && h.street !== "river") return `${pct(h.equity)} to win on the ${h.street}`;
@@ -5648,7 +5693,9 @@
         : d.hands.length ? "no hands played in this spot — turn off Played only" : "no hands in this spot"));
       return;
     }
-    for (const h of rows.slice(0, listCap())) {
+    const shown = rows.slice(0, listCap());
+    const anyPill = shown.some(h => h.flags.length || h.flagged);
+    for (const h of shown) {
       const f = h.flags[0];
       // A hand they sat out names who played it and who won, in place of their own result.
       const away = h.sat_out ? {
@@ -5657,7 +5704,8 @@
       } : {};
       const row = handRowButton(h, list, $("review-replay"), {
         ...away,
-        kind: f ? { text: f.label, group: f.group } : h.flagged ? { text: "Flagged", group: "manual" } : null,
+        // An empty pill slot only when some row on the list has a pill to line up with.
+        kind: f ? { text: f.label, group: f.group } : h.flagged ? { text: "Flagged", group: "manual" } : anyPill ? null : undefined,
         why: h.flags.map(x => x.why).filter(Boolean).join(" · ") || undefined,
         title: h.flags.length > 1 ? "flagged: " + h.flags.map(x => x.label).join(", ") : "",
       });
@@ -5852,8 +5900,7 @@
     pen.type = "button";
     pen.className = "note";
     pen.textContent = "✎";
-    // Rows from a server too old to know about flags get no 🚩.
-    const flag = !noteOnly && "flagged" in h ? document.createElement("button") : null;
+    const flag = noteOnly ? null : document.createElement("button");
     if (flag) {
       flag.type = "button";
       flag.className = "flag";
@@ -5984,8 +6031,8 @@
     else if (flag) { marks.classList.add("three"); marks.append(mark, flag, pen); }
     else marks.append(mark, pen);
     body.append(row, note);
-    // The hand's tags, beside its note; rows from a server too old to send them get none.
-    if (Array.isArray(h.tags)) body.append(pntReplay.tagBox(h.game_id, h.hand_number, h.tags));
+    // The hand's tags, beside its note.
+    body.append(pntReplay.tagBox(h.game_id, h.hand_number, h.tags));
     wrap.append(marks, body);
     return wrap;
   }
@@ -6014,7 +6061,7 @@
       const s = await viewJson(`/players/${encodeURIComponent(state.player)}/stats?` + q);
       if (live()) renderStrip(s);
     } catch {
-      if (live()) el.classList.add("hidden"); // an older server has no per-player stats
+      if (live()) el.classList.add("hidden"); // a failed strip costs the strip, not the view
     }
   }
 
@@ -6156,17 +6203,7 @@
   $("tabletoggle").addEventListener("click", () => {
     state.table = !state.table; $("tabletoggle").setAttribute("aria-pressed", state.table); if (state.data) render();
   });
-  $("t-hands-tile").addEventListener("click", () => {
-    // The session view is already the list of its hands.
-    // The pool's tile counts everyone's hands, which no one player's list holds.
-    if (state.by === "bluffs" && state.bluffScope === "pool") return;
-    if (state.by === "bounties" || state.by === "nit") return;
-    if (state.by === "shows" && state.dataView === "shows" && state.data) {
-      openHands("Shown without being asked", state.data.rows.map(r => r.hand_id));
-      return;
-    }
-    if (state.player && state.by !== SESSION_VIEW) openHands("All hands in this spot", null);
-  });
+  $("t-hands-tile").addEventListener("click", () => handsTileAction()?.());
   // The drill-down list and the review views read separate data; opening a view
   // with the list showing would leave a stale list under the new card.
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", closeHands));
@@ -6391,10 +6428,24 @@
     for (const n of [...row.childNodes]) if (n !== lbl) chips.appendChild(n);
     row.replaceChildren(lbl, chips);
   }
+  // Two kinds share the row: a preset replaces the spot, a term chip adds to it.
+  // The second kind wears a "+" and sits past a rule, so the two read apart.
+  let commonAdds = false;
   for (const [text, sel] of COMMON) {
     const real = $("filters").querySelector(sel);
     if (!real) continue;
-    const b = document.createElement("button"); b.type = "button"; b.textContent = text; b.title = real.title;
+    const adds = real.dataset.preset == null;
+    if (adds && !commonAdds) {
+      commonAdds = true;
+      const s = document.createElement("span"); s.className = "sep"; $("common").appendChild(s);
+    }
+    const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+    if (adds) {
+      b.classList.add("adds");
+      const plus = document.createElement("span"); plus.className = "plus"; plus.textContent = "+";
+      b.prepend(plus);
+    }
+    b.title = adds ? `adds ${real.title} to the spot` : `sets the spot to ${real.title}`;
     for (const k of ["preset", "term", "terms"]) if (real.dataset[k] != null) b.dataset[k] = real.dataset[k];
     real.dataset.common = "1";
     b.addEventListener("click", () => real.click());

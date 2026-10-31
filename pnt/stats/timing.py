@@ -62,7 +62,7 @@ MIN_CELL = 30
 #: The view's note, one bullet each. **text** is bold on the page.
 NOTE = (
     "**Strength:** shown cards only, so it leans to value: a bluff that got a fold is never shown.",
-    "**Your rows** use every hand (your log has all your cards), so they include your bluffs and read weaker.",
+    "**A log owner's rows** use every hand (their own log shows all their cards), so they hold their bluffs too.",
     ("**Think time:** from the board or the last action to theirs. **Pre:** under 1 s, a pre-selected button. "
      "Timeouts are left out."),
 )

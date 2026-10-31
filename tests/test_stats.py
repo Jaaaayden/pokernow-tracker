@@ -208,7 +208,8 @@ def test_every_size_bucket_is_on_every_page():
         return re.findall(pattern, page[i:page.index(";", i)])
 
     assert listed("replay.js", "const SIZE_LABEL = {", r"(\w+):") == [*SIZE_BUCKETS, "check"]
-    assert listed("chart.html", "const SIZES = [", r'\["[^"]+", "(\w+)"\]') == list(SIZE_BUCKETS)
+    # The chart lists the keys and takes the words from SIZE_LABEL.
+    assert listed("chart.html", "const SIZES = [", r'"(\w+)"') == list(SIZE_BUCKETS)
     assert listed("stats.html", "const SIZES = [", r'\["(\w+)", "[^"]+"\]') == list(SIZE_BUCKETS)
 
 

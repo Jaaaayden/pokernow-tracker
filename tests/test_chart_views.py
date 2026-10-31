@@ -43,3 +43,35 @@ def test_no_unused_chip_setters():
 
 def test_no_value_reads_as_an_em_dash():
     assert '"—"' not in HTML
+
+
+def test_red_and_green_are_money_only():
+    """RED and GREEN ramps fill only the grid's net mode; every other two-ended
+    scale (tiers, made mix, raise size) runs blue to ORANGE."""
+    script = HTML[HTML.index("<script>\n"):]
+    net = script[script.index('if (state.color === "net")'):script.index('if (state.color === "pfr")')]
+    assert script.count("ramp(RED)") == net.count("ramp(RED)") == 2
+    assert script.count("ramp(GREEN)") == net.count("ramp(GREEN)") == 2
+    assert "RED[" not in script and "GREEN[" not in script
+    # The CSS scales: value:bluff's bluff end and the tree's bet/raise are not the loss red.
+    for loss in ("#b93a39", "#e66e6d", "#e34948", "#f6b6b5", "#ef9291"):
+        for scale in ("--bv-semi_bluff: " + loss, "--bv-bluff: " + loss, "--tr-raise: " + loss):
+            assert scale not in HTML, scale
+
+
+def test_no_version_skew_shims():
+    """One error for a route the server lacks (pntPage.OLD_SERVER); no per-field
+    probes for an older server's answers."""
+    assert "older than this page" not in HTML
+    assert HTML.count("pntPage.OLD_SERVER") == 1
+    assert 'by") === "manual"' not in HTML
+
+
+def test_size_buckets_have_one_wording():
+    """Chips, the strip and hand rows take SIZE_LABEL's words, as Sizing does."""
+    assert "SHORT_SIZE" not in HTML and '"<⅕"' not in HTML
+    assert "map(b => [SIZE_LABEL[b], b])" in HTML
+
+
+def test_spotless_views_dim_the_spot():
+    assert 'new Set(["shows", "bounties", "nit"])' in HTML and "syncSpotless(view);" in HTML
