@@ -539,7 +539,7 @@ def _exploits(p: dict, base: Mapping[str, RuleBase] | None = None) -> list[dict]
     if v is not None:
         reasons.append(
             f"called a 3-bet or 4-bet with a bottom-{100 - th['hand_pct']:.0f}% hand "
-            f"{light['hits']} of {light['n']} shown times{v['ctx'].replace(';', ',')}"
+            f"in {light['hits']} of {light['n']} shown hands{v['ctx'].replace(';', ',')}"
         )
         verdicts.append(v)
     if reasons and not any(x["id"] == "folds_to_3bet" for x in out):
@@ -556,7 +556,7 @@ def _exploits(p: dict, base: Mapping[str, RuleBase] | None = None) -> list[dict]
         v = _verdict(id, m, True, base, pct_key="light_pct", n_min=t[id]["hits"]) if m["hits"] >= t[id]["hits"] else None
         if v is not None:
             out.append(_tag(id, label, "exploit",
-                            f"{verb.capitalize()} with a bottom-half hand {m['hits']} of {m['n']} shown times"
+                            f"{verb.capitalize()} with a bottom-half hand in {m['hits']} of {m['n']} shown hands"
                             f"{v['ctx'].replace(';', ',')}. {advice}",
                             m["n"], m["hits"], filter, **_judged(v)))
 
@@ -751,13 +751,13 @@ def _fun(facts: list[Facts]) -> list[dict]:
         if jams:
             out.append(_tag(
                 f"fun_{term}", f"{name} ALL-IN-PRE ×{len(jams)}", "fun",
-                f"Jammed preflop with {name} {len(jams)} times (shown), raised it {len(raised)} times in all.",
+                f"Shown jamming {name} preflop {len(jams)} times; raised it {len(raised)} times in all.",
                 len(jams), len(jams), f"hand={term},jam_preflop",
             ))
         elif len(raised) >= THRESHOLDS["fun"]["hits"]:
             out.append(_tag(
                 f"fun_{term}", f"{name} RAISES ×{len(raised)}", "fun",
-                f"Raised preflop with {name} {len(raised)} times (shown).",
+                f"Shown raising {name} preflop {len(raised)} times.",
                 len(raised), len(raised), f"hand={term},pfr",
             ))
     return out
