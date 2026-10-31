@@ -232,3 +232,50 @@ def test_an_older_database_has_its_imports_folded_and_the_extra_index_dropped(tm
     )
     assert "sqlite_autoindex_hands_1" in plan
     conn.close()
+
+
+def _read_only(path):
+    """`path` made read-only (Windows' attribute, POSIX's write bit); the
+    returned call makes it writable again."""
+    import os
+    import stat
+
+    os.chmod(path, stat.S_IREAD)
+    return lambda: os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+
+def test_a_read_only_database_still_opens(tmp_path):
+    """The index upkeep only reads when there is nothing to do, and leaves a
+    file it cannot write for the next connection that can: neither step
+    changes what a reader sees."""
+    from pnt.db.conn import IMPORTS_INDEX
+
+    path = tmp_path / "t.sqlite"
+    conn = connect(path)
+    ingest_entries(conn, "g", [RawEntry(1, "2026-01-01", "x")], source="extension")
+    conn.close()
+    writable = _read_only(path)
+    try:
+        conn = connect(path)
+        assert conn.execute("SELECT COUNT(*) FROM raw_entries").fetchone()[0] == 1
+        conn.close()
+    finally:
+        writable()
+
+    # An older file: imports not yet indexed, the redundant index still there.
+    old = sqlite3.connect(path)
+    old.execute(f"DROP INDEX {IMPORTS_INDEX}")
+    old.execute("CREATE INDEX idx_hands_game ON hands(game_id)")
+    old.commit()
+    old.close()
+    writable = _read_only(path)
+    try:
+        conn = connect(path)
+        assert conn.execute("SELECT COUNT(*) FROM imports").fetchone()[0] == 1
+        conn.close()
+    finally:
+        writable()
+    conn = connect(path)
+    indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert IMPORTS_INDEX in indexes and "idx_hands_game" not in indexes, "made once writable"
+    conn.close()
