@@ -639,13 +639,21 @@ def delete_game(conn: sqlite3.Connection, game_id: str) -> int:
     return hands
 
 
-def import_csv(conn: sqlite3.Connection, path: str | Path, game_id: str | None = None) -> dict:
+def import_csv(
+    conn: sqlite3.Connection,
+    path: str | Path,
+    game_id: str | None = None,
+    entries: list[RawEntry] | None = None,
+) -> dict:
     """Ingest a PokerNow CSV export and rebuild that game. Safe to run repeatedly.
 
     The game is `game_id`, else the one the file's name holds (`poker_now_log_<ID>.csv`,
     a browser's ` (1)` aside), else the bare name when that is an ID itself. Anything
     else is refused (ValueError): a game stored under an ID that is not one could be
     neither served nor written to the log folder.
+
+    `entries` is the file already read (`read_csv`), by a caller that has looked
+    at it first; the file is read here otherwise.
     """
     path = Path(path)
     gid = game_id or game_id_from_filename(path) or path.stem
@@ -654,7 +662,8 @@ def import_csv(conn: sqlite3.Connection, path: str | Path, game_id: str | None =
             f"{path.name}: no PokerNow game ID in the file name;"
             " rename it poker_now_log_<game ID>.csv"
         )
-    entries = read_csv(path)
+    if entries is None:
+        entries = read_csv(path)
     offered, n_new = ingest_entries(conn, gid, entries, source=f"csv:{path.name}")
     summary = rebuild_game(conn, gid)
     summary |= {"entries_offered": offered, "entries_new": n_new}
