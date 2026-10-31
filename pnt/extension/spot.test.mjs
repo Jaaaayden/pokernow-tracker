@@ -259,6 +259,23 @@ test("a tip that already gives its count is not followed by it again", () => {
     "the 2 of a hand's name is not a count");
 });
 
+test("only a count form says the count: a rate with the same digits does not", () => {
+  assert.equal(tagTitle({ kind: "exploit", n: 25, hits: 6, tip: "Folded 25% of the time." }),
+    "Folded 25% of the time.\n6 of 25");
+  assert.equal(tagTitle({ kind: "archetype", n: 25, hits: 25, tip: "Raises 25 points more." }),
+    "Raises 25 points more.\n25 hands");
+  // tags.py's wordings that do give it.
+  const light = { kind: "exploit", n: 77, hits: 7, tip: "Called light in 7 of 77 shown hands." };
+  assert.equal(tagTitle(light), light.tip);
+  const jams = { kind: "fun", n: 2, hits: 2, tip: "Shown jamming 7-2 preflop 2 times; raised it 5 times in all." };
+  assert.equal(tagTitle(jams), jams.tip);
+  const balanced = { kind: "archetype", n: 400, hits: 400, tip: "No exploit stands out over 400 hands." };
+  assert.equal(tagTitle(balanced), balanced.tip);
+  const pre = { kind: "exploit", n: 90, hits: 9, tip: "Jammed preflop 9 times in 90 preflop decisions (10%)." };
+  assert.equal(tagTitle(pre), pre.tip);
+  assert.equal(tagTitle({ kind: "exploit", n: 9, hits: 3, tip: "Folded (3 of 9)." }), "Folded (3 of 9).");
+});
+
 test("the archetype chip comes first, then the rest in the order sent", () => {
   const moved = [tags[1], tags[0], ...tags.slice(2)];
   assert.deepEqual(tagChips(moved).map((t) => t.id), ["fish", "no_bluff", "folds_river", "limper", "fun_72"]);
