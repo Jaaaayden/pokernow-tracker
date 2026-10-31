@@ -261,7 +261,7 @@ def voluntary_shows(conn: sqlite3.Connection, alias: str, game: str | None = Non
             "pot_level": levels.get(r["hand_id"]),
             "pot": pot_type(levels.get(r["hand_id"])),
         })
-    out["coverage"] = round(100.0 * out["two_card"] / out["shows"], 1) if out["shows"] else None
+    out["coverage"] = pct(out["two_card"], out["shows"])
     out["air_pct"] = pct(out["classes"]["air"], out["two_card"])
     out["strong_pct"] = pct(out["classes"]["strong"], out["two_card"])
     for row in out["rows"]:
