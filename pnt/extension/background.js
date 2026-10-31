@@ -47,9 +47,24 @@ async function settings() {
 // never grants (see app.py).
 const WRITE_HEADER = { "x-pnt": "1" };
 
+// Chrome stops a service worker whose fetch has waited 30 s for its response, and
+// the caller then hears only "message port closed". A first /hud on a big
+// database can take that long, so the call gives up first, with an answer the
+// content script reads as "still loading" (SLOW in content.js) rather than as a
+// failure. The server goes on and caches it: the next poll's call is quick.
+const SLOW_MS = 25_000;
+const SLOW_TEXT = `no answer within ${SLOW_MS / 1000} s`;
+
 async function call(path, init = {}) {
   const { server } = await settings();
-  const r = await fetch(server + path, { ...init, headers: { ...init.headers, ...WRITE_HEADER } });
+  let r;
+  try {
+    r = await fetch(server + path, {
+      ...init, headers: { ...init.headers, ...WRITE_HEADER }, signal: AbortSignal.timeout(SLOW_MS),
+    });
+  } catch (e) {
+    throw e?.name === "TimeoutError" ? new Error(`tracker busy: ${SLOW_TEXT}`) : e;
+  }
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
   return body;
@@ -97,11 +112,19 @@ const handlers = {
       body: JSON.stringify({ note: String(note ?? "") }),
     }),
 
-  // The content script reports here -- counters, status text, and the HUD and
-  // live payloads -- and the side panel and settings page read it back.
+  // The HUD's chosen columns, for the side panel's placeholders before its
+  // first /hud (`columns` is keys; `catalog` has their labels and tips).
+  hudColumns: () => call("/settings/hud"),
+
+  // The content script reports here and the side panel and settings page read it
+  // back: counters and status text under `status:<tab>`, several times a poll,
+  // and the /hud and /live payloads under `data:<tab>`, only when they changed
+  // (`data` in the message). Every write reaches every open extension page.
   status: async (msg, sender) => {
-    const key = `status:${sender.tab?.id ?? "?"}`;
-    await chrome.storage.session.set({ [key]: { ...msg.status, tabId: sender.tab?.id, at: Date.now() } });
+    const id = sender.tab?.id ?? "?";
+    const put = { [`status:${id}`]: { ...msg.status, tabId: sender.tab?.id, at: Date.now() } };
+    if (msg.data) put[`data:${id}`] = msg.data;
+    await chrome.storage.session.set(put);
     return {};
   },
 
@@ -165,13 +188,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 // A closed tab's report would otherwise sit in session storage until the browser closes.
-chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove(`status:${tabId}`));
+const forget = (tabId) => chrome.storage.session.remove([`status:${tabId}`, `data:${tabId}`]);
+chrome.tabs.onRemoved.addListener(forget);
 // Nor may it outlive a reload or a move off the game: the side panel would go on
 // showing a table that is no longer there. A game page reports again as it loads.
 // Its panel follows its URL: a reload keeps it, and a move off the game drops it.
 // Again once loaded: the popup setting can be dropped after "loading" is heard.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status === "loading") chrome.storage.session.remove(`status:${tabId}`);
+  if (info.status === "loading") forget(tabId);
   if (info.status || info.url) applyTab(tabId, isGame(tab.url));
 });
 
@@ -251,7 +275,8 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   checkBuildSoon();
-  const h = handlers[msg?.type];
+  // Own keys only: "constructor" or "toString" would otherwise find Object's.
+  const h = Object.hasOwn(handlers, msg?.type) ? handlers[msg.type] : null;
   if (!h) { sendResponse({ ok: false, error: `unknown message ${msg?.type}` }); return false; }
   h(msg, sender).then(
     (data) => sendResponse({ ok: true, data }),

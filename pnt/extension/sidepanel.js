@@ -53,14 +53,22 @@
   const params = new URLSearchParams(location.search);
   const EMBED = params.get("embed") === "1";
   const EMBED_TAB = EMBED ? Number(params.get("tab")) : NaN;
+  // The tab's report comes in two parts (background.js): its status, rewritten
+  // several times a poll, and the /hud and /live payloads with their `rev`,
+  // rewritten only when they change. The panel shows the two as one.
   const keyOf = (id) => `status:${id}`;
+  const dataKeyOf = (id) => `data:${id}`;
+  let tabStatus = null, tabData = null;
+  const report = () => (tabStatus ? { ...tabStatus, ...(tabData || {}) } : null);
   async function track() {
     let id;
     if (EMBED) id = Number.isInteger(EMBED_TAB) ? EMBED_TAB : null;
     else id = (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id ?? null;
     if (id !== state.tabId) { state.tabId = id; state.rev = -1; }
-    const got = id == null ? {} : await chrome.storage.session.get(keyOf(id));
-    show(got[keyOf(id)] || null);
+    const got = id == null ? {} : await chrome.storage.session.get([keyOf(id), dataKeyOf(id)]);
+    tabStatus = got[keyOf(id)] || null;
+    tabData = got[dataKeyOf(id)] || null;
+    show(report());
   }
   if (!EMBED) chrome.tabs.onActivated.addListener(track);
 
@@ -97,8 +105,11 @@
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "session" && state.tabId != null && keyOf(state.tabId) in changes) {
-      show(changes[keyOf(state.tabId)].newValue || null);
+    const k = state.tabId == null ? null : keyOf(state.tabId), d = state.tabId == null ? null : dataKeyOf(state.tabId);
+    if (area === "session" && k && (k in changes || d in changes)) {
+      if (k in changes) tabStatus = changes[k].newValue || null;
+      if (d in changes) tabData = changes[d].newValue || null;
+      show(report());
     }
     if (area === "sync" && changes.server) {
       state.server = String(changes.server.newValue || state.server).replace(/\/+$/, "");
@@ -139,11 +150,16 @@
     if (sample && isOpen()) closeChart();
     // A /hud that failed says so until one succeeds: the status line is
     // overwritten by the next poll, and the cards would read "–" with no reason.
-    const err = snap.hudError || null;
+    // So does a server older than this panel, whose /hud has no `columns`: the
+    // cards then show hands alone.
+    const err = snap.hudError
+      ? `${snap.hudData ? "Stats not updating" : "Stats failed"}: ${snap.hudError} · retrying every 30 s`
+      : snap.hudData && !Array.isArray(snap.hudData.columns)
+        ? "The tracker server is older than this extension: run pnt service restart." : "";
     if (err !== $("huderr").dataset.err) {
-      $("huderr").dataset.err = err ?? "";
+      $("huderr").dataset.err = err;
       $("huderr").hidden = !err;
-      $("huderr").textContent = err ? `${snap.hudData ? "Stats not updating" : "Stats failed"}: ${err} · retrying every 30 s` : "";
+      $("huderr").textContent = err;
       fit();
     }
     setStatus(snap.text || "");
@@ -311,6 +327,7 @@
   function paintStuck(kind) {
     const box = $("stuck");
     box.replaceChildren();
+    box.dataset.kind = kind; // "down" hides the "waiting for the first hand" under it
     const shut = el("button", "shut", "✕");
     shut.title = "hide this";
     shut.addEventListener("click", () => { stuckShut = kind; box.hidden = true; });
@@ -321,7 +338,8 @@
       steps.append(li("Reload the PokerNow tab: one opened before the extension (re)loaded is not tracked."),
         li("Still nothing: ", reloadButton(), ", then reload the tab."));
     } else if (kind === "down") {
-      box.append(shut, el("b", null, `Tracker not answering at ${state.server}.`));
+      // The address in code, with no full stop for a copy to pick up.
+      box.append(shut, el("b", null, "Tracker not answering at "), el("code", null, state.server));
       steps.append(li("In a terminal: ", cmd("pnt service status")), li("Stopped or stuck: ", cmd("pnt service restart")),
         li("Wrong address: fix the server in ⚙."));
     } else {
@@ -362,7 +380,7 @@
   // when shut, so its status poll stops with it.
   $("gear").addEventListener("click", () => {
     const open = $("settings").hidden;
-    $("settings-frame").src = open ? "popup.html" : "about:blank";
+    $("settings-frame").src = open ? "popup.html?theme=dark" : "about:blank"; // dark like the panel, whatever the OS
     $("settings").hidden = !open;
     $("gear").setAttribute("aria-pressed", String(open));
     fit();
@@ -472,9 +490,6 @@
   // The chart page reports its URL and current player whenever the spot, view,
   // colour or player changes inside the frame, so the link out keeps up with
   // what is on screen.
-  const paramOf = (url, key) => {
-    try { return new URL(url).searchParams.get(key); } catch { return null; }
-  };
   addEventListener("message", (e) => {
     if (e.source !== $("frame").contentWindow) return;
     if (e.origin !== origin()) return;
@@ -490,8 +505,7 @@
     // the bar names the wrong player, the wrong card stays highlighted, and
     // `refreshChart` keeps watching the hand count of a player no longer on
     // screen -- refetching when they act and never when the shown player does.
-    // `player` falls back to the URL so an older server's page still tracks.
-    const player = e.data.player ?? paramOf(e.data.url, "player");
+    const player = e.data.player;
     if (player && player !== selected) {
       selected = player;
       selectedPn = null;
@@ -536,21 +550,9 @@
   // order, is chosen on the server's front page and comes with each /hud report;
   // `opp` is the `_opp` count under each figure (VPIP and PFR share one).
   const HANDS_COL = { key: "hands", label: "hands", tip: "Hands they were dealt into. Every rate here is over some subset of these.", opp: null };
-  // An older server sends no `columns`: these are the ones it always showed.
-  const FALLBACK_COLS = [
-    { key: "vpip", label: "VPIP", opp: "vpip", tip: "Voluntarily Put $ In Pot: how often they call, bet or raise preflop. "
-      + "Blinds are forced and never count. High means loose." },
-    { key: "pfr", label: "PFR", opp: "vpip", tip: "Pre-Flop Raise: how often they raise preflop. Close to VPIP means aggressive; "
-      + "far below it means they call far more than they raise." },
-    { key: "3bet", label: "3Bet", opp: "3bet", tip: "How often they re-raise someone's open." },
-    { key: "fold_to_3bet", label: "F3B", opp: "fold_to_3bet", tip: "Fold to Three-Bet: they opened, someone re-raised, and they folded." },
-    { key: "cbet_flop", label: "CBet", opp: "cbet_flop", tip: "Continuation bet: they were the preflop aggressor and bet the flop first-in." },
-    { key: "wtsd", label: "WTSD", opp: "wtsd", tip: "Went To Showdown: of the flops they saw, how often they were still there at the end." },
-    { key: "af_flop", label: "AFq", opp: "af_flop", tip: "Aggression frequency (AFq; a percentage, not the AF ratio) on the flop: of everything they did bar checking, how often "
-      + "it was a bet or a raise rather than a call or a fold." },
-  ];
   // Before the first /hud the placeholders take the columns the last one sent,
   // kept in this browser, so the cards keep their shape when the figures land.
+  // A browser that has seen none asks the server's settings once (seedCols).
   const COLS_KEY = "pnt-cols";
   let keptCols = null;
   try {
@@ -562,8 +564,20 @@
     keptCols = columns;
     try { localStorage.setItem(COLS_KEY, JSON.stringify(columns)); } catch {}
   }
+  async function seedCols() {
+    if (keptCols) return;
+    const r = await send({ type: "hudColumns" });
+    if (!r.ok || keptCols || !Array.isArray(r.data?.columns)) return;
+    const byKey = new Map((r.data.catalog || []).map((c) => [c.key, c]));
+    const columns = r.data.columns.map((k) => byKey.get(k)).filter(Boolean)
+      .map(({ key, label, tip, opp }) => ({ key, label, tip, opp }));
+    keepCols(columns);
+    if (!state.hud) render();
+  }
+  // Without /hud's `columns` (a server older than this panel, which show() says),
+  // the cards show hands alone.
   const cols = () => [HANDS_COL, ...(Array.isArray(state.hud?.columns) ? state.hud.columns
-    : !state.hud && keptCols ? keptCols : FALLBACK_COLS)];
+    : !state.hud && keptCols ? keptCols : [])];
   // A session figure is flagged as drifting when it has some sample behind it
   // and sits well away from the lifetime one. Neither direction is "good" for
   // a VPIP, so it is one colour, not red and green.
@@ -598,9 +612,9 @@
     return out;
   }
 
-  // This game's figures, or null when there are none to show: an older server
-  // sends none, and a PLO or Double Board game's hands are all left out of the
-  // stats (`not_analysed`), so its "0 hands" would read as nothing captured.
+  // This game's figures, or null when there are none to show: a seat with no
+  // /hud behind it has none, and a PLO or Double Board game's hands are all left
+  // out of the stats (`not_analysed`), so its "0 hands" would read as nothing captured.
   const sessionOf = (s) => (s.session && !(s.session.hands === 0 && s.session.not_analysed > 0) ? s.session : null);
   const notAnalysed = (seats) => Math.max(0, ...seats.map((s) => s.session?.not_analysed || 0));
   // While the pages show the sample the cards are masked, and the chart reads the
@@ -654,7 +668,7 @@
         + (lv.analysed === false ? " · not analysed" : "")
       : "";
     $("live").title = lv?.analysed === false ? "PLO or Double Board: no stat reads this hand's play" : "";
-    // An older server sends lifetime only; the cards then print just that.
+    // No session figures anywhere (a PLO table, or no /hud yet): lifetime only.
     const hasSession = seats.some(sessionOf);
     // The compact table carries the legend in its own header.
     $("legend").hidden = !hasSession || state.compact;
@@ -668,7 +682,7 @@
       body.append(el("div", "empty dots", "loading stats"));
     } else if (!seats.length) {
       body.append(state.hud || state.live ? el("div", "empty", "no one dealt in yet")
-        : el("div", "empty dots", "waiting for the first hand"));
+        : el("div", "empty dots waiting", "waiting for the first hand"));
     } else if (state.compact) {
       body.append(grid(seats, lv, hasSession));
     } else {
@@ -700,6 +714,8 @@
   // compact -- once there is a table to measure -- and after that only grows, so
   // a width dragged by hand stays.
   let widthPending = false;
+  // A panel dragged wider or narrower: the compact table's fade follows.
+  addEventListener("resize", () => document.querySelector(".grid")?.dispatchEvent(new Event("scroll")));
   function fit() {
     if (!EMBED || !state.compact) return;
     const g = document.querySelector(".grid");
@@ -765,15 +781,17 @@
     const head = el("thead");
     if (hasSession) {
       const tr = el("tr");
-      tr.append(el("th"));
-      const g = el("th", "group", "this session · lifetime");
-      g.colSpan = COLS.length;
+      // Over the whole table, its words at the left edge of what is on screen:
+      // at 320px four columns fit, and centred over all of them they sat off it.
+      const g = el("th", "group");
+      g.append(el("span", null, "this session · lifetime"));
+      g.colSpan = COLS.length + 1;
       g.title = $("legend").title;
       tr.append(g);
       head.append(tr);
     }
     const tr = el("tr");
-    tr.append(el("th", null, "player"));
+    tr.append(el("th", "name", "player")); // the name column stays put as the rest scrolls
     for (const { label, tip } of COLS) {
       const th = el("th", null, label);
       th.title = tip;
@@ -813,6 +831,10 @@
     table.append(head, body);
     const wrap = el("div", "grid");
     wrap.append(table);
+    // Columns past the right edge: a fade there says so, gone at the end.
+    const more = () => wrap.classList.toggle("more", wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 1);
+    wrap.addEventListener("scroll", more, { passive: true });
+    requestAnimationFrame(more);
     return wrap;
   }
 
@@ -1046,5 +1068,6 @@
     const s = await send({ type: "settings" });
     if (s.ok) state.server = s.data.server;
     await track();
+    seedCols();
   })();
 })();

@@ -10,16 +10,23 @@
     runtime: {
       lastError: undefined,
       sendMessage(msg, cb) {
+        // The chosen columns: shoot.py saved GET /settings/hud beside the page.
+        if (msg.type === "hudColumns") {
+          fetch("settings-hud.json").then((r) => r.json()).then((data) => cb({ ok: true, data }), (e) => cb({ ok: false, error: String(e) }));
+          return;
+        }
         const r = msg.type === "health" ? window.__health
-          : msg.type === "settings" ? { ok: true, data: { server: conf.server } }
+          : msg.type === "settings" ? { ok: true, data: { server: conf.server, pollSeconds: 5, liveMin: 1, liveKnown: 5, hudMode: "panel" } }
           : { ok: false, error: "harness" };
         setTimeout(() => cb(r), 0);
       },
       reload() {},
     },
     tabs: { query: async () => [{ id: 1 }], onActivated: { addListener() {} }, sendMessage: async () => {} },
+    sidePanel: {}, // popup.js keeps the "side panel" choice only where there is one
     storage: {
       session: { get: async () => (snap ? { "status:1": snap } : {}) },
+      sync: { set: async () => {} },
       onChanged: { addListener: (f) => listeners.push(f) },
     },
   };

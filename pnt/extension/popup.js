@@ -1,5 +1,8 @@
 (async () => {
   const $ = (id) => document.getElementById(id);
+  // Framed in the side panel (?theme=dark), the panel's colours rather than the OS's.
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
   const DEFAULT_SERVER = "http://127.0.0.1:52000";
   // A worker that does not answer says so, rather than leaving every field blank.
   const send = (msg) => new Promise((resolve) => {

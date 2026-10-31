@@ -6,32 +6,33 @@
 <style>
   /* 320px is the toolbar popup's width, which Chrome sizes from the body. Framed
      wider (the panel's ⚙) or zoomed, the column stays that width and centred. */
-  html { background: #f9f9f7; scrollbar-width: thin; scrollbar-color: #c3c2b7 transparent; }
-  body { margin: 0 auto; width: 320px; max-width: 100%; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #0b0b0b; }
+  /* The colours follow the OS, except framed in the side panel, which is always
+     dark: there it is opened as popup.html?theme=dark (popup.js sets data-theme). */
+  :root { --bg: #f9f9f7; --fg: #0b0b0b; --field: #fff; --line: #c3c2b7; --link: #2a78d6; --link-text: #2a78d6; }
   @media (prefers-color-scheme: dark) {
-    html { color-scheme: dark; background: #1a1a19; scrollbar-color: #383835 transparent; }
-    body { color: #fff; }
-    input, select { background: #0d0d0d; color: #fff; border-color: #383835; }
+    :root:not([data-theme="light"]) { color-scheme: dark; --bg: #1a1a19; --fg: #fff; --field: #0d0d0d; --line: #383835;
+      --link: #3987e5; --link-text: #86b6ef; }
   }
+  :root[data-theme="dark"] { color-scheme: dark; --bg: #1a1a19; --fg: #fff; --field: #0d0d0d; --line: #383835;
+    --link: #3987e5; --link-text: #86b6ef; }
+  html { background: var(--bg); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  body { margin: 0 auto; width: 320px; max-width: 100%; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); }
   main { padding: 12px 14px; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
   h1 { font-size: 14px; margin: 0; }
   label { display: block; color: #898781; font-size: 12px; margin-top: 8px; }
-  input, select { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 7px; border: 1px solid #c3c2b7; border-radius: 6px; }
+  input, select { width: 100%; box-sizing: border-box; font: inherit; padding: 5px 7px; border-radius: 6px;
+    background: var(--field); color: var(--fg); border: 1px solid var(--line); }
   .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
   button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 0; background: #2a78d6; color: #fff; cursor: pointer; }
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin-top: 10px; font-variant-numeric: tabular-nums; }
   .kv span:nth-child(odd) { color: #898781; }
   .ok { color: #0ca30c; } .bad { color: #d03b3b; }
-  a { color: #2a78d6; }
+  a { color: var(--link-text); }
   /* A small link beside the title, not a bar across the page. */
   a.open { flex: none; font-size: 12px; text-decoration: none; padding: 2px 9px; border-radius: 999px;
-    border: 1px solid #2a78d6; color: #2a78d6; white-space: nowrap; }
-  a.open:hover { background: #2a78d6; color: #fff; }
-  @media (prefers-color-scheme: dark) {
-    a.open { border-color: #3987e5; color: #86b6ef; }
-    a.open:hover { background: #3987e5; color: #fff; }
-  }
+    border: 1px solid var(--link); color: var(--link-text); white-space: nowrap; }
+  a.open:hover { background: var(--link); color: #fff; }
 </style>
 </head>
 <body>
