@@ -103,7 +103,7 @@ def _summary(rows: list[Facts], tolerance: float = 1.0) -> dict:
         "won": sum(1 for f in rows if f.net > 0),
         "pf_opp": pf_opp,
         "pfr": pfr,
-        "raise_pct": round(100.0 * pfr / pf_opp, 1) if pf_opp else None,
+        "raise_pct": pct(pfr, pf_opp),
         # Typical open/raise size with this holding; the "usually 3bb, but 5bb
         # with these" signal. Median so one shove does not move it.
         "raise_bb": stats["median"] if stats else None,
@@ -153,7 +153,7 @@ def range_grid(facts: list[Facts]) -> dict:
     return {
         "hands": len(facts),
         "known": len(known),
-        "coverage": round(100.0 * len(known) / len(facts), 1) if facts else None,
+        "coverage": pct(len(known), len(facts)),
         "raise": spot,
         "raise_tolerance": tol,
         "rows": grid_labels(),
@@ -189,7 +189,7 @@ def composition(facts: list[Facts]) -> dict:
         {
             "class": leaf,
             "group": group[leaf],
-            "pct": round(100.0 * len(by_leaf[leaf]) / len(known), 1),
+            "pct": pct(len(by_leaf[leaf]), len(known)),
             **_summary(by_leaf[leaf], tol),
         }
         for leaf in (*MADE_LEAVES, "no_board")
@@ -199,7 +199,7 @@ def composition(facts: list[Facts]) -> dict:
     return {
         "hands": len(facts),
         "known": len(known),
-        "coverage": round(100.0 * len(known) / len(facts), 1) if facts else None,
+        "coverage": pct(len(known), len(facts)),
         "raise": spot,
         "raise_tolerance": tol,
         "classes": classes,

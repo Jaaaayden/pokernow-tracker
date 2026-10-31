@@ -134,20 +134,33 @@ def test_a_typo_is_a_one_line_error_not_a_traceback(tmp_path, monkeypatch, args)
     assert "Traceback" not in run.output
 
 
-def test_setup_skips_a_log_with_no_hands(tmp_path):
+@pytest.mark.parametrize("command", [["setup", "--no-service"], ["import"]])
+def test_setup_and_import_skip_a_log_with_no_hands(tmp_path, monkeypatch, command):
     """As `pnt import` and the sync do: a table joined and left before the first
-    deal would only make an empty game."""
+    deal would only make an empty game. Each file is read once, not once to
+    look for a hand and again to import it."""
+    from pnt.ingest import csv_source, importer
+
     folder = tmp_path / "logs"
     folder.mkdir()
     shutil.copy(HU, folder / HU.name)
     lines = HU.read_text(encoding="utf-8").splitlines()
     empty = folder / "poker_now_log_pglEmptyGame0000000000000.csv"
     empty.write_text("\n".join([lines[0], *[ln for ln in lines[1:] if "starting hand" not in ln][-3:]]) + "\n", encoding="utf-8")
+    reads: list[str] = []
+
+    def counted(path):
+        reads.append(os.path.basename(path))
+        return csv_source.read_csv(path)
+
+    monkeypatch.setattr(cli, "read_csv", counted)
+    monkeypatch.setattr(importer, "read_csv", counted)
     db = tmp_path / "t.sqlite"
-    run = CliRunner().invoke(cli.app, ["setup", "--no-service", "--db", str(db), "--log-dir", str(folder)])
+    run = CliRunner().invoke(cli.app, [*command, "--db", str(db), "--log-dir", str(folder)])
     assert run.exit_code == 0, run.output
     assert "no hands" in run.output
     assert [r[0] for r in connect(db).execute("SELECT game_id FROM games")] == [HU.stem.removeprefix("poker_now_log_")]
+    assert sorted(reads) == sorted([HU.name, empty.name])
 
 
 def test_redact_keeps_plain_copies_out_of_the_package(tmp_path):

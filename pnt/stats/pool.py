@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from ..db.conn import generation, path_of, reading
 from .derive import Facts, derive
 from .lru import LRU
-from .queries import _game_stamps, identity_map, load_hands
+from .queries import _game_stamps, identity_map, load_hands, player_key
 from .tags import RuleBase, baseline, counts
 from .tilt import annotate
 
@@ -125,7 +125,7 @@ def _count_pool(
         players: dict[str, Counter] = defaultdict(Counter)
         for per_game in _game_counts(conn, game, own, between):
             for pn, c in per_game.items():
-                players[ident.get(pn, (-1, pn))[1]].update(c)
+                players[player_key(ident, pn)[1]].update(c)
     pool = Pool(game or "lifetime", dict(players), own)
     if path:
         _POOL[path, game] = (gen, pool)

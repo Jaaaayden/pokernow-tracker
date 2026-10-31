@@ -36,7 +36,7 @@ from __future__ import annotations
 import sqlite3
 
 from .cards import hand_class
-from .derive import VOLUNTARY_COMMIT
+from .derive import VOLUNTARY_COMMIT, pct
 from .queries import display_names
 
 #: The classes the hero half counts, as the `hand=72` filter names them.
@@ -195,7 +195,7 @@ def _hero(conn: sqlite3.Connection, game: str | None) -> list[dict]:
             "known": a["known"],
             "dealt_72": a["dealt"],
             "played_72": a["played"],
-            "played_pct": round(100.0 * a["played"] / a["dealt"], 1) if a["dealt"] else None,
+            "played_pct": pct(a["played"], a["dealt"]),
             # None where the filter would also find a 72 shown in someone else's log.
             "dealt_filter": None if shown_dealt else DEALT_FILTER,
             "played_filter": None if shown_played else PLAYED_FILTER,

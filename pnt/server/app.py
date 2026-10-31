@@ -636,22 +636,12 @@ def counts(req: Annotated[CountsRequest, Body()]) -> dict:
     """`{"base": n, "counts": {term: n}}`: the hands `filter` keeps, and per term
     those `filter,term` keeps; null for a term the parser refuses. A POST only
     because 200 terms do not fit a URL; it writes nothing."""
-    from pnt.db.conn import reading
-    from pnt.stats.derive import derive
     from pnt.stats.filters import count_terms
-    from pnt.stats.queries import load_hands
-    from pnt.stats.tilt import annotate
 
     conn = db()
     if req.player is None:
-        # Every player's hands in the tab's scope, as `facts_cached` scopes one
-        # player's: the session facts numbered over all of them, then `play` keeps
-        # the analysed ones and `every` derives the others in full to list them.
-        with reading(conn):
-            hands = load_hands(conn, req.game)
-        facts = annotate([f for h in hands for f in derive(h, every_game=req.games == "every")])
-        if req.games == "play":
-            facts = [f for f in facts if f.analysed]
+        # Every player's hands in the tab's scope, as `facts_cached` scopes one player's.
+        facts = pool_facts(conn, req.game, games=req.games)
     else:
         try:
             facts = facts_cached(conn, req.player, req.game, req.games)

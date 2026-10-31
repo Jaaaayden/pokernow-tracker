@@ -104,12 +104,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
         with writing(conn):
             for table, column, decl in _missing_columns(conn):
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-    _one_import_row_per_source(conn)
-    _drop_index(conn, "idx_hands_game")
+    _tidy_indexes(conn)
 
 
 #: One `imports` row per (game, source), which `ingest_entries` updates in place.
 IMPORTS_INDEX = "idx_imports_game_source"
+
+#: An index schema.sql no longer makes: the UNIQUE (game_id, hand_number) index
+#: starts with game_id and serves every lookup by game, so this one only cost
+#: each rebuild a second index to write.
+DROPPED_INDEX = "idx_hands_game"
 
 
 def _index_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -118,20 +122,45 @@ def _index_exists(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
+def _indexes_tidy(conn: sqlite3.Connection) -> bool:
+    return _index_exists(conn, IMPORTS_INDEX) and not _index_exists(conn, DROPPED_INDEX)
+
+
+def _tidy_indexes(conn: sqlite3.Connection) -> None:
+    """Fold `imports` to one row per (game, source) and index the pair, and drop
+    DROPPED_INDEX. Once per database, and only reads when there is nothing to do.
+
+    A read-only file is left as it is rather than refused: neither step changes
+    what a reader sees, and the next connection that can write makes them.
+    """
+    if _indexes_tidy(conn):
+        return
+    try:
+        with writing(conn):
+            if _indexes_tidy(conn):
+                return  # another connection got here first
+            _one_import_row_per_source(conn)
+            conn.execute(f"DROP INDEX IF EXISTS {DROPPED_INDEX}")
+    except sqlite3.OperationalError as exc:
+        if not (exc.sqlite_errorname or "").startswith("SQLITE_READONLY"):
+            raise
+
+
 def _one_import_row_per_source(conn: sqlite3.Connection) -> None:
     """Fold `imports` down to one row per (game, source), then index that pair.
+    Inside the caller's write transaction.
 
     It used to gain a row on every extension poll, empty ones included: 79k rows
     on a few months' play, which nothing reads back. Each source's latest row
     stays, holding the latest call's time and offer and the new lines the source
-    has added in all. Once per database: the unique index marks it done, and
-    cannot be built while two rows share a pair.
+    has added in all. The unique index cannot be built while two rows share a pair.
     """
     if _index_exists(conn, IMPORTS_INDEX):
         return
-    with writing(conn):
-        if _index_exists(conn, IMPORTS_INDEX):
-            return  # another connection got here first
+    shared = conn.execute(
+        "SELECT 1 FROM imports GROUP BY game_id, source HAVING COUNT(*) > 1 LIMIT 1"
+    ).fetchone()
+    if shared:
         conn.execute(
             "CREATE TEMP TABLE _imports_kept (import_id INTEGER PRIMARY KEY, n_new INTEGER)"
         )
@@ -145,17 +174,7 @@ def _one_import_row_per_source(conn: sqlite3.Connection) -> None:
             " (SELECT k.n_new FROM _imports_kept k WHERE k.import_id = imports.import_id)"
         )
         conn.execute("DROP TABLE _imports_kept")
-        conn.execute(f"CREATE UNIQUE INDEX {IMPORTS_INDEX} ON imports(game_id, source)")
-
-
-def _drop_index(conn: sqlite3.Connection, name: str) -> None:
-    """Drop an index schema.sql no longer makes. `idx_hands_game` was one: the
-    UNIQUE (game_id, hand_number) index starts with game_id and serves every
-    lookup by game, so it only cost each rebuild a second index to write."""
-    if not _index_exists(conn, name):
-        return
-    with writing(conn):
-        conn.execute(f"DROP INDEX IF EXISTS {name}")
+    conn.execute(f"CREATE UNIQUE INDEX {IMPORTS_INDEX} ON imports(game_id, source)")
 
 
 #: Key in `meta` set once a database's browser-copy games are merged

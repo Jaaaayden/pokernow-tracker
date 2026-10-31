@@ -174,6 +174,13 @@ def identity_map(conn: sqlite3.Connection) -> dict[str, tuple[int, str]]:
     }
 
 
+def player_key(ident: Mapping[str, tuple[int, str]], pn_id: str) -> tuple[int | str, str]:
+    """(player key, alias) of `pn_id` in an `identity_map`. An ID with no identity
+    row (none today: a rebuild resolves every seat) is its own player, keyed and
+    named by itself, never one stand-in shared by every such ID."""
+    return ident.get(pn_id, (pn_id, pn_id))
+
+
 def display_names(conn: sqlite3.Connection) -> dict[str, str]:
     """pn_id -> the name a drill-down should print.
 
@@ -526,9 +533,7 @@ def facts_by_player(
     aliases: dict[int | str, str] = {}
     for hand in hands:
         for fact in derive(hand):
-            # An ID with no identity row (none today: a rebuild resolves every seat)
-            # is its own player, never one shared stand-in.
-            pid, alias = ident.get(fact.pn_id, (fact.pn_id, fact.pn_id))
+            pid, alias = player_key(ident, fact.pn_id)
             grouped[pid].append(fact)
             aliases[pid] = alias
     # The session facts (see tilt.py) are numbered over every hand, as a player's
@@ -591,6 +596,7 @@ def pool_facts(
     conn: sqlite3.Connection,
     game_id: str | None = None,
     predicate: Callable[[Facts], bool] | None = None,
+    games: str = "play",
 ) -> list[Facts]:
     """Every (hand, player) row in the database, or in one game, inside a spot: the
     pool the pool views count. A heads-up hand is two rows, one from each seat.
@@ -599,10 +605,19 @@ def pool_facts(
     per-player cache holds a handful of players and this is all of them, and it is
     asked for by a person, not on a timer. The session facts come first, so a spot
     like `post_loss` reads whole sessions.
+
+    `games` is the scope (`SCOPES`), as `facts_cached` takes it: the session facts
+    are numbered over every hand in each, and `every` derives the hands not
+    analysed in full.
     """
+    if games not in SCOPES:
+        raise ValueError(f"unknown scope: {games!r}")
     with reading(conn):  # one snapshot: a rebuild between the reads tears the hands
         hands = load_hands(conn, game_id)
-    facts = play_facts(hands)
+    if games == "play":
+        facts = play_facts(hands)
+    else:
+        facts = annotate([f for h in hands for f in derive(h, every_game=games == "every")])
     return [f for f in facts if predicate(f)] if predicate is not None else facts
 
 
@@ -963,7 +978,7 @@ def _full_report(
     names: dict[int | str, str] = {}
     for per_id in _tallies(conn, game_id):
         for pn_id, t in per_id.items():
-            pid, alias = ident.get(pn_id, (pn_id, pn_id))  # unidentified: its own row
+            pid, alias = player_key(ident, pn_id)
             g = grouped_t.get(pid)
             if g is None:
                 g = grouped_t[pid] = Tally()

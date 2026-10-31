@@ -224,14 +224,14 @@ def _apply_bundled_aliases(conn) -> None:
     typer.echo(f"merged {moved} sample identity row(s) per {BUNDLED_ALIASES.name}")
 
 
-def _import(conn, path: str, folder: Path) -> dict:
+def _import(conn, path: str, folder: Path, entries: list | None = None) -> dict:
     """`import_csv`, and a file read from the log folder goes on record.
 
     On record is what makes deleting that file later remove its game (`pnt sync`).
     Files from anywhere else are not: deleting a Downloads copy once it is imported
-    must not take the game with it.
+    must not take the game with it. `entries`: the file, if the caller read it.
     """
-    s = import_csv(conn, path)
+    s = import_csv(conn, path, entries=entries)
     p = Path(path)
     if p.resolve().parent == folder.resolve():
         syncmod.record_file(conn, p, s["game_id"])
@@ -311,10 +311,11 @@ def import_cmd(
     failed = 0
     for path in expanded:
         try:
-            if not has_hands(read_csv(path)):
+            entries = read_csv(path)
+            if not has_hands(entries):
                 typer.echo(f"{Path(path).name}: no hands (joined and left before a deal), skipped")
                 continue
-            s = _import(conn, path, folder)
+            s = _import(conn, path, folder, entries)
         except ValueError as exc:  # no game ID in the name, not a log
             msg = str(exc)
             typer.echo(msg if Path(path).name in msg else f"{Path(path).name}: {msg}", err=True)
@@ -536,10 +537,11 @@ def setup(
             # As `pnt import` and the sync do: a log with no hand would only make
             # an empty game, and one that is not a log is named, not a traceback.
             try:
-                if not has_hands(read_csv(path)):
+                entries = read_csv(path)
+                if not has_hands(entries):
                     typer.echo(f"  {Path(path).name}: no hands (joined and left before a deal), skipped")
                     continue
-                s = _import(conn, path, folder)
+                s = _import(conn, path, folder, entries)
             except ValueError as exc:
                 typer.echo(f"  {Path(path).name}: could not import: {exc}", err=True)
                 continue
